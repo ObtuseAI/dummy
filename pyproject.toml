@@ -24,4 +24,4 @@ testpaths = ["tests"]
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["core*", "kalshi*", "live_firewall*"]
+include = ["core*", "kalshi*", "live_firewall*", "compliance*"]

@@ -4,11 +4,17 @@ from decimal import Decimal
 from typing import Optional
 from core.state import STATE
 from core.config_loader import load_caps
-from core.ontology import AccountMode, LiveOrderRequest, FirewallVerdict, LiveOrderResult, OrderBook, Forecast
+from core.ontology import AccountMode, LiveOrderRequest, FirewallVerdict, LiveOrderResult, OrderBook, Forecast, Position
 from live_firewall.exposure_tracker import ExposureTracker
+from compliance.governor import assess_compliance
 from core.logger import logger
 
 KNOWN_ADAPTERS = {"kalshi_live_firewall_adapter", "kalshi_official_reference_adapter", "kalshi_python_sdk_adapter", "pykalshi_reference_adapter"}
+REJECTED_ADAPTERS: set[str] = set()
+
+
+def mark_adapter_rejected(adapter_name: str):
+    REJECTED_ADAPTERS.add(adapter_name)
 
 
 def _check_secret_redaction(text: str) -> bool:
@@ -45,6 +51,8 @@ class LiveBrokerFirewall:
             return fail("emergency_stop", "Emergency stop active")
         if not os.environ.get("KALSHI_API_KEY_ID"):
             return fail("secrets", "API key missing")
+        if req.adapter_name in REJECTED_ADAPTERS:
+            return fail("repo_bypass", "Adapter rejected by repo harvester")
         if req.adapter_name not in KNOWN_ADAPTERS:
             return fail("unknown_adapter", f"Unknown adapter {req.adapter_name}")
         if not _check_secret_redaction(str(req.model_dump())):
@@ -53,6 +61,9 @@ class LiveBrokerFirewall:
             return fail("market_allowlist", "Market not allowlisted")
         if any(req.market_ticker.startswith(c) for c in caps.blocked_categories):
             return fail("blocked_category", "Contract category blocked")
+        compliance = assess_compliance(req.market_ticker, req.contract_ticker)
+        if not compliance.passed:
+            return fail("compliance", compliance.reason)
         if orderbook.timestamp < datetime.now(timezone.utc) - timedelta(seconds=30):
             return fail("stale_data", "Stale market data")
         if not orderbook.bids or not orderbook.asks:
@@ -110,6 +121,14 @@ class LiveBrokerFirewall:
             order_id = resp.get("order", {}).get("order_id") or resp.get("order_id")
             self.exposure.record_order(req.market_ticker, req.size, req.price_cents)
             self.exposure.add_open_order(order_id or "unknown", req.market_ticker, req.size, req.price_cents)
+            self.exposure.update_position(Position(
+                market_ticker=req.market_ticker,
+                contract_ticker=req.contract_ticker,
+                side=req.side,
+                quantity=req.size,
+                avg_price_cents=req.price_cents,
+                unrealized_pnl_cents=0,
+            ))
             return LiveOrderResult(success=True, order_id=order_id, proof_reference=req.strategy_proof_reference)
         except Exception as e:
             logger.error("Live order submit failed", extra={"component": "firewall", "error": str(e)})

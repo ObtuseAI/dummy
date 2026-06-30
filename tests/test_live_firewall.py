@@ -5,19 +5,20 @@ from decimal import Decimal
 from unittest.mock import AsyncMock, patch
 from core import state as state_module
 from core.state import DumbyState, STATE
-from core.ontology import AccountMode, LiveOrderRequest, OrderBook, OrderBookLevel, Forecast, EdgeEstimate
-from live_firewall.firewall import LiveBrokerFirewall
+from core.ontology import AccountMode, LiveOrderRequest, OrderBook, OrderBookLevel, Forecast, EdgeEstimate, Position
+from live_firewall.firewall import LiveBrokerFirewall, REJECTED_ADAPTERS, mark_adapter_rejected
 from live_firewall.exposure_tracker import ExposureTracker
 
 
 @pytest.fixture(autouse=True)
 def reset_state():
-    """Reset the global DumbyState before every test."""
+    """Reset the global DumbyState and firewall guards before every test."""
     fresh = DumbyState()
     state_module.STATE = fresh
     # The firewall module imported STATE at load time, so update its reference too.
     import live_firewall.firewall as firewall_module
     firewall_module.STATE = fresh
+    REJECTED_ADAPTERS.clear()
     yield
 
 
@@ -198,6 +199,8 @@ async def test_submit_creates_order_and_tracks_exposure():
         assert result.order_id == "ord-123"
         assert len(exposure.order_history) == 1
         assert exposure.open_order_count() == 1
+        assert "MARKET" in exposure.positions
+        assert exposure.positions["MARKET"].quantity == 1
         client.create_order.assert_awaited_once()
 
 
@@ -210,3 +213,223 @@ async def test_submit_rejects_evaluated_order():
     result = await fw.submit(_make_request(), _make_book(), _make_forecast())
     assert not result.success
     client.create_order.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_blocked_category_compliance_gate():
+    state_module.STATE.set_mode(AccountMode.AUTONOMOUS_LIVE_CAPPED)
+    os.environ["KALSHI_API_KEY_ID"] = "test"
+    from core.config_loader import load_caps
+    caps = load_caps()
+    caps.allowed_markets = ["politics-elections-us"]
+    caps.blocked_categories = ["politics-elections-us-YES"]
+    req = _make_request(
+        market_ticker="politics-elections-us",
+        contract_ticker="politics-elections-us-YES",
+    )
+    book = OrderBook(
+        market_ticker="politics-elections-us",
+        contract_ticker="politics-elections-us-YES",
+        bids=[OrderBookLevel(price=48, size=10)],
+        asks=[OrderBookLevel(price=52, size=10)],
+        timestamp=datetime.now(timezone.utc),
+    )
+    with patch("live_firewall.firewall.load_caps", return_value=caps):
+        fw = LiveBrokerFirewall(None, ExposureTracker())
+        v = await fw.evaluate(req, book, _make_forecast())
+        assert not v.allow and v.rejected_by == "compliance"
+
+
+@pytest.mark.asyncio
+async def test_stale_data_blocked():
+    state_module.STATE.set_mode(AccountMode.AUTONOMOUS_LIVE_CAPPED)
+    os.environ["KALSHI_API_KEY_ID"] = "test"
+    from core.config_loader import load_caps
+    caps = load_caps()
+    caps.allowed_markets = ["MARKET"]
+    book = _make_book()
+    book.timestamp = datetime.now(timezone.utc) - timedelta(seconds=31)
+    with patch("live_firewall.firewall.load_caps", return_value=caps):
+        fw = LiveBrokerFirewall(None, ExposureTracker())
+        v = await fw.evaluate(_make_request(), book, _make_forecast())
+        assert not v.allow and v.rejected_by == "stale_data"
+
+
+@pytest.mark.asyncio
+async def test_spread_too_wide_blocked():
+    state_module.STATE.set_mode(AccountMode.AUTONOMOUS_LIVE_CAPPED)
+    os.environ["KALSHI_API_KEY_ID"] = "test"
+    from core.config_loader import load_caps
+    caps = load_caps()
+    caps.allowed_markets = ["MARKET"]
+    book = OrderBook(
+        market_ticker="MARKET",
+        contract_ticker="MARKET-YES",
+        bids=[OrderBookLevel(price=48, size=10)],
+        asks=[OrderBookLevel(price=60, size=10)],
+        timestamp=datetime.now(timezone.utc),
+    )
+    with patch("live_firewall.firewall.load_caps", return_value=caps):
+        fw = LiveBrokerFirewall(None, ExposureTracker())
+        v = await fw.evaluate(_make_request(), book, _make_forecast())
+        assert not v.allow and v.rejected_by == "spread"
+
+
+@pytest.mark.asyncio
+async def test_liquidity_too_low_blocked():
+    state_module.STATE.set_mode(AccountMode.AUTONOMOUS_LIVE_CAPPED)
+    os.environ["KALSHI_API_KEY_ID"] = "test"
+    from core.config_loader import load_caps
+    caps = load_caps()
+    caps.allowed_markets = ["MARKET"]
+    book = OrderBook(
+        market_ticker="MARKET",
+        contract_ticker="MARKET-YES",
+        bids=[OrderBookLevel(price=48, size=1)],
+        asks=[OrderBookLevel(price=52, size=1)],
+        timestamp=datetime.now(timezone.utc),
+    )
+    with patch("live_firewall.firewall.load_caps", return_value=caps):
+        fw = LiveBrokerFirewall(None, ExposureTracker())
+        v = await fw.evaluate(_make_request(), book, _make_forecast())
+        assert not v.allow and v.rejected_by == "liquidity"
+
+
+@pytest.mark.asyncio
+async def test_fees_remove_edge_blocked():
+    state_module.STATE.set_mode(AccountMode.AUTONOMOUS_LIVE_CAPPED)
+    os.environ["KALSHI_API_KEY_ID"] = "test"
+    from core.config_loader import load_caps
+    caps = load_caps()
+    caps.allowed_markets = ["MARKET"]
+    f = _make_forecast()
+    f.edge_after_fees = Decimal("0")
+    with patch("live_firewall.firewall.load_caps", return_value=caps):
+        fw = LiveBrokerFirewall(None, ExposureTracker())
+        v = await fw.evaluate(_make_request(), _make_book(), f)
+        assert not v.allow and v.rejected_by == "edge"
+
+
+@pytest.mark.asyncio
+async def test_market_exposure_cap_exceeded():
+    state_module.STATE.set_mode(AccountMode.AUTONOMOUS_LIVE_CAPPED)
+    os.environ["KALSHI_API_KEY_ID"] = "test"
+    from core.config_loader import load_caps
+    caps = load_caps()
+    caps.allowed_markets = ["MARKET"]
+    exposure = ExposureTracker()
+    exposure.update_position(Position(
+        market_ticker="MARKET",
+        contract_ticker="MARKET-YES",
+        side="yes",
+        quantity=5,
+        avg_price_cents=100,
+        unrealized_pnl_cents=0,
+    ))
+    with patch("live_firewall.firewall.load_caps", return_value=caps):
+        fw = LiveBrokerFirewall(None, exposure)
+        v = await fw.evaluate(_make_request(price_cents=50, size=1), _make_book(), _make_forecast())
+        assert not v.allow and v.rejected_by == "market_exposure_cap"
+
+
+@pytest.mark.asyncio
+async def test_total_exposure_cap_exceeded():
+    state_module.STATE.set_mode(AccountMode.AUTONOMOUS_LIVE_CAPPED)
+    os.environ["KALSHI_API_KEY_ID"] = "test"
+    from core.config_loader import load_caps
+    caps = load_caps()
+    caps.allowed_markets = ["MARKET"]
+    exposure = ExposureTracker()
+    exposure.update_position(Position(
+        market_ticker="OTHER",
+        contract_ticker="OTHER-YES",
+        side="yes",
+        quantity=10,
+        avg_price_cents=100,
+        unrealized_pnl_cents=0,
+    ))
+    with patch("live_firewall.firewall.load_caps", return_value=caps):
+        fw = LiveBrokerFirewall(None, exposure)
+        v = await fw.evaluate(_make_request(price_cents=50, size=1), _make_book(), _make_forecast())
+        assert not v.allow and v.rejected_by == "total_exposure_cap"
+
+
+@pytest.mark.asyncio
+async def test_daily_loss_cap_exceeded():
+    state_module.STATE.set_mode(AccountMode.AUTONOMOUS_LIVE_CAPPED)
+    os.environ["KALSHI_API_KEY_ID"] = "test"
+    from core.config_loader import load_caps
+    caps = load_caps()
+    caps.allowed_markets = ["MARKET"]
+    state_module.STATE.daily_loss_cents = caps.max_daily_loss_cents
+    with patch("live_firewall.firewall.load_caps", return_value=caps):
+        fw = LiveBrokerFirewall(None, ExposureTracker())
+        v = await fw.evaluate(_make_request(), _make_book(), _make_forecast())
+        assert not v.allow and v.rejected_by == "daily_loss_cap"
+
+
+@pytest.mark.asyncio
+async def test_order_frequency_cap_exceeded():
+    state_module.STATE.set_mode(AccountMode.AUTONOMOUS_LIVE_CAPPED)
+    os.environ["KALSHI_API_KEY_ID"] = "test"
+    from core.config_loader import load_caps
+    caps = load_caps()
+    caps.allowed_markets = ["MARKET"]
+    exposure = ExposureTracker()
+    for _ in range(caps.max_orders_per_hour):
+        exposure.record_order("MARKET", 1, 50)
+    with patch("live_firewall.firewall.load_caps", return_value=caps):
+        fw = LiveBrokerFirewall(None, exposure)
+        v = await fw.evaluate(_make_request(), _make_book(), _make_forecast())
+        assert not v.allow and v.rejected_by == "frequency_cap"
+
+
+@pytest.mark.asyncio
+async def test_settlement_risk_too_high_blocked():
+    state_module.STATE.set_mode(AccountMode.AUTONOMOUS_LIVE_CAPPED)
+    os.environ["KALSHI_API_KEY_ID"] = "test"
+    from core.config_loader import load_caps
+    caps = load_caps()
+    caps.allowed_markets = ["MARKET"]
+    f = _make_forecast()
+    f.settlement_risk_score = Decimal("0.9")
+    with patch("live_firewall.firewall.load_caps", return_value=caps):
+        fw = LiveBrokerFirewall(None, ExposureTracker())
+        v = await fw.evaluate(_make_request(), _make_book(), f)
+        assert not v.allow and v.rejected_by == "settlement_risk"
+
+
+@pytest.mark.asyncio
+async def test_unknown_adapter_blocked():
+    state_module.STATE.set_mode(AccountMode.AUTONOMOUS_LIVE_CAPPED)
+    os.environ["KALSHI_API_KEY_ID"] = "test"
+    fw = LiveBrokerFirewall(None, ExposureTracker())
+    v = await fw.evaluate(_make_request(adapter_name="rogue_adapter"), _make_book(), _make_forecast())
+    assert not v.allow and v.rejected_by == "unknown_adapter"
+
+
+@pytest.mark.asyncio
+async def test_secret_redaction_failure_blocked():
+    state_module.STATE.set_mode(AccountMode.AUTONOMOUS_LIVE_CAPPED)
+    os.environ["KALSHI_API_KEY_ID"] = "test"
+    fw = LiveBrokerFirewall(None, ExposureTracker())
+    v = await fw.evaluate(
+        _make_request(forecast_proof_reference="api_key='supersecret123456789'"),
+        _make_book(),
+        _make_forecast(),
+    )
+    assert not v.allow and v.rejected_by == "secret_redaction"
+
+
+@pytest.mark.asyncio
+async def test_repo_bypass_adapter_rejected():
+    state_module.STATE.set_mode(AccountMode.AUTONOMOUS_LIVE_CAPPED)
+    os.environ["KALSHI_API_KEY_ID"] = "test"
+    mark_adapter_rejected("kalshi_live_firewall_adapter")
+    from core.config_loader import load_caps
+    caps = load_caps()
+    caps.allowed_markets = ["MARKET"]
+    with patch("live_firewall.firewall.load_caps", return_value=caps):
+        fw = LiveBrokerFirewall(None, ExposureTracker())
+        v = await fw.evaluate(_make_request(), _make_book(), _make_forecast())
+        assert not v.allow and v.rejected_by == "repo_bypass"

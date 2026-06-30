@@ -12,6 +12,12 @@ class ExposureTracker:
     def record_order(self, market_ticker: str, size: int, price_cents: int):
         self.order_history.append({"ts": datetime.now(timezone.utc), "market": market_ticker, "size": size, "price_cents": price_cents})
 
+    def update_position(self, position: Position):
+        self.positions[position.market_ticker] = position
+
+    def remove_position(self, market_ticker: str):
+        self.positions.pop(market_ticker, None)
+
     def add_open_order(self, order_id: str, market_ticker: str, size: int, price_cents: int):
         self.open_orders.append({"order_id": order_id, "market": market_ticker, "size": size, "price_cents": price_cents})
 
