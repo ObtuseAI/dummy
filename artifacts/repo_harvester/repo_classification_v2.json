@@ -1,0 +1,3352 @@
+{
+  "counts": {
+    "REFERENCE_MINE": 223
+  },
+  "results": [
+    {
+      "owner": "pmxt-dev",
+      "name": "pmxt",
+      "category": "highest_priority",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "pmxt-dev",
+      "name": "pmxt-mcp",
+      "category": "highest_priority",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "Polymarket",
+      "name": "py-clob-client",
+      "category": "highest_priority",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "Polymarket",
+      "name": "agents",
+      "category": "highest_priority",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "gnosis",
+      "name": "prediction-market-agent-tooling",
+      "category": "highest_priority",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "microprediction",
+      "name": "manifoldbot",
+      "category": "highest_priority",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "GodlyPeeta",
+      "name": "prediction-markets.py",
+      "category": "highest_priority",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "gtg7784",
+      "name": "dr-manhattan-ts",
+      "category": "highest_priority",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "gtg7784",
+      "name": "dr-manhattan-rust",
+      "category": "highest_priority",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "erickdronski",
+      "name": "kalshi-polymarket-trader",
+      "category": "highest_priority",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "suislanchez",
+      "name": "polymarket-kalshi-weather-bot",
+      "category": "highest_priority",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "ryanfrigo",
+      "name": "kalshi-ai-trading-bot",
+      "category": "highest_priority",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "OctagonAI",
+      "name": "kalshi-trading-bot-cli",
+      "category": "highest_priority",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "ImMike",
+      "name": "polymarket-arbitrage",
+      "category": "highest_priority",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "CarlosIbCu",
+      "name": "polymarket-kalshi-btc-arbitrage-bot",
+      "category": "highest_priority",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "braedonsaunders",
+      "name": "homerun",
+      "category": "highest_priority",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "PredictionXBT",
+      "name": "PredictOS",
+      "category": "highest_priority",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "realfishsam",
+      "name": "prediction-market-arbitrage-bot",
+      "category": "highest_priority",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "kmizzi",
+      "name": "karb",
+      "category": "highest_priority",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "Drakkar-Software",
+      "name": "OctoBot-Prediction-Market",
+      "category": "highest_priority",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "mihai-stancescu",
+      "name": "polymarket-ai-trade-bot",
+      "category": "highest_priority",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "Kalshi",
+      "name": "kalshi-starter-code-python",
+      "category": "prediction_market_native",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "Kalshi",
+      "name": "tools-and-analysis",
+      "category": "prediction_market_native",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "TexasCoding",
+      "name": "kalshi-python-sdk",
+      "category": "prediction_market_native",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "arshka",
+      "name": "pykalshi",
+      "category": "prediction_market_native",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "humz2k",
+      "name": "kalshi-python-unofficial",
+      "category": "prediction_market_native",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "vaguenebula",
+      "name": "kalshi-client",
+      "category": "prediction_market_native",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "AndrewNolte",
+      "name": "KalshiPythonClient",
+      "category": "prediction_market_native",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "EllAchE",
+      "name": "kalshi_cli",
+      "category": "prediction_market_native",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "Polymarket",
+      "name": "clob-client-v2",
+      "category": "prediction_market_native",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "quantified-uncertainty",
+      "name": "metaforecast",
+      "category": "prediction_market_native",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "vigji",
+      "name": "mootlib",
+      "category": "prediction_market_native",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "tswaim",
+      "name": "polymarket-kalshi-arbitrage-bot",
+      "category": "kalshi_polymarket_arbitrage",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "Longbridges",
+      "name": "polymarket-kalshi-arbitrage-bot",
+      "category": "kalshi_polymarket_arbitrage",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "defi-ape",
+      "name": "polymarket-kalshi-arbitrage-bot",
+      "category": "kalshi_polymarket_arbitrage",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "TopTrenDev",
+      "name": "polymarket-kalshi-arbitrage-bot",
+      "category": "kalshi_polymarket_arbitrage",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "ashercn97",
+      "name": "predmarket",
+      "category": "kalshi_polymarket_arbitrage",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "aulekator",
+      "name": "Polymarket-BTC-15-Minute-Trading-Bot",
+      "category": "kalshi_polymarket_arbitrage",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "discountifu",
+      "name": "polymarket-trading-bot",
+      "category": "kalshi_polymarket_arbitrage",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "Ronesfe",
+      "name": "Polymarket-Automated-Trading-Bot",
+      "category": "kalshi_polymarket_arbitrage",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "Anmoldureha",
+      "name": "polymarket-trading-bot-strategies",
+      "category": "kalshi_polymarket_arbitrage",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "the-odds-api",
+      "name": "samples-python",
+      "category": "sports_prediction_odds",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "odds-api",
+      "name": "odds-api",
+      "category": "sports_prediction_odds",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "Sharp-API",
+      "name": "SharpAPI-TS",
+      "category": "sports_prediction_odds",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "carterlasalle",
+      "name": "SportsArbFinder",
+      "category": "sports_prediction_odds",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "daankoning",
+      "name": "ArbitrageFinder",
+      "category": "sports_prediction_odds",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "robbiehaynes",
+      "name": "arbitrage-finder",
+      "category": "sports_prediction_odds",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "ratsam3474",
+      "name": "autoarbitrage",
+      "category": "sports_prediction_odds",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "personal-coding",
+      "name": "Live-Sports-Arbitrage-Bet-Finder",
+      "category": "sports_prediction_odds",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "jhonatan-dev",
+      "name": "Betting-Arbitrage",
+      "category": "sports_prediction_odds",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "lumunge",
+      "name": "Arb",
+      "category": "sports_prediction_odds",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "odds-api",
+      "name": "arbitrage-betting-scanner-bot",
+      "category": "sports_prediction_odds",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "jordantete",
+      "name": "OddsHarvester",
+      "category": "sports_prediction_odds",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "pierridotite",
+      "name": "ArbitrageOdds",
+      "category": "sports_prediction_odds",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "lines64",
+      "name": "True-Odds-Calculator",
+      "category": "sports_prediction_odds",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "WFord26",
+      "name": "BetTrack",
+      "category": "sports_prediction_odds",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "coryypeters",
+      "name": "nrl-odds-intelligence-pipeline",
+      "category": "sports_prediction_odds",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "georgedouzas",
+      "name": "sports-betting",
+      "category": "sports_prediction_odds",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "NBA-Betting",
+      "name": "NBA_Betting",
+      "category": "sports_prediction_odds",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "IanDublew",
+      "name": "Machine-Learning-Football-Soccer-Prediction-Model-",
+      "category": "sports_prediction_odds",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "ronyka77",
+      "name": "SoccerPredictor_byRichardSzita",
+      "category": "sports_prediction_odds",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "manuelpeba",
+      "name": "world-cup-2026-forecast",
+      "category": "sports_prediction_odds",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "nickpadd",
+      "name": "EuropeanFootballLeaguePredictor",
+      "category": "sports_prediction_odds",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "msoczi",
+      "name": "football_predictions",
+      "category": "sports_prediction_odds",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "ratloop",
+      "name": "MatchOutcomeAI",
+      "category": "sports_prediction_odds",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "siddhu21",
+      "name": "Powerplay-Based-IPL-Match-Prediction",
+      "category": "sports_prediction_odds",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "open-meteo",
+      "name": "open-meteo",
+      "category": "weather_prediction_market",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "paulokuong",
+      "name": "noaa",
+      "category": "weather_prediction_market",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "weather-mcp",
+      "name": "weather-mcp",
+      "category": "weather_prediction_market",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "GClunies",
+      "name": "noaa_coops",
+      "category": "weather_prediction_market",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "tlaceby",
+      "name": "weather",
+      "category": "weather_prediction_market",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "nst-guide",
+      "name": "ndfd_current",
+      "category": "weather_prediction_market",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "jessehamner",
+      "name": "WeatherWidget",
+      "category": "weather_prediction_market",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "Hrishikesh332",
+      "name": "Weather-Forecasting-Using-Ml",
+      "category": "weather_prediction_market",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "Adhokshaj04",
+      "name": "weather_predict",
+      "category": "weather_prediction_market",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "abz-mhd",
+      "name": "ai-weather-forecasting",
+      "category": "weather_prediction_market",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "miketobz",
+      "name": "ML-Rainfall-Prediction",
+      "category": "weather_prediction_market",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "mohsin-riad",
+      "name": "future-weather-forecasting",
+      "category": "weather_prediction_market",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "kshitizrohilla",
+      "name": "weather-app-using-openweathermap-api",
+      "category": "weather_prediction_market",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "microsoft",
+      "name": "qlib",
+      "category": "stocks_equities_options_macro",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "microsoft",
+      "name": "RD-Agent",
+      "category": "stocks_equities_options_macro",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "QuantConnect",
+      "name": "Lean",
+      "category": "stocks_equities_options_macro",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "QuantConnect",
+      "name": "Lean.Brokerages.InteractiveBrokers",
+      "category": "stocks_equities_options_macro",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "nautechsystems",
+      "name": "nautilus_trader",
+      "category": "stocks_equities_options_macro",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "polakowo",
+      "name": "vectorbt",
+      "category": "stocks_equities_options_macro",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "backtrader",
+      "name": "backtrader",
+      "category": "stocks_equities_options_macro",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "mementum",
+      "name": "backtrader",
+      "category": "stocks_equities_options_macro",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "kernc",
+      "name": "backtesting.py",
+      "category": "stocks_equities_options_macro",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "zipline-reloaded",
+      "name": "zipline-reloaded",
+      "category": "stocks_equities_options_macro",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "quantrocket-llc",
+      "name": "zipline",
+      "category": "stocks_equities_options_macro",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "StockSharp",
+      "name": "StockSharp",
+      "category": "stocks_equities_options_macro",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "coding-kitties",
+      "name": "investing-algorithm-framework",
+      "category": "stocks_equities_options_macro",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "kieran-mackle",
+      "name": "AutoTrader",
+      "category": "stocks_equities_options_macro",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "Lumiwealth",
+      "name": "lumibot",
+      "category": "stocks_equities_options_macro",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "marketcalls",
+      "name": "openalgo",
+      "category": "stocks_equities_options_macro",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "Doggie52",
+      "name": "Lean-Batch-Launcher",
+      "category": "stocks_equities_options_macro",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "vrindger",
+      "name": "actually_open_lean",
+      "category": "stocks_equities_options_macro",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "aarjaneiro",
+      "name": "QtLean",
+      "category": "stocks_equities_options_macro",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "AI4Finance-Foundation",
+      "name": "Awesome_AI4Finance",
+      "category": "stocks_equities_options_macro",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "huseinzol05",
+      "name": "Stock-Prediction-Models",
+      "category": "stocks_equities_options_macro",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "shirosaidev",
+      "name": "stocksight",
+      "category": "stocks_equities_options_macro",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "stefan-jansen",
+      "name": "machine-learning-for-trading",
+      "category": "stocks_equities_options_macro",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "shashankvemuri",
+      "name": "Finance",
+      "category": "stocks_equities_options_macro",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "HusseinJammal",
+      "name": "Liquid-Neural-Networks-in-Stock-Market-Prediction",
+      "category": "stocks_equities_options_macro",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "louisowen6",
+      "name": "SENN",
+      "category": "stocks_equities_options_macro",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "0xpranjal",
+      "name": "Stock-Prediction-using-different-models",
+      "category": "stocks_equities_options_macro",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "PyFi-Training",
+      "name": "Stock-Price-Forecasting-with-Machine-Learning",
+      "category": "stocks_equities_options_macro",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "jinglescode",
+      "name": "time-series-forecasting-pytorch",
+      "category": "stocks_equities_options_macro",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "Vatshayan",
+      "name": "Final-Year-Machine-Learning-Stock-Price-Prediction-Project",
+      "category": "stocks_equities_options_macro",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "virajbhutada",
+      "name": "Google-Stock-Price-Forecasting-LSTM",
+      "category": "stocks_equities_options_macro",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "gsaini",
+      "name": "financial-research-analyst-agent",
+      "category": "stocks_equities_options_macro",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "devfinwiz",
+      "name": "Fin-Maestro-Web",
+      "category": "stocks_equities_options_macro",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "navam-io",
+      "name": "navam-invest",
+      "category": "stocks_equities_options_macro",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "s-kerin",
+      "name": "finance_calendars",
+      "category": "stocks_equities_options_macro",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "cfdude",
+      "name": "mcp-finnhub",
+      "category": "stocks_equities_options_macro",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "NDelventhal",
+      "name": "cot_reports",
+      "category": "commodities_energy_agriculture",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "philsv",
+      "name": "pycot",
+      "category": "commodities_energy_agriculture",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "Mcamin",
+      "name": "cftc-cot",
+      "category": "commodities_energy_agriculture",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "Mcamin",
+      "name": "cot-analysis",
+      "category": "commodities_energy_agriculture",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "jensolson",
+      "name": "CFTC-COT",
+      "category": "commodities_energy_agriculture",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "MarcinLinkl",
+      "name": "Positions-CoT-Explorer",
+      "category": "commodities_energy_agriculture",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "philsv",
+      "name": "myeia",
+      "category": "commodities_energy_agriculture",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "EIAgov",
+      "name": "dash-benchmark",
+      "category": "commodities_energy_agriculture",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "OilpriceAPI",
+      "name": "python-sdk",
+      "category": "commodities_energy_agriculture",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "OilpriceAPI",
+      "name": "oilpriceapi-node",
+      "category": "commodities_energy_agriculture",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "datasets",
+      "name": "oil-prices",
+      "category": "commodities_energy_agriculture",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "omkarcloud",
+      "name": "commodity-price-api",
+      "category": "commodities_energy_agriculture",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "aedessler",
+      "name": "EIA-predictions",
+      "category": "commodities_energy_agriculture",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "gabsbruh",
+      "name": "price-forecasting",
+      "category": "commodities_energy_agriculture",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "robindevelops",
+      "name": "btc-forex-gold-silver-price-predictor",
+      "category": "commodities_energy_agriculture",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "BaseMax",
+      "name": "XAUUSD-LSTM",
+      "category": "commodities_energy_agriculture",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "je-suis-tm",
+      "name": "quant-trading",
+      "category": "commodities_energy_agriculture",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "ccxt",
+      "name": "ccxt",
+      "category": "crypto_btc_event_market",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "freqtrade",
+      "name": "freqtrade",
+      "category": "crypto_btc_event_market",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "hummingbot",
+      "name": "hummingbot",
+      "category": "crypto_btc_event_market",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "Drakkar-Software",
+      "name": "OctoBot",
+      "category": "crypto_btc_event_market",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "Drakkar-Software",
+      "name": "OctoBot-Market-Making",
+      "category": "crypto_btc_event_market",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "nelso0",
+      "name": "barbotine-arbitrage-bot",
+      "category": "crypto_btc_event_market",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "nkaz001",
+      "name": "hftbacktest",
+      "category": "crypto_btc_event_market",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "ccxt",
+      "name": "binance-trade-bot",
+      "category": "crypto_btc_event_market",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "Laser420",
+      "name": "fund_arb_bot",
+      "category": "crypto_btc_event_market",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "nexwave-so",
+      "name": "energy-operator",
+      "category": "crypto_btc_event_market",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "second-state",
+      "name": "fintool",
+      "category": "crypto_btc_event_market",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "moss-site",
+      "name": "moss-trade-bot-skills",
+      "category": "crypto_btc_event_market",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "Mattbusel",
+      "name": "FinRL_DeepSeek_Crypto_Trading",
+      "category": "crypto_btc_event_market",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "botcrypto-io",
+      "name": "awesome-crypto-trading-bots",
+      "category": "crypto_btc_event_market",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "suenot",
+      "name": "awesome-ccxt",
+      "category": "crypto_btc_event_market",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "unit8co",
+      "name": "darts",
+      "category": "universal_ml_forecasting_optimization",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "autogluon",
+      "name": "autogluon",
+      "category": "universal_ml_forecasting_optimization",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "optuna",
+      "name": "optuna",
+      "category": "universal_ml_forecasting_optimization",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "optuna",
+      "name": "optuna-dashboard",
+      "category": "universal_ml_forecasting_optimization",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "optuna",
+      "name": "optunahub",
+      "category": "universal_ml_forecasting_optimization",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "statsmodels",
+      "name": "statsmodels",
+      "category": "universal_ml_forecasting_optimization",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "scikit-learn",
+      "name": "scikit-learn",
+      "category": "universal_ml_forecasting_optimization",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "scipy",
+      "name": "scipy",
+      "category": "universal_ml_forecasting_optimization",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "numpy",
+      "name": "numpy",
+      "category": "universal_ml_forecasting_optimization",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "pandas-dev",
+      "name": "pandas",
+      "category": "universal_ml_forecasting_optimization",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "dmlc",
+      "name": "xgboost",
+      "category": "universal_ml_forecasting_optimization",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "microsoft",
+      "name": "LightGBM",
+      "category": "universal_ml_forecasting_optimization",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "catboost",
+      "name": "catboost",
+      "category": "universal_ml_forecasting_optimization",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "Nixtla",
+      "name": "statsforecast",
+      "category": "universal_ml_forecasting_optimization",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "Nixtla",
+      "name": "mlforecast",
+      "category": "universal_ml_forecasting_optimization",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "Nixtla",
+      "name": "neuralforecast",
+      "category": "universal_ml_forecasting_optimization",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "Nixtla",
+      "name": "hierarchicalforecast",
+      "category": "universal_ml_forecasting_optimization",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "Nixtla",
+      "name": "utilsforecast",
+      "category": "universal_ml_forecasting_optimization",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "facebook",
+      "name": "prophet",
+      "category": "universal_ml_forecasting_optimization",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "timeseriesAI",
+      "name": "tsai",
+      "category": "universal_ml_forecasting_optimization",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "pytorch",
+      "name": "pytorch",
+      "category": "universal_ml_forecasting_optimization",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "lightning-ai",
+      "name": "pytorch-lightning",
+      "category": "universal_ml_forecasting_optimization",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "ray-project",
+      "name": "ray",
+      "category": "universal_ml_forecasting_optimization",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "DEAP",
+      "name": "deap",
+      "category": "universal_ml_forecasting_optimization",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "automl",
+      "name": "auto-sklearn",
+      "category": "universal_ml_forecasting_optimization",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "EpistasisLab",
+      "name": "tpot",
+      "category": "universal_ml_forecasting_optimization",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "mlflow",
+      "name": "mlflow",
+      "category": "universal_ml_forecasting_optimization",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "wandb",
+      "name": "wandb",
+      "category": "universal_ml_forecasting_optimization",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "great-expectations",
+      "name": "great_expectations",
+      "category": "universal_ml_forecasting_optimization",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "evidentlyai",
+      "name": "evidently",
+      "category": "universal_ml_forecasting_optimization",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "Arize-ai",
+      "name": "phoenix",
+      "category": "universal_ml_forecasting_optimization",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "OpenBB-finance",
+      "name": "OpenBB",
+      "category": "financial_data_market_data",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "yfinance",
+      "name": "yfinance",
+      "category": "financial_data_market_data",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "ranaroussi",
+      "name": "yfinance",
+      "category": "financial_data_market_data",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "ranaroussi",
+      "name": "quantstats",
+      "category": "financial_data_market_data",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "quantopian",
+      "name": "pyfolio",
+      "category": "financial_data_market_data",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "quantopian",
+      "name": "empyrical",
+      "category": "financial_data_market_data",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "ranaroussi",
+      "name": "empyrical",
+      "category": "financial_data_market_data",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "pmorissette",
+      "name": "bt",
+      "category": "financial_data_market_data",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "twopirllc",
+      "name": "pandas-ta",
+      "category": "financial_data_market_data",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "bukosabino",
+      "name": "ta",
+      "category": "financial_data_market_data",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "duckdb",
+      "name": "duckdb",
+      "category": "financial_data_market_data",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "polarsource",
+      "name": "polars",
+      "category": "financial_data_market_data",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "fastapi",
+      "name": "fastapi",
+      "category": "dashboard_api_observability",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "encode",
+      "name": "starlette",
+      "category": "dashboard_api_observability",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "encode",
+      "name": "uvicorn",
+      "category": "dashboard_api_observability",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "tiangolo",
+      "name": "full-stack-fastapi-template",
+      "category": "dashboard_api_observability",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "vitejs",
+      "name": "vite",
+      "category": "dashboard_api_observability",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "vercel",
+      "name": "next.js",
+      "category": "dashboard_api_observability",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "tailwindlabs",
+      "name": "tailwindcss",
+      "category": "dashboard_api_observability",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "recharts",
+      "name": "recharts",
+      "category": "dashboard_api_observability",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "streamlit",
+      "name": "streamlit",
+      "category": "dashboard_api_observability",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "plotly",
+      "name": "dash",
+      "category": "dashboard_api_observability",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "grafana",
+      "name": "grafana",
+      "category": "dashboard_api_observability",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "getredash",
+      "name": "redash",
+      "category": "dashboard_api_observability",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "metabase",
+      "name": "metabase",
+      "category": "dashboard_api_observability",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "ClickHouse",
+      "name": "ClickHouse",
+      "category": "dashboard_api_observability",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "redis",
+      "name": "redis",
+      "category": "dashboard_api_observability",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "prometheus",
+      "name": "prometheus",
+      "category": "dashboard_api_observability",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "grafana",
+      "name": "loki",
+      "category": "dashboard_api_observability",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "openai",
+      "name": "openai-agents-python",
+      "category": "agent_automation_evaluation",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "microsoft",
+      "name": "autogen",
+      "category": "agent_automation_evaluation",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "crewAIInc",
+      "name": "crewAI",
+      "category": "agent_automation_evaluation",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "langchain-ai",
+      "name": "langchain",
+      "category": "agent_automation_evaluation",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "langchain-ai",
+      "name": "langgraph",
+      "category": "agent_automation_evaluation",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "run-llama",
+      "name": "llama_index",
+      "category": "agent_automation_evaluation",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "SWE-agent",
+      "name": "SWE-agent",
+      "category": "agent_automation_evaluation",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "aider-AI",
+      "name": "aider",
+      "category": "agent_automation_evaluation",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "All-Hands-AI",
+      "name": "OpenHands",
+      "category": "agent_automation_evaluation",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "BerriAI",
+      "name": "litellm",
+      "category": "agent_automation_evaluation",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "promptfoo",
+      "name": "promptfoo",
+      "category": "agent_automation_evaluation",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "Br0ski777",
+      "name": "x402-agent-tools",
+      "category": "agent_automation_evaluation",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "BlockRunAI",
+      "name": "awesome-blockrun",
+      "category": "agent_automation_evaluation",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "BlockRunAI",
+      "name": "blockrun-llm",
+      "category": "agent_automation_evaluation",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "punkpeye",
+      "name": "awesome-mcp-servers",
+      "category": "agent_automation_evaluation",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "TensorBlock",
+      "name": "awesome-mcp-servers",
+      "category": "agent_automation_evaluation",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    }
+  ]
+}

@@ -1,8 +1,18 @@
 from datetime import datetime, timezone, timedelta
 from core.ontology import RepoVerdict
 
-def classify_repo(meta: dict):
+SCRAPING_RISK_KEYWORDS = ["scraping", "bookmaker", "bookmakers", "odds scraping", "scrape"]
+
+def _description_has_scraping_risk(meta: dict) -> bool:
+    desc = (meta.get("description") or "").lower()
+    return any(kw in desc for kw in SCRAPING_RISK_KEYWORDS)
+
+def classify_repo(meta: dict, category: str | None = None):
     reasons = []
+    # Sports repos that mention scraping/bookmakers are high compliance risk.
+    if category == "sports_prediction_odds" and _description_has_scraping_risk(meta):
+        reasons.append("Sports repo description mentions scraping/bookmaker")
+        return RepoVerdict.REJECT_SCRAPING_RISK, reasons
     license_id = (meta.get("license") or {}).get("spdx_id")
     if not license_id or license_id in ["NOASSERTION", "NONE"]:
         reasons.append("No OSI license")

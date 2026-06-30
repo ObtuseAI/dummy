@@ -1,0 +1,546 @@
+{
+  "category": "stocks_equities_options_macro",
+  "display_name": "5. Stocks / equities / options / macro repos",
+  "repos": [
+    {
+      "owner": "microsoft",
+      "name": "qlib",
+      "category": "stocks_equities_options_macro",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "microsoft",
+      "name": "RD-Agent",
+      "category": "stocks_equities_options_macro",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "QuantConnect",
+      "name": "Lean",
+      "category": "stocks_equities_options_macro",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "QuantConnect",
+      "name": "Lean.Brokerages.InteractiveBrokers",
+      "category": "stocks_equities_options_macro",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "nautechsystems",
+      "name": "nautilus_trader",
+      "category": "stocks_equities_options_macro",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "polakowo",
+      "name": "vectorbt",
+      "category": "stocks_equities_options_macro",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "backtrader",
+      "name": "backtrader",
+      "category": "stocks_equities_options_macro",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "mementum",
+      "name": "backtrader",
+      "category": "stocks_equities_options_macro",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "kernc",
+      "name": "backtesting.py",
+      "category": "stocks_equities_options_macro",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "zipline-reloaded",
+      "name": "zipline-reloaded",
+      "category": "stocks_equities_options_macro",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "quantrocket-llc",
+      "name": "zipline",
+      "category": "stocks_equities_options_macro",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "StockSharp",
+      "name": "StockSharp",
+      "category": "stocks_equities_options_macro",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "coding-kitties",
+      "name": "investing-algorithm-framework",
+      "category": "stocks_equities_options_macro",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "kieran-mackle",
+      "name": "AutoTrader",
+      "category": "stocks_equities_options_macro",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "Lumiwealth",
+      "name": "lumibot",
+      "category": "stocks_equities_options_macro",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "marketcalls",
+      "name": "openalgo",
+      "category": "stocks_equities_options_macro",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "Doggie52",
+      "name": "Lean-Batch-Launcher",
+      "category": "stocks_equities_options_macro",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "vrindger",
+      "name": "actually_open_lean",
+      "category": "stocks_equities_options_macro",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "aarjaneiro",
+      "name": "QtLean",
+      "category": "stocks_equities_options_macro",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "AI4Finance-Foundation",
+      "name": "Awesome_AI4Finance",
+      "category": "stocks_equities_options_macro",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "huseinzol05",
+      "name": "Stock-Prediction-Models",
+      "category": "stocks_equities_options_macro",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "shirosaidev",
+      "name": "stocksight",
+      "category": "stocks_equities_options_macro",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "stefan-jansen",
+      "name": "machine-learning-for-trading",
+      "category": "stocks_equities_options_macro",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "shashankvemuri",
+      "name": "Finance",
+      "category": "stocks_equities_options_macro",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "HusseinJammal",
+      "name": "Liquid-Neural-Networks-in-Stock-Market-Prediction",
+      "category": "stocks_equities_options_macro",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "louisowen6",
+      "name": "SENN",
+      "category": "stocks_equities_options_macro",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "0xpranjal",
+      "name": "Stock-Prediction-using-different-models",
+      "category": "stocks_equities_options_macro",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "PyFi-Training",
+      "name": "Stock-Price-Forecasting-with-Machine-Learning",
+      "category": "stocks_equities_options_macro",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "jinglescode",
+      "name": "time-series-forecasting-pytorch",
+      "category": "stocks_equities_options_macro",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "Vatshayan",
+      "name": "Final-Year-Machine-Learning-Stock-Price-Prediction-Project",
+      "category": "stocks_equities_options_macro",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "virajbhutada",
+      "name": "Google-Stock-Price-Forecasting-LSTM",
+      "category": "stocks_equities_options_macro",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "gsaini",
+      "name": "financial-research-analyst-agent",
+      "category": "stocks_equities_options_macro",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "devfinwiz",
+      "name": "Fin-Maestro-Web",
+      "category": "stocks_equities_options_macro",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "navam-io",
+      "name": "navam-invest",
+      "category": "stocks_equities_options_macro",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "s-kerin",
+      "name": "finance_calendars",
+      "category": "stocks_equities_options_macro",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "cfdude",
+      "name": "mcp-finnhub",
+      "category": "stocks_equities_options_macro",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    }
+  ]
+}

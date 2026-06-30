@@ -1,0 +1,261 @@
+{
+  "category": "commodities_energy_agriculture",
+  "display_name": "6. Commodities / energy / agriculture repos",
+  "repos": [
+    {
+      "owner": "NDelventhal",
+      "name": "cot_reports",
+      "category": "commodities_energy_agriculture",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "philsv",
+      "name": "pycot",
+      "category": "commodities_energy_agriculture",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "Mcamin",
+      "name": "cftc-cot",
+      "category": "commodities_energy_agriculture",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "Mcamin",
+      "name": "cot-analysis",
+      "category": "commodities_energy_agriculture",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "jensolson",
+      "name": "CFTC-COT",
+      "category": "commodities_energy_agriculture",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "MarcinLinkl",
+      "name": "Positions-CoT-Explorer",
+      "category": "commodities_energy_agriculture",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "philsv",
+      "name": "myeia",
+      "category": "commodities_energy_agriculture",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "EIAgov",
+      "name": "dash-benchmark",
+      "category": "commodities_energy_agriculture",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "OilpriceAPI",
+      "name": "python-sdk",
+      "category": "commodities_energy_agriculture",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "OilpriceAPI",
+      "name": "oilpriceapi-node",
+      "category": "commodities_energy_agriculture",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "datasets",
+      "name": "oil-prices",
+      "category": "commodities_energy_agriculture",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "omkarcloud",
+      "name": "commodity-price-api",
+      "category": "commodities_energy_agriculture",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "aedessler",
+      "name": "EIA-predictions",
+      "category": "commodities_energy_agriculture",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "gabsbruh",
+      "name": "price-forecasting",
+      "category": "commodities_energy_agriculture",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "robindevelops",
+      "name": "btc-forex-gold-silver-price-predictor",
+      "category": "commodities_energy_agriculture",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "BaseMax",
+      "name": "XAUUSD-LSTM",
+      "category": "commodities_energy_agriculture",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "je-suis-tm",
+      "name": "quant-trading",
+      "category": "commodities_energy_agriculture",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,171 @@
+{
+  "category": "prediction_market_native",
+  "display_name": "1. Prediction-market native repos",
+  "repos": [
+    {
+      "owner": "Kalshi",
+      "name": "kalshi-starter-code-python",
+      "category": "prediction_market_native",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "Kalshi",
+      "name": "tools-and-analysis",
+      "category": "prediction_market_native",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "TexasCoding",
+      "name": "kalshi-python-sdk",
+      "category": "prediction_market_native",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "arshka",
+      "name": "pykalshi",
+      "category": "prediction_market_native",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "humz2k",
+      "name": "kalshi-python-unofficial",
+      "category": "prediction_market_native",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "vaguenebula",
+      "name": "kalshi-client",
+      "category": "prediction_market_native",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "AndrewNolte",
+      "name": "KalshiPythonClient",
+      "category": "prediction_market_native",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "EllAchE",
+      "name": "kalshi_cli",
+      "category": "prediction_market_native",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "Polymarket",
+      "name": "clob-client-v2",
+      "category": "prediction_market_native",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "quantified-uncertainty",
+      "name": "metaforecast",
+      "category": "prediction_market_native",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "vigji",
+      "name": "mootlib",
+      "category": "prediction_market_native",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    }
+  ]
+}

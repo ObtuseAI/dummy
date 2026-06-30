@@ -1,0 +1,231 @@
+{
+  "category": "crypto_btc_event_market",
+  "display_name": "7. Crypto / BTC event-market repos",
+  "repos": [
+    {
+      "owner": "ccxt",
+      "name": "ccxt",
+      "category": "crypto_btc_event_market",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "freqtrade",
+      "name": "freqtrade",
+      "category": "crypto_btc_event_market",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "hummingbot",
+      "name": "hummingbot",
+      "category": "crypto_btc_event_market",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "Drakkar-Software",
+      "name": "OctoBot",
+      "category": "crypto_btc_event_market",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "Drakkar-Software",
+      "name": "OctoBot-Market-Making",
+      "category": "crypto_btc_event_market",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "nelso0",
+      "name": "barbotine-arbitrage-bot",
+      "category": "crypto_btc_event_market",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "nkaz001",
+      "name": "hftbacktest",
+      "category": "crypto_btc_event_market",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "ccxt",
+      "name": "binance-trade-bot",
+      "category": "crypto_btc_event_market",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "Laser420",
+      "name": "fund_arb_bot",
+      "category": "crypto_btc_event_market",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "nexwave-so",
+      "name": "energy-operator",
+      "category": "crypto_btc_event_market",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "second-state",
+      "name": "fintool",
+      "category": "crypto_btc_event_market",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "moss-site",
+      "name": "moss-trade-bot-skills",
+      "category": "crypto_btc_event_market",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "Mattbusel",
+      "name": "FinRL_DeepSeek_Crypto_Trading",
+      "category": "crypto_btc_event_market",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "botcrypto-io",
+      "name": "awesome-crypto-trading-bots",
+      "category": "crypto_btc_event_market",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    },
+    {
+      "owner": "suenot",
+      "name": "awesome-ccxt",
+      "category": "crypto_btc_event_market",
+      "url": "https://github.com/owner/repo",
+      "license": "MIT",
+      "last_pushed_at": "2026-06-30 16:55:57.457610+00:00",
+      "languages": {
+        "Python": 100
+      },
+      "verdict": "REFERENCE_MINE",
+      "verdict_reasons": [
+        "Permissive license; safe reference mine"
+      ]
+    }
+  ]
+}

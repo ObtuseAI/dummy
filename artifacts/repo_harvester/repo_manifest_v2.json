@@ -1,0 +1,1340 @@
+[
+  {
+    "owner": "pmxt-dev",
+    "name": "pmxt",
+    "category": "highest_priority",
+    "verdict": "REFERENCE_MINE"
+  },
+  {
+    "owner": "pmxt-dev",
+    "name": "pmxt-mcp",
+    "category": "highest_priority",
+    "verdict": "REFERENCE_MINE"
+  },
+  {
+    "owner": "Polymarket",
+    "name": "py-clob-client",
+    "category": "highest_priority",
+    "verdict": "REFERENCE_MINE"
+  },
+  {
+    "owner": "Polymarket",
+    "name": "agents",
+    "category": "highest_priority",
+    "verdict": "REFERENCE_MINE"
+  },
+  {
+    "owner": "gnosis",
+    "name": "prediction-market-agent-tooling",
+    "category": "highest_priority",
+    "verdict": "REFERENCE_MINE"
+  },
+  {
+    "owner": "microprediction",
+    "name": "manifoldbot",
+    "category": "highest_priority",
+    "verdict": "REFERENCE_MINE"
+  },
+  {
+    "owner": "GodlyPeeta",
+    "name": "prediction-markets.py",
+    "category": "highest_priority",
+    "verdict": "REFERENCE_MINE"
+  },
+  {
+    "owner": "gtg7784",
+    "name": "dr-manhattan-ts",
+    "category": "highest_priority",
+    "verdict": "REFERENCE_MINE"
+  },
+  {
+    "owner": "gtg7784",
+    "name": "dr-manhattan-rust",
+    "category": "highest_priority",
+    "verdict": "REFERENCE_MINE"
+  },
+  {
+    "owner": "erickdronski",
+    "name": "kalshi-polymarket-trader",
+    "category": "highest_priority",
+    "verdict": "REFERENCE_MINE"
+  },
+  {
+    "owner": "suislanchez",
+    "name": "polymarket-kalshi-weather-bot",
+    "category": "highest_priority",
+    "verdict": "REFERENCE_MINE"
+  },
+  {
+    "owner": "ryanfrigo",
+    "name": "kalshi-ai-trading-bot",
+    "category": "highest_priority",
+    "verdict": "REFERENCE_MINE"
+  },
+  {
+    "owner": "OctagonAI",
+    "name": "kalshi-trading-bot-cli",
+    "category": "highest_priority",
+    "verdict": "REFERENCE_MINE"
+  },
+  {
+    "owner": "ImMike",
+    "name": "polymarket-arbitrage",
+    "category": "highest_priority",
+    "verdict": "REFERENCE_MINE"
+  },
+  {
+    "owner": "CarlosIbCu",
+    "name": "polymarket-kalshi-btc-arbitrage-bot",
+    "category": "highest_priority",
+    "verdict": "REFERENCE_MINE"
+  },
+  {
+    "owner": "braedonsaunders",
+    "name": "homerun",
+    "category": "highest_priority",
+    "verdict": "REFERENCE_MINE"
+  },
+  {
+    "owner": "PredictionXBT",
+    "name": "PredictOS",
+    "category": "highest_priority",
+    "verdict": "REFERENCE_MINE"
+  },
+  {
+    "owner": "realfishsam",
+    "name": "prediction-market-arbitrage-bot",
+    "category": "highest_priority",
+    "verdict": "REFERENCE_MINE"
+  },
+  {
+    "owner": "kmizzi",
+    "name": "karb",
+    "category": "highest_priority",
+    "verdict": "REFERENCE_MINE"
+  },
+  {
+    "owner": "Drakkar-Software",
+    "name": "OctoBot-Prediction-Market",
+    "category": "highest_priority",
+    "verdict": "REFERENCE_MINE"
+  },
+  {
+    "owner": "mihai-stancescu",
+    "name": "polymarket-ai-trade-bot",
+    "category": "highest_priority",
+    "verdict": "REFERENCE_MINE"
+  },
+  {
+    "owner": "Kalshi",
+    "name": "kalshi-starter-code-python",
+    "category": "prediction_market_native",
+    "verdict": "REFERENCE_MINE"
+  },
+  {
+    "owner": "Kalshi",
+    "name": "tools-and-analysis",
+    "category": "prediction_market_native",
+    "verdict": "REFERENCE_MINE"
+  },
+  {
+    "owner": "TexasCoding",
+    "name": "kalshi-python-sdk",
+    "category": "prediction_market_native",
+    "verdict": "REFERENCE_MINE"
+  },
+  {
+    "owner": "arshka",
+    "name": "pykalshi",
+    "category": "prediction_market_native",
+    "verdict": "REFERENCE_MINE"
+  },
+  {
+    "owner": "humz2k",
+    "name": "kalshi-python-unofficial",
+    "category": "prediction_market_native",
+    "verdict": "REFERENCE_MINE"
+  },
+  {
+    "owner": "vaguenebula",
+    "name": "kalshi-client",
+    "category": "prediction_market_native",
+    "verdict": "REFERENCE_MINE"
+  },
+  {
+    "owner": "AndrewNolte",
+    "name": "KalshiPythonClient",
+    "category": "prediction_market_native",
+    "verdict": "REFERENCE_MINE"
+  },
+  {
+    "owner": "EllAchE",
+    "name": "kalshi_cli",
+    "category": "prediction_market_native",
+    "verdict": "REFERENCE_MINE"
+  },
+  {
+    "owner": "Polymarket",
+    "name": "clob-client-v2",
+    "category": "prediction_market_native",
+    "verdict": "REFERENCE_MINE"
+  },
+  {
+    "owner": "quantified-uncertainty",
+    "name": "metaforecast",
+    "category": "prediction_market_native",
+    "verdict": "REFERENCE_MINE"
+  },
+  {
+    "owner": "vigji",
+    "name": "mootlib",
+    "category": "prediction_market_native",
+    "verdict": "REFERENCE_MINE"
+  },
+  {
+    "owner": "tswaim",
+    "name": "polymarket-kalshi-arbitrage-bot",
+    "category": "kalshi_polymarket_arbitrage",
+    "verdict": "REFERENCE_MINE"
+  },
+  {
+    "owner": "Longbridges",
+    "name": "polymarket-kalshi-arbitrage-bot",
+    "category": "kalshi_polymarket_arbitrage",
+    "verdict": "REFERENCE_MINE"
+  },
+  {
+    "owner": "defi-ape",
+    "name": "polymarket-kalshi-arbitrage-bot",
+    "category": "kalshi_polymarket_arbitrage",
+    "verdict": "REFERENCE_MINE"
+  },
+  {
+    "owner": "TopTrenDev",
+    "name": "polymarket-kalshi-arbitrage-bot",
+    "category": "kalshi_polymarket_arbitrage",
+    "verdict": "REFERENCE_MINE"
+  },
+  {
+    "owner": "ashercn97",
+    "name": "predmarket",
+    "category": "kalshi_polymarket_arbitrage",
+    "verdict": "REFERENCE_MINE"
+  },
+  {
+    "owner": "aulekator",
+    "name": "Polymarket-BTC-15-Minute-Trading-Bot",
+    "category": "kalshi_polymarket_arbitrage",
+    "verdict": "REFERENCE_MINE"
+  },
+  {
+    "owner": "discountifu",
+    "name": "polymarket-trading-bot",
+    "category": "kalshi_polymarket_arbitrage",
+    "verdict": "REFERENCE_MINE"
+  },
+  {
+    "owner": "Ronesfe",
+    "name": "Polymarket-Automated-Trading-Bot",
+    "category": "kalshi_polymarket_arbitrage",
+    "verdict": "REFERENCE_MINE"
+  },
+  {
+    "owner": "Anmoldureha",
+    "name": "polymarket-trading-bot-strategies",
+    "category": "kalshi_polymarket_arbitrage",
+    "verdict": "REFERENCE_MINE"
+  },
+  {
+    "owner": "the-odds-api",
+    "name": "samples-python",
+    "category": "sports_prediction_odds",
+    "verdict": "REFERENCE_MINE"
+  },
+  {
+    "owner": "odds-api",
+    "name": "odds-api",
+    "category": "sports_prediction_odds",
+    "verdict": "REFERENCE_MINE"
+  },
+  {
+    "owner": "Sharp-API",
+    "name": "SharpAPI-TS",
+    "category": "sports_prediction_odds",
+    "verdict": "REFERENCE_MINE"
+  },
+  {
+    "owner": "carterlasalle",
+    "name": "SportsArbFinder",
+    "category": "sports_prediction_odds",
+    "verdict": "REFERENCE_MINE"
+  },
+  {
+    "owner": "daankoning",
+    "name": "ArbitrageFinder",
+    "category": "sports_prediction_odds",
+    "verdict": "REFERENCE_MINE"
+  },
+  {
+    "owner": "robbiehaynes",
+    "name": "arbitrage-finder",
+    "category": "sports_prediction_odds",
+    "verdict": "REFERENCE_MINE"
+  },
+  {
+    "owner": "ratsam3474",
+    "name": "autoarbitrage",
+    "category": "sports_prediction_odds",
+    "verdict": "REFERENCE_MINE"
+  },
+  {
+    "owner": "personal-coding",
+    "name": "Live-Sports-Arbitrage-Bet-Finder",
+    "category": "sports_prediction_odds",
+    "verdict": "REFERENCE_MINE"
+  },
+  {
+    "owner": "jhonatan-dev",
+    "name": "Betting-Arbitrage",
+    "category": "sports_prediction_odds",
+    "verdict": "REFERENCE_MINE"
+  },
+  {
+    "owner": "lumunge",
+    "name": "Arb",
+    "category": "sports_prediction_odds",
+    "verdict": "REFERENCE_MINE"
+  },
+  {
+    "owner": "odds-api",
+    "name": "arbitrage-betting-scanner-bot",
+    "category": "sports_prediction_odds",
+    "verdict": "REFERENCE_MINE"
+  },
+  {
+    "owner": "jordantete",
+    "name": "OddsHarvester",
+    "category": "sports_prediction_odds",
+    "verdict": "REFERENCE_MINE"
+  },
+  {
+    "owner": "pierridotite",
+    "name": "ArbitrageOdds",
+    "category": "sports_prediction_odds",
+    "verdict": "REFERENCE_MINE"
+  },
+  {
+    "owner": "lines64",
+    "name": "True-Odds-Calculator",
+    "category": "sports_prediction_odds",
+    "verdict": "REFERENCE_MINE"
+  },
+  {
+    "owner": "WFord26",
+    "name": "BetTrack",
+    "category": "sports_prediction_odds",
+    "verdict": "REFERENCE_MINE"
+  },
+  {
+    "owner": "coryypeters",
+    "name": "nrl-odds-intelligence-pipeline",
+    "category": "sports_prediction_odds",
+    "verdict": "REFERENCE_MINE"
+  },
+  {
+    "owner": "georgedouzas",
+    "name": "sports-betting",
+    "category": "sports_prediction_odds",
+    "verdict": "REFERENCE_MINE"
+  },
+  {
+    "owner": "NBA-Betting",
+    "name": "NBA_Betting",
+    "category": "sports_prediction_odds",
+    "verdict": "REFERENCE_MINE"
+  },
+  {
+    "owner": "IanDublew",
+    "name": "Machine-Learning-Football-Soccer-Prediction-Model-",
+    "category": "sports_prediction_odds",
+    "verdict": "REFERENCE_MINE"
+  },
+  {
+    "owner": "ronyka77",
+    "name": "SoccerPredictor_byRichardSzita",
+    "category": "sports_prediction_odds",
+    "verdict": "REFERENCE_MINE"
+  },
+  {
+    "owner": "manuelpeba",
+    "name": "world-cup-2026-forecast",
+    "category": "sports_prediction_odds",
+    "verdict": "REFERENCE_MINE"
+  },
+  {
+    "owner": "nickpadd",
+    "name": "EuropeanFootballLeaguePredictor",
+    "category": "sports_prediction_odds",
+    "verdict": "REFERENCE_MINE"
+  },
+  {
+    "owner": "msoczi",
+    "name": "football_predictions",
+    "category": "sports_prediction_odds",
+    "verdict": "REFERENCE_MINE"
+  },
+  {
+    "owner": "ratloop",
+    "name": "MatchOutcomeAI",
+    "category": "sports_prediction_odds",
+    "verdict": "REFERENCE_MINE"
+  },
+  {
+    "owner": "siddhu21",
+    "name": "Powerplay-Based-IPL-Match-Prediction",
+    "category": "sports_prediction_odds",
+    "verdict": "REFERENCE_MINE"
+  },
+  {
+    "owner": "open-meteo",
+    "name": "open-meteo",
+    "category": "weather_prediction_market",
+    "verdict": "REFERENCE_MINE"
+  },
+  {
+    "owner": "paulokuong",
+    "name": "noaa",
+    "category": "weather_prediction_market",
+    "verdict": "REFERENCE_MINE"
+  },
+  {
+    "owner": "weather-mcp",
+    "name": "weather-mcp",
+    "category": "weather_prediction_market",
+    "verdict": "REFERENCE_MINE"
+  },
+  {
+    "owner": "GClunies",
+    "name": "noaa_coops",
+    "category": "weather_prediction_market",
+    "verdict": "REFERENCE_MINE"
+  },
+  {
+    "owner": "tlaceby",
+    "name": "weather",
+    "category": "weather_prediction_market",
+    "verdict": "REFERENCE_MINE"
+  },
+  {
+    "owner": "nst-guide",
+    "name": "ndfd_current",
+    "category": "weather_prediction_market",
+    "verdict": "REFERENCE_MINE"
+  },
+  {
+    "owner": "jessehamner",
+    "name": "WeatherWidget",
+    "category": "weather_prediction_market",
+    "verdict": "REFERENCE_MINE"
+  },
+  {
+    "owner": "Hrishikesh332",
+    "name": "Weather-Forecasting-Using-Ml",
+    "category": "weather_prediction_market",
+    "verdict": "REFERENCE_MINE"
+  },
+  {
+    "owner": "Adhokshaj04",
+    "name": "weather_predict",
+    "category": "weather_prediction_market",
+    "verdict": "REFERENCE_MINE"
+  },
+  {
+    "owner": "abz-mhd",
+    "name": "ai-weather-forecasting",
+    "category": "weather_prediction_market",
+    "verdict": "REFERENCE_MINE"
+  },
+  {
+    "owner": "miketobz",
+    "name": "ML-Rainfall-Prediction",
+    "category": "weather_prediction_market",
+    "verdict": "REFERENCE_MINE"
+  },
+  {
+    "owner": "mohsin-riad",
+    "name": "future-weather-forecasting",
+    "category": "weather_prediction_market",
+    "verdict": "REFERENCE_MINE"
+  },
+  {
+    "owner": "kshitizrohilla",
+    "name": "weather-app-using-openweathermap-api",
+    "category": "weather_prediction_market",
+    "verdict": "REFERENCE_MINE"
+  },
+  {
+    "owner": "microsoft",
+    "name": "qlib",
+    "category": "stocks_equities_options_macro",
+    "verdict": "REFERENCE_MINE"
+  },
+  {
+    "owner": "microsoft",
+    "name": "RD-Agent",
+    "category": "stocks_equities_options_macro",
+    "verdict": "REFERENCE_MINE"
+  },
+  {
+    "owner": "QuantConnect",
+    "name": "Lean",
+    "category": "stocks_equities_options_macro",
+    "verdict": "REFERENCE_MINE"
+  },
+  {
+    "owner": "QuantConnect",
+    "name": "Lean.Brokerages.InteractiveBrokers",
+    "category": "stocks_equities_options_macro",
+    "verdict": "REFERENCE_MINE"
+  },
+  {
+    "owner": "nautechsystems",
+    "name": "nautilus_trader",
+    "category": "stocks_equities_options_macro",
+    "verdict": "REFERENCE_MINE"
+  },
+  {
+    "owner": "polakowo",
+    "name": "vectorbt",
+    "category": "stocks_equities_options_macro",
+    "verdict": "REFERENCE_MINE"
+  },
+  {
+    "owner": "backtrader",
+    "name": "backtrader",
+    "category": "stocks_equities_options_macro",
+    "verdict": "REFERENCE_MINE"
+  },
+  {
+    "owner": "mementum",
+    "name": "backtrader",
+    "category": "stocks_equities_options_macro",
+    "verdict": "REFERENCE_MINE"
+  },
+  {
+    "owner": "kernc",
+    "name": "backtesting.py",
+    "category": "stocks_equities_options_macro",
+    "verdict": "REFERENCE_MINE"
+  },
+  {
+    "owner": "zipline-reloaded",
+    "name": "zipline-reloaded",
+    "category": "stocks_equities_options_macro",
+    "verdict": "REFERENCE_MINE"
+  },
+  {
+    "owner": "quantrocket-llc",
+    "name": "zipline",
+    "category": "stocks_equities_options_macro",
+    "verdict": "REFERENCE_MINE"
+  },
+  {
+    "owner": "StockSharp",
+    "name": "StockSharp",
+    "category": "stocks_equities_options_macro",
+    "verdict": "REFERENCE_MINE"
+  },
+  {
+    "owner": "coding-kitties",
+    "name": "investing-algorithm-framework",
+    "category": "stocks_equities_options_macro",
+    "verdict": "REFERENCE_MINE"
+  },
+  {
+    "owner": "kieran-mackle",
+    "name": "AutoTrader",
+    "category": "stocks_equities_options_macro",
+    "verdict": "REFERENCE_MINE"
+  },
+  {
+    "owner": "Lumiwealth",
+    "name": "lumibot",
+    "category": "stocks_equities_options_macro",
+    "verdict": "REFERENCE_MINE"
+  },
+  {
+    "owner": "marketcalls",
+    "name": "openalgo",
+    "category": "stocks_equities_options_macro",
+    "verdict": "REFERENCE_MINE"
+  },
+  {
+    "owner": "Doggie52",
+    "name": "Lean-Batch-Launcher",
+    "category": "stocks_equities_options_macro",
+    "verdict": "REFERENCE_MINE"
+  },
+  {
+    "owner": "vrindger",
+    "name": "actually_open_lean",
+    "category": "stocks_equities_options_macro",
+    "verdict": "REFERENCE_MINE"
+  },
+  {
+    "owner": "aarjaneiro",
+    "name": "QtLean",
+    "category": "stocks_equities_options_macro",
+    "verdict": "REFERENCE_MINE"
+  },
+  {
+    "owner": "AI4Finance-Foundation",
+    "name": "Awesome_AI4Finance",
+    "category": "stocks_equities_options_macro",
+    "verdict": "REFERENCE_MINE"
+  },
+  {
+    "owner": "huseinzol05",
+    "name": "Stock-Prediction-Models",
+    "category": "stocks_equities_options_macro",
+    "verdict": "REFERENCE_MINE"
+  },
+  {
+    "owner": "shirosaidev",
+    "name": "stocksight",
+    "category": "stocks_equities_options_macro",
+    "verdict": "REFERENCE_MINE"
+  },
+  {
+    "owner": "stefan-jansen",
+    "name": "machine-learning-for-trading",
+    "category": "stocks_equities_options_macro",
+    "verdict": "REFERENCE_MINE"
+  },
+  {
+    "owner": "shashankvemuri",
+    "name": "Finance",
+    "category": "stocks_equities_options_macro",
+    "verdict": "REFERENCE_MINE"
+  },
+  {
+    "owner": "HusseinJammal",
+    "name": "Liquid-Neural-Networks-in-Stock-Market-Prediction",
+    "category": "stocks_equities_options_macro",
+    "verdict": "REFERENCE_MINE"
+  },
+  {
+    "owner": "louisowen6",
+    "name": "SENN",
+    "category": "stocks_equities_options_macro",
+    "verdict": "REFERENCE_MINE"
+  },
+  {
+    "owner": "0xpranjal",
+    "name": "Stock-Prediction-using-different-models",
+    "category": "stocks_equities_options_macro",
+    "verdict": "REFERENCE_MINE"
+  },
+  {
+    "owner": "PyFi-Training",
+    "name": "Stock-Price-Forecasting-with-Machine-Learning",
+    "category": "stocks_equities_options_macro",
+    "verdict": "REFERENCE_MINE"
+  },
+  {
+    "owner": "jinglescode",
+    "name": "time-series-forecasting-pytorch",
+    "category": "stocks_equities_options_macro",
+    "verdict": "REFERENCE_MINE"
+  },
+  {
+    "owner": "Vatshayan",
+    "name": "Final-Year-Machine-Learning-Stock-Price-Prediction-Project",
+    "category": "stocks_equities_options_macro",
+    "verdict": "REFERENCE_MINE"
+  },
+  {
+    "owner": "virajbhutada",
+    "name": "Google-Stock-Price-Forecasting-LSTM",
+    "category": "stocks_equities_options_macro",
+    "verdict": "REFERENCE_MINE"
+  },
+  {
+    "owner": "gsaini",
+    "name": "financial-research-analyst-agent",
+    "category": "stocks_equities_options_macro",
+    "verdict": "REFERENCE_MINE"
+  },
+  {
+    "owner": "devfinwiz",
+    "name": "Fin-Maestro-Web",
+    "category": "stocks_equities_options_macro",
+    "verdict": "REFERENCE_MINE"
+  },
+  {
+    "owner": "navam-io",
+    "name": "navam-invest",
+    "category": "stocks_equities_options_macro",
+    "verdict": "REFERENCE_MINE"
+  },
+  {
+    "owner": "s-kerin",
+    "name": "finance_calendars",
+    "category": "stocks_equities_options_macro",
+    "verdict": "REFERENCE_MINE"
+  },
+  {
+    "owner": "cfdude",
+    "name": "mcp-finnhub",
+    "category": "stocks_equities_options_macro",
+    "verdict": "REFERENCE_MINE"
+  },
+  {
+    "owner": "NDelventhal",
+    "name": "cot_reports",
+    "category": "commodities_energy_agriculture",
+    "verdict": "REFERENCE_MINE"
+  },
+  {
+    "owner": "philsv",
+    "name": "pycot",
+    "category": "commodities_energy_agriculture",
+    "verdict": "REFERENCE_MINE"
+  },
+  {
+    "owner": "Mcamin",
+    "name": "cftc-cot",
+    "category": "commodities_energy_agriculture",
+    "verdict": "REFERENCE_MINE"
+  },
+  {
+    "owner": "Mcamin",
+    "name": "cot-analysis",
+    "category": "commodities_energy_agriculture",
+    "verdict": "REFERENCE_MINE"
+  },
+  {
+    "owner": "jensolson",
+    "name": "CFTC-COT",
+    "category": "commodities_energy_agriculture",
+    "verdict": "REFERENCE_MINE"
+  },
+  {
+    "owner": "MarcinLinkl",
+    "name": "Positions-CoT-Explorer",
+    "category": "commodities_energy_agriculture",
+    "verdict": "REFERENCE_MINE"
+  },
+  {
+    "owner": "philsv",
+    "name": "myeia",
+    "category": "commodities_energy_agriculture",
+    "verdict": "REFERENCE_MINE"
+  },
+  {
+    "owner": "EIAgov",
+    "name": "dash-benchmark",
+    "category": "commodities_energy_agriculture",
+    "verdict": "REFERENCE_MINE"
+  },
+  {
+    "owner": "OilpriceAPI",
+    "name": "python-sdk",
+    "category": "commodities_energy_agriculture",
+    "verdict": "REFERENCE_MINE"
+  },
+  {
+    "owner": "OilpriceAPI",
+    "name": "oilpriceapi-node",
+    "category": "commodities_energy_agriculture",
+    "verdict": "REFERENCE_MINE"
+  },
+  {
+    "owner": "datasets",
+    "name": "oil-prices",
+    "category": "commodities_energy_agriculture",
+    "verdict": "REFERENCE_MINE"
+  },
+  {
+    "owner": "omkarcloud",
+    "name": "commodity-price-api",
+    "category": "commodities_energy_agriculture",
+    "verdict": "REFERENCE_MINE"
+  },
+  {
+    "owner": "aedessler",
+    "name": "EIA-predictions",
+    "category": "commodities_energy_agriculture",
+    "verdict": "REFERENCE_MINE"
+  },
+  {
+    "owner": "gabsbruh",
+    "name": "price-forecasting",
+    "category": "commodities_energy_agriculture",
+    "verdict": "REFERENCE_MINE"
+  },
+  {
+    "owner": "robindevelops",
+    "name": "btc-forex-gold-silver-price-predictor",
+    "category": "commodities_energy_agriculture",
+    "verdict": "REFERENCE_MINE"
+  },
+  {
+    "owner": "BaseMax",
+    "name": "XAUUSD-LSTM",
+    "category": "commodities_energy_agriculture",
+    "verdict": "REFERENCE_MINE"
+  },
+  {
+    "owner": "je-suis-tm",
+    "name": "quant-trading",
+    "category": "commodities_energy_agriculture",
+    "verdict": "REFERENCE_MINE"
+  },
+  {
+    "owner": "ccxt",
+    "name": "ccxt",
+    "category": "crypto_btc_event_market",
+    "verdict": "REFERENCE_MINE"
+  },
+  {
+    "owner": "freqtrade",
+    "name": "freqtrade",
+    "category": "crypto_btc_event_market",
+    "verdict": "REFERENCE_MINE"
+  },
+  {
+    "owner": "hummingbot",
+    "name": "hummingbot",
+    "category": "crypto_btc_event_market",
+    "verdict": "REFERENCE_MINE"
+  },
+  {
+    "owner": "Drakkar-Software",
+    "name": "OctoBot",
+    "category": "crypto_btc_event_market",
+    "verdict": "REFERENCE_MINE"
+  },
+  {
+    "owner": "Drakkar-Software",
+    "name": "OctoBot-Market-Making",
+    "category": "crypto_btc_event_market",
+    "verdict": "REFERENCE_MINE"
+  },
+  {
+    "owner": "nelso0",
+    "name": "barbotine-arbitrage-bot",
+    "category": "crypto_btc_event_market",
+    "verdict": "REFERENCE_MINE"
+  },
+  {
+    "owner": "nkaz001",
+    "name": "hftbacktest",
+    "category": "crypto_btc_event_market",
+    "verdict": "REFERENCE_MINE"
+  },
+  {
+    "owner": "ccxt",
+    "name": "binance-trade-bot",
+    "category": "crypto_btc_event_market",
+    "verdict": "REFERENCE_MINE"
+  },
+  {
+    "owner": "Laser420",
+    "name": "fund_arb_bot",
+    "category": "crypto_btc_event_market",
+    "verdict": "REFERENCE_MINE"
+  },
+  {
+    "owner": "nexwave-so",
+    "name": "energy-operator",
+    "category": "crypto_btc_event_market",
+    "verdict": "REFERENCE_MINE"
+  },
+  {
+    "owner": "second-state",
+    "name": "fintool",
+    "category": "crypto_btc_event_market",
+    "verdict": "REFERENCE_MINE"
+  },
+  {
+    "owner": "moss-site",
+    "name": "moss-trade-bot-skills",
+    "category": "crypto_btc_event_market",
+    "verdict": "REFERENCE_MINE"
+  },
+  {
+    "owner": "Mattbusel",
+    "name": "FinRL_DeepSeek_Crypto_Trading",
+    "category": "crypto_btc_event_market",
+    "verdict": "REFERENCE_MINE"
+  },
+  {
+    "owner": "botcrypto-io",
+    "name": "awesome-crypto-trading-bots",
+    "category": "crypto_btc_event_market",
+    "verdict": "REFERENCE_MINE"
+  },
+  {
+    "owner": "suenot",
+    "name": "awesome-ccxt",
+    "category": "crypto_btc_event_market",
+    "verdict": "REFERENCE_MINE"
+  },
+  {
+    "owner": "unit8co",
+    "name": "darts",
+    "category": "universal_ml_forecasting_optimization",
+    "verdict": "REFERENCE_MINE"
+  },
+  {
+    "owner": "autogluon",
+    "name": "autogluon",
+    "category": "universal_ml_forecasting_optimization",
+    "verdict": "REFERENCE_MINE"
+  },
+  {
+    "owner": "optuna",
+    "name": "optuna",
+    "category": "universal_ml_forecasting_optimization",
+    "verdict": "REFERENCE_MINE"
+  },
+  {
+    "owner": "optuna",
+    "name": "optuna-dashboard",
+    "category": "universal_ml_forecasting_optimization",
+    "verdict": "REFERENCE_MINE"
+  },
+  {
+    "owner": "optuna",
+    "name": "optunahub",
+    "category": "universal_ml_forecasting_optimization",
+    "verdict": "REFERENCE_MINE"
+  },
+  {
+    "owner": "statsmodels",
+    "name": "statsmodels",
+    "category": "universal_ml_forecasting_optimization",
+    "verdict": "REFERENCE_MINE"
+  },
+  {
+    "owner": "scikit-learn",
+    "name": "scikit-learn",
+    "category": "universal_ml_forecasting_optimization",
+    "verdict": "REFERENCE_MINE"
+  },
+  {
+    "owner": "scipy",
+    "name": "scipy",
+    "category": "universal_ml_forecasting_optimization",
+    "verdict": "REFERENCE_MINE"
+  },
+  {
+    "owner": "numpy",
+    "name": "numpy",
+    "category": "universal_ml_forecasting_optimization",
+    "verdict": "REFERENCE_MINE"
+  },
+  {
+    "owner": "pandas-dev",
+    "name": "pandas",
+    "category": "universal_ml_forecasting_optimization",
+    "verdict": "REFERENCE_MINE"
+  },
+  {
+    "owner": "dmlc",
+    "name": "xgboost",
+    "category": "universal_ml_forecasting_optimization",
+    "verdict": "REFERENCE_MINE"
+  },
+  {
+    "owner": "microsoft",
+    "name": "LightGBM",
+    "category": "universal_ml_forecasting_optimization",
+    "verdict": "REFERENCE_MINE"
+  },
+  {
+    "owner": "catboost",
+    "name": "catboost",
+    "category": "universal_ml_forecasting_optimization",
+    "verdict": "REFERENCE_MINE"
+  },
+  {
+    "owner": "Nixtla",
+    "name": "statsforecast",
+    "category": "universal_ml_forecasting_optimization",
+    "verdict": "REFERENCE_MINE"
+  },
+  {
+    "owner": "Nixtla",
+    "name": "mlforecast",
+    "category": "universal_ml_forecasting_optimization",
+    "verdict": "REFERENCE_MINE"
+  },
+  {
+    "owner": "Nixtla",
+    "name": "neuralforecast",
+    "category": "universal_ml_forecasting_optimization",
+    "verdict": "REFERENCE_MINE"
+  },
+  {
+    "owner": "Nixtla",
+    "name": "hierarchicalforecast",
+    "category": "universal_ml_forecasting_optimization",
+    "verdict": "REFERENCE_MINE"
+  },
+  {
+    "owner": "Nixtla",
+    "name": "utilsforecast",
+    "category": "universal_ml_forecasting_optimization",
+    "verdict": "REFERENCE_MINE"
+  },
+  {
+    "owner": "facebook",
+    "name": "prophet",
+    "category": "universal_ml_forecasting_optimization",
+    "verdict": "REFERENCE_MINE"
+  },
+  {
+    "owner": "timeseriesAI",
+    "name": "tsai",
+    "category": "universal_ml_forecasting_optimization",
+    "verdict": "REFERENCE_MINE"
+  },
+  {
+    "owner": "pytorch",
+    "name": "pytorch",
+    "category": "universal_ml_forecasting_optimization",
+    "verdict": "REFERENCE_MINE"
+  },
+  {
+    "owner": "lightning-ai",
+    "name": "pytorch-lightning",
+    "category": "universal_ml_forecasting_optimization",
+    "verdict": "REFERENCE_MINE"
+  },
+  {
+    "owner": "ray-project",
+    "name": "ray",
+    "category": "universal_ml_forecasting_optimization",
+    "verdict": "REFERENCE_MINE"
+  },
+  {
+    "owner": "DEAP",
+    "name": "deap",
+    "category": "universal_ml_forecasting_optimization",
+    "verdict": "REFERENCE_MINE"
+  },
+  {
+    "owner": "automl",
+    "name": "auto-sklearn",
+    "category": "universal_ml_forecasting_optimization",
+    "verdict": "REFERENCE_MINE"
+  },
+  {
+    "owner": "EpistasisLab",
+    "name": "tpot",
+    "category": "universal_ml_forecasting_optimization",
+    "verdict": "REFERENCE_MINE"
+  },
+  {
+    "owner": "mlflow",
+    "name": "mlflow",
+    "category": "universal_ml_forecasting_optimization",
+    "verdict": "REFERENCE_MINE"
+  },
+  {
+    "owner": "wandb",
+    "name": "wandb",
+    "category": "universal_ml_forecasting_optimization",
+    "verdict": "REFERENCE_MINE"
+  },
+  {
+    "owner": "great-expectations",
+    "name": "great_expectations",
+    "category": "universal_ml_forecasting_optimization",
+    "verdict": "REFERENCE_MINE"
+  },
+  {
+    "owner": "evidentlyai",
+    "name": "evidently",
+    "category": "universal_ml_forecasting_optimization",
+    "verdict": "REFERENCE_MINE"
+  },
+  {
+    "owner": "Arize-ai",
+    "name": "phoenix",
+    "category": "universal_ml_forecasting_optimization",
+    "verdict": "REFERENCE_MINE"
+  },
+  {
+    "owner": "OpenBB-finance",
+    "name": "OpenBB",
+    "category": "financial_data_market_data",
+    "verdict": "REFERENCE_MINE"
+  },
+  {
+    "owner": "yfinance",
+    "name": "yfinance",
+    "category": "financial_data_market_data",
+    "verdict": "REFERENCE_MINE"
+  },
+  {
+    "owner": "ranaroussi",
+    "name": "yfinance",
+    "category": "financial_data_market_data",
+    "verdict": "REFERENCE_MINE"
+  },
+  {
+    "owner": "ranaroussi",
+    "name": "quantstats",
+    "category": "financial_data_market_data",
+    "verdict": "REFERENCE_MINE"
+  },
+  {
+    "owner": "quantopian",
+    "name": "pyfolio",
+    "category": "financial_data_market_data",
+    "verdict": "REFERENCE_MINE"
+  },
+  {
+    "owner": "quantopian",
+    "name": "empyrical",
+    "category": "financial_data_market_data",
+    "verdict": "REFERENCE_MINE"
+  },
+  {
+    "owner": "ranaroussi",
+    "name": "empyrical",
+    "category": "financial_data_market_data",
+    "verdict": "REFERENCE_MINE"
+  },
+  {
+    "owner": "pmorissette",
+    "name": "bt",
+    "category": "financial_data_market_data",
+    "verdict": "REFERENCE_MINE"
+  },
+  {
+    "owner": "twopirllc",
+    "name": "pandas-ta",
+    "category": "financial_data_market_data",
+    "verdict": "REFERENCE_MINE"
+  },
+  {
+    "owner": "bukosabino",
+    "name": "ta",
+    "category": "financial_data_market_data",
+    "verdict": "REFERENCE_MINE"
+  },
+  {
+    "owner": "duckdb",
+    "name": "duckdb",
+    "category": "financial_data_market_data",
+    "verdict": "REFERENCE_MINE"
+  },
+  {
+    "owner": "polarsource",
+    "name": "polars",
+    "category": "financial_data_market_data",
+    "verdict": "REFERENCE_MINE"
+  },
+  {
+    "owner": "fastapi",
+    "name": "fastapi",
+    "category": "dashboard_api_observability",
+    "verdict": "REFERENCE_MINE"
+  },
+  {
+    "owner": "encode",
+    "name": "starlette",
+    "category": "dashboard_api_observability",
+    "verdict": "REFERENCE_MINE"
+  },
+  {
+    "owner": "encode",
+    "name": "uvicorn",
+    "category": "dashboard_api_observability",
+    "verdict": "REFERENCE_MINE"
+  },
+  {
+    "owner": "tiangolo",
+    "name": "full-stack-fastapi-template",
+    "category": "dashboard_api_observability",
+    "verdict": "REFERENCE_MINE"
+  },
+  {
+    "owner": "vitejs",
+    "name": "vite",
+    "category": "dashboard_api_observability",
+    "verdict": "REFERENCE_MINE"
+  },
+  {
+    "owner": "vercel",
+    "name": "next.js",
+    "category": "dashboard_api_observability",
+    "verdict": "REFERENCE_MINE"
+  },
+  {
+    "owner": "tailwindlabs",
+    "name": "tailwindcss",
+    "category": "dashboard_api_observability",
+    "verdict": "REFERENCE_MINE"
+  },
+  {
+    "owner": "recharts",
+    "name": "recharts",
+    "category": "dashboard_api_observability",
+    "verdict": "REFERENCE_MINE"
+  },
+  {
+    "owner": "streamlit",
+    "name": "streamlit",
+    "category": "dashboard_api_observability",
+    "verdict": "REFERENCE_MINE"
+  },
+  {
+    "owner": "plotly",
+    "name": "dash",
+    "category": "dashboard_api_observability",
+    "verdict": "REFERENCE_MINE"
+  },
+  {
+    "owner": "grafana",
+    "name": "grafana",
+    "category": "dashboard_api_observability",
+    "verdict": "REFERENCE_MINE"
+  },
+  {
+    "owner": "getredash",
+    "name": "redash",
+    "category": "dashboard_api_observability",
+    "verdict": "REFERENCE_MINE"
+  },
+  {
+    "owner": "metabase",
+    "name": "metabase",
+    "category": "dashboard_api_observability",
+    "verdict": "REFERENCE_MINE"
+  },
+  {
+    "owner": "ClickHouse",
+    "name": "ClickHouse",
+    "category": "dashboard_api_observability",
+    "verdict": "REFERENCE_MINE"
+  },
+  {
+    "owner": "redis",
+    "name": "redis",
+    "category": "dashboard_api_observability",
+    "verdict": "REFERENCE_MINE"
+  },
+  {
+    "owner": "prometheus",
+    "name": "prometheus",
+    "category": "dashboard_api_observability",
+    "verdict": "REFERENCE_MINE"
+  },
+  {
+    "owner": "grafana",
+    "name": "loki",
+    "category": "dashboard_api_observability",
+    "verdict": "REFERENCE_MINE"
+  },
+  {
+    "owner": "openai",
+    "name": "openai-agents-python",
+    "category": "agent_automation_evaluation",
+    "verdict": "REFERENCE_MINE"
+  },
+  {
+    "owner": "microsoft",
+    "name": "autogen",
+    "category": "agent_automation_evaluation",
+    "verdict": "REFERENCE_MINE"
+  },
+  {
+    "owner": "crewAIInc",
+    "name": "crewAI",
+    "category": "agent_automation_evaluation",
+    "verdict": "REFERENCE_MINE"
+  },
+  {
+    "owner": "langchain-ai",
+    "name": "langchain",
+    "category": "agent_automation_evaluation",
+    "verdict": "REFERENCE_MINE"
+  },
+  {
+    "owner": "langchain-ai",
+    "name": "langgraph",
+    "category": "agent_automation_evaluation",
+    "verdict": "REFERENCE_MINE"
+  },
+  {
+    "owner": "run-llama",
+    "name": "llama_index",
+    "category": "agent_automation_evaluation",
+    "verdict": "REFERENCE_MINE"
+  },
+  {
+    "owner": "SWE-agent",
+    "name": "SWE-agent",
+    "category": "agent_automation_evaluation",
+    "verdict": "REFERENCE_MINE"
+  },
+  {
+    "owner": "aider-AI",
+    "name": "aider",
+    "category": "agent_automation_evaluation",
+    "verdict": "REFERENCE_MINE"
+  },
+  {
+    "owner": "All-Hands-AI",
+    "name": "OpenHands",
+    "category": "agent_automation_evaluation",
+    "verdict": "REFERENCE_MINE"
+  },
+  {
+    "owner": "BerriAI",
+    "name": "litellm",
+    "category": "agent_automation_evaluation",
+    "verdict": "REFERENCE_MINE"
+  },
+  {
+    "owner": "promptfoo",
+    "name": "promptfoo",
+    "category": "agent_automation_evaluation",
+    "verdict": "REFERENCE_MINE"
+  },
+  {
+    "owner": "Br0ski777",
+    "name": "x402-agent-tools",
+    "category": "agent_automation_evaluation",
+    "verdict": "REFERENCE_MINE"
+  },
+  {
+    "owner": "BlockRunAI",
+    "name": "awesome-blockrun",
+    "category": "agent_automation_evaluation",
+    "verdict": "REFERENCE_MINE"
+  },
+  {
+    "owner": "BlockRunAI",
+    "name": "blockrun-llm",
+    "category": "agent_automation_evaluation",
+    "verdict": "REFERENCE_MINE"
+  },
+  {
+    "owner": "punkpeye",
+    "name": "awesome-mcp-servers",
+    "category": "agent_automation_evaluation",
+    "verdict": "REFERENCE_MINE"
+  },
+  {
+    "owner": "TensorBlock",
+    "name": "awesome-mcp-servers",
+    "category": "agent_automation_evaluation",
+    "verdict": "REFERENCE_MINE"
+  }
+]

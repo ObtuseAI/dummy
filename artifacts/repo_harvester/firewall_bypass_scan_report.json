@@ -1,0 +1,4 @@
+{
+  "status": "pending",
+  "notes": "Source scan pending; no static or live firewall-bypass analysis performed at metadata level."
+}
