@@ -36,6 +36,7 @@ def test_error_classifier_auth():
 @pytest.mark.asyncio
 async def test_create_order_signs_json_body(client):
     order = {"ticker": "MARKET", "side": "yes", "count": 10, "price": 50}
+    expected_body = '{"count":10,"price":50,"side":"yes","ticker":"MARKET"}'
     with patch("kalshi.client.sign_request") as mock_sign:
         with patch.object(client.client, "request", new_callable=AsyncMock) as m:
             m.return_value.status_code = 200
@@ -44,7 +45,10 @@ async def test_create_order_signs_json_body(client):
             await client.create_order(order)
             mock_sign.assert_called_once()
             signed_body = mock_sign.call_args[0][2]
-            assert signed_body == '{"count":10,"price":50,"side":"yes","ticker":"MARKET"}'
+            assert signed_body == expected_body
+            m.assert_called_once()
+            assert m.call_args.kwargs.get("content") == expected_body.encode("utf-8")
+            assert "json" not in m.call_args.kwargs
 
 @pytest.mark.asyncio
 async def test_rate_limiter_retries_connect_error(client):

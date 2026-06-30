@@ -15,17 +15,20 @@ class KalshiClient:
         self.limiter = KalshiRateLimiter()
 
     async def _request(self, method: str, path: str, **kwargs):
-        body = kwargs.get("json", "")
-        if isinstance(body, dict):
-            body_str = _json.dumps(body, separators=(",", ":"), sort_keys=True)
-        elif isinstance(body, str):
-            body_str = body
+        json_body = kwargs.pop("json", "")
+        if isinstance(json_body, dict):
+            body_str = _json.dumps(json_body, separators=(",", ":"), sort_keys=True)
+            body_bytes = body_str.encode("utf-8")
+        elif isinstance(json_body, str):
+            body_str = json_body
+            body_bytes = body_str.encode("utf-8")
         else:
             body_str = ""
+            body_bytes = b""
         headers = sign_request(method, path, body_str)
         headers["Content-Type"] = "application/json"
         async def call():
-            response = await self.client.request(method, path, headers=headers, **kwargs)
+            response = await self.client.request(method, path, headers=headers, content=body_bytes, **kwargs)
             if response.status_code >= 400:
                 cat = classify(response.status_code, response.text)
                 logger.error("Kalshi API error", extra={"component": "kalshi_client", "status": response.status_code, "category": cat.value})
