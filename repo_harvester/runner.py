@@ -79,8 +79,7 @@ async def run_v2_with_source_scan(limit: int = 20):
             meta["adapter_plan"] = plan
             results.append(meta)
             scans.append(scan)
-            if plan["plans"]:
-                plans.extend(plan["plans"])
+            plans.append(plan)
         except Exception as e:
             results.append({
                 "owner": owner,

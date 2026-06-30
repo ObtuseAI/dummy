@@ -8,8 +8,8 @@ from core.ontology import AccountMode, LiveOrderRequest, FirewallVerdict, LiveOr
 from live_firewall.exposure_tracker import ExposureTracker
 from compliance.governor import assess_compliance
 from core.logger import logger
+from repo_harvester.incorporation_engine import get_allowed_adapter_names
 
-KNOWN_ADAPTERS = {"kalshi_live_firewall_adapter", "kalshi_official_reference_adapter", "kalshi_python_sdk_adapter", "pykalshi_reference_adapter"}
 REJECTED_ADAPTERS: set[str] = set()
 
 
@@ -51,10 +51,11 @@ class LiveBrokerFirewall:
             return fail("emergency_stop", "Emergency stop active")
         if not os.environ.get("KALSHI_API_KEY_ID"):
             return fail("secrets", "API key missing")
+        allowed = get_allowed_adapter_names()
         if req.adapter_name in REJECTED_ADAPTERS:
             return fail("repo_bypass", "Adapter rejected by repo harvester")
-        if req.adapter_name not in KNOWN_ADAPTERS:
-            return fail("unknown_adapter", f"Unknown adapter {req.adapter_name}")
+        if req.adapter_name not in allowed:
+            return fail("unknown_adapter", f"Unknown or untested adapter {req.adapter_name}")
         if not _check_secret_redaction(str(req.model_dump())):
             return fail("secret_redaction", "Secret redaction check failed")
         if req.market_ticker not in caps.allowed_markets:

@@ -1,0 +1,11 @@
+{
+  "incorporated": [
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    }
+  ],
+  "rejected": [],
+  "pending_tests": []
+}

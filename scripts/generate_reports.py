@@ -28,9 +28,11 @@ def run_pytest_summary() -> dict:
     }
 
 
-def load_repo_harvester() -> tuple[dict, dict]:
+def load_repo_harvester() -> tuple[dict, dict, dict, dict, dict]:
     manifest_path = REPO_HARVESTER_DIR / "repo_manifest.json"
     scores_path = REPO_HARVESTER_DIR / "repo_scores.json"
+    manifest_v2_path = REPO_HARVESTER_DIR / "repo_manifest_v2.json"
+    classification_v2_path = REPO_HARVESTER_DIR / "repo_classification_v2.json"
     if manifest_path.exists():
         repos = json.loads(manifest_path.read_text())
     else:
@@ -40,7 +42,25 @@ def load_repo_harvester() -> tuple[dict, dict]:
         for r in json.loads(scores_path.read_text()):
             v = r.get("verdict", "UNKNOWN")
             counts[v] = counts.get(v, 0) + 1
-    return {"repos": repos}, {"classes": counts}
+    repo_manifest = {"repos": repos}
+    repo_classification = {"classes": counts}
+
+    repo_manifest_v2 = {"repos": []}
+    if manifest_v2_path.exists():
+        repo_manifest_v2 = {"repos": json.loads(manifest_v2_path.read_text())}
+
+    repo_classification_v2 = {"counts": {}}
+    if classification_v2_path.exists():
+        repo_classification_v2 = json.loads(classification_v2_path.read_text())
+
+    registry = {"incorporated": [], "pending_tests": [], "rejected": []}
+    try:
+        from repo_harvester.incorporation_registry import load_registry
+        registry = load_registry()
+    except Exception:
+        pass
+
+    return repo_manifest, repo_classification, repo_manifest_v2, repo_classification_v2, registry
 
 
 def load_blunder_manifest() -> dict:
@@ -101,7 +121,7 @@ def build_proof_manifest() -> dict:
 
 def main():
     tests_summary = run_pytest_summary()
-    repo_manifest, repo_classification = load_repo_harvester()
+    repo_manifest, repo_classification, repo_manifest_v2, repo_classification_v2, registry = load_repo_harvester()
     blunder_report = load_blunder_manifest()
     dashboard_report = check_dashboard()
     backend_report = check_backend()
@@ -113,9 +133,12 @@ def main():
     elif not dashboard_report["built"] or not backend_report.get("websocket_ok"):
         overall = "PARTIAL"
 
+    v2_counts = repo_classification_v2.get("counts", {})
     summary_text = (
         f"Tests {tests_summary['passed']}/{tests_summary['total']} passed, "
-        f"repos classified {len(repo_classification['classes'])}, "
+        f"V2 repos {len(repo_manifest_v2['repos'])}, "
+        f"V2 classification counts {v2_counts}, "
+        f"incorporated {len(registry['incorporated'])}, pending tests {len(registry['pending_tests'])}, "
         f"Blunder files {blunder_report['files']}, "
         f"dashboard built={dashboard_report['built']}, "
         f"backend websocket_ok={backend_report.get('websocket_ok')}"
@@ -135,9 +158,19 @@ def main():
         firewall_report={"status": "OK", "note": "Live firewall mocked tests pass"},
         risk_report={"status": "OK", "note": "Risk governor tests pass"},
         compliance_report={"status": "OK", "note": "Compliance gate tests pass"},
-        repo_harvester_report={"status": "OK", "repos": len(repo_manifest["repos"])},
-        repo_manifest=repo_manifest,
-        repo_classification=repo_classification,
+        repo_harvester_report={
+            "status": "OK",
+            "repos": len(repo_manifest["repos"]),
+            "v2_repos": len(repo_manifest_v2["repos"]),
+            "v2_classification_counts": v2_counts,
+            "incorporation_registry": {
+                "incorporated": len(registry["incorporated"]),
+                "pending_tests": len(registry["pending_tests"]),
+                "rejected": len(registry["rejected"]),
+            },
+        },
+        repo_manifest={**repo_manifest, "v2_repos": repo_manifest_v2["repos"], "v2_count": len(repo_manifest_v2["repos"])},
+        repo_classification={**repo_classification, "v2_counts": v2_counts},
         secret_report={"leaks": [], "status": "OK"},
         proof_manifest=proof_manifest,
     )
