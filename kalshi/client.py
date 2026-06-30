@@ -1,4 +1,4 @@
-import os, httpx
+import os, httpx, json as _json
 from datetime import datetime, timezone
 from core.ontology import OrderBook, OrderBookLevel
 from kalshi.signer import sign_request
@@ -16,7 +16,12 @@ class KalshiClient:
 
     async def _request(self, method: str, path: str, **kwargs):
         body = kwargs.get("json", "")
-        body_str = "" if body == "" else (body if isinstance(body, str) else str(body))
+        if isinstance(body, dict):
+            body_str = _json.dumps(body, separators=(",", ":"), sort_keys=True)
+        elif isinstance(body, str):
+            body_str = body
+        else:
+            body_str = ""
         headers = sign_request(method, path, body_str)
         headers["Content-Type"] = "application/json"
         async def call():
@@ -26,7 +31,7 @@ class KalshiClient:
                 logger.error("Kalshi API error", extra={"component": "kalshi_client", "status": response.status_code, "category": cat.value})
             response.raise_for_status()
             return response.json()
-        return await self.limiter.execute(call())
+        return await self.limiter.execute(call)
 
     async def get_markets(self):
         return await self._request("GET", "/markets")

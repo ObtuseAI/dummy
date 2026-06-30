@@ -1,4 +1,4 @@
-import pytest, os
+import pytest, os, httpx
 from datetime import datetime, timezone
 from unittest.mock import patch, AsyncMock, MagicMock
 from kalshi.client import KalshiClient
@@ -32,3 +32,26 @@ def test_error_classifier_rate_limit():
 
 def test_error_classifier_auth():
     assert classify(401, "") == KalshiErrorCategory.AUTH
+
+@pytest.mark.asyncio
+async def test_create_order_signs_json_body(client):
+    order = {"ticker": "MARKET", "side": "yes", "count": 10, "price": 50}
+    with patch("kalshi.client.sign_request") as mock_sign:
+        with patch.object(client.client, "request", new_callable=AsyncMock) as m:
+            m.return_value.status_code = 200
+            m.return_value.json = MagicMock(return_value={"status": "success"})
+            m.return_value.raise_for_status = MagicMock()
+            await client.create_order(order)
+            mock_sign.assert_called_once()
+            signed_body = mock_sign.call_args[0][2]
+            assert signed_body == '{"count":10,"price":50,"side":"yes","ticker":"MARKET"}'
+
+@pytest.mark.asyncio
+async def test_rate_limiter_retries_connect_error(client):
+    client.limiter.base_delay = 0
+    with patch("kalshi.client.sign_request", return_value={"KALSHI-ACCESS-KEY": "test", "KALSHI-ACCESS-SIGNATURE": "sig", "KALSHI-ACCESS-TIMESTAMP": "ts"}) as _:
+        with patch.object(client.client, "request", new_callable=AsyncMock) as m:
+            m.side_effect = httpx.ConnectError("connection refused")
+            with pytest.raises(httpx.ConnectError):
+                await client.get_markets()
+            assert m.call_count == client.limiter.max_retries + 1
