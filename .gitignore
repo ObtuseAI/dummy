@@ -9,5 +9,7 @@ dist/
 logs/*.jsonl
 dumby.db
 artifacts/repo_harvester/work
+artifacts/dumby/
+proof/*.json
 .superpowers/
 *.egg-info/
