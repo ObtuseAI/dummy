@@ -3,6 +3,7 @@ import asyncio
 from pathlib import Path
 from repo_harvester.manifest import ALL_REPOS_V2, REPOS_V2
 from repo_harvester.auditor import audit_repo
+from repo_harvester.adapter_planner import generate_adapter_plan
 from core.ontology import RepoVerdict
 
 OUT = Path("C:/src/engine/dumby/artifacts/repo_harvester")
@@ -58,6 +59,58 @@ def _build_adapter_plan(results: list[dict]) -> list[dict]:
                 "notes": "Metadata-level plan; source review required before implementation.",
             })
     return plans
+
+
+async def run_source_scan(owner: str, name: str) -> dict:
+    from repo_harvester.source_scanner import scan_repo
+    return await scan_repo(owner, name)
+
+
+async def run_v2_with_source_scan(limit: int = 20):
+    results = []
+    scans = []
+    plans = []
+    for owner, name, category in ALL_REPOS_V2[:limit]:
+        try:
+            meta = await audit_repo(owner, name, category=category)
+            scan = await run_source_scan(owner, name)
+            plan = generate_adapter_plan(meta, scan)
+            meta["scan"] = scan
+            meta["adapter_plan"] = plan
+            results.append(meta)
+            scans.append(scan)
+            if plan["plans"]:
+                plans.extend(plan["plans"])
+        except Exception as e:
+            results.append({
+                "owner": owner,
+                "name": name,
+                "category": category,
+                "error": str(e),
+                "verdict": RepoVerdict.REJECT_BROKEN.value,
+            })
+
+    # Adapter plan artifact (source-informed)
+    (OUT / "adapter_plan_v2.json").write_text(json.dumps({
+        "plan_count": len(plans),
+        "plans": plans,
+        "notes": f"Source-informed adapter plans for first {limit} repos in V2 manifest.",
+    }, indent=2, default=str))
+
+    # Firewall bypass scan report
+    direct_order_repos = [s for s in scans if s.get("direct_order_hits")]
+    secret_risk_repos = [s for s in scans if len(s.get("secret_hits", [])) > 5]
+    (OUT / "firewall_bypass_scan_report.json").write_text(json.dumps({
+        "status": "completed",
+        "repos_scanned": len(scans),
+        "direct_order_count": len(direct_order_repos),
+        "direct_order_repos": direct_order_repos,
+        "secret_risk_count": len(secret_risk_repos),
+        "secret_risk_repos": secret_risk_repos,
+        "notes": "Source-level firewall bypass scan. Rejects repos with direct order paths or excessive secret handling.",
+    }, indent=2, default=str))
+
+    return results
 
 
 async def run_harvester():
