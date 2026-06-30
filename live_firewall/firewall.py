@@ -61,7 +61,7 @@ class LiveBrokerFirewall:
             return fail("market_allowlist", "Market not allowlisted")
         if any(req.market_ticker.startswith(c) for c in caps.blocked_categories):
             return fail("blocked_category", "Contract category blocked")
-        compliance = assess_compliance(req.market_ticker, req.contract_ticker)
+        compliance = assess_compliance(req.market_ticker, req.contract_ticker, caps=caps)
         if not compliance.passed:
             return fail("compliance", compliance.reason)
         if orderbook.timestamp < datetime.now(timezone.utc) - timedelta(seconds=30):
