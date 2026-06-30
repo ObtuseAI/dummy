@@ -22,5 +22,6 @@ dev = ["ruff", "mypy"]
 asyncio_mode = "auto"
 testpaths = ["tests"]
 
-[tool.setuptools]
-packages = ["core", "kalshi"]
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["core*", "kalshi*", "live_firewall*"]
