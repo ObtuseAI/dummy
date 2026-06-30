@@ -1,0 +1,12 @@
+.env
+secrets/
+*.pem
+__pycache__/
+*.pyc
+.pytest_cache/
+node_modules/
+dist/
+logs/*.jsonl
+artifacts/repo_harvester/work
+.superpowers/
+*.egg-info/

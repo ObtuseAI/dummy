@@ -1,0 +1,26 @@
+[project]
+name = "dumby"
+version = "0.1.0"
+requires-python = ">=3.11"
+dependencies = [
+    "fastapi>=0.110",
+    "uvicorn[standard]>=0.29",
+    "websockets>=12.0",
+    "httpx>=0.27",
+    "pydantic>=2.6",
+    "aiosqlite>=0.20",
+    "python-dotenv>=1.0",
+    "pytest>=8.0",
+    "pytest-asyncio>=0.23",
+    "cryptography>=42.0",
+]
+
+[project.optional-dependencies]
+dev = ["ruff", "mypy"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+
+[tool.setuptools]
+packages = ["core"]

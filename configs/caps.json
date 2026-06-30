@@ -1,0 +1,17 @@
+{
+  "max_single_order_cents": 100,
+  "max_market_exposure_cents": 500,
+  "max_daily_loss_cents": 500,
+  "max_total_live_exposure_cents": 1000,
+  "max_open_markets": 3,
+  "max_orders_per_hour": 5,
+  "allow_market_orders": false,
+  "limit_orders_only": true,
+  "auto_cancel_stale_orders": true,
+  "kill_switch_required": true,
+  "allowed_markets": [],
+  "blocked_categories": ["politics-elections-us", "sensitive-geo"],
+  "max_spread_cents": 5,
+  "min_liquidity": 10,
+  "min_edge_bps": 50
+}
