@@ -17,13 +17,13 @@ def test_candidate_manifest_entry_is_redacted() -> None:
         signals=[signal],
         terrain=MarketTerrainSnapshot(),
         score=EdgeScore(composite=0.75),
-        decision=EdgeDecision.SMALL_PILOT,
+        decision=EdgeDecision.ATTACK_REHEARSAL,
         rationale="strong directional signal",
         proof_refs=["proof-1"],
     )
     manifest = candidate.to_manifest_entry()
     assert manifest["candidate_id"] == candidate.candidate_id
-    assert manifest["decision"] == "small_pilot"
+    assert manifest["decision"] == "attack_rehearsal"
     assert manifest["composite_score"] == 0.75
     assert manifest["signal_count"] == 1
     assert manifest["rationale"] == "strong directional signal"

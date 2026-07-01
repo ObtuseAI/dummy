@@ -13,13 +13,19 @@ from predator_mesh.signals.models import NormalizedSignal
 
 
 class EdgeDecision(str, Enum):
-    """Discrete decision produced by the edge intelligence engine."""
+    """Discrete decision produced by the edge intelligence engine.
 
-    PASS = "pass"
+    Aligned with the Dummy V9 specification: only the following values are
+    valid edge decisions.
+    """
+
+    ATTACK_REHEARSAL = "attack_rehearsal"
     WATCH = "watch"
-    SMALL_PILOT = "small_pilot"
-    FULL_PILOT = "full_pilot"
-    BLOCK = "block"
+    REQUIRE_MORE_EVIDENCE = "require_more_evidence"
+    REQUIRE_MINIMAX_REVIEW = "require_minimax_review"
+    NO_TRADE = "no_trade"
+    STARVE_SIGNAL = "starve_signal"
+    QUARANTINE_SOURCE = "quarantine_source"
 
 
 class MarketTerrainSnapshot(BaseModel):
@@ -60,7 +66,7 @@ class EdgeCandidate(BaseModel):
     signals: list[NormalizedSignal] = Field(default_factory=list)
     terrain: MarketTerrainSnapshot = Field(default_factory=MarketTerrainSnapshot)
     score: EdgeScore = Field(default_factory=EdgeScore)
-    decision: EdgeDecision = EdgeDecision.PASS
+    decision: EdgeDecision = EdgeDecision.NO_TRADE
     rationale: str = ""
     proof_refs: list[str] = Field(default_factory=list)
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))

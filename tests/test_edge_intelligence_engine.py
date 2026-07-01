@@ -12,12 +12,12 @@ from predator_mesh.edge.models import (
 from predator_mesh.signals.models import NormalizedSignal, SignalType
 
 
-def test_engine_scores_empty_signals_as_pass() -> None:
+def test_engine_scores_empty_signals_as_starve_signal() -> None:
     engine = EdgeIntelligenceEngine()
     terrain = MarketTerrainSnapshot()
     candidates = engine.score([], terrain)
     assert len(candidates) == 1
-    assert candidates[0].decision == EdgeDecision.PASS
+    assert candidates[0].decision == EdgeDecision.STARVE_SIGNAL
     assert candidates[0].score.composite == 0.0
 
 
@@ -46,7 +46,7 @@ def test_engine_produces_candidate_with_score() -> None:
     assert candidate.rationale != ""
 
 
-def test_engine_blocks_in_extreme_volatility() -> None:
+def test_engine_quarantines_in_extreme_volatility() -> None:
     engine = EdgeIntelligenceEngine()
     terrain = MarketTerrainSnapshot(volatility_regime="extreme")
     signals = [
@@ -57,10 +57,10 @@ def test_engine_blocks_in_extreme_volatility() -> None:
         )
     ]
     candidates = engine.score(signals, terrain)
-    assert candidates[0].decision == EdgeDecision.BLOCK
+    assert candidates[0].decision == EdgeDecision.QUARANTINE_SOURCE
 
 
-def test_engine_blocks_on_high_event_risk() -> None:
+def test_engine_quarantines_on_high_event_risk() -> None:
     engine = EdgeIntelligenceEngine()
     terrain = MarketTerrainSnapshot(event_risk="high")
     signals = [
@@ -71,7 +71,7 @@ def test_engine_blocks_on_high_event_risk() -> None:
         )
     ]
     candidates = engine.score(signals, terrain)
-    assert candidates[0].decision == EdgeDecision.BLOCK
+    assert candidates[0].decision == EdgeDecision.QUARANTINE_SOURCE
 
 
 def test_engine_penalizes_thin_liquidity() -> None:

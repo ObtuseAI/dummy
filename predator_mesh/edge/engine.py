@@ -23,14 +23,14 @@ class EdgeIntelligenceEngine:
     def __init__(
         self,
         watch_threshold: float = 0.35,
-        small_pilot_threshold: float = 0.55,
-        full_pilot_threshold: float = 0.75,
-        block_threshold: float = 0.15,
+        more_evidence_threshold: float = 0.55,
+        rehearsal_threshold: float = 0.75,
+        no_trade_threshold: float = 0.15,
     ) -> None:
         self.watch_threshold = watch_threshold
-        self.small_pilot_threshold = small_pilot_threshold
-        self.full_pilot_threshold = full_pilot_threshold
-        self.block_threshold = block_threshold
+        self.more_evidence_threshold = more_evidence_threshold
+        self.rehearsal_threshold = rehearsal_threshold
+        self.no_trade_threshold = no_trade_threshold
 
     def _aggregate_signal_strength(
         self,
@@ -106,7 +106,7 @@ class EdgeIntelligenceEngine:
                     signals=[],
                     terrain=terrain,
                     score=EdgeScore(),
-                    decision=EdgeDecision.PASS,
+                    decision=EdgeDecision.STARVE_SIGNAL,
                     rationale="no signals to score",
                 )
             ]
@@ -164,18 +164,20 @@ class EdgeIntelligenceEngine:
         composite: float,
         terrain: MarketTerrainSnapshot,
     ) -> EdgeDecision:
-        """Map composite score and terrain to a discrete decision."""
+        """Map composite score and terrain to a discrete V9 decision."""
         if terrain.event_risk == "high" or terrain.volatility_regime == "extreme":
-            return EdgeDecision.BLOCK
-        if composite <= self.block_threshold:
-            return EdgeDecision.PASS
+            return EdgeDecision.QUARANTINE_SOURCE
+        if composite <= 0.0:
+            return EdgeDecision.STARVE_SIGNAL
+        if composite <= self.no_trade_threshold:
+            return EdgeDecision.NO_TRADE
         if composite <= self.watch_threshold:
             return EdgeDecision.WATCH
-        if composite <= self.small_pilot_threshold:
-            return EdgeDecision.WATCH
-        if composite <= self.full_pilot_threshold:
-            return EdgeDecision.SMALL_PILOT
-        return EdgeDecision.FULL_PILOT
+        if composite <= self.more_evidence_threshold:
+            return EdgeDecision.REQUIRE_MORE_EVIDENCE
+        if composite <= self.rehearsal_threshold:
+            return EdgeDecision.REQUIRE_MINIMAX_REVIEW
+        return EdgeDecision.ATTACK_REHEARSAL
 
     def score_many(
         self,

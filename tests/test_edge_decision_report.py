@@ -24,12 +24,12 @@ def test_decision_report_contains_key_fields() -> None:
             consensus_divergence=0.1,
             composite=0.65,
         ),
-        decision=EdgeDecision.SMALL_PILOT,
+        decision=EdgeDecision.REQUIRE_MORE_EVIDENCE,
         rationale="favorable conditions",
     )
     report = candidate.to_decision_report()
     assert report["candidate_id"] == candidate.candidate_id
-    assert report["decision"] == "small_pilot"
+    assert report["decision"] == "require_more_evidence"
     assert report["score"]["composite"] == 0.65
     assert report["rationale"] == "favorable conditions"
     assert "timestamp" in report
