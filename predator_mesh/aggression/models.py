@@ -44,7 +44,7 @@ class AggressionAllocation:
         self.confidence = float(max(0.0, min(1.0, self.confidence)))
 
     def to_manifest_entry(self) -> dict[str, Any]:
-        """Return a redacted, deterministic manifest entry for reports."""
+        """Return a safe metadata summary for reports."""
         return {
             "decision": self.decision.value,
             "size_pct": round(self.size_pct, 6),

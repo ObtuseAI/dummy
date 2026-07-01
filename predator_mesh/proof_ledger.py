@@ -93,12 +93,13 @@ class MeshProofLedger:
 
     def to_report(self) -> dict[str, Any]:
         """Return the ``mesh_proof_ledger_report_v1`` report dict."""
+        summary = self.summarize()
         return {
             "report_type": "mesh_proof_ledger_report_v1",
             "generated_at": datetime.now(timezone.utc).isoformat(),
             "event_count": len(self.events),
-            "event_summary": self.summarize()["event_summary"],
-            "lane_summary": self.summarize()["lane_summary"],
+            "event_summary": summary["event_summary"],
+            "lane_summary": summary["lane_summary"],
             "events": self.events,
         }
 

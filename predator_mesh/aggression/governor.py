@@ -11,7 +11,7 @@ from __future__ import annotations
 from typing import Any
 
 from predator_mesh.aggression.models import AggressionAllocation, AggressionDecision
-from predator_mesh.data_inflow.scoring import DataSourceScore
+from predator_mesh.data_inflow.scoring import DataSourceScore, SourceTier
 from predator_mesh.edge.models import EdgeCandidate
 from strategies.governor import CapImpact, StrategyGovernorOutput
 
@@ -187,7 +187,8 @@ class ProofWeightedAggressionGovernor:
         if pressure > 0.0:
             reasoning_parts.append(f"pressure discount {pressure:.3f}")
 
-        score *= 1.0 - (source_decay * (1.0 / self.SOURCE_DECAY_HALF_LIFE))
+        discount = 0.5 ** (source_decay / self.SOURCE_DECAY_HALF_LIFE)
+        score *= self._clamp(discount)
         if source_decay > 0.0:
             reasoning_parts.append(f"source decay {source_decay:.3f}")
 
@@ -283,8 +284,8 @@ class ProofWeightedAggressionGovernor:
         """
         if not source_scores:
             return 1.0
-        promoted = sum(1 for s in source_scores if s.tier.value == "promote")
-        pruned = sum(1 for s in source_scores if s.tier.value == "prune")
+        promoted = sum(1 for s in source_scores if s.tier is SourceTier.PROMOTE)
+        pruned = sum(1 for s in source_scores if s.tier is SourceTier.PRUNE)
         total = len(source_scores)
         if pruned > 0 and promoted == 0:
             return 0.0
