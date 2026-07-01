@@ -15,9 +15,9 @@ from predator_mesh.models import (
     MeshContext,
     MeshPriority,
     MeshResult,
-    MeshScheduler,
     MeshTimeout,
 )
+from predator_mesh.scheduler import MeshScheduler
 
 
 class StubbornLane(BaseLane):

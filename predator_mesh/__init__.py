@@ -13,10 +13,10 @@ from predator_mesh.models import (
     MeshProofRef,
     MeshResult,
     MeshRun,
-    MeshScheduler,
     MeshTask,
     MeshTimeout,
 )
+from predator_mesh.scheduler import MeshScheduler
 from predator_mesh.budget import build_default_budget
 from predator_mesh.proof_ledger import MeshProofLedger
 from predator_mesh.lane_registry import LANE_REGISTRY, build_default_lanes

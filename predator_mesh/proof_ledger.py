@@ -13,6 +13,7 @@ class MeshProofLedger:
 
     def __init__(self) -> None:
         self.events: list[dict[str, Any]] = []
+        self.proof_refs: list[MeshProofRef] = []
 
     def record(
         self,
@@ -39,6 +40,7 @@ class MeshProofLedger:
             if key not in entry:
                 entry[key] = value
         self.events.append(entry)
+        self.proof_refs.append(ref)
         return ref
 
     def count(self, event: str | None = None, lane: str | None = None) -> int:

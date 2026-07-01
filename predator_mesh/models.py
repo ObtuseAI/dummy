@@ -181,5 +181,4 @@ class MeshRun(BaseModel):
     model_config = {"arbitrary_types_allowed": True}
 
 
-# Re-export scheduler so it is importable from models.py as required by Task 1.
-from predator_mesh.scheduler import MeshScheduler  # noqa: E402,F401
+

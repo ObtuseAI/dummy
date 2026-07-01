@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 from datetime import datetime, timezone
 from typing import Any
+from uuid import uuid4
 
 from predator_mesh.models import (
     LaneState,
@@ -51,7 +52,7 @@ class MeshScheduler:
         if cycle_timeout is not None:
             timeout = timeout.model_copy(update={"cycle_timeout_s": cycle_timeout})
 
-        run_id = f"run-{datetime.now(timezone.utc).strftime('%H%M%S')}"
+        run_id = str(uuid4())[:8]
         ledger = MeshProofLedger()
         run = MeshRun(run_id=run_id, budget_used=budget, timeouts=[timeout])
         shared_state: dict[str, Any] = {}
@@ -77,6 +78,7 @@ class MeshScheduler:
 
         wrapper_tasks = [asyncio.create_task(_run_lane(lane)) for lane in ordered]
         deadline = timeout.cycle_timeout_s
+        cycle_timed_out = False
 
         try:
             raw_results = await asyncio.wait_for(
@@ -84,6 +86,7 @@ class MeshScheduler:
                 timeout=deadline,
             )
         except asyncio.TimeoutError:
+            cycle_timed_out = True
             # Wait briefly for wrappers to finish their cancellation cleanup.
             await asyncio.wait(wrapper_tasks, timeout=timeout.stuck_task_grace_s)
             raw_results = []
@@ -125,13 +128,15 @@ class MeshScheduler:
                 )
 
         run.finished_at = datetime.now(timezone.utc)
-        run.state = LaneState.COMPLETED
-        if any(r.state == LaneState.TIMED_OUT for r in lane_results):
+        if cycle_timed_out:
+            run.state = LaneState.TIMED_OUT
             run.timeouts.append(timeout)
-        if any(r.state == LaneState.QUARANTINED for r in lane_results):
+        elif any(r.state != LaneState.COMPLETED for r in lane_results):
             run.state = LaneState.DEGRADED
+        else:
+            run.state = LaneState.COMPLETED
         run.lane_results = lane_results
-        run.proof_refs = ledger.events.copy()
+        run.proof_refs = ledger.proof_refs.copy()
         return run
 
     async def _execute_lane(
@@ -175,13 +180,21 @@ class MeshScheduler:
         state = LaneState.READY
         error: str | None = None
         result_payload: Any = None
+        lane_result_obj: MeshResult | None = None
 
         try:
-            result_payload = await asyncio.wait_for(
+            raw_result = await asyncio.wait_for(
                 asyncio.shield(lane_task),
                 timeout=timeout.per_lane_timeout_s,
             )
-            state = LaneState.COMPLETED
+            if isinstance(raw_result, MeshResult):
+                lane_result_obj = raw_result
+                lane_result_obj.started_at = started_at
+                lane_result_obj.events_recorded = ledger.count(lane=lane_name)
+                state = lane_result_obj.state
+            else:
+                state = LaneState.COMPLETED
+                result_payload = raw_result
         except asyncio.TimeoutError:
             error = f"per-lane timeout ({timeout.per_lane_timeout_s}s)"
             state = await self._cancel_or_quarantine(lane_task, timeout)
@@ -210,6 +223,10 @@ class MeshScheduler:
             ),
             duration_s=(finished_at - started_at).total_seconds(),
         )
+
+        if lane_result_obj is not None:
+            lane_result_obj.finished_at = finished_at
+            return lane_result_obj
 
         return MeshResult(
             lane_name=lane_name,
