@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
-import asyncio
-from datetime import datetime, timezone
 from typing import Any
 
+from predator_mesh.lanes.anomaly_mining import AnomalyMiningLane
 from predator_mesh.lanes.base import BaseLane
+from predator_mesh.lanes.recursive_inflow import RecursiveDataInflowLane
+from predator_mesh.lanes.signal_normalization import SignalNormalizationLane
 from predator_mesh.models import (
     LanePriority,
     LaneState,
@@ -31,42 +32,6 @@ class KalshiTerrainLane(BaseLane):
         return self._complete(ctx, {"terrain": "market_snapshot_stub"})
 
 
-class RecursiveDataInflowLane(BaseLane):
-    """Recursive data inflow discovery lane."""
-
-    name = "recursive_inflow"
-    priority = MeshPriority(level=LanePriority.SOURCE_DISCOVERY)
-    timeout = MeshTimeout(per_lane_timeout_s=10.0)
-
-    async def execute(self, ctx: MeshContext) -> MeshResult:
-        await asyncio.sleep(0)
-        return self._complete(ctx, {"sources_discovered": 0})
-
-
-class SignalNormalizationLane(BaseLane):
-    """Signal ontology normalization lane."""
-
-    name = "signal_normalization"
-    priority = MeshPriority(level=LanePriority.HIGH_VALUE_SIGNAL)
-    timeout = MeshTimeout(per_lane_timeout_s=8.0)
-
-    async def execute(self, ctx: MeshContext) -> MeshResult:
-        await asyncio.sleep(0)
-        return self._complete(ctx, {"signals_normalized": 0})
-
-
-class AnomalyMiningLane(BaseLane):
-    """Edge anomaly detection lane."""
-
-    name = "anomaly_mining"
-    priority = MeshPriority(level=LanePriority.HIGH_VALUE_SIGNAL)
-    timeout = MeshTimeout(per_lane_timeout_s=10.0)
-
-    async def execute(self, ctx: MeshContext) -> MeshResult:
-        await asyncio.sleep(0)
-        return self._complete(ctx, {"anomalies": []})
-
-
 class ForecastUpdateLane(BaseLane):
     """Hybrid forecast update lane."""
 
@@ -89,7 +54,6 @@ class StrategyIntelligenceLane(BaseLane):
     timeout = MeshTimeout(per_lane_timeout_s=12.0)
 
     async def execute(self, ctx: MeshContext) -> MeshResult:
-        await asyncio.sleep(0)
         return self._complete(ctx, {"strategies": []})
 
 
@@ -101,7 +65,6 @@ class StrategyGovernorLane(BaseLane):
     timeout = MeshTimeout(per_lane_timeout_s=10.0)
 
     async def execute(self, ctx: MeshContext) -> MeshResult:
-        await asyncio.sleep(0)
         return self._complete(ctx, {"governor_decisions": []})
 
 
@@ -113,8 +76,9 @@ class FirewallRehearsalLane(BaseLane):
     timeout = MeshTimeout(per_lane_timeout_s=6.0)
 
     async def execute(self, ctx: MeshContext) -> MeshResult:
-        await asyncio.sleep(0)
-        return self._complete(ctx, {"rehearsal": "blocked_until_live_submit_enabled"})
+        return self._complete(
+            ctx, {"rehearsal": "blocked_until_live_submit_enabled"}
+        )
 
 
 class CalibrationLane(BaseLane):
@@ -125,7 +89,6 @@ class CalibrationLane(BaseLane):
     timeout = MeshTimeout(per_lane_timeout_s=8.0)
 
     async def execute(self, ctx: MeshContext) -> MeshResult:
-        await asyncio.sleep(0)
         return self._complete(ctx, {"calibration_updates": []})
 
 
@@ -137,7 +100,6 @@ class MeshHealthLane(BaseLane):
     timeout = MeshTimeout(per_lane_timeout_s=5.0)
 
     async def execute(self, ctx: MeshContext) -> MeshResult:
-        await asyncio.sleep(0)
         return self._complete(ctx, {"healthy": True})
 
 
