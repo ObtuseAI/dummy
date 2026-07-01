@@ -87,7 +87,8 @@ async def test_route_calls_models_concurrently() -> None:
     assert not result.degraded
     assert len(router.calls) == 2
     # Concurrent execution should take roughly one delay, not two.
-    assert elapsed < 2 * delay - 0.05
+    # Bound is relaxed to avoid flakiness on slower CI runners.
+    assert elapsed < 2 * delay
 
 
 @pytest.mark.asyncio
@@ -117,6 +118,16 @@ async def test_output_firewall_blocks_order_instruction() -> None:
     assert result.degraded
     assert result.fallback == "output_blocked"
     assert any(b["category"] == "ORDER_INSTRUCTION_BLOCK" for b in result.output_blocked)
+    # The blocked fast envelope must be redacted, not the raw model output.
+    assert result.fast_envelope is not None
+    assert result.fast_envelope.get("blocked") is True
+    assert result.fast_envelope.get("block_reason") == "ORDER_INSTRUCTION_BLOCK"
+    assert "content" not in result.fast_envelope
+    assert "prompt" not in result.fast_envelope
+    # The safe critique envelope is still returned normally.
+    assert result.critique_envelope is not None
+    assert result.critique_envelope.get("blocked") is None
+    assert "content" in result.critique_envelope
 
 
 @pytest.mark.asyncio

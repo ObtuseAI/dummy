@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from datetime import datetime, timezone
 from decimal import Decimal
 from typing import Any
@@ -85,7 +86,7 @@ def _build_opinion(
     fast = model_result.fast_envelope or {}
     content: dict[str, Any] = {}
     try:
-        content = __import__("json").loads(fast.get("content", "{}"))
+        content = json.loads(fast.get("content", "{}"))
     except Exception:
         content = {}
 
@@ -135,8 +136,6 @@ class ForecastUpdateLane(BaseLane):
         self.orderbook = orderbook
 
     async def execute(self, ctx: MeshContext) -> MeshResult:
-        if not ctx.budget.can_call_provider():
-            return self._fail(ctx, "provider budget exhausted", state=LaneState.BLOCKED)
         if not ctx.budget.spend_provider(2):
             return self._fail(
                 ctx,

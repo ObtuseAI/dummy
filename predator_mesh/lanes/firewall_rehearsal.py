@@ -87,10 +87,12 @@ class FirewallRehearsalLane(BaseLane):
         orderbook: OrderBook | None = None,
         forecast: Forecast | None = None,
     ) -> None:
-        self.firewall = firewall or LiveBrokerFirewall(
-            kalshi_client=KalshiClient(),
-            exposure_tracker=ExposureTracker(),
-        )
+        self.firewall = firewall
+        if self.firewall is None:
+            self.firewall = LiveBrokerFirewall(
+                kalshi_client=KalshiClient(),
+                exposure_tracker=ExposureTracker(),
+            )
         self.request = request
         self.orderbook = orderbook
         self.forecast = forecast

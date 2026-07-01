@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 from typing import Any
 
 from pydantic import BaseModel, Field
@@ -11,6 +12,21 @@ from model_router.output_firewall import ModelOutputFirewall
 from model_router.prompt_firewall import PromptFirewallV2
 from model_router.router import ModelRouter
 from model_router.tasks import ModelTask
+
+
+def _redacted_envelope(block_reason: str, content: str) -> dict[str, Any]:
+    """Return a safe placeholder for a blocked model output envelope.
+
+    The raw envelope (which may contain blocked content or secrets) is replaced
+    by a minimal digest plus the block reason so that downstream logs and
+    artifacts never serialize unsafe output.
+    """
+    digest = hashlib.sha256(content.encode("utf-8")).hexdigest()[:16]
+    return {
+        "blocked": True,
+        "block_reason": block_reason,
+        "digest": digest,
+    }
 
 
 class HybridModelResult(BaseModel):
@@ -94,24 +110,44 @@ class MeshHybridRouter:
             )
 
         blocked: list[dict[str, str]] = []
+        fast_reason: str | None = None
+        critique_reason: str | None = None
         for label, env in (("fast", fast_env), ("critique", critique_env)):
             if env.blocked_by:
-                blocked.append(
-                    {"envelope": label, "category": env.blocked_by}
-                )
+                reason = env.blocked_by
+                blocked.append({"envelope": label, "category": reason})
+                if label == "fast":
+                    fast_reason = reason
+                else:
+                    critique_reason = reason
                 continue
             of_decision = self.output_firewall.check(env.content)
             if not of_decision.safe:
+                reason = of_decision.blocked_patterns[0]["category"]
                 blocked.extend(of_decision.blocked_patterns)
+                if label == "fast":
+                    fast_reason = reason
+                else:
+                    critique_reason = reason
 
         if blocked:
+            fast_out = (
+                fast_env.model_dump()
+                if fast_reason is None
+                else _redacted_envelope(fast_reason, fast_env.content)
+            )
+            critique_out = (
+                critique_env.model_dump()
+                if critique_reason is None
+                else _redacted_envelope(critique_reason, critique_env.content)
+            )
             return HybridModelResult(
                 degraded=True,
                 fallback="output_blocked",
                 prompt_sanitized=sanitized,
                 output_blocked=blocked,
-                fast_envelope=fast_env.model_dump(),
-                critique_envelope=critique_env.model_dump(),
+                fast_envelope=fast_out,
+                critique_envelope=critique_out,
             )
 
         return HybridModelResult(
