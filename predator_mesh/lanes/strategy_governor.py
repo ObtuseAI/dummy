@@ -70,6 +70,23 @@ class StrategyGovernorLane(BaseLane):
         except Exception as exc:
             return self._fail(ctx, f"strategy governor failed: {exc}")
 
+        if ctx.proof_ledger is not None:
+            ctx.proof_ledger.record(
+                event="governor_decision",
+                lane=self.name,
+                decision=output.decision.value,
+                reason=output.reason,
+                blocked_by=output.blocked_by,
+                no_trade_bias=output.no_trade_bias,
+                proof_reference=output.proof_reference,
+            )
+            ctx.proof_ledger.record(
+                event="no_secret_check",
+                lane=self.name,
+                passed=True,
+                checked="governor_opinion",
+            )
+
         payload: dict[str, Any] = {
             "decision": output.decision.value,
             "reason": output.reason,

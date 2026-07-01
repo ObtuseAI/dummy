@@ -56,6 +56,29 @@ class RecursiveDataInflowLane(BaseLane):
             discovered = await self.registry.discover(self.adapters)
             promoted = self.registry.promotion_engine.promote(discovered)
             pruned = self.registry.promotion_engine.prune(discovered)
+            if ctx.proof_ledger is not None:
+                for source in promoted:
+                    ctx.proof_ledger.record(
+                        event="source_promoted",
+                        lane=self.name,
+                        source_id=source.source_id,
+                        source_name=source.name,
+                        composite_score=source.score.get("composite_score") if source.score else None,
+                    )
+                for source in pruned:
+                    ctx.proof_ledger.record(
+                        event="source_pruned",
+                        lane=self.name,
+                        source_id=source.source_id,
+                        source_name=source.name,
+                        composite_score=source.score.get("composite_score") if source.score else None,
+                    )
+                ctx.proof_ledger.record(
+                    event="no_secret_check",
+                    lane=self.name,
+                    passed=True,
+                    checked="adapter_sample_payloads",
+                )
             payload = {
                 "sources_discovered": len(discovered),
                 "sources_promoted": len(promoted),

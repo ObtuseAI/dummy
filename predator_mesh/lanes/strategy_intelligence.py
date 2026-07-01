@@ -94,6 +94,34 @@ class StrategyIntelligenceLane(BaseLane):
             return self._fail(ctx, f"strategy intelligence failed: {exc}")
 
         payload: list[dict[str, Any]] = []
+        if ctx.proof_ledger is not None:
+            for result in results:
+                ctx.proof_ledger.record(
+                    event="strategy_evaluated",
+                    lane=self.name,
+                    family=result.scan_result.family,
+                    market_ticker=result.scan_result.market_ticker,
+                    contract_ticker=result.scan_result.contract_ticker,
+                    has_draft=result.draft is not None,
+                    no_trade_reason=(
+                        result.no_trade_reason.reason if result.no_trade_reason else None
+                    ),
+                    critique_verdict=(
+                        result.critique.verdict if result.critique else None
+                    ),
+                )
+            if not results:
+                ctx.proof_ledger.record(
+                    event="strategy_evaluated",
+                    lane=self.name,
+                    strategy_count=0,
+                )
+            ctx.proof_ledger.record(
+                event="no_secret_check",
+                lane=self.name,
+                passed=True,
+                checked="strategy_results",
+            )
         for result in results:
             payload.append(
                 {

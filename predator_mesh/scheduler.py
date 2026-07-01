@@ -46,6 +46,7 @@ class MeshScheduler:
         lanes: list[Any],
         budget: MeshBudget,
         cycle_timeout: float | None = None,
+        proof_ledger: MeshProofLedger | None = None,
     ) -> MeshRun:
         """Execute ``lanes`` under the given ``budget`` and return a ``MeshRun``."""
         timeout = self.default_timeout
@@ -53,7 +54,7 @@ class MeshScheduler:
             timeout = timeout.model_copy(update={"cycle_timeout_s": cycle_timeout})
 
         run_id = str(uuid4())
-        ledger = MeshProofLedger()
+        ledger = proof_ledger or MeshProofLedger()
         run = MeshRun(run_id=run_id, budget_used=budget, timeouts=[timeout])
         shared_state: dict[str, Any] = {}
 
@@ -172,8 +173,9 @@ class MeshScheduler:
             budget=budget,
             timeout=timeout,
             proof_ledger=ledger,
-            shared_state=shared_state,
         )
+        # Assign by reference so all lanes mutate the same shared dict.
+        ctx.shared_state = shared_state
 
         lane_task: asyncio.Task[Any] = asyncio.create_task(lane.execute(ctx))
         state = LaneState.READY

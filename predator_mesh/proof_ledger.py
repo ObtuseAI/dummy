@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import json
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any
 
 from predator_mesh.models import MeshProofRef
@@ -52,6 +54,13 @@ class MeshProofLedger:
             and (lane is None or e.get("lane") == lane)
         )
 
+    def has_event(self, event: str, lane: str | None = None) -> bool:
+        """Return True if at least one matching event was recorded."""
+        return any(
+            e.get("event") == event and (lane is None or e.get("lane") == lane)
+            for e in self.events
+        )
+
     def list_events(
         self,
         event: str | None = None,
@@ -64,3 +73,44 @@ class MeshProofLedger:
             if (event is None or e.get("event") == event)
             and (lane is None or e.get("lane") == lane)
         ]
+
+    def summarize(self) -> dict[str, Any]:
+        """Return a lightweight summary of all recorded events."""
+        event_counts: dict[str, int] = {}
+        lane_counts: dict[str, int] = {}
+        for event in self.events:
+            name = event.get("event") or "unknown"
+            event_counts[name] = event_counts.get(name, 0) + 1
+            lane = event.get("lane") or "mesh"
+            lane_counts[lane] = lane_counts.get(lane, 0) + 1
+
+        return {
+            "event_count": len(self.events),
+            "event_summary": event_counts,
+            "lane_summary": lane_counts,
+            "events": self.events,
+        }
+
+    def to_report(self) -> dict[str, Any]:
+        """Return the ``mesh_proof_ledger_report_v1`` report dict."""
+        return {
+            "report_type": "mesh_proof_ledger_report_v1",
+            "generated_at": datetime.now(timezone.utc).isoformat(),
+            "event_count": len(self.events),
+            "event_summary": self.summarize()["event_summary"],
+            "lane_summary": self.summarize()["lane_summary"],
+            "events": self.events,
+        }
+
+    def write_report(
+        self,
+        path: str | Path = "artifacts/dummy/mesh_proof_ledger_report_v1.json",
+    ) -> Path:
+        """Write the proof ledger report to disk and return the path."""
+        report_path = Path(path)
+        report_path.parent.mkdir(parents=True, exist_ok=True)
+        report_path.write_text(
+            json.dumps(self.to_report(), indent=2, default=str),
+            encoding="utf-8",
+        )
+        return report_path

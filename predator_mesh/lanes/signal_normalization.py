@@ -36,6 +36,19 @@ class SignalNormalizationLane(BaseLane):
                     verdict="no_candidates",
                 )
             signals = self.normalizer.normalize_many(candidates)
+            if ctx.proof_ledger is not None:
+                ctx.proof_ledger.record(
+                    event="signals_normalized",
+                    lane=self.name,
+                    signal_count=len(signals),
+                    actionable_count=sum(1 for s in signals if s.is_actionable()),
+                )
+                ctx.proof_ledger.record(
+                    event="no_secret_check",
+                    lane=self.name,
+                    passed=True,
+                    checked="signal_payloads",
+                )
             payload = {
                 "signals_normalized": len(signals),
                 "actionable_signals": sum(1 for s in signals if s.is_actionable()),

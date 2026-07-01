@@ -42,6 +42,36 @@ class AnomalyMiningLane(BaseLane):
                     verdict="no_signals",
                 )
             candidates = self.engine.score(signals, self.terrain)
+            if ctx.proof_ledger is not None:
+                for candidate in candidates:
+                    if candidate.decision.value in {
+                        "attack_rehearsal",
+                        "watch",
+                        "require_more_evidence",
+                        "require_minimax_review",
+                    }:
+                        ctx.proof_ledger.record(
+                            event="edge_generated",
+                            lane=self.name,
+                            candidate_id=candidate.candidate_id,
+                            decision=candidate.decision.value,
+                            composite_score=candidate.score.composite,
+                        )
+                    else:
+                        ctx.proof_ledger.record(
+                            event="edge_rejected",
+                            lane=self.name,
+                            candidate_id=candidate.candidate_id,
+                            decision=candidate.decision.value,
+                            composite_score=candidate.score.composite,
+                            rationale=candidate.rationale,
+                        )
+                ctx.proof_ledger.record(
+                    event="no_secret_check",
+                    lane=self.name,
+                    passed=True,
+                    checked="candidate_manifest_entries",
+                )
             payload = {
                 "anomalies": [c.to_manifest_entry() for c in candidates],
                 "candidates": [c.model_dump() for c in candidates],

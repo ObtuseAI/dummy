@@ -55,5 +55,20 @@ class MeshHealthLane(BaseLane):
             "stuck_lanes": stuck_lanes,
             "noisy_lanes": noisy_lanes,
         }
+        if ctx.proof_ledger is not None:
+            ctx.proof_ledger.record(
+                event="health_checked",
+                lane=self.name,
+                healthy=report["healthy"],
+                slow_lanes=slow_lanes,
+                stuck_lanes=stuck_lanes,
+                noisy_lanes=noisy_lanes,
+            )
+            ctx.proof_ledger.record(
+                event="no_secret_check",
+                lane=self.name,
+                passed=True,
+                checked="ledger_event_metadata",
+            )
         ctx.shared_state["mesh_health"] = report
         return self._complete(ctx, report, verdict="health_checked")

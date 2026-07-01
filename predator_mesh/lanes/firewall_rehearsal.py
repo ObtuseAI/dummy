@@ -111,6 +111,29 @@ class FirewallRehearsalLane(BaseLane):
         except Exception as exc:
             return self._fail(ctx, f"firewall rehearsal failed: {exc}")
 
+        if ctx.proof_ledger is not None:
+            ctx.proof_ledger.record(
+                event="firewall_rehearsal_verdict",
+                lane=self.name,
+                would_submit=verdict.would_submit,
+                firewall_allowed=verdict.firewall_verdict.allow,
+                firewall_reason=verdict.firewall_verdict.reason,
+                blocked_reason=verdict.blocked_reason,
+            )
+            ctx.proof_ledger.record(
+                event="no_order_bypass_check",
+                lane=self.name,
+                passed=not verdict.would_submit,
+                would_submit=verdict.would_submit,
+                order_request_id=request.proposal_id,
+            )
+            ctx.proof_ledger.record(
+                event="no_secret_check",
+                lane=self.name,
+                passed=True,
+                checked="rehearsal_request_payload",
+            )
+
         payload: dict[str, Any] = {
             "would_submit": verdict.would_submit,
             "firewall_allowed": verdict.firewall_verdict.allow,

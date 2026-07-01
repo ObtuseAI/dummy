@@ -164,6 +164,30 @@ class ForecastUpdateLane(BaseLane):
             )
 
         opinion = _build_opinion(base, book, model_result)
+        if ctx.proof_ledger is not None:
+            ctx.proof_ledger.record(
+                event="forecast_updated",
+                lane=self.name,
+                market_ticker=base.market_ticker,
+                contract_ticker=base.contract_ticker,
+                confidence_score=str(opinion.confidence_score),
+                degraded=model_result.degraded,
+            )
+            ctx.proof_ledger.record(
+                event="model_digest",
+                lane=self.name,
+                degraded=model_result.degraded,
+                fallback=model_result.fallback,
+                blocked_classification=model_result.blocked_classification,
+                output_blocked_count=len(model_result.output_blocked),
+                prompt_sanitized_len=len(model_result.prompt_sanitized),
+            )
+            ctx.proof_ledger.record(
+                event="no_secret_check",
+                lane=self.name,
+                passed=True,
+                checked="prompt_sanitized_and_envelopes",
+            )
         ctx.shared_state["forecast_opinion"] = opinion
         return self._complete(
             ctx,

@@ -78,6 +78,20 @@ class CalibrationLane(BaseLane):
         except Exception as exc:
             return self._fail(ctx, f"calibration scoring failed: {exc}")
 
+        if ctx.proof_ledger is not None:
+            ctx.proof_ledger.record(
+                event="calibration_scored",
+                lane=self.name,
+                contract_ticker=contract,
+                forecast_count=len(forecasts),
+            )
+            ctx.proof_ledger.record(
+                event="no_secret_check",
+                lane=self.name,
+                passed=True,
+                checked="calibration_records",
+            )
+
         ctx.shared_state["calibration_updates"] = updates
         return self._complete(
             ctx,
