@@ -52,7 +52,7 @@ class MeshScheduler:
         if cycle_timeout is not None:
             timeout = timeout.model_copy(update={"cycle_timeout_s": cycle_timeout})
 
-        run_id = str(uuid4())[:8]
+        run_id = str(uuid4())
         ledger = MeshProofLedger()
         run = MeshRun(run_id=run_id, budget_used=budget, timeouts=[timeout])
         shared_state: dict[str, Any] = {}
@@ -130,7 +130,6 @@ class MeshScheduler:
         run.finished_at = datetime.now(timezone.utc)
         if cycle_timed_out:
             run.state = LaneState.TIMED_OUT
-            run.timeouts.append(timeout)
         elif any(r.state != LaneState.COMPLETED for r in lane_results):
             run.state = LaneState.DEGRADED
         else:
@@ -190,7 +189,6 @@ class MeshScheduler:
             if isinstance(raw_result, MeshResult):
                 lane_result_obj = raw_result
                 lane_result_obj.started_at = started_at
-                lane_result_obj.events_recorded = ledger.count(lane=lane_name)
                 state = lane_result_obj.state
             else:
                 state = LaneState.COMPLETED
@@ -226,6 +224,7 @@ class MeshScheduler:
 
         if lane_result_obj is not None:
             lane_result_obj.finished_at = finished_at
+            lane_result_obj.events_recorded = ledger.count(lane=lane_name)
             return lane_result_obj
 
         return MeshResult(

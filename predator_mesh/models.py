@@ -10,6 +10,15 @@ from uuid import uuid4
 from pydantic import BaseModel, Field
 
 
+def __getattr__(name: str) -> Any:
+    """Lazy re-export of MeshScheduler to avoid a circular import."""
+    if name == "MeshScheduler":
+        from predator_mesh.scheduler import MeshScheduler
+
+        return MeshScheduler
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
+
 class LaneState(str, Enum):
     """Lifecycle states for a mesh lane."""
 
