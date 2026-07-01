@@ -226,6 +226,30 @@ def test_source_decay_reduces_size() -> None:
     assert decayed.size_pct < fresh.size_pct
 
 
+def test_source_decay_half_life() -> None:
+    """Source decay follows exponential half-life semantics."""
+    gov = ProofWeightedAggressionGovernor()
+    base = gov.allocate(
+        edge_candidate=_edge_candidate(0.9),
+        forecast_confidence=0.9,
+        source_decay=0.0,
+    )
+    half_life = gov.allocate(
+        edge_candidate=_edge_candidate(0.9),
+        forecast_confidence=0.9,
+        source_decay=ProofWeightedAggressionGovernor.SOURCE_DECAY_HALF_LIFE,
+    )
+    two_half_lives = gov.allocate(
+        edge_candidate=_edge_candidate(0.9),
+        forecast_confidence=0.9,
+        source_decay=2.0 * ProofWeightedAggressionGovernor.SOURCE_DECAY_HALF_LIFE,
+    )
+
+    assert base.size_pct == pytest.approx(half_life.size_pct * 2.0, rel=1e-9)
+    assert base.size_pct == pytest.approx(two_half_lives.size_pct * 4.0, rel=1e-9)
+    assert half_life.size_pct == pytest.approx(two_half_lives.size_pct * 2.0, rel=1e-9)
+
+
 def test_pruned_sources_without_promoted_collapse_quality() -> None:
     gov = ProofWeightedAggressionGovernor()
     allocation = gov.allocate(
