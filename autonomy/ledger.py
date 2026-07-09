@@ -217,16 +217,24 @@ class AutonomyLedger:
     # Queries for the learner / status surface
     # ------------------------------------------------------------------
 
-    def open_decisions(self) -> list[dict[str, Any]]:
-        """Decisions whose latest outcome is a live position (accepted/filled)
-        or a shadow-book position, and not yet settled/canceled/expired."""
+    def open_decisions(self, scope: str | None = None) -> list[dict[str, Any]]:
+        """Decisions whose latest outcome is an open position, not yet
+        settled/canceled/expired.
+
+        scope: None = all books; "live" = broker positions (ACCEPTED/FILLED);
+        "shadow" = shadow-book positions. Live and shadow sessions run
+        concurrently against one ledger — a live brain must never count the
+        shadow book against its slots, and vice versa.
+        """
+        kinds = {"live": "('ACCEPTED', 'FILLED')", "shadow": "('SHADOW')"}.get(
+            scope or "", "('ACCEPTED', 'FILLED', 'SHADOW')")
         rows = self._conn.execute(
-            """
+            f"""
             SELECT d.decision_id, d.market_ticker, d.side, d.price_cents, d.count, o.kind, o.order_id
             FROM decisions d
             JOIN outcomes o ON o.decision_id = d.decision_id
             WHERE o.id = (SELECT MAX(id) FROM outcomes WHERE decision_id = d.decision_id)
-              AND o.kind IN ('ACCEPTED', 'FILLED', 'SHADOW')
+              AND o.kind IN {kinds}
             """
         ).fetchall()
         keys = ["decision_id", "market_ticker", "side", "price_cents", "count", "kind", "order_id"]

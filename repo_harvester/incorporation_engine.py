@@ -1,4 +1,5 @@
 import json
+import os
 from pathlib import Path
 from core.ontology import RepoVerdict
 from repo_harvester.incorporation_registry import load_registry, save_registry
@@ -6,8 +7,15 @@ from repo_harvester.incorporation_registry import load_registry, save_registry
 ARTIFACTS = Path("C:/src/engine/dummy/artifacts/repo_harvester")
 
 
+def _artifacts_dir() -> Path:
+    # Tests route harvester artifacts to tmp via DUMMY_HARVESTER_ROOT so the
+    # suite never writes into the real artifact tree.
+    root = os.environ.get("DUMMY_HARVESTER_ROOT")
+    return Path(root) if root else ARTIFACTS
+
+
 def load_adapter_plans_v2() -> list[dict]:
-    path = ARTIFACTS / "adapter_plan_v2.json"
+    path = _artifacts_dir() / "adapter_plan_v2.json"
     if not path.exists():
         return []
     return json.loads(path.read_text()).get("plans", [])

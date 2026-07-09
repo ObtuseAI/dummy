@@ -431,6 +431,94 @@ def test_fetch_exchange_status_shapes(monkeypatch):
                       "maintenance_windows": [{"start": "s"}]}
 
 
+# ---------------------------------------------------------------- live-path safety
+
+
+def test_run_coro_sync_inside_and_outside_event_loop():
+    import asyncio
+
+    from autonomy.session import _run_coro_sync
+
+    async def value():
+        return 42
+
+    # Outside any loop.
+    assert _run_coro_sync(value()) == 42
+
+    # Inside a running loop (the live brain's exact call pattern).
+    async def caller():
+        return _run_coro_sync(value())
+
+    assert asyncio.run(caller()) == 42
+
+
+def test_open_decisions_scope_separates_books(tmp_path):
+    from autonomy.ontology import OutcomeKind, TradeOutcome
+
+    ledger = AutonomyLedger(tmp_path / "l.db")
+
+    def _decision(decision_id, ticker):
+        ledger._conn.execute(
+            "INSERT INTO decisions(decision_id, market_ticker, action, side, price_cents, count,"
+            " ev_cents, kelly, notional_cents, probability_yes, sources_used, created_at)"
+            " VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+            (decision_id, ticker, "BUY_YES", "yes", 40, 1, 5.0, 0.1, 40, 0.6, "{}",
+             "2026-07-09T00:00:00+00:00"))
+        ledger._conn.commit()
+
+    _decision("d-shadow", "MKT-S")
+    _decision("d-live", "MKT-L")
+    ledger.record_outcome(TradeOutcome(
+        decision_id="d-shadow", market_ticker="MKT-S", kind=OutcomeKind.SHADOW,
+        order_id="shadow-d-shadow", fill_count=1, fill_price_cents=40, pnl_cents=None,
+        broker_contacted=False))
+    ledger.record_outcome(TradeOutcome(
+        decision_id="d-live", market_ticker="MKT-L", kind=OutcomeKind.ACCEPTED,
+        order_id="real-123", fill_count=0, fill_price_cents=40, pnl_cents=None,
+        broker_contacted=True))
+
+    assert {p["market_ticker"] for p in ledger.open_decisions()} == {"MKT-S", "MKT-L"}
+    assert {p["market_ticker"] for p in ledger.open_decisions("shadow")} == {"MKT-S"}
+    assert {p["market_ticker"] for p in ledger.open_decisions("live")} == {"MKT-L"}
+    ledger.close()
+
+
+def test_live_bankroll_never_falls_back_to_shadow_fiction(tmp_path):
+    """Balance-fetch failure in LIVE must not size risk off the fake $100."""
+    import json as _json
+
+    from autonomy.brain import SHADOW_BANKROLL_CENTS, PredatorBrain
+    from autonomy.executor import Executor
+    from autonomy.learner import Learner
+    from autonomy.ontology import SessionMode
+    from autonomy.reconciler import Reconciler
+    from autonomy.risk_brain import RiskBrain
+    from autonomy.scanner import MarketScanner
+
+    ledger = AutonomyLedger(tmp_path / "l.db")
+
+    def boom():
+        raise RuntimeError("network")
+
+    risk_path = tmp_path / "risk_live.json"
+    brain = PredatorBrain(
+        mode=SessionMode.LIVE, ledger=ledger, registry=None,
+        scanner=MarketScanner(fetch_series=lambda s: {"markets": []}, watchlist=[]),
+        risk_brain=RiskBrain(state_path=risk_path),
+        executor=Executor(SessionMode.SHADOW, session_path=tmp_path / "s.json",
+                          kill_path=tmp_path / "KILL"),
+        reconciler=Reconciler(ledger, fetch_market_result=lambda t: {}),
+        learner=Learner(ledger), balance_fn=boom)
+
+    # No persisted state -> zero budget, never the shadow constant.
+    assert brain._bankroll_cents() == 0
+    # With a last-known live bankroll on file -> use it.
+    risk_path.write_text(_json.dumps({"bankroll_cents": 2941}), encoding="utf-8")
+    assert brain._bankroll_cents() == 2941
+    assert brain._bankroll_cents() != SHADOW_BANKROLL_CENTS
+    ledger.close()
+
+
 # ---------------------------------------------------------------- recalibration
 
 

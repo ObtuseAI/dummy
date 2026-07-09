@@ -86,6 +86,9 @@ class PredatorBrain:
         # Optional venue-state probe (autonomy/exchange_status.py); None skips
         # the check entirely (hermetic tests, offline replays).
         self.exchange_status_fn = exchange_status_fn
+        # Position-book scope: a live brain counts only broker positions
+        # against its slots/exposure; a shadow brain only the shadow book.
+        self.book_scope = "live" if mode is SessionMode.LIVE else "shadow"
 
     # ------------------------------------------------------------------
 
@@ -94,12 +97,29 @@ class PredatorBrain:
             try:
                 return int(self.balance_fn())
             except Exception:
-                pass
+                # Never size live risk off a made-up number. Fall back to the
+                # last persisted live bankroll; failing that, zero — a zero
+                # budget places no orders and the cycle still learns.
+                try:
+                    import json as _json
+
+                    data = _json.loads(self.risk_brain.state_path.read_text(encoding="utf-8"))
+                    last = int(data.get("bankroll_cents", 0))
+                except Exception:
+                    last = 0
+                return max(0, last)
         return SHADOW_BANKROLL_CENTS
+
+    def _open_positions(self) -> list[dict[str, Any]]:
+        """This brain's own book only (duck-typed for minimal ledger fakes)."""
+        try:
+            return self.ledger.open_decisions(self.book_scope)
+        except TypeError:
+            return self.ledger.open_decisions()
 
     def _market_exposure(self, state: RiskState, ticker: str) -> int:
         exposure = 0
-        for open_decision in self.ledger.open_decisions():
+        for open_decision in self._open_positions():
             if open_decision["market_ticker"] == ticker:
                 exposure += int(open_decision["price_cents"]) * int(open_decision["count"])
         return exposure
@@ -111,7 +131,7 @@ class PredatorBrain:
         target = group_key(ticker)
         exposure = 0
         count = 0
-        for open_decision in self.ledger.open_decisions():
+        for open_decision in self._open_positions():
             if group_key(open_decision["market_ticker"]) == target:
                 exposure += int(open_decision["price_cents"]) * int(open_decision["count"])
                 count += 1
@@ -157,7 +177,7 @@ class PredatorBrain:
         settlement_result = getattr(self.ledger, "settlement_result", None)
         if not callable(settlement_result):
             return
-        for open_decision in self.ledger.open_decisions():
+        for open_decision in self._open_positions():
             result = settlement_result(str(open_decision["market_ticker"]))
             if result is None:
                 continue
@@ -252,9 +272,9 @@ class PredatorBrain:
         self._apply_phantom_settlements(report)
         self.reconciler.reconcile_open_orders()
         # Open exposure is a fact of the ledger, not a counter: recompute from
-        # live positions so settled markets RELEASE their slots. (A persisted
-        # increment-only counter deadlocks the stage at max_open_markets.)
-        open_positions = self.ledger.open_decisions()
+        # this brain's own book so settled markets RELEASE their slots. (A
+        # persisted increment-only counter deadlocks at max_open_markets.)
+        open_positions = self._open_positions()
         state.open_markets = len({p["market_ticker"] for p in open_positions})
         state.open_exposure_cents = sum(
             int(p["price_cents"]) * int(p["count"]) for p in open_positions)

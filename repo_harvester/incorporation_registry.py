@@ -1,16 +1,32 @@
 import json
+import os
 from pathlib import Path
 
+# Default (production) location. Tests set DUMMY_HARVESTER_ROOT to a tmp dir
+# (see tests/conftest.py) so suite runs never write into the real artifact;
+# the module-level symbol stays patchable for callers that re-point it.
 REGISTRY_PATH = Path("C:/src/engine/dummy/artifacts/repo_harvester/incorporation_registry.json")
 
+
+def _registry_path() -> Path:
+    root = os.environ.get("DUMMY_HARVESTER_ROOT")
+    if root:
+        return Path(root) / "incorporation_registry.json"
+    return REGISTRY_PATH
+
+
 def load_registry() -> dict:
-    if REGISTRY_PATH.exists():
-        return json.loads(REGISTRY_PATH.read_text())
+    path = _registry_path()
+    if path.exists():
+        return json.loads(path.read_text())
     return {"incorporated": [], "rejected": [], "pending_tests": []}
 
+
 def save_registry(registry: dict):
-    REGISTRY_PATH.parent.mkdir(parents=True, exist_ok=True)
-    REGISTRY_PATH.write_text(json.dumps(registry, indent=2, default=str))
+    path = _registry_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(registry, indent=2, default=str))
+
 
 def register_plan(plan: dict, tests_passed: bool = False):
     registry = load_registry()

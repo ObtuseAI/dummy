@@ -125,10 +125,30 @@ def _ensure_creds_loaded() -> None:
         pass  # absent .env just means the signed call will fail loudly
 
 
-def _live_balance_cents() -> int:
-    """Authenticated balance read through the existing signed client."""
+def _run_coro_sync(coro):
+    """Run a coroutine to completion from synchronous code — safely from
+    inside OR outside a running event loop.
+
+    The live brain calls these sync helpers from within its own async cycle;
+    a bare asyncio.run() there raises ("cannot be called from a running
+    event loop") and the silent-fallback callers would quietly substitute
+    shadow values — a live session sizing risk off a fake bankroll. A
+    single-use worker thread with its own loop is dull and correct.
+    """
     import asyncio
 
+    try:
+        asyncio.get_running_loop()
+    except RuntimeError:
+        return asyncio.run(coro)
+    import concurrent.futures
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+        return pool.submit(asyncio.run, coro).result()
+
+
+def _live_balance_cents() -> int:
+    """Authenticated balance read through the existing signed client."""
     from kalshi.client import KalshiClient
 
     _ensure_creds_loaded()
@@ -141,12 +161,10 @@ def _live_balance_cents() -> int:
             await client.close()
         return int(data.get("balance", 0))
 
-    return asyncio.run(fetch())
+    return _run_coro_sync(fetch())
 
 
 def _order_status_fn(order_id: str) -> dict[str, Any]:
-    import asyncio
-
     from kalshi.client import KalshiClient
 
     _ensure_creds_loaded()
@@ -160,7 +178,7 @@ def _order_status_fn(order_id: str) -> dict[str, Any]:
         order = data.get("order", data)
         return order if isinstance(order, dict) else {}
 
-    return asyncio.run(fetch())
+    return _run_coro_sync(fetch())
 
 
 def build_brain(mode: SessionMode):
@@ -225,12 +243,18 @@ def build_brain(mode: SessionMode):
 
     from autonomy.exchange_status import fetch_exchange_status
 
+    # Live and shadow run concurrently (scheduled shadow task + operator live
+    # session) — each gets its OWN risk state. Sharing one file would let the
+    # shadow book's equity peak read as a catastrophic live drawdown.
+    risk_state_path = Path("runtime/autonomy/risk_state_live.json") if live \
+        else Path("runtime/autonomy/risk_state.json")
+
     return PredatorBrain(
         mode=mode,
         ledger=ledger,
         registry=registry,
         scanner=MarketScanner(),
-        risk_brain=RiskBrain(),
+        risk_brain=RiskBrain(state_path=risk_state_path),
         executor=Executor(mode, quote_fn=quote_fn),
         reconciler=reconciler,
         learner=Learner(ledger, router=router),
