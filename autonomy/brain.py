@@ -49,6 +49,7 @@ class CycleReport:
     abstained: int = 0
     settlements: int = 0
     phantom_settlements: int = 0
+    trading_halted: bool = False
     weight_updates: dict[str, float] = field(default_factory=dict)
     notes: list[str] = field(default_factory=list)
 
@@ -69,6 +70,7 @@ class PredatorBrain:
         learner: Learner,
         balance_fn: Any | None = None,
         router: Any | None = None,
+        exchange_status_fn: Any | None = None,
     ) -> None:
         self.mode = mode
         self.ledger = ledger
@@ -81,6 +83,9 @@ class PredatorBrain:
         self.balance_fn = balance_fn
         # Optional LLM panel; when present, adjudicates the top-K edge markets.
         self.router = router
+        # Optional venue-state probe (autonomy/exchange_status.py); None skips
+        # the check entirely (hermetic tests, offline replays).
+        self.exchange_status_fn = exchange_status_fn
 
     # ------------------------------------------------------------------
 
@@ -222,6 +227,27 @@ class PredatorBrain:
             report.status = f"HALTED_SELF_STOP: {state.stop_reason}"
             return report
 
+        # Venue awareness: a maintenance window is a fact, not an error.
+        # Unknown status (probe failed) proceeds — the check must never
+        # become its own stall point.
+        trading_active = True
+        if self.exchange_status_fn is not None:
+            try:
+                venue = self.exchange_status_fn() or {}
+            except Exception:
+                venue = {}
+            if venue.get("exchange_active") is False:
+                self.risk_brain.save_state(state)
+                report.status = "CYCLE_SKIPPED_EXCHANGE_MAINTENANCE"
+                if venue.get("maintenance_windows"):
+                    report.notes.append(f"maintenance_windows={venue['maintenance_windows']}")
+                return report
+            trading_active = venue.get("trading_active", True) is not False
+            if not trading_active:
+                # Reads still work: keep learning, place nothing.
+                report.trading_halted = True
+                report.notes.append("trading_halted_orders_skipped")
+
         self._apply_settlements(state, report)
         self._apply_phantom_settlements(report)
         self.reconciler.reconcile_open_orders()
@@ -277,7 +303,8 @@ class PredatorBrain:
         # cluster see each other, not just prior-cycle open positions.
         cycle_group_cents: dict[str, int] = {}
         cycle_group_count: dict[str, int] = {}
-        for market, forecast, _signals in scored[:MAX_DECISIONS_PER_CYCLE]:
+        decision_slice = scored[:MAX_DECISIONS_PER_CYCLE] if trading_active else []
+        for market, forecast, _signals in decision_slice:
             gkey = group_key(market.ticker)
             base_cents, base_count = self._group_exposure(market.ticker)
             group_cents = base_cents + cycle_group_cents.get(gkey, 0)

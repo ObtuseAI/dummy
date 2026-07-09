@@ -315,6 +315,122 @@ def test_registry_circuit_breaker_trips_and_recovers(tmp_path):
     assert "flaky" in registry2.source_health()
 
 
+# ---------------------------------------------------------------- maintenance
+
+
+def _minimal_brain(tmp_path, exchange_status_fn):
+    """Full brain with hermetic fakes: one juicy market, no network."""
+    import asyncio  # noqa: F401
+
+    from autonomy.brain import PredatorBrain
+    from autonomy.executor import Executor
+    from autonomy.learner import Learner
+    from autonomy.ontology import SessionMode
+    from autonomy.reconciler import Reconciler
+    from autonomy.risk_brain import RiskBrain
+    from autonomy.scanner import MarketScanner
+    from autonomy.signals.base import SourceRegistry
+
+    ledger = AutonomyLedger(tmp_path / "l.db")
+
+    class _Src:
+        name = "alpha"
+
+        def applicable(self, market):
+            return True
+
+        def generate(self, market):
+            return Signal(source=self.name, market_ticker=market.ticker,
+                          probability_yes=0.80, uncertainty=0.05, rationale="t")
+
+    registry = SourceRegistry()
+    registry.register(_Src())
+    raw_market = {"ticker": "KXBTCD-26JUL0917-T60000", "title": "t", "status": "active",
+                  "close_time": (NOW + timedelta(hours=2)).isoformat(),
+                  "yes_bid": 40, "yes_ask": 45, "no_bid": 55, "no_ask": 60,
+                  "volume": 500, "liquidity": 500}
+    scanner = MarketScanner(fetch_series=lambda s: {"markets": [raw_market]},
+                            watchlist=["KXBTCD"])
+    brain = PredatorBrain(
+        mode=SessionMode.SHADOW, ledger=ledger, registry=registry, scanner=scanner,
+        risk_brain=RiskBrain(state_path=tmp_path / "risk.json"),
+        executor=Executor(SessionMode.SHADOW, session_path=tmp_path / "s.json",
+                          kill_path=tmp_path / "KILL"),
+        reconciler=Reconciler(ledger, fetch_market_result=lambda t: {}),
+        learner=Learner(ledger),
+        exchange_status_fn=exchange_status_fn,
+    )
+    return brain, ledger
+
+
+def test_cycle_skips_cleanly_during_exchange_maintenance(tmp_path):
+    import asyncio
+
+    brain, ledger = _minimal_brain(
+        tmp_path, lambda: {"exchange_active": False, "trading_active": False,
+                           "maintenance_windows": [{"start": "x", "end": "y"}]})
+    report = asyncio.run(brain.run_cycle())
+    assert report.status == "CYCLE_SKIPPED_EXCHANGE_MAINTENANCE"
+    assert report.markets_scanned == 0 and report.orders_placed == 0
+    assert any("maintenance_windows" in n for n in report.notes)
+    ledger.close()
+
+
+def test_cycle_learns_but_never_orders_while_trading_halted(tmp_path):
+    import asyncio
+
+    brain, ledger = _minimal_brain(
+        tmp_path, lambda: {"exchange_active": True, "trading_active": False})
+    report = asyncio.run(brain.run_cycle())
+    assert report.status == "CYCLE_OK"
+    assert report.trading_halted is True
+    assert report.markets_scanned == 1 and report.signals_generated >= 1  # kept learning
+    assert report.orders_placed == 0 and report.decisions_made == 0  # placed nothing
+    assert "trading_halted_orders_skipped" in report.notes
+    ledger.close()
+
+
+def test_cycle_proceeds_when_status_probe_fails(tmp_path):
+    import asyncio
+
+    def boom():
+        raise RuntimeError("status endpoint down")
+
+    brain, ledger = _minimal_brain(tmp_path, boom)
+    report = asyncio.run(brain.run_cycle())
+    # Unknown is not down: the cycle runs and trades normally.
+    assert report.status == "CYCLE_OK"
+    assert report.trading_halted is False
+    assert report.orders_placed == 1
+    ledger.close()
+
+
+def test_fetch_exchange_status_shapes(monkeypatch):
+    from autonomy import exchange_status
+
+    class _Resp:
+        def __init__(self, payload):
+            self._payload = payload
+
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return self._payload
+
+    class _Httpx:
+        @staticmethod
+        def get(url, timeout=10):
+            if url.endswith("/exchange/status"):
+                return _Resp({"exchange_active": True, "trading_active": False})
+            return _Resp({"schedule": {"maintenance_windows": [{"start": "s"}]}})
+
+    monkeypatch.setattr("httpx.get", _Httpx.get)
+    status = exchange_status.fetch_exchange_status()
+    assert status == {"exchange_active": True, "trading_active": False,
+                      "maintenance_windows": [{"start": "s"}]}
+
+
 # ---------------------------------------------------------------- recalibration
 
 

@@ -223,6 +223,8 @@ def build_brain(mode: SessionMode):
     except Exception:
         router = None
 
+    from autonomy.exchange_status import fetch_exchange_status
+
     return PredatorBrain(
         mode=mode,
         ledger=ledger,
@@ -234,4 +236,5 @@ def build_brain(mode: SessionMode):
         learner=Learner(ledger, router=router),
         balance_fn=_live_balance_cents if live else None,
         router=router,
+        exchange_status_fn=fetch_exchange_status,
     )
