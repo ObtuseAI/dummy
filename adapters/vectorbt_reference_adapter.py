@@ -1,9 +1,9 @@
-from adapters.base import DumbyAdapter
+from adapters.base import DummyAdapter
 from core.ontology import Forecast
 from forecasting.engine import ForecastEngine
 
 
-class VectorBTReferenceAdapter(DumbyAdapter):
+class VectorBTReferenceAdapter(DummyAdapter):
     """Reference adapter for vectorbt backtest/indicator outputs."""
 
     name = "vectorbt_reference"

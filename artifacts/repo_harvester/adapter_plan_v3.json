@@ -1,0 +1,3369 @@
+{
+  "generated_at": "2026-06-30T19:02:07.977324+00:00",
+  "total_repos": 223,
+  "accepted_count": 64,
+  "direct_dependency_count": 21,
+  "adapter_target_count": 43,
+  "reference_mine_count": 19,
+  "plans": [
+    {
+      "repo": "Sharp-API/SharpAPI-TS",
+      "category": "sports_prediction_odds",
+      "verdict": "ADAPTER_TARGET",
+      "verdict_reasons": [
+        "Source contains useful logic suitable for adapter wrapping: strategy, forecast, arbitrage, websocket, settlement, sports, stocks, commodities"
+      ],
+      "plans": [
+        {
+          "repo": "Sharp-API/SharpAPI-TS",
+          "adapter_name": "SharpAPI_TS_adapter",
+          "plan_type": "ADAPTER_TARGET",
+          "emits_native_types": true,
+          "notes": "Wrap source logic into Dumby-native types. Detected categories: strategy, forecast, arbitrage, websocket, settlement, sports, stocks, commodities."
+        }
+      ],
+      "scan_summary": {
+        "files_scanned": 2,
+        "files_considered": 2,
+        "tree_size": 17,
+        "direct_order_hits": [],
+        "kalshi_order_hits": [],
+        "polymarket_order_hits": [],
+        "private_key_hits": [],
+        "api_secret_hits": [
+          "src/index.ts"
+        ],
+        "strategy_hits": [
+          "src/index.ts"
+        ],
+        "forecast_hits": [
+          "src/index.ts"
+        ],
+        "risk_hits": [],
+        "arbitrage_hits": [
+          "src/index.ts"
+        ],
+        "websocket_hits": [
+          "src/index.ts"
+        ],
+        "settlement_hits": [
+          "tsup.config.ts",
+          "src/index.ts"
+        ],
+        "dashboard_hits": [],
+        "sports_hits": [
+          "src/index.ts"
+        ],
+        "weather_hits": [],
+        "stocks_hits": [
+          "tsup.config.ts",
+          "src/index.ts"
+        ],
+        "commodities_hits": [
+          "src/index.ts"
+        ],
+        "crypto_hits": []
+      }
+    },
+    {
+      "repo": "odds-api/arbitrage-betting-scanner-bot",
+      "category": "sports_prediction_odds",
+      "verdict": "ADAPTER_TARGET",
+      "verdict_reasons": [
+        "Source contains useful logic suitable for adapter wrapping: strategy, forecast, arbitrage, settlement, sports, stocks"
+      ],
+      "plans": [
+        {
+          "repo": "odds-api/arbitrage-betting-scanner-bot",
+          "adapter_name": "arbitrage_betting_scanner_bot_adapter",
+          "plan_type": "ADAPTER_TARGET",
+          "emits_native_types": true,
+          "notes": "Wrap source logic into Dumby-native types. Detected categories: strategy, forecast, arbitrage, settlement, sports, stocks."
+        }
+      ],
+      "scan_summary": {
+        "files_scanned": 8,
+        "files_considered": 8,
+        "tree_size": 29,
+        "direct_order_hits": [],
+        "kalshi_order_hits": [],
+        "polymarket_order_hits": [],
+        "private_key_hits": [],
+        "api_secret_hits": [
+          "src/odds_api_arbitrage_scanner/config.py",
+          "src/odds_api_arbitrage_scanner/api.py",
+          "src/odds_api_arbitrage_scanner/cli.py"
+        ],
+        "strategy_hits": [
+          "src/odds_api_arbitrage_scanner/__init__.py",
+          "src/odds_api_arbitrage_scanner/discord.py",
+          "src/odds_api_arbitrage_scanner/cli.py",
+          "src/odds_api_arbitrage_scanner/scanner.py"
+        ],
+        "forecast_hits": [
+          "src/odds_api_arbitrage_scanner/cli.py",
+          "src/odds_api_arbitrage_scanner/scanner.py"
+        ],
+        "risk_hits": [],
+        "arbitrage_hits": [
+          "src/odds_api_arbitrage_scanner/__init__.py",
+          "src/odds_api_arbitrage_scanner/discord.py",
+          "src/odds_api_arbitrage_scanner/cli.py",
+          "src/odds_api_arbitrage_scanner/scanner.py"
+        ],
+        "websocket_hits": [],
+        "settlement_hits": [
+          "src/odds_api_arbitrage_scanner/mock_data.py",
+          "src/odds_api_arbitrage_scanner/scanner.py"
+        ],
+        "dashboard_hits": [],
+        "sports_hits": [
+          "src/odds_api_arbitrage_scanner/__init__.py",
+          "src/odds_api_arbitrage_scanner/config.py",
+          "src/odds_api_arbitrage_scanner/discord.py",
+          "src/odds_api_arbitrage_scanner/api.py",
+          "src/odds_api_arbitrage_scanner/mock_data.py",
+          "src/odds_api_arbitrage_scanner/cli.py",
+          "src/odds_api_arbitrage_scanner/scanner.py"
+        ],
+        "weather_hits": [],
+        "stocks_hits": [
+          "src/odds_api_arbitrage_scanner/cli.py"
+        ],
+        "commodities_hits": [],
+        "crypto_hits": []
+      }
+    },
+    {
+      "repo": "NBA-Betting/NBA_Betting",
+      "category": "sports_prediction_odds",
+      "verdict": "ADAPTER_TARGET",
+      "verdict_reasons": [
+        "Source contains useful logic suitable for adapter wrapping: forecast, dashboard, sports, stocks"
+      ],
+      "plans": [
+        {
+          "repo": "NBA-Betting/NBA_Betting",
+          "adapter_name": "NBA_Betting_adapter",
+          "plan_type": "ADAPTER_TARGET",
+          "emits_native_types": true,
+          "notes": "Wrap source logic into Dumby-native types. Detected categories: forecast, dashboard, sports, stocks."
+        }
+      ],
+      "scan_summary": {
+        "files_scanned": 2,
+        "files_considered": 2,
+        "tree_size": 13,
+        "direct_order_hits": [],
+        "kalshi_order_hits": [],
+        "polymarket_order_hits": [],
+        "private_key_hits": [],
+        "api_secret_hits": [],
+        "strategy_hits": [],
+        "forecast_hits": [
+          "update_data.py"
+        ],
+        "risk_hits": [],
+        "arbitrage_hits": [],
+        "websocket_hits": [],
+        "settlement_hits": [],
+        "dashboard_hits": [
+          "start_app.py"
+        ],
+        "sports_hits": [
+          "start_app.py",
+          "update_data.py"
+        ],
+        "weather_hits": [],
+        "stocks_hits": [
+          "update_data.py"
+        ],
+        "commodities_hits": [],
+        "crypto_hits": []
+      }
+    },
+    {
+      "repo": "manuelpeba/world-cup-2026-forecast",
+      "category": "sports_prediction_odds",
+      "verdict": "ADAPTER_TARGET",
+      "verdict_reasons": [
+        "Source contains useful logic suitable for adapter wrapping: strategy, forecast, settlement, sports, weather, stocks, commodities"
+      ],
+      "plans": [
+        {
+          "repo": "manuelpeba/world-cup-2026-forecast",
+          "adapter_name": "world_cup_2026_forecast_adapter",
+          "plan_type": "ADAPTER_TARGET",
+          "emits_native_types": true,
+          "notes": "Wrap source logic into Dumby-native types. Detected categories: strategy, forecast, settlement, sports, weather, stocks, commodities."
+        }
+      ],
+      "scan_summary": {
+        "files_scanned": 30,
+        "files_considered": 30,
+        "tree_size": 97,
+        "direct_order_hits": [],
+        "kalshi_order_hits": [],
+        "polymarket_order_hits": [],
+        "private_key_hits": [],
+        "api_secret_hits": [],
+        "strategy_hits": [
+          "src/simulation/parallel.py",
+          "src/features/team_filtering.py"
+        ],
+        "forecast_hits": [
+          "src/simulation/config.py",
+          "src/simulation/sampling.py",
+          "src/features/team_filtering.py",
+          "src/simulation/predictor_adapter.py",
+          "src/evaluation/validate_predictor.py",
+          "src/simulation/reporting.py",
+          "src/models/match_outcome/predict.py"
+        ],
+        "risk_hits": [],
+        "arbitrage_hits": [],
+        "websocket_hits": [],
+        "settlement_hits": [
+          "src/utils/config.py",
+          "src/simulation/structures.py",
+          "src/simulation/config.py",
+          "src/simulation/sampling.py",
+          "src/simulation/predictor_adapter.py",
+          "src/evaluation/validate_predictor.py",
+          "src/models/match_outcome/predict.py"
+        ],
+        "dashboard_hits": [],
+        "sports_hits": [
+          "src/pipelines/ingest_data.py",
+          "src/simulation/structures.py",
+          "src/simulation/config.py",
+          "src/features/team_features.py",
+          "src/simulation/sampling.py",
+          "src/simulation/parallel.py",
+          "src/features/team_filtering.py",
+          "src/simulation/predictor_adapter.py",
+          "src/evaluation/validate_predictor.py",
+          "src/simulation/reporting.py",
+          "src/models/match_outcome/predict.py"
+        ],
+        "weather_hits": [
+          "src/simulation/reporting.py"
+        ],
+        "stocks_hits": [
+          "src/simulation/config.py",
+          "src/simulation/reporting.py"
+        ],
+        "commodities_hits": [
+          "src/features/team_filtering.py"
+        ],
+        "crypto_hits": []
+      }
+    },
+    {
+      "repo": "nickpadd/EuropeanFootballLeaguePredictor",
+      "category": "sports_prediction_odds",
+      "verdict": "ADAPTER_TARGET",
+      "verdict_reasons": [
+        "Source contains useful logic suitable for adapter wrapping: strategy, forecast, settlement, dashboard, sports, stocks"
+      ],
+      "plans": [
+        {
+          "repo": "nickpadd/EuropeanFootballLeaguePredictor",
+          "adapter_name": "EuropeanFootballLeaguePredictor_adapter",
+          "plan_type": "ADAPTER_TARGET",
+          "emits_native_types": true,
+          "notes": "Wrap source logic into Dumby-native types. Detected categories: strategy, forecast, settlement, dashboard, sports, stocks."
+        }
+      ],
+      "scan_summary": {
+        "files_scanned": 6,
+        "files_considered": 6,
+        "tree_size": 18,
+        "direct_order_hits": [],
+        "kalshi_order_hits": [],
+        "polymarket_order_hits": [],
+        "private_key_hits": [],
+        "api_secret_hits": [],
+        "strategy_hits": [
+          "run_evaluation_per_season.py"
+        ],
+        "forecast_hits": [
+          "run_data_preprocessing.py",
+          "run_predictions.py",
+          "run_evaluation_per_season.py",
+          "run_updates.py",
+          "predictor_app.py",
+          "run_data_collection.py"
+        ],
+        "risk_hits": [],
+        "arbitrage_hits": [],
+        "websocket_hits": [],
+        "settlement_hits": [
+          "run_predictions.py",
+          "run_updates.py",
+          "predictor_app.py"
+        ],
+        "dashboard_hits": [
+          "predictor_app.py"
+        ],
+        "sports_hits": [
+          "run_data_preprocessing.py",
+          "run_predictions.py",
+          "run_evaluation_per_season.py",
+          "run_updates.py",
+          "predictor_app.py",
+          "run_data_collection.py"
+        ],
+        "weather_hits": [],
+        "stocks_hits": [
+          "run_predictions.py",
+          "predictor_app.py"
+        ],
+        "commodities_hits": [],
+        "crypto_hits": []
+      }
+    },
+    {
+      "repo": "paulokuong/noaa",
+      "category": "weather_prediction_market",
+      "verdict": "ADAPTER_TARGET",
+      "verdict_reasons": [
+        "Source contains useful logic suitable for adapter wrapping: strategy, forecast, weather, stocks"
+      ],
+      "plans": [
+        {
+          "repo": "paulokuong/noaa",
+          "adapter_name": "noaa_adapter",
+          "plan_type": "ADAPTER_TARGET",
+          "emits_native_types": true,
+          "notes": "Wrap source logic into Dumby-native types. Detected categories: strategy, forecast, weather, stocks."
+        }
+      ],
+      "scan_summary": {
+        "files_scanned": 7,
+        "files_considered": 7,
+        "tree_size": 15,
+        "direct_order_hits": [],
+        "kalshi_order_hits": [],
+        "polymarket_order_hits": [],
+        "private_key_hits": [],
+        "api_secret_hits": [],
+        "strategy_hits": [
+          "setup.py",
+          "noaa_sdk/noaa.py"
+        ],
+        "forecast_hits": [
+          "setup.py",
+          "noaa_sdk/noaa.py"
+        ],
+        "risk_hits": [],
+        "arbitrage_hits": [],
+        "websocket_hits": [],
+        "settlement_hits": [],
+        "dashboard_hits": [],
+        "sports_hits": [],
+        "weather_hits": [
+          "noaa_sdk/__init__.py",
+          "noaa_sdk/accept.py",
+          "setup.py",
+          "noaa_sdk/ncdc.py",
+          "noaa_sdk/util.py",
+          "noaa_sdk/noaa.py"
+        ],
+        "stocks_hits": [
+          "noaa_sdk/ncdc.py",
+          "noaa_sdk/util.py",
+          "noaa_sdk/noaa.py"
+        ],
+        "commodities_hits": [],
+        "crypto_hits": []
+      }
+    },
+    {
+      "repo": "weather-mcp/weather-mcp",
+      "category": "weather_prediction_market",
+      "verdict": "ADAPTER_TARGET",
+      "verdict_reasons": [
+        "Source contains useful logic suitable for adapter wrapping: strategy, forecast, risk, settlement, sports, weather, stocks, crypto"
+      ],
+      "plans": [
+        {
+          "repo": "weather-mcp/weather-mcp",
+          "adapter_name": "weather_mcp_adapter",
+          "plan_type": "ADAPTER_TARGET",
+          "emits_native_types": true,
+          "notes": "Wrap source logic into Dumby-native types. Detected categories: strategy, forecast, risk, settlement, sports, weather, stocks, crypto."
+        }
+      ],
+      "scan_summary": {
+        "files_scanned": 30,
+        "files_considered": 30,
+        "tree_size": 202,
+        "direct_order_hits": [],
+        "kalshi_order_hits": [],
+        "polymarket_order_hits": [],
+        "private_key_hits": [],
+        "api_secret_hits": [],
+        "strategy_hits": [
+          "src/types/nominatim.ts",
+          "src/analytics/types.ts",
+          "src/types/lightning.ts",
+          "tests/demo_forecast_comparison.ts",
+          "src/utils/geohash.ts"
+        ],
+        "forecast_hits": [
+          "src/config/displayThresholds.ts",
+          "src/analytics/middleware.ts",
+          "tests/verify-features.ts",
+          "src/config/cache.ts",
+          "src/analytics/anonymizer.ts",
+          "tests/demo_forecast_comparison.ts",
+          "test-mcp-with-analytics.ts",
+          "src/utils/snow.ts"
+        ],
+        "risk_hits": [
+          "src/types/lightning.ts",
+          "src/config/cache.ts"
+        ],
+        "arbitrage_hits": [],
+        "websocket_hits": [],
+        "settlement_hits": [
+          "src/types/imagery.ts",
+          "src/types/lightning.ts",
+          "src/analytics/transport.ts",
+          "src/utils/locationResolver.ts",
+          "src/handlers/alertsHandler.ts",
+          "test-mcp-with-analytics.ts",
+          "src/utils/cache.ts"
+        ],
+        "dashboard_hits": [],
+        "sports_hits": [
+          "src/types/savedLocations.ts",
+          "src/utils/locationResolver.ts",
+          "tests/verify-features.ts"
+        ],
+        "weather_hits": [
+          "src/utils/temperatureConversion.ts",
+          "src/utils/version.ts",
+          "src/config/api.ts",
+          "src/types/ncei.ts",
+          "src/types/imagery.ts",
+          "src/config/displayThresholds.ts",
+          "src/analytics/types.ts",
+          "src/analytics/transport.ts",
+          "src/analytics/middleware.ts",
+          "src/services/gibs.ts",
+          "tests/verify-features.ts",
+          "src/config/cache.ts",
+          "src/utils/units.ts",
+          "src/handlers/alertsHandler.ts",
+          "src/analytics/anonymizer.ts",
+          "tests/demo_forecast_comparison.ts",
+          "test-mcp-with-analytics.ts",
+          "src/services/rainviewer.ts",
+          "tests/archived-cdo-tests/debug_cdo_stations.ts",
+          "src/utils/snow.ts"
+        ],
+        "stocks_hits": [
+          "src/config/api.ts",
+          "src/types/imagery.ts",
+          "src/analytics/transport.ts",
+          "src/analytics/middleware.ts",
+          "src/config/cache.ts",
+          "src/utils/units.ts",
+          "src/handlers/alertsHandler.ts",
+          "tests/demo_forecast_comparison.ts"
+        ],
+        "commodities_hits": [],
+        "crypto_hits": [
+          "src/analytics/anonymizer.ts"
+        ]
+      }
+    },
+    {
+      "repo": "GClunies/noaa_coops",
+      "category": "weather_prediction_market",
+      "verdict": "ADAPTER_TARGET",
+      "verdict_reasons": [
+        "Source contains useful logic suitable for adapter wrapping: strategy, forecast, settlement, sports, weather, stocks"
+      ],
+      "plans": [
+        {
+          "repo": "GClunies/noaa_coops",
+          "adapter_name": "noaa_coops_adapter",
+          "plan_type": "ADAPTER_TARGET",
+          "emits_native_types": true,
+          "notes": "Wrap source logic into Dumby-native types. Detected categories: strategy, forecast, settlement, sports, weather, stocks."
+        }
+      ],
+      "scan_summary": {
+        "files_scanned": 12,
+        "files_considered": 12,
+        "tree_size": 48,
+        "direct_order_hits": [],
+        "kalshi_order_hits": [],
+        "polymarket_order_hits": [],
+        "private_key_hits": [],
+        "api_secret_hits": [
+          "tests/conftest.py"
+        ],
+        "strategy_hits": [
+          "noaa_coops/station.py"
+        ],
+        "forecast_hits": [
+          "noaa_coops/_metadata.py",
+          "noaa_coops/_products.py",
+          "noaa_coops/station.py"
+        ],
+        "risk_hits": [],
+        "arbitrage_hits": [],
+        "websocket_hits": [],
+        "settlement_hits": [
+          "noaa_coops/_metadata.py"
+        ],
+        "dashboard_hits": [],
+        "sports_hits": [
+          "noaa_coops/_parsing.py",
+          "noaa_coops/station.py"
+        ],
+        "weather_hits": [
+          "noaa_coops/__init__.py",
+          "noaa_coops/_exceptions.py",
+          "noaa_coops/_endpoints.py",
+          "noaa_coops/api.py",
+          "tests/conftest.py",
+          "noaa_coops/_parsing.py",
+          "noaa_coops/_http.py",
+          "examples/readme_demo.py",
+          "noaa_coops/_metadata.py",
+          "noaa_coops/_products.py",
+          "noaa_coops/station.py"
+        ],
+        "stocks_hits": [
+          "noaa_coops/_metadata.py",
+          "noaa_coops/_products.py",
+          "noaa_coops/station.py"
+        ],
+        "commodities_hits": [],
+        "crypto_hits": []
+      }
+    },
+    {
+      "repo": "microsoft/qlib",
+      "category": "stocks_equities_options_macro",
+      "verdict": "ADAPTER_TARGET",
+      "verdict_reasons": [
+        "Source contains useful logic suitable for adapter wrapping: strategy, risk, stocks"
+      ],
+      "plans": [
+        {
+          "repo": "microsoft/qlib",
+          "adapter_name": "qlib_adapter",
+          "plan_type": "ADAPTER_TARGET",
+          "emits_native_types": true,
+          "notes": "Wrap source logic into Dumby-native types. Detected categories: strategy, risk, stocks."
+        }
+      ],
+      "scan_summary": {
+        "files_scanned": 30,
+        "files_considered": 30,
+        "tree_size": 757,
+        "direct_order_hits": [],
+        "kalshi_order_hits": [],
+        "polymarket_order_hits": [],
+        "private_key_hits": [],
+        "api_secret_hits": [],
+        "strategy_hits": [
+          "qlib/rl/strategy/__init__.py",
+          "qlib/contrib/workflow/__init__.py"
+        ],
+        "forecast_hits": [],
+        "risk_hits": [
+          "qlib/model/riskmodel/__init__.py"
+        ],
+        "arbitrage_hits": [],
+        "websocket_hits": [],
+        "settlement_hits": [],
+        "dashboard_hits": [],
+        "sports_hits": [],
+        "weather_hits": [],
+        "stocks_hits": [
+          "qlib/contrib/strategy/optimizer/__init__.py",
+          "qlib/contrib/strategy/optimizer/base.py"
+        ],
+        "commodities_hits": [],
+        "crypto_hits": []
+      }
+    },
+    {
+      "repo": "QuantConnect/Lean",
+      "category": "stocks_equities_options_macro",
+      "verdict": "ADAPTER_TARGET",
+      "verdict_reasons": [
+        "Source contains useful logic suitable for adapter wrapping: strategy, forecast, settlement, sports, stocks, crypto"
+      ],
+      "plans": [
+        {
+          "repo": "QuantConnect/Lean",
+          "adapter_name": "Lean_adapter",
+          "plan_type": "ADAPTER_TARGET",
+          "emits_native_types": true,
+          "notes": "Wrap source logic into Dumby-native types. Detected categories: strategy, forecast, settlement, sports, stocks, crypto."
+        }
+      ],
+      "scan_summary": {
+        "files_scanned": 4,
+        "files_considered": 4,
+        "tree_size": 54,
+        "direct_order_hits": [],
+        "kalshi_order_hits": [],
+        "polymarket_order_hits": [],
+        "private_key_hits": [],
+        "api_secret_hits": [],
+        "strategy_hits": [
+          "compare_benchmarks.py",
+          "find_datasource_repos.py"
+        ],
+        "forecast_hits": [
+          "run_syntax_check.py"
+        ],
+        "risk_hits": [],
+        "arbitrage_hits": [],
+        "websocket_hits": [],
+        "settlement_hits": [
+          "run_syntax_check.py"
+        ],
+        "dashboard_hits": [],
+        "sports_hits": [
+          "run_benchmarks.py",
+          "run_syntax_check.py",
+          "find_datasource_repos.py"
+        ],
+        "weather_hits": [],
+        "stocks_hits": [
+          "run_benchmarks.py",
+          "run_syntax_check.py",
+          "find_datasource_repos.py"
+        ],
+        "commodities_hits": [],
+        "crypto_hits": [
+          "run_syntax_check.py"
+        ]
+      }
+    },
+    {
+      "repo": "quantrocket-llc/zipline",
+      "category": "stocks_equities_options_macro",
+      "verdict": "ADAPTER_TARGET",
+      "verdict_reasons": [
+        "Source contains useful logic suitable for adapter wrapping: strategy, stocks, commodities"
+      ],
+      "plans": [
+        {
+          "repo": "quantrocket-llc/zipline",
+          "adapter_name": "zipline_adapter",
+          "plan_type": "ADAPTER_TARGET",
+          "emits_native_types": true,
+          "notes": "Wrap source logic into Dumby-native types. Detected categories: strategy, stocks, commodities."
+        }
+      ],
+      "scan_summary": {
+        "files_scanned": 2,
+        "files_considered": 2,
+        "tree_size": 11,
+        "direct_order_hits": [],
+        "kalshi_order_hits": [],
+        "polymarket_order_hits": [],
+        "private_key_hits": [],
+        "api_secret_hits": [],
+        "strategy_hits": [
+          "versioneer.py"
+        ],
+        "forecast_hits": [],
+        "risk_hits": [],
+        "arbitrage_hits": [],
+        "websocket_hits": [],
+        "settlement_hits": [],
+        "dashboard_hits": [],
+        "sports_hits": [],
+        "weather_hits": [],
+        "stocks_hits": [
+          "setup.py",
+          "versioneer.py"
+        ],
+        "commodities_hits": [
+          "versioneer.py"
+        ],
+        "crypto_hits": []
+      }
+    },
+    {
+      "repo": "stefan-jansen/machine-learning-for-trading",
+      "category": "stocks_equities_options_macro",
+      "verdict": "ADAPTER_TARGET",
+      "verdict_reasons": [
+        "Source contains useful logic suitable for adapter wrapping: strategy, settlement"
+      ],
+      "plans": [
+        {
+          "repo": "stefan-jansen/machine-learning-for-trading",
+          "adapter_name": "machine_learning_for_trading_adapter",
+          "plan_type": "ADAPTER_TARGET",
+          "emits_native_types": true,
+          "notes": "Wrap source logic into Dumby-native types. Detected categories: strategy, settlement."
+        }
+      ],
+      "scan_summary": {
+        "files_scanned": 1,
+        "files_considered": 1,
+        "tree_size": 29,
+        "direct_order_hits": [],
+        "kalshi_order_hits": [],
+        "polymarket_order_hits": [],
+        "private_key_hits": [],
+        "api_secret_hits": [],
+        "strategy_hits": [
+          "sitecustomize.py"
+        ],
+        "forecast_hits": [],
+        "risk_hits": [],
+        "arbitrage_hits": [],
+        "websocket_hits": [],
+        "settlement_hits": [
+          "sitecustomize.py"
+        ],
+        "dashboard_hits": [],
+        "sports_hits": [],
+        "weather_hits": [],
+        "stocks_hits": [],
+        "commodities_hits": [],
+        "crypto_hits": []
+      }
+    },
+    {
+      "repo": "shashankvemuri/Finance",
+      "category": "stocks_equities_options_macro",
+      "verdict": "ADAPTER_TARGET",
+      "verdict_reasons": [
+        "Source contains useful logic suitable for adapter wrapping: strategy, forecast, risk, stocks, commodities, crypto"
+      ],
+      "plans": [
+        {
+          "repo": "shashankvemuri/Finance",
+          "adapter_name": "Finance_adapter",
+          "plan_type": "ADAPTER_TARGET",
+          "emits_native_types": true,
+          "notes": "Wrap source logic into Dumby-native types. Detected categories: strategy, forecast, risk, stocks, commodities, crypto."
+        }
+      ],
+      "scan_summary": {
+        "files_scanned": 3,
+        "files_considered": 3,
+        "tree_size": 19,
+        "direct_order_hits": [],
+        "kalshi_order_hits": [],
+        "polymarket_order_hits": [],
+        "private_key_hits": [],
+        "api_secret_hits": [],
+        "strategy_hits": [
+          "ta_functions.py"
+        ],
+        "forecast_hits": [
+          "ta_functions.py"
+        ],
+        "risk_hits": [
+          "ta_functions.py"
+        ],
+        "arbitrage_hits": [],
+        "websocket_hits": [],
+        "settlement_hits": [],
+        "dashboard_hits": [],
+        "sports_hits": [],
+        "weather_hits": [],
+        "stocks_hits": [
+          "tickers.py",
+          "ta_functions.py"
+        ],
+        "commodities_hits": [
+          "ta_functions.py"
+        ],
+        "crypto_hits": [
+          "tickers.py"
+        ]
+      }
+    },
+    {
+      "repo": "cfdude/mcp-finnhub",
+      "category": "stocks_equities_options_macro",
+      "verdict": "ADAPTER_TARGET",
+      "verdict_reasons": [
+        "Source contains useful logic suitable for adapter wrapping: strategy, settlement, stocks, commodities, crypto"
+      ],
+      "plans": [
+        {
+          "repo": "cfdude/mcp-finnhub",
+          "adapter_name": "mcp_finnhub_adapter",
+          "plan_type": "ADAPTER_TARGET",
+          "emits_native_types": true,
+          "notes": "Wrap source logic into Dumby-native types. Detected categories: strategy, settlement, stocks, commodities, crypto."
+        }
+      ],
+      "scan_summary": {
+        "files_scanned": 30,
+        "files_considered": 30,
+        "tree_size": 165,
+        "direct_order_hits": [],
+        "kalshi_order_hits": [],
+        "polymarket_order_hits": [],
+        "private_key_hits": [],
+        "api_secret_hits": [
+          "src/mcp_finnhub/server.py"
+        ],
+        "strategy_hits": [
+          "src/mcp_finnhub/api/endpoints/technical.py"
+        ],
+        "forecast_hits": [],
+        "risk_hits": [],
+        "arbitrage_hits": [],
+        "websocket_hits": [],
+        "settlement_hits": [
+          "src/mcp_finnhub/server.py"
+        ],
+        "dashboard_hits": [],
+        "sports_hits": [],
+        "weather_hits": [],
+        "stocks_hits": [
+          "src/mcp_finnhub/api/models/events.py",
+          "src/mcp_finnhub/api/models/filings.py",
+          "src/mcp_finnhub/api/endpoints/events.py",
+          "src/mcp_finnhub/api/endpoints/filings.py",
+          "src/mcp_finnhub/api/endpoints/news.py",
+          "src/mcp_finnhub/api/endpoints/alternative.py",
+          "src/mcp_finnhub/api/models/alternative.py",
+          "src/mcp_finnhub/api/endpoints/estimates.py",
+          "src/mcp_finnhub/api/endpoints/ownership.py",
+          "src/mcp_finnhub/server.py",
+          "src/mcp_finnhub/api/models/calendar.py",
+          "src/mcp_finnhub/api/endpoints/technical.py"
+        ],
+        "commodities_hits": [
+          "src/mcp_finnhub/api/endpoints/filings.py"
+        ],
+        "crypto_hits": [
+          "src/mcp_finnhub/api/endpoints/__init__.py",
+          "src/mcp_finnhub/api/models/events.py",
+          "src/mcp_finnhub/api/models/forex.py",
+          "src/mcp_finnhub/api/endpoints/events.py",
+          "src/mcp_finnhub/api/endpoints/crypto.py",
+          "src/mcp_finnhub/api/endpoints/news.py",
+          "src/mcp_finnhub/api/endpoints/forex.py",
+          "src/mcp_finnhub/api/models/crypto.py",
+          "src/mcp_finnhub/api/models/calendar.py"
+        ]
+      }
+    },
+    {
+      "repo": "philsv/pycot",
+      "category": "commodities_energy_agriculture",
+      "verdict": "ADAPTER_TARGET",
+      "verdict_reasons": [
+        "Source contains useful logic suitable for adapter wrapping: strategy, forecast, stocks, commodities, crypto"
+      ],
+      "plans": [
+        {
+          "repo": "philsv/pycot",
+          "adapter_name": "pycot_adapter",
+          "plan_type": "ADAPTER_TARGET",
+          "emits_native_types": true,
+          "notes": "Wrap source logic into Dumby-native types. Detected categories: strategy, forecast, stocks, commodities, crypto."
+        }
+      ],
+      "scan_summary": {
+        "files_scanned": 7,
+        "files_considered": 7,
+        "tree_size": 25,
+        "direct_order_hits": [],
+        "kalshi_order_hits": [],
+        "polymarket_order_hits": [],
+        "private_key_hits": [],
+        "api_secret_hits": [],
+        "strategy_hits": [
+          "setup.py"
+        ],
+        "forecast_hits": [
+          "setup.py"
+        ],
+        "risk_hits": [],
+        "arbitrage_hits": [],
+        "websocket_hits": [],
+        "settlement_hits": [],
+        "dashboard_hits": [],
+        "sports_hits": [],
+        "weather_hits": [],
+        "stocks_hits": [
+          "pycot/reports.py"
+        ],
+        "commodities_hits": [
+          "pycot/config.py",
+          "setup.py",
+          "pycot/reports.py"
+        ],
+        "crypto_hits": [
+          "pycot/reports.py"
+        ]
+      }
+    },
+    {
+      "repo": "Mcamin/cftc-cot",
+      "category": "commodities_energy_agriculture",
+      "verdict": "ADAPTER_TARGET",
+      "verdict_reasons": [
+        "Source contains useful logic suitable for adapter wrapping: settlement, stocks, commodities"
+      ],
+      "plans": [
+        {
+          "repo": "Mcamin/cftc-cot",
+          "adapter_name": "cftc_cot_adapter",
+          "plan_type": "ADAPTER_TARGET",
+          "emits_native_types": true,
+          "notes": "Wrap source logic into Dumby-native types. Detected categories: settlement, stocks, commodities."
+        }
+      ],
+      "scan_summary": {
+        "files_scanned": 2,
+        "files_considered": 2,
+        "tree_size": 16,
+        "direct_order_hits": [],
+        "kalshi_order_hits": [],
+        "polymarket_order_hits": [],
+        "private_key_hits": [],
+        "api_secret_hits": [],
+        "strategy_hits": [],
+        "forecast_hits": [],
+        "risk_hits": [],
+        "arbitrage_hits": [],
+        "websocket_hits": [],
+        "settlement_hits": [
+          "src/cftc_cot/cftc_cot.py"
+        ],
+        "dashboard_hits": [],
+        "sports_hits": [],
+        "weather_hits": [],
+        "stocks_hits": [
+          "src/cftc_cot/cftc_cot.py"
+        ],
+        "commodities_hits": [
+          "src/cftc_cot/__init__.py",
+          "src/cftc_cot/cftc_cot.py"
+        ],
+        "crypto_hits": []
+      }
+    },
+    {
+      "repo": "philsv/myeia",
+      "category": "commodities_energy_agriculture",
+      "verdict": "ADAPTER_TARGET",
+      "verdict_reasons": [
+        "Source contains useful logic suitable for adapter wrapping: forecast, stocks, commodities"
+      ],
+      "plans": [
+        {
+          "repo": "philsv/myeia",
+          "adapter_name": "myeia_adapter",
+          "plan_type": "ADAPTER_TARGET",
+          "emits_native_types": true,
+          "notes": "Wrap source logic into Dumby-native types. Detected categories: forecast, stocks, commodities."
+        }
+      ],
+      "scan_summary": {
+        "files_scanned": 4,
+        "files_considered": 4,
+        "tree_size": 34,
+        "direct_order_hits": [],
+        "kalshi_order_hits": [],
+        "polymarket_order_hits": [],
+        "private_key_hits": [],
+        "api_secret_hits": [
+          "myeia/api.py"
+        ],
+        "strategy_hits": [],
+        "forecast_hits": [
+          "setup.py"
+        ],
+        "risk_hits": [],
+        "arbitrage_hits": [],
+        "websocket_hits": [],
+        "settlement_hits": [],
+        "dashboard_hits": [],
+        "sports_hits": [],
+        "weather_hits": [],
+        "stocks_hits": [
+          "myeia/api.py"
+        ],
+        "commodities_hits": [
+          "setup.py",
+          "myeia/api.py"
+        ],
+        "crypto_hits": []
+      }
+    },
+    {
+      "repo": "EIAgov/dash-benchmark",
+      "category": "commodities_energy_agriculture",
+      "verdict": "ADAPTER_TARGET",
+      "verdict_reasons": [
+        "Source contains useful logic suitable for adapter wrapping: strategy, forecast, dashboard, weather, stocks, commodities"
+      ],
+      "plans": [
+        {
+          "repo": "EIAgov/dash-benchmark",
+          "adapter_name": "dash_benchmark_adapter",
+          "plan_type": "ADAPTER_TARGET",
+          "emits_native_types": true,
+          "notes": "Wrap source logic into Dumby-native types. Detected categories: strategy, forecast, dashboard, weather, stocks, commodities."
+        }
+      ],
+      "scan_summary": {
+        "files_scanned": 4,
+        "files_considered": 4,
+        "tree_size": 24,
+        "direct_order_hits": [],
+        "kalshi_order_hits": [],
+        "polymarket_order_hits": [],
+        "private_key_hits": [],
+        "api_secret_hits": [],
+        "strategy_hits": [
+          "src/app.py",
+          "src/utils/constants.py"
+        ],
+        "forecast_hits": [
+          "src/utils/constants.py"
+        ],
+        "risk_hits": [],
+        "arbitrage_hits": [],
+        "websocket_hits": [],
+        "settlement_hits": [],
+        "dashboard_hits": [
+          "src/app.py"
+        ],
+        "sports_hits": [],
+        "weather_hits": [
+          "src/utils/constants.py"
+        ],
+        "stocks_hits": [
+          "src/app.py"
+        ],
+        "commodities_hits": [
+          "src/app.py",
+          "src/utils/constants.py"
+        ],
+        "crypto_hits": []
+      }
+    },
+    {
+      "repo": "datasets/oil-prices",
+      "category": "commodities_energy_agriculture",
+      "verdict": "ADAPTER_TARGET",
+      "verdict_reasons": [
+        "Source contains useful logic suitable for adapter wrapping: commodities"
+      ],
+      "plans": [
+        {
+          "repo": "datasets/oil-prices",
+          "adapter_name": "oil_prices_adapter",
+          "plan_type": "ADAPTER_TARGET",
+          "emits_native_types": true,
+          "notes": "Wrap source logic into Dumby-native types. Detected categories: commodities."
+        }
+      ],
+      "scan_summary": {
+        "files_scanned": 1,
+        "files_considered": 1,
+        "tree_size": 29,
+        "direct_order_hits": [],
+        "kalshi_order_hits": [],
+        "polymarket_order_hits": [],
+        "private_key_hits": [],
+        "api_secret_hits": [],
+        "strategy_hits": [],
+        "forecast_hits": [],
+        "risk_hits": [],
+        "arbitrage_hits": [],
+        "websocket_hits": [],
+        "settlement_hits": [],
+        "dashboard_hits": [],
+        "sports_hits": [],
+        "weather_hits": [],
+        "stocks_hits": [],
+        "commodities_hits": [
+          "oil_prices_flow.py"
+        ],
+        "crypto_hits": []
+      }
+    },
+    {
+      "repo": "BaseMax/XAUUSD-LSTM",
+      "category": "commodities_energy_agriculture",
+      "verdict": "ADAPTER_TARGET",
+      "verdict_reasons": [
+        "Source contains useful logic suitable for adapter wrapping: forecast, weather, stocks"
+      ],
+      "plans": [
+        {
+          "repo": "BaseMax/XAUUSD-LSTM",
+          "adapter_name": "XAUUSD_LSTM_adapter",
+          "plan_type": "ADAPTER_TARGET",
+          "emits_native_types": true,
+          "notes": "Wrap source logic into Dumby-native types. Detected categories: forecast, weather, stocks."
+        }
+      ],
+      "scan_summary": {
+        "files_scanned": 1,
+        "files_considered": 1,
+        "tree_size": 11,
+        "direct_order_hits": [],
+        "kalshi_order_hits": [],
+        "polymarket_order_hits": [],
+        "private_key_hits": [],
+        "api_secret_hits": [],
+        "strategy_hits": [],
+        "forecast_hits": [
+          "train_xau_lstm.py"
+        ],
+        "risk_hits": [],
+        "arbitrage_hits": [],
+        "websocket_hits": [],
+        "settlement_hits": [],
+        "dashboard_hits": [],
+        "sports_hits": [],
+        "weather_hits": [
+          "train_xau_lstm.py"
+        ],
+        "stocks_hits": [
+          "train_xau_lstm.py"
+        ],
+        "commodities_hits": [],
+        "crypto_hits": []
+      }
+    },
+    {
+      "repo": "je-suis-tm/quant-trading",
+      "category": "commodities_energy_agriculture",
+      "verdict": "ADAPTER_TARGET",
+      "verdict_reasons": [
+        "Source contains useful logic suitable for adapter wrapping: strategy, forecast, risk, arbitrage, settlement, weather, stocks, commodities, crypto"
+      ],
+      "plans": [
+        {
+          "repo": "je-suis-tm/quant-trading",
+          "adapter_name": "quant_trading_adapter",
+          "plan_type": "ADAPTER_TARGET",
+          "emits_native_types": true,
+          "notes": "Wrap source logic into Dumby-native types. Detected categories: strategy, forecast, risk, arbitrage, settlement, weather, stocks, commodities, crypto."
+        }
+      ],
+      "scan_summary": {
+        "files_scanned": 26,
+        "files_considered": 26,
+        "tree_size": 191,
+        "direct_order_hits": [],
+        "kalshi_order_hits": [],
+        "polymarket_order_hits": [],
+        "private_key_hits": [],
+        "api_secret_hits": [],
+        "strategy_hits": [
+          "Ore Money project/iron ore production/iron ore production bubble map.py",
+          "MACD Oscillator backtest.py",
+          "Oil Money project/oil production/oil production cost curve.py",
+          "Parabolic SAR backtest.py",
+          "Oil Money project/Oil Money RUB.py",
+          "Smart Farmers project/estimate demand.py",
+          "Shooting Star backtest.py",
+          "Bollinger Bands Pattern Recognition backtest.py",
+          "Smart Farmers project/cleanse data.py",
+          "Dual Thrust backtest.py",
+          "Oil Money project/Oil Money CAD.py",
+          "Oil Money project/Oil Money Trading backtest.py",
+          "Oil Money project/Oil Money COP.py",
+          "London Breakout backtest.py",
+          "Monte Carlo project/Monte Carlo backtest.py",
+          "Awesome Oscillator backtest.py",
+          "Options Straddle backtest.py",
+          "Pair trading backtest.py",
+          "Smart Farmers project/forecast.py",
+          "RSI Pattern Recognition backtest.py",
+          "Heikin-Ashi backtest.py",
+          "Oil Money project/Oil Money NOK.py"
+        ],
+        "forecast_hits": [
+          "Oil Money project/Oil Money RUB.py",
+          "Smart Farmers project/estimate demand.py",
+          "Bollinger Bands Pattern Recognition backtest.py",
+          "Smart Farmers project/cleanse data.py",
+          "Oil Money project/Oil Money CAD.py",
+          "Oil Money project/Oil Money Trading backtest.py",
+          "Oil Money project/Oil Money COP.py",
+          "London Breakout backtest.py",
+          "Monte Carlo project/Monte Carlo backtest.py",
+          "Pair trading backtest.py",
+          "Smart Farmers project/forecast.py",
+          "Heikin-Ashi backtest.py",
+          "Oil Money project/Oil Money NOK.py"
+        ],
+        "risk_hits": [
+          "London Breakout backtest.py",
+          "Monte Carlo project/Monte Carlo backtest.py",
+          "Awesome Oscillator backtest.py",
+          "Options Straddle backtest.py",
+          "Pair trading backtest.py",
+          "Heikin-Ashi backtest.py",
+          "VIX Calculator.py",
+          "Oil Money project/Oil Money NOK.py"
+        ],
+        "arbitrage_hits": [
+          "Parabolic SAR backtest.py",
+          "Oil Money project/Oil Money Trading backtest.py",
+          "Options Straddle backtest.py",
+          "Pair trading backtest.py",
+          "VIX Calculator.py",
+          "Oil Money project/Oil Money NOK.py"
+        ],
+        "websocket_hits": [],
+        "settlement_hits": [
+          "Oil Money project/Oil Money Trading backtest.py",
+          "London Breakout backtest.py",
+          "Options Straddle backtest.py",
+          "Heikin-Ashi backtest.py",
+          "VIX Calculator.py"
+        ],
+        "dashboard_hits": [],
+        "sports_hits": [],
+        "weather_hits": [
+          "Oil Money project/Oil Money RUB.py",
+          "Smart Farmers project/estimate demand.py",
+          "Oil Money project/Oil Money CAD.py",
+          "Oil Money project/Oil Money Trading backtest.py",
+          "Oil Money project/Oil Money COP.py",
+          "Monte Carlo project/Monte Carlo backtest.py",
+          "Smart Farmers project/forecast.py"
+        ],
+        "stocks_hits": [
+          "Oil Money project/oil production/oil production choropleth.py",
+          "Smart Farmers project/country selection.py",
+          "MACD Oscillator backtest.py",
+          "Oil Money project/oil production/oil production cost curve.py",
+          "Parabolic SAR backtest.py",
+          "Smart Farmers project/estimate demand.py",
+          "Shooting Star backtest.py",
+          "Bollinger Bands Pattern Recognition backtest.py",
+          "Dual Thrust backtest.py",
+          "Oil Money project/Oil Money Trading backtest.py",
+          "Oil Money project/Oil Money COP.py",
+          "London Breakout backtest.py",
+          "Monte Carlo project/Monte Carlo backtest.py",
+          "Awesome Oscillator backtest.py",
+          "Options Straddle backtest.py",
+          "Pair trading backtest.py",
+          "Smart Farmers project/forecast.py",
+          "RSI Pattern Recognition backtest.py",
+          "Heikin-Ashi backtest.py",
+          "VIX Calculator.py",
+          "Oil Money project/Oil Money NOK.py"
+        ],
+        "commodities_hits": [
+          "Oil Money project/oil production/oil production choropleth.py",
+          "Smart Farmers project/check consistency.py",
+          "Oil Money project/oil production/oil production cost curve.py",
+          "Parabolic SAR backtest.py",
+          "Smart Farmers project/estimate demand.py",
+          "Smart Farmers project/cleanse data.py",
+          "Oil Money project/Oil Money CAD.py",
+          "Oil Money project/Oil Money Trading backtest.py",
+          "Oil Money project/Oil Money COP.py",
+          "Options Straddle backtest.py",
+          "VIX Calculator.py",
+          "Oil Money project/Oil Money NOK.py"
+        ],
+        "crypto_hits": [
+          "Smart Farmers project/country selection.py",
+          "Pair trading backtest.py"
+        ]
+      }
+    },
+    {
+      "repo": "ccxt/ccxt",
+      "category": "crypto_btc_event_market",
+      "verdict": "ADAPTER_TARGET",
+      "verdict_reasons": [
+        "Source contains useful logic suitable for adapter wrapping: strategy, settlement, sports, stocks, crypto"
+      ],
+      "plans": [
+        {
+          "repo": "ccxt/ccxt",
+          "adapter_name": "ccxt_adapter",
+          "plan_type": "ADAPTER_TARGET",
+          "emits_native_types": true,
+          "notes": "Wrap source logic into Dumby-native types. Detected categories: strategy, settlement, sports, stocks, crypto."
+        }
+      ],
+      "scan_summary": {
+        "files_scanned": 6,
+        "files_considered": 6,
+        "tree_size": 67,
+        "direct_order_hits": [],
+        "kalshi_order_hits": [],
+        "polymarket_order_hits": [],
+        "private_key_hits": [],
+        "api_secret_hits": [],
+        "strategy_hits": [
+          "examples2md.js",
+          "run-tests.js"
+        ],
+        "forecast_hits": [],
+        "risk_hits": [],
+        "arbitrage_hits": [],
+        "websocket_hits": [],
+        "settlement_hits": [
+          "rollup.config.js",
+          "rspack.config.js",
+          "run-tests.js"
+        ],
+        "dashboard_hits": [],
+        "sports_hits": [
+          "rollup.config.js",
+          "rspack.config.js",
+          "examples2md.js",
+          "jsdoc2md.js",
+          "run-tests.js"
+        ],
+        "weather_hits": [],
+        "stocks_hits": [
+          "rollup.config.js",
+          "rspack.config.js",
+          "jsdoc2md.js",
+          "run-tests.js"
+        ],
+        "commodities_hits": [],
+        "crypto_hits": [
+          "rollup.config.js",
+          "rspack.config.js",
+          "postinstall.js",
+          "examples2md.js",
+          "jsdoc2md.js",
+          "run-tests.js"
+        ]
+      }
+    },
+    {
+      "repo": "unit8co/darts",
+      "category": "universal_ml_forecasting_optimization",
+      "verdict": "DIRECT_DEPENDENCY_CANDIDATE",
+      "verdict_reasons": [
+        "Stable upstream library in dependency category with no trading/order logic"
+      ],
+      "plans": [
+        {
+          "repo": "unit8co/darts",
+          "adapter_name": "darts_dependency",
+          "plan_type": "DIRECT_DEPENDENCY_CANDIDATE",
+          "emits_native_types": true,
+          "notes": "Add to project dependencies; no adapter wrapper required."
+        }
+      ],
+      "scan_summary": {
+        "files_scanned": 0,
+        "files_considered": 0,
+        "tree_size": 21,
+        "direct_order_hits": [],
+        "kalshi_order_hits": [],
+        "polymarket_order_hits": [],
+        "private_key_hits": [],
+        "api_secret_hits": [],
+        "strategy_hits": [],
+        "forecast_hits": [],
+        "risk_hits": [],
+        "arbitrage_hits": [],
+        "websocket_hits": [],
+        "settlement_hits": [],
+        "dashboard_hits": [],
+        "sports_hits": [],
+        "weather_hits": [],
+        "stocks_hits": [],
+        "commodities_hits": [],
+        "crypto_hits": []
+      }
+    },
+    {
+      "repo": "autogluon/autogluon",
+      "category": "universal_ml_forecasting_optimization",
+      "verdict": "DIRECT_DEPENDENCY_CANDIDATE",
+      "verdict_reasons": [
+        "Stable upstream library in dependency category with no trading/order logic"
+      ],
+      "plans": [
+        {
+          "repo": "autogluon/autogluon",
+          "adapter_name": "autogluon_dependency",
+          "plan_type": "DIRECT_DEPENDENCY_CANDIDATE",
+          "emits_native_types": true,
+          "notes": "Add to project dependencies; no adapter wrapper required."
+        }
+      ],
+      "scan_summary": {
+        "files_scanned": 0,
+        "files_considered": 0,
+        "tree_size": 29,
+        "direct_order_hits": [],
+        "kalshi_order_hits": [],
+        "polymarket_order_hits": [],
+        "private_key_hits": [],
+        "api_secret_hits": [],
+        "strategy_hits": [],
+        "forecast_hits": [],
+        "risk_hits": [],
+        "arbitrage_hits": [],
+        "websocket_hits": [],
+        "settlement_hits": [],
+        "dashboard_hits": [],
+        "sports_hits": [],
+        "weather_hits": [],
+        "stocks_hits": [],
+        "commodities_hits": [],
+        "crypto_hits": []
+      }
+    },
+    {
+      "repo": "optuna/optuna",
+      "category": "universal_ml_forecasting_optimization",
+      "verdict": "DIRECT_DEPENDENCY_CANDIDATE",
+      "verdict_reasons": [
+        "Stable upstream library in dependency category with no trading/order logic"
+      ],
+      "plans": [
+        {
+          "repo": "optuna/optuna",
+          "adapter_name": "optuna_dependency",
+          "plan_type": "DIRECT_DEPENDENCY_CANDIDATE",
+          "emits_native_types": true,
+          "notes": "Add to project dependencies; no adapter wrapper required."
+        }
+      ],
+      "scan_summary": {
+        "files_scanned": 0,
+        "files_considered": 0,
+        "tree_size": 17,
+        "direct_order_hits": [],
+        "kalshi_order_hits": [],
+        "polymarket_order_hits": [],
+        "private_key_hits": [],
+        "api_secret_hits": [],
+        "strategy_hits": [],
+        "forecast_hits": [],
+        "risk_hits": [],
+        "arbitrage_hits": [],
+        "websocket_hits": [],
+        "settlement_hits": [],
+        "dashboard_hits": [],
+        "sports_hits": [],
+        "weather_hits": [],
+        "stocks_hits": [],
+        "commodities_hits": [],
+        "crypto_hits": []
+      }
+    },
+    {
+      "repo": "optuna/optunahub",
+      "category": "universal_ml_forecasting_optimization",
+      "verdict": "ADAPTER_TARGET",
+      "verdict_reasons": [
+        "Source contains useful logic suitable for adapter wrapping: strategy, sports, stocks"
+      ],
+      "plans": [
+        {
+          "repo": "optuna/optunahub",
+          "adapter_name": "optunahub_adapter",
+          "plan_type": "ADAPTER_TARGET",
+          "emits_native_types": true,
+          "notes": "Wrap source logic into Dumby-native types. Detected categories: strategy, sports, stocks."
+        }
+      ],
+      "scan_summary": {
+        "files_scanned": 19,
+        "files_considered": 19,
+        "tree_size": 77,
+        "direct_order_hits": [],
+        "kalshi_order_hits": [],
+        "polymarket_order_hits": [],
+        "private_key_hits": [],
+        "api_secret_hits": [
+          "optunahub/hub.py"
+        ],
+        "strategy_hits": [
+          "docs/source/conf.py",
+          "recipes/007_benchmarks_advanced.py",
+          "recipes/002_registration.py"
+        ],
+        "forecast_hits": [],
+        "risk_hits": [],
+        "arbitrage_hits": [],
+        "websocket_hits": [],
+        "settlement_hits": [],
+        "dashboard_hits": [],
+        "sports_hits": [
+          "optunahub/hub.py"
+        ],
+        "weather_hits": [],
+        "stocks_hits": [
+          "docs/source/conf.py",
+          "optunahub/samplers/_simple_base.py",
+          "recipes/002_registration.py",
+          "optunahub/hub.py"
+        ],
+        "commodities_hits": [],
+        "crypto_hits": []
+      }
+    },
+    {
+      "repo": "statsmodels/statsmodels",
+      "category": "universal_ml_forecasting_optimization",
+      "verdict": "DIRECT_DEPENDENCY_CANDIDATE",
+      "verdict_reasons": [
+        "Stable upstream library in dependency category with no trading/order logic"
+      ],
+      "plans": [
+        {
+          "repo": "statsmodels/statsmodels",
+          "adapter_name": "statsmodels_dependency",
+          "plan_type": "DIRECT_DEPENDENCY_CANDIDATE",
+          "emits_native_types": true,
+          "notes": "Add to project dependencies; no adapter wrapper required."
+        }
+      ],
+      "scan_summary": {
+        "files_scanned": 0,
+        "files_considered": 0,
+        "tree_size": 31,
+        "direct_order_hits": [],
+        "kalshi_order_hits": [],
+        "polymarket_order_hits": [],
+        "private_key_hits": [],
+        "api_secret_hits": [],
+        "strategy_hits": [],
+        "forecast_hits": [],
+        "risk_hits": [],
+        "arbitrage_hits": [],
+        "websocket_hits": [],
+        "settlement_hits": [],
+        "dashboard_hits": [],
+        "sports_hits": [],
+        "weather_hits": [],
+        "stocks_hits": [],
+        "commodities_hits": [],
+        "crypto_hits": []
+      }
+    },
+    {
+      "repo": "scikit-learn/scikit-learn",
+      "category": "universal_ml_forecasting_optimization",
+      "verdict": "DIRECT_DEPENDENCY_CANDIDATE",
+      "verdict_reasons": [
+        "Stable upstream library in dependency category with no trading/order logic"
+      ],
+      "plans": [
+        {
+          "repo": "scikit-learn/scikit-learn",
+          "adapter_name": "scikit_learn_dependency",
+          "plan_type": "DIRECT_DEPENDENCY_CANDIDATE",
+          "emits_native_types": true,
+          "notes": "Add to project dependencies; no adapter wrapper required."
+        }
+      ],
+      "scan_summary": {
+        "files_scanned": 0,
+        "files_considered": 0,
+        "tree_size": 29,
+        "direct_order_hits": [],
+        "kalshi_order_hits": [],
+        "polymarket_order_hits": [],
+        "private_key_hits": [],
+        "api_secret_hits": [],
+        "strategy_hits": [],
+        "forecast_hits": [],
+        "risk_hits": [],
+        "arbitrage_hits": [],
+        "websocket_hits": [],
+        "settlement_hits": [],
+        "dashboard_hits": [],
+        "sports_hits": [],
+        "weather_hits": [],
+        "stocks_hits": [],
+        "commodities_hits": [],
+        "crypto_hits": []
+      }
+    },
+    {
+      "repo": "scipy/scipy",
+      "category": "universal_ml_forecasting_optimization",
+      "verdict": "DIRECT_DEPENDENCY_CANDIDATE",
+      "verdict_reasons": [
+        "Stable upstream library in dependency category with no trading/order logic"
+      ],
+      "plans": [
+        {
+          "repo": "scipy/scipy",
+          "adapter_name": "scipy_dependency",
+          "plan_type": "DIRECT_DEPENDENCY_CANDIDATE",
+          "emits_native_types": true,
+          "notes": "Add to project dependencies; no adapter wrapper required."
+        }
+      ],
+      "scan_summary": {
+        "files_scanned": 0,
+        "files_considered": 0,
+        "tree_size": 32,
+        "direct_order_hits": [],
+        "kalshi_order_hits": [],
+        "polymarket_order_hits": [],
+        "private_key_hits": [],
+        "api_secret_hits": [],
+        "strategy_hits": [],
+        "forecast_hits": [],
+        "risk_hits": [],
+        "arbitrage_hits": [],
+        "websocket_hits": [],
+        "settlement_hits": [],
+        "dashboard_hits": [],
+        "sports_hits": [],
+        "weather_hits": [],
+        "stocks_hits": [],
+        "commodities_hits": [],
+        "crypto_hits": []
+      }
+    },
+    {
+      "repo": "pandas-dev/pandas",
+      "category": "universal_ml_forecasting_optimization",
+      "verdict": "DIRECT_DEPENDENCY_CANDIDATE",
+      "verdict_reasons": [
+        "Stable upstream library in dependency category with no trading/order logic"
+      ],
+      "plans": [
+        {
+          "repo": "pandas-dev/pandas",
+          "adapter_name": "pandas_dependency",
+          "plan_type": "DIRECT_DEPENDENCY_CANDIDATE",
+          "emits_native_types": true,
+          "notes": "Add to project dependencies; no adapter wrapper required."
+        }
+      ],
+      "scan_summary": {
+        "files_scanned": 2,
+        "files_considered": 2,
+        "tree_size": 29,
+        "direct_order_hits": [],
+        "kalshi_order_hits": [],
+        "polymarket_order_hits": [],
+        "private_key_hits": [],
+        "api_secret_hits": [],
+        "strategy_hits": [],
+        "forecast_hits": [],
+        "risk_hits": [],
+        "arbitrage_hits": [],
+        "websocket_hits": [],
+        "settlement_hits": [],
+        "dashboard_hits": [],
+        "sports_hits": [],
+        "weather_hits": [],
+        "stocks_hits": [],
+        "commodities_hits": [],
+        "crypto_hits": []
+      }
+    },
+    {
+      "repo": "dmlc/xgboost",
+      "category": "universal_ml_forecasting_optimization",
+      "verdict": "DIRECT_DEPENDENCY_CANDIDATE",
+      "verdict_reasons": [
+        "Stable upstream library in dependency category with no trading/order logic"
+      ],
+      "plans": [
+        {
+          "repo": "dmlc/xgboost",
+          "adapter_name": "xgboost_dependency",
+          "plan_type": "DIRECT_DEPENDENCY_CANDIDATE",
+          "emits_native_types": true,
+          "notes": "Add to project dependencies; no adapter wrapper required."
+        }
+      ],
+      "scan_summary": {
+        "files_scanned": 0,
+        "files_considered": 0,
+        "tree_size": 30,
+        "direct_order_hits": [],
+        "kalshi_order_hits": [],
+        "polymarket_order_hits": [],
+        "private_key_hits": [],
+        "api_secret_hits": [],
+        "strategy_hits": [],
+        "forecast_hits": [],
+        "risk_hits": [],
+        "arbitrage_hits": [],
+        "websocket_hits": [],
+        "settlement_hits": [],
+        "dashboard_hits": [],
+        "sports_hits": [],
+        "weather_hits": [],
+        "stocks_hits": [],
+        "commodities_hits": [],
+        "crypto_hits": []
+      }
+    },
+    {
+      "repo": "catboost/catboost",
+      "category": "universal_ml_forecasting_optimization",
+      "verdict": "ADAPTER_TARGET",
+      "verdict_reasons": [
+        "Source contains useful logic suitable for adapter wrapping: stocks"
+      ],
+      "plans": [
+        {
+          "repo": "catboost/catboost",
+          "adapter_name": "catboost_adapter",
+          "plan_type": "ADAPTER_TARGET",
+          "emits_native_types": true,
+          "notes": "Wrap source logic into Dumby-native types. Detected categories: stocks."
+        }
+      ],
+      "scan_summary": {
+        "files_scanned": 1,
+        "files_considered": 1,
+        "tree_size": 45,
+        "direct_order_hits": [],
+        "kalshi_order_hits": [],
+        "polymarket_order_hits": [],
+        "private_key_hits": [],
+        "api_secret_hits": [],
+        "strategy_hits": [],
+        "forecast_hits": [],
+        "risk_hits": [],
+        "arbitrage_hits": [],
+        "websocket_hits": [],
+        "settlement_hits": [],
+        "dashboard_hits": [],
+        "sports_hits": [],
+        "weather_hits": [],
+        "stocks_hits": [
+          "conanfile.py"
+        ],
+        "commodities_hits": [],
+        "crypto_hits": []
+      }
+    },
+    {
+      "repo": "Nixtla/statsforecast",
+      "category": "universal_ml_forecasting_optimization",
+      "verdict": "ADAPTER_TARGET",
+      "verdict_reasons": [
+        "Source contains useful logic suitable for adapter wrapping: forecast, weather"
+      ],
+      "plans": [
+        {
+          "repo": "Nixtla/statsforecast",
+          "adapter_name": "statsforecast_adapter",
+          "plan_type": "ADAPTER_TARGET",
+          "emits_native_types": true,
+          "notes": "Wrap source logic into Dumby-native types. Detected categories: forecast, weather."
+        }
+      ],
+      "scan_summary": {
+        "files_scanned": 1,
+        "files_considered": 1,
+        "tree_size": 28,
+        "direct_order_hits": [],
+        "kalshi_order_hits": [],
+        "polymarket_order_hits": [],
+        "private_key_hits": [],
+        "api_secret_hits": [],
+        "strategy_hits": [],
+        "forecast_hits": [
+          "setup.py"
+        ],
+        "risk_hits": [],
+        "arbitrage_hits": [],
+        "websocket_hits": [],
+        "settlement_hits": [],
+        "dashboard_hits": [],
+        "sports_hits": [],
+        "weather_hits": [
+          "setup.py"
+        ],
+        "stocks_hits": [],
+        "commodities_hits": [],
+        "crypto_hits": []
+      }
+    },
+    {
+      "repo": "Nixtla/mlforecast",
+      "category": "universal_ml_forecasting_optimization",
+      "verdict": "DIRECT_DEPENDENCY_CANDIDATE",
+      "verdict_reasons": [
+        "Stable upstream library in dependency category with no trading/order logic"
+      ],
+      "plans": [
+        {
+          "repo": "Nixtla/mlforecast",
+          "adapter_name": "mlforecast_dependency",
+          "plan_type": "DIRECT_DEPENDENCY_CANDIDATE",
+          "emits_native_types": true,
+          "notes": "Add to project dependencies; no adapter wrapper required."
+        }
+      ],
+      "scan_summary": {
+        "files_scanned": 0,
+        "files_considered": 0,
+        "tree_size": 20,
+        "direct_order_hits": [],
+        "kalshi_order_hits": [],
+        "polymarket_order_hits": [],
+        "private_key_hits": [],
+        "api_secret_hits": [],
+        "strategy_hits": [],
+        "forecast_hits": [],
+        "risk_hits": [],
+        "arbitrage_hits": [],
+        "websocket_hits": [],
+        "settlement_hits": [],
+        "dashboard_hits": [],
+        "sports_hits": [],
+        "weather_hits": [],
+        "stocks_hits": [],
+        "commodities_hits": [],
+        "crypto_hits": []
+      }
+    },
+    {
+      "repo": "Nixtla/neuralforecast",
+      "category": "universal_ml_forecasting_optimization",
+      "verdict": "DIRECT_DEPENDENCY_CANDIDATE",
+      "verdict_reasons": [
+        "Stable upstream library in dependency category with no trading/order logic"
+      ],
+      "plans": [
+        {
+          "repo": "Nixtla/neuralforecast",
+          "adapter_name": "neuralforecast_dependency",
+          "plan_type": "DIRECT_DEPENDENCY_CANDIDATE",
+          "emits_native_types": true,
+          "notes": "Add to project dependencies; no adapter wrapper required."
+        }
+      ],
+      "scan_summary": {
+        "files_scanned": 0,
+        "files_considered": 0,
+        "tree_size": 24,
+        "direct_order_hits": [],
+        "kalshi_order_hits": [],
+        "polymarket_order_hits": [],
+        "private_key_hits": [],
+        "api_secret_hits": [],
+        "strategy_hits": [],
+        "forecast_hits": [],
+        "risk_hits": [],
+        "arbitrage_hits": [],
+        "websocket_hits": [],
+        "settlement_hits": [],
+        "dashboard_hits": [],
+        "sports_hits": [],
+        "weather_hits": [],
+        "stocks_hits": [],
+        "commodities_hits": [],
+        "crypto_hits": []
+      }
+    },
+    {
+      "repo": "Nixtla/hierarchicalforecast",
+      "category": "universal_ml_forecasting_optimization",
+      "verdict": "ADAPTER_TARGET",
+      "verdict_reasons": [
+        "Source contains useful logic suitable for adapter wrapping: forecast, weather"
+      ],
+      "plans": [
+        {
+          "repo": "Nixtla/hierarchicalforecast",
+          "adapter_name": "hierarchicalforecast_adapter",
+          "plan_type": "ADAPTER_TARGET",
+          "emits_native_types": true,
+          "notes": "Wrap source logic into Dumby-native types. Detected categories: forecast, weather."
+        }
+      ],
+      "scan_summary": {
+        "files_scanned": 1,
+        "files_considered": 1,
+        "tree_size": 25,
+        "direct_order_hits": [],
+        "kalshi_order_hits": [],
+        "polymarket_order_hits": [],
+        "private_key_hits": [],
+        "api_secret_hits": [],
+        "strategy_hits": [],
+        "forecast_hits": [
+          "setup.py"
+        ],
+        "risk_hits": [],
+        "arbitrage_hits": [],
+        "websocket_hits": [],
+        "settlement_hits": [],
+        "dashboard_hits": [],
+        "sports_hits": [],
+        "weather_hits": [
+          "setup.py"
+        ],
+        "stocks_hits": [],
+        "commodities_hits": [],
+        "crypto_hits": []
+      }
+    },
+    {
+      "repo": "Nixtla/utilsforecast",
+      "category": "universal_ml_forecasting_optimization",
+      "verdict": "ADAPTER_TARGET",
+      "verdict_reasons": [
+        "Source contains useful logic suitable for adapter wrapping: strategy, forecast, risk, dashboard, sports, weather, stocks, commodities"
+      ],
+      "plans": [
+        {
+          "repo": "Nixtla/utilsforecast",
+          "adapter_name": "utilsforecast_adapter",
+          "plan_type": "ADAPTER_TARGET",
+          "emits_native_types": true,
+          "notes": "Wrap source logic into Dumby-native types. Detected categories: strategy, forecast, risk, dashboard, sports, weather, stocks, commodities."
+        }
+      ],
+      "scan_summary": {
+        "files_scanned": 19,
+        "files_considered": 19,
+        "tree_size": 105,
+        "direct_order_hits": [],
+        "kalshi_order_hits": [],
+        "polymarket_order_hits": [],
+        "private_key_hits": [],
+        "api_secret_hits": [],
+        "strategy_hits": [
+          "utilsforecast/model_selection.py",
+          "utilsforecast/rectify.py",
+          "utilsforecast/plotting.py",
+          "utilsforecast/evaluation.py"
+        ],
+        "forecast_hits": [
+          "utilsforecast/__init__.py",
+          "docs/to_mdx.py",
+          "utilsforecast/data.py",
+          "docs/convert_to_mkdocstrings.py",
+          "utilsforecast/feature_engineering.py",
+          "utilsforecast/rectify.py",
+          "utilsforecast/plotting.py",
+          "utilsforecast/evaluation.py",
+          "utilsforecast/processing.py",
+          "utilsforecast/losses.py"
+        ],
+        "risk_hits": [
+          "utilsforecast/compat.py"
+        ],
+        "arbitrage_hits": [],
+        "websocket_hits": [],
+        "settlement_hits": [],
+        "dashboard_hits": [
+          "utilsforecast/data.py"
+        ],
+        "sports_hits": [
+          "docs/convert_to_mkdocstrings.py",
+          "utilsforecast/model_selection.py",
+          "utilsforecast/rectify.py",
+          "utilsforecast/plotting.py",
+          "utilsforecast/processing.py",
+          "utilsforecast/losses.py"
+        ],
+        "weather_hits": [
+          "utilsforecast/__init__.py",
+          "docs/to_mdx.py",
+          "docs/convert_to_mkdocstrings.py",
+          "utilsforecast/feature_engineering.py",
+          "utilsforecast/rectify.py",
+          "utilsforecast/plotting.py",
+          "utilsforecast/evaluation.py",
+          "utilsforecast/processing.py",
+          "utilsforecast/losses.py"
+        ],
+        "stocks_hits": [
+          "utilsforecast/validation.py",
+          "utilsforecast/data.py",
+          "docs/convert_to_mkdocstrings.py",
+          "utilsforecast/model_selection.py",
+          "utilsforecast/preprocessing.py",
+          "utilsforecast/feature_engineering.py",
+          "utilsforecast/rectify.py",
+          "utilsforecast/plotting.py",
+          "utilsforecast/evaluation.py",
+          "utilsforecast/processing.py",
+          "utilsforecast/losses.py"
+        ],
+        "commodities_hits": [
+          "utilsforecast/plotting.py"
+        ],
+        "crypto_hits": []
+      }
+    },
+    {
+      "repo": "facebook/prophet",
+      "category": "universal_ml_forecasting_optimization",
+      "verdict": "DIRECT_DEPENDENCY_CANDIDATE",
+      "verdict_reasons": [
+        "Stable upstream library in dependency category with no trading/order logic"
+      ],
+      "plans": [
+        {
+          "repo": "facebook/prophet",
+          "adapter_name": "prophet_dependency",
+          "plan_type": "DIRECT_DEPENDENCY_CANDIDATE",
+          "emits_native_types": true,
+          "notes": "Add to project dependencies; no adapter wrapper required."
+        }
+      ],
+      "scan_summary": {
+        "files_scanned": 0,
+        "files_considered": 0,
+        "tree_size": 17,
+        "direct_order_hits": [],
+        "kalshi_order_hits": [],
+        "polymarket_order_hits": [],
+        "private_key_hits": [],
+        "api_secret_hits": [],
+        "strategy_hits": [],
+        "forecast_hits": [],
+        "risk_hits": [],
+        "arbitrage_hits": [],
+        "websocket_hits": [],
+        "settlement_hits": [],
+        "dashboard_hits": [],
+        "sports_hits": [],
+        "weather_hits": [],
+        "stocks_hits": [],
+        "commodities_hits": [],
+        "crypto_hits": []
+      }
+    },
+    {
+      "repo": "timeseriesAI/tsai",
+      "category": "universal_ml_forecasting_optimization",
+      "verdict": "DIRECT_DEPENDENCY_CANDIDATE",
+      "verdict_reasons": [
+        "Stable upstream library in dependency category with no trading/order logic"
+      ],
+      "plans": [
+        {
+          "repo": "timeseriesAI/tsai",
+          "adapter_name": "tsai_dependency",
+          "plan_type": "DIRECT_DEPENDENCY_CANDIDATE",
+          "emits_native_types": true,
+          "notes": "Add to project dependencies; no adapter wrapper required."
+        }
+      ],
+      "scan_summary": {
+        "files_scanned": 0,
+        "files_considered": 0,
+        "tree_size": 15,
+        "direct_order_hits": [],
+        "kalshi_order_hits": [],
+        "polymarket_order_hits": [],
+        "private_key_hits": [],
+        "api_secret_hits": [],
+        "strategy_hits": [],
+        "forecast_hits": [],
+        "risk_hits": [],
+        "arbitrage_hits": [],
+        "websocket_hits": [],
+        "settlement_hits": [],
+        "dashboard_hits": [],
+        "sports_hits": [],
+        "weather_hits": [],
+        "stocks_hits": [],
+        "commodities_hits": [],
+        "crypto_hits": []
+      }
+    },
+    {
+      "repo": "lightning-ai/pytorch-lightning",
+      "category": "universal_ml_forecasting_optimization",
+      "verdict": "ADAPTER_TARGET",
+      "verdict_reasons": [
+        "Source contains useful logic suitable for adapter wrapping: stocks"
+      ],
+      "plans": [
+        {
+          "repo": "lightning-ai/pytorch-lightning",
+          "adapter_name": "pytorch_lightning_adapter",
+          "plan_type": "ADAPTER_TARGET",
+          "emits_native_types": true,
+          "notes": "Wrap source logic into Dumby-native types. Detected categories: stocks."
+        }
+      ],
+      "scan_summary": {
+        "files_scanned": 1,
+        "files_considered": 1,
+        "tree_size": 23,
+        "direct_order_hits": [],
+        "kalshi_order_hits": [],
+        "polymarket_order_hits": [],
+        "private_key_hits": [],
+        "api_secret_hits": [],
+        "strategy_hits": [],
+        "forecast_hits": [],
+        "risk_hits": [],
+        "arbitrage_hits": [],
+        "websocket_hits": [],
+        "settlement_hits": [],
+        "dashboard_hits": [],
+        "sports_hits": [],
+        "weather_hits": [],
+        "stocks_hits": [
+          "setup.py"
+        ],
+        "commodities_hits": [],
+        "crypto_hits": []
+      }
+    },
+    {
+      "repo": "ray-project/ray",
+      "category": "universal_ml_forecasting_optimization",
+      "verdict": "DIRECT_DEPENDENCY_CANDIDATE",
+      "verdict_reasons": [
+        "Stable upstream library in dependency category with no trading/order logic"
+      ],
+      "plans": [
+        {
+          "repo": "ray-project/ray",
+          "adapter_name": "ray_dependency",
+          "plan_type": "DIRECT_DEPENDENCY_CANDIDATE",
+          "emits_native_types": true,
+          "notes": "Add to project dependencies; no adapter wrapper required."
+        }
+      ],
+      "scan_summary": {
+        "files_scanned": 3,
+        "files_considered": 3,
+        "tree_size": 51,
+        "direct_order_hits": [],
+        "kalshi_order_hits": [],
+        "polymarket_order_hits": [],
+        "private_key_hits": [],
+        "api_secret_hits": [],
+        "strategy_hits": [],
+        "forecast_hits": [],
+        "risk_hits": [],
+        "arbitrage_hits": [],
+        "websocket_hits": [],
+        "settlement_hits": [],
+        "dashboard_hits": [],
+        "sports_hits": [],
+        "weather_hits": [],
+        "stocks_hits": [],
+        "commodities_hits": [],
+        "crypto_hits": []
+      }
+    },
+    {
+      "repo": "automl/auto-sklearn",
+      "category": "universal_ml_forecasting_optimization",
+      "verdict": "ADAPTER_TARGET",
+      "verdict_reasons": [
+        "Source contains useful logic suitable for adapter wrapping: forecast"
+      ],
+      "plans": [
+        {
+          "repo": "automl/auto-sklearn",
+          "adapter_name": "auto_sklearn_adapter",
+          "plan_type": "ADAPTER_TARGET",
+          "emits_native_types": true,
+          "notes": "Wrap source logic into Dumby-native types. Detected categories: forecast."
+        }
+      ],
+      "scan_summary": {
+        "files_scanned": 1,
+        "files_considered": 1,
+        "tree_size": 23,
+        "direct_order_hits": [],
+        "kalshi_order_hits": [],
+        "polymarket_order_hits": [],
+        "private_key_hits": [],
+        "api_secret_hits": [],
+        "strategy_hits": [],
+        "forecast_hits": [
+          "setup.py"
+        ],
+        "risk_hits": [],
+        "arbitrage_hits": [],
+        "websocket_hits": [],
+        "settlement_hits": [],
+        "dashboard_hits": [],
+        "sports_hits": [],
+        "weather_hits": [],
+        "stocks_hits": [],
+        "commodities_hits": [],
+        "crypto_hits": []
+      }
+    },
+    {
+      "repo": "mlflow/mlflow",
+      "category": "universal_ml_forecasting_optimization",
+      "verdict": "DIRECT_DEPENDENCY_CANDIDATE",
+      "verdict_reasons": [
+        "Stable upstream library in dependency category with no trading/order logic"
+      ],
+      "plans": [
+        {
+          "repo": "mlflow/mlflow",
+          "adapter_name": "mlflow_dependency",
+          "plan_type": "DIRECT_DEPENDENCY_CANDIDATE",
+          "emits_native_types": true,
+          "notes": "Add to project dependencies; no adapter wrapper required."
+        }
+      ],
+      "scan_summary": {
+        "files_scanned": 1,
+        "files_considered": 1,
+        "tree_size": 46,
+        "direct_order_hits": [],
+        "kalshi_order_hits": [],
+        "polymarket_order_hits": [],
+        "private_key_hits": [],
+        "api_secret_hits": [],
+        "strategy_hits": [],
+        "forecast_hits": [],
+        "risk_hits": [],
+        "arbitrage_hits": [],
+        "websocket_hits": [],
+        "settlement_hits": [],
+        "dashboard_hits": [],
+        "sports_hits": [],
+        "weather_hits": [],
+        "stocks_hits": [],
+        "commodities_hits": [],
+        "crypto_hits": []
+      }
+    },
+    {
+      "repo": "wandb/wandb",
+      "category": "universal_ml_forecasting_optimization",
+      "verdict": "ADAPTER_TARGET",
+      "verdict_reasons": [
+        "Source contains useful logic suitable for adapter wrapping: stocks"
+      ],
+      "plans": [
+        {
+          "repo": "wandb/wandb",
+          "adapter_name": "wandb_adapter",
+          "plan_type": "ADAPTER_TARGET",
+          "emits_native_types": true,
+          "notes": "Wrap source logic into Dumby-native types. Detected categories: stocks."
+        }
+      ],
+      "scan_summary": {
+        "files_scanned": 1,
+        "files_considered": 1,
+        "tree_size": 34,
+        "direct_order_hits": [],
+        "kalshi_order_hits": [],
+        "polymarket_order_hits": [],
+        "private_key_hits": [],
+        "api_secret_hits": [],
+        "strategy_hits": [],
+        "forecast_hits": [],
+        "risk_hits": [],
+        "arbitrage_hits": [],
+        "websocket_hits": [],
+        "settlement_hits": [],
+        "dashboard_hits": [],
+        "sports_hits": [],
+        "weather_hits": [],
+        "stocks_hits": [
+          "noxfile.py"
+        ],
+        "commodities_hits": [],
+        "crypto_hits": []
+      }
+    },
+    {
+      "repo": "evidentlyai/evidently",
+      "category": "universal_ml_forecasting_optimization",
+      "verdict": "DIRECT_DEPENDENCY_CANDIDATE",
+      "verdict_reasons": [
+        "Stable upstream library in dependency category with no trading/order logic"
+      ],
+      "plans": [
+        {
+          "repo": "evidentlyai/evidently",
+          "adapter_name": "evidently_dependency",
+          "plan_type": "DIRECT_DEPENDENCY_CANDIDATE",
+          "emits_native_types": true,
+          "notes": "Add to project dependencies; no adapter wrapper required."
+        }
+      ],
+      "scan_summary": {
+        "files_scanned": 0,
+        "files_considered": 0,
+        "tree_size": 28,
+        "direct_order_hits": [],
+        "kalshi_order_hits": [],
+        "polymarket_order_hits": [],
+        "private_key_hits": [],
+        "api_secret_hits": [],
+        "strategy_hits": [],
+        "forecast_hits": [],
+        "risk_hits": [],
+        "arbitrage_hits": [],
+        "websocket_hits": [],
+        "settlement_hits": [],
+        "dashboard_hits": [],
+        "sports_hits": [],
+        "weather_hits": [],
+        "stocks_hits": [],
+        "commodities_hits": [],
+        "crypto_hits": []
+      }
+    },
+    {
+      "repo": "ranaroussi/yfinance",
+      "category": "financial_data_market_data",
+      "verdict": "ADAPTER_TARGET",
+      "verdict_reasons": [
+        "Source contains useful logic suitable for adapter wrapping: strategy, forecast, risk, websocket, settlement, sports, stocks, crypto"
+      ],
+      "plans": [
+        {
+          "repo": "ranaroussi/yfinance",
+          "adapter_name": "yfinance_adapter",
+          "plan_type": "ADAPTER_TARGET",
+          "emits_native_types": true,
+          "notes": "Wrap source logic into Dumby-native types. Detected categories: strategy, forecast, risk, websocket, settlement, sports, stocks, crypto."
+        }
+      ],
+      "scan_summary": {
+        "files_scanned": 30,
+        "files_considered": 30,
+        "tree_size": 240,
+        "direct_order_hits": [],
+        "kalshi_order_hits": [],
+        "polymarket_order_hits": [],
+        "private_key_hits": [],
+        "api_secret_hits": [],
+        "strategy_hits": [
+          "yfinance/config.py",
+          "doc/source/conf.py",
+          "setup.py",
+          "yfinance/domain/market.py",
+          "yfinance/domain/industry.py",
+          "yfinance/domain/sector.py",
+          "yfinance/domain/domain.py"
+        ],
+        "forecast_hits": [
+          "setup.py"
+        ],
+        "risk_hits": [
+          "yfinance/ticker.py",
+          "yfinance/screener/query.py",
+          "yfinance/screener/screener.py"
+        ],
+        "arbitrage_hits": [],
+        "websocket_hits": [
+          "yfinance/__init__.py",
+          "setup.py",
+          "yfinance/tickers.py",
+          "yfinance/live.py"
+        ],
+        "settlement_hits": [
+          "tests/context.py"
+        ],
+        "dashboard_hits": [],
+        "sports_hits": [
+          "yfinance/domain/market.py",
+          "yfinance/search.py",
+          "yfinance/scrapers/fundamentals.py"
+        ],
+        "weather_hits": [],
+        "stocks_hits": [
+          "yfinance/screener/__init__.py",
+          "yfinance/shared.py",
+          "yfinance/config.py",
+          "doc/source/conf.py",
+          "tests/context.py",
+          "yfinance/__init__.py",
+          "yfinance/pricing_pb2.py",
+          "setup.py",
+          "yfinance/tickers.py",
+          "yfinance/domain/industry.py",
+          "yfinance/domain/sector.py",
+          "yfinance/search.py",
+          "yfinance/domain/domain.py",
+          "yfinance/lookup.py",
+          "yfinance/scrapers/analysis.py",
+          "yfinance/scrapers/fundamentals.py",
+          "yfinance/ticker.py",
+          "yfinance/scrapers/holders.py",
+          "yfinance/screener/query.py",
+          "yfinance/scrapers/funds.py",
+          "yfinance/multi.py",
+          "yfinance/screener/screener.py",
+          "yfinance/live.py"
+        ],
+        "commodities_hits": [],
+        "crypto_hits": [
+          "yfinance/domain/market.py",
+          "yfinance/lookup.py",
+          "yfinance/screener/query.py",
+          "yfinance/screener/screener.py"
+        ]
+      }
+    },
+    {
+      "repo": "ranaroussi/quantstats",
+      "category": "financial_data_market_data",
+      "verdict": "ADAPTER_TARGET",
+      "verdict_reasons": [
+        "Source contains useful logic suitable for adapter wrapping: strategy, forecast, risk, settlement, sports, stocks, crypto"
+      ],
+      "plans": [
+        {
+          "repo": "ranaroussi/quantstats",
+          "adapter_name": "quantstats_adapter",
+          "plan_type": "ADAPTER_TARGET",
+          "emits_native_types": true,
+          "notes": "Wrap source logic into Dumby-native types. Detected categories: strategy, forecast, risk, settlement, sports, stocks, crypto."
+        }
+      ],
+      "scan_summary": {
+        "files_scanned": 13,
+        "files_considered": 13,
+        "tree_size": 51,
+        "direct_order_hits": [],
+        "kalshi_order_hits": [],
+        "polymarket_order_hits": [],
+        "private_key_hits": [],
+        "api_secret_hits": [],
+        "strategy_hits": [
+          "quantstats/_montecarlo.py",
+          "quantstats/__init__.py",
+          "quantstats/_compat.py",
+          "quantstats/utils.py",
+          "quantstats/_plotting/core.py",
+          "quantstats/_plotting/wrappers.py",
+          "quantstats/reports.py",
+          "quantstats/stats.py"
+        ],
+        "forecast_hits": [
+          "quantstats/_montecarlo.py",
+          "quantstats/_plotting/core.py",
+          "quantstats/_plotting/wrappers.py",
+          "quantstats/reports.py",
+          "quantstats/stats.py"
+        ],
+        "risk_hits": [
+          "quantstats/_montecarlo.py",
+          "quantstats/__init__.py",
+          "quantstats/utils.py",
+          "quantstats/_plotting/core.py",
+          "quantstats/_plotting/wrappers.py",
+          "quantstats/reports.py",
+          "quantstats/stats.py"
+        ],
+        "arbitrage_hits": [],
+        "websocket_hits": [],
+        "settlement_hits": [
+          "quantstats/__init__.py",
+          "quantstats/reports.py",
+          "quantstats/stats.py"
+        ],
+        "dashboard_hits": [],
+        "sports_hits": [
+          "quantstats/utils.py",
+          "quantstats/_plotting/core.py",
+          "quantstats/_plotting/wrappers.py",
+          "quantstats/reports.py",
+          "quantstats/stats.py"
+        ],
+        "weather_hits": [],
+        "stocks_hits": [
+          "tests/__init__.py",
+          "quantstats/plots.py",
+          "quantstats/_montecarlo.py",
+          "quantstats/__init__.py",
+          "quantstats/_numpy_compat.py",
+          "quantstats/_compat.py",
+          "quantstats/utils.py",
+          "quantstats/_plotting/core.py",
+          "quantstats/_plotting/wrappers.py",
+          "quantstats/reports.py",
+          "quantstats/stats.py"
+        ],
+        "commodities_hits": [],
+        "crypto_hits": [
+          "quantstats/stats.py"
+        ]
+      }
+    },
+    {
+      "repo": "quantopian/empyrical",
+      "category": "financial_data_market_data",
+      "verdict": "ADAPTER_TARGET",
+      "verdict_reasons": [
+        "Source contains useful logic suitable for adapter wrapping: strategy, forecast, risk, sports, stocks, commodities"
+      ],
+      "plans": [
+        {
+          "repo": "quantopian/empyrical",
+          "adapter_name": "empyrical_adapter",
+          "plan_type": "ADAPTER_TARGET",
+          "emits_native_types": true,
+          "notes": "Wrap source logic into Dumby-native types. Detected categories: strategy, forecast, risk, sports, stocks, commodities."
+        }
+      ],
+      "scan_summary": {
+        "files_scanned": 11,
+        "files_considered": 11,
+        "tree_size": 37,
+        "direct_order_hits": [],
+        "kalshi_order_hits": [],
+        "polymarket_order_hits": [],
+        "private_key_hits": [],
+        "api_secret_hits": [],
+        "strategy_hits": [
+          "empyrical/__init__.py",
+          "docs/conf.py",
+          "empyrical/utils.py",
+          "empyrical/_version.py",
+          "versioneer.py",
+          "empyrical/stats.py"
+        ],
+        "forecast_hits": [
+          "setup.py",
+          "empyrical/stats.py"
+        ],
+        "risk_hits": [
+          "empyrical/__init__.py",
+          "setup.py",
+          "empyrical/perf_attrib.py",
+          "empyrical/utils.py",
+          "empyrical/stats.py"
+        ],
+        "arbitrage_hits": [],
+        "websocket_hits": [],
+        "settlement_hits": [],
+        "dashboard_hits": [],
+        "sports_hits": [
+          "docs/conf.py",
+          "empyrical/perf_attrib.py",
+          "empyrical/_version.py",
+          "versioneer.py"
+        ],
+        "weather_hits": [],
+        "stocks_hits": [
+          "empyrical/deprecate.py",
+          "empyrical/__init__.py",
+          "setup.py",
+          "docs/conf.py",
+          "empyrical/perf_attrib.py",
+          "empyrical/utils.py",
+          "versioneer.py",
+          "empyrical/stats.py"
+        ],
+        "commodities_hits": [
+          "versioneer.py"
+        ],
+        "crypto_hits": []
+      }
+    },
+    {
+      "repo": "pmorissette/bt",
+      "category": "financial_data_market_data",
+      "verdict": "ADAPTER_TARGET",
+      "verdict_reasons": [
+        "Source contains useful logic suitable for adapter wrapping: strategy, risk, arbitrage, settlement, sports, stocks"
+      ],
+      "plans": [
+        {
+          "repo": "pmorissette/bt",
+          "adapter_name": "bt_adapter",
+          "plan_type": "ADAPTER_TARGET",
+          "emits_native_types": true,
+          "notes": "Wrap source logic into Dumby-native types. Detected categories: strategy, risk, arbitrage, settlement, sports, stocks."
+        }
+      ],
+      "scan_summary": {
+        "files_scanned": 12,
+        "files_considered": 12,
+        "tree_size": 237,
+        "direct_order_hits": [],
+        "kalshi_order_hits": [],
+        "polymarket_order_hits": [],
+        "private_key_hits": [],
+        "api_secret_hits": [],
+        "strategy_hits": [
+          "bt/__init__.py",
+          "examples/buy_and_hold.py",
+          "tests/bench.py",
+          "docs/source/conf.py",
+          "examples/pairs_trading.py",
+          "bt/backtest.py",
+          "bt/algos.py",
+          "bt/core.py"
+        ],
+        "forecast_hits": [],
+        "risk_hits": [
+          "examples/buy_and_hold.py",
+          "bt/backtest.py",
+          "bt/algos.py",
+          "bt/core.py"
+        ],
+        "arbitrage_hits": [
+          "bt/algos.py",
+          "bt/core.py"
+        ],
+        "websocket_hits": [],
+        "settlement_hits": [
+          "bt/backtest.py",
+          "bt/algos.py",
+          "bt/core.py"
+        ],
+        "dashboard_hits": [],
+        "sports_hits": [
+          "examples/buy_and_hold.py",
+          "docs/source/conf.py",
+          "bt/backtest.py",
+          "bt/algos.py",
+          "bt/core.py"
+        ],
+        "weather_hits": [],
+        "stocks_hits": [
+          "examples/buy_and_hold.py",
+          "docs/source/conf.py",
+          "examples/pairs_trading.py",
+          "bt/backtest.py",
+          "bt/algos.py",
+          "bt/core.py"
+        ],
+        "commodities_hits": [],
+        "crypto_hits": []
+      }
+    },
+    {
+      "repo": "bukosabino/ta",
+      "category": "financial_data_market_data",
+      "verdict": "ADAPTER_TARGET",
+      "verdict_reasons": [
+        "Source contains useful logic suitable for adapter wrapping: strategy, forecast, risk, arbitrage, sports, stocks, commodities"
+      ],
+      "plans": [
+        {
+          "repo": "bukosabino/ta",
+          "adapter_name": "ta_adapter",
+          "plan_type": "ADAPTER_TARGET",
+          "emits_native_types": true,
+          "notes": "Wrap source logic into Dumby-native types. Detected categories: strategy, forecast, risk, arbitrage, sports, stocks, commodities."
+        }
+      ],
+      "scan_summary": {
+        "files_scanned": 20,
+        "files_considered": 20,
+        "tree_size": 89,
+        "direct_order_hits": [],
+        "kalshi_order_hits": [],
+        "polymarket_order_hits": [],
+        "private_key_hits": [],
+        "api_secret_hits": [],
+        "strategy_hits": [
+          "docs/conf.py",
+          "test/unit/volume.py",
+          "test/unit/trend.py",
+          "test/unit/momentum.py",
+          "ta/wrapper.py",
+          "ta/volume.py",
+          "ta/momentum.py",
+          "ta/trend.py"
+        ],
+        "forecast_hits": [
+          "setup.py"
+        ],
+        "risk_hits": [
+          "ta/__init__.py",
+          "examples_to_use/bollinger_band_features_example.py",
+          "test/__init__.py",
+          "test/unit/volatility.py",
+          "ta/wrapper.py",
+          "ta/volatility.py",
+          "ta/momentum.py"
+        ],
+        "arbitrage_hits": [
+          "test/unit/trend.py",
+          "test/unit/momentum.py",
+          "test/unit/volatility.py"
+        ],
+        "websocket_hits": [],
+        "settlement_hits": [],
+        "dashboard_hits": [],
+        "sports_hits": [
+          "docs/conf.py"
+        ],
+        "weather_hits": [],
+        "stocks_hits": [
+          "docs/conf.py",
+          "test/unit/volume.py",
+          "test/unit/trend.py",
+          "test/unit/momentum.py",
+          "test/unit/volatility.py",
+          "ta/volume.py",
+          "ta/volatility.py",
+          "ta/momentum.py",
+          "ta/trend.py"
+        ],
+        "commodities_hits": [
+          "test/unit/trend.py",
+          "ta/trend.py"
+        ],
+        "crypto_hits": []
+      }
+    },
+    {
+      "repo": "duckdb/duckdb",
+      "category": "financial_data_market_data",
+      "verdict": "DIRECT_DEPENDENCY_CANDIDATE",
+      "verdict_reasons": [
+        "Stable upstream library in dependency category with no trading/order logic"
+      ],
+      "plans": [
+        {
+          "repo": "duckdb/duckdb",
+          "adapter_name": "duckdb_dependency",
+          "plan_type": "DIRECT_DEPENDENCY_CANDIDATE",
+          "emits_native_types": true,
+          "notes": "Add to project dependencies; no adapter wrapper required."
+        }
+      ],
+      "scan_summary": {
+        "files_scanned": 0,
+        "files_considered": 0,
+        "tree_size": 34,
+        "direct_order_hits": [],
+        "kalshi_order_hits": [],
+        "polymarket_order_hits": [],
+        "private_key_hits": [],
+        "api_secret_hits": [],
+        "strategy_hits": [],
+        "forecast_hits": [],
+        "risk_hits": [],
+        "arbitrage_hits": [],
+        "websocket_hits": [],
+        "settlement_hits": [],
+        "dashboard_hits": [],
+        "sports_hits": [],
+        "weather_hits": [],
+        "stocks_hits": [],
+        "commodities_hits": [],
+        "crypto_hits": []
+      }
+    },
+    {
+      "repo": "fastapi/fastapi",
+      "category": "dashboard_api_observability",
+      "verdict": "DIRECT_DEPENDENCY_CANDIDATE",
+      "verdict_reasons": [
+        "Stable upstream library in dependency category with no trading/order logic"
+      ],
+      "plans": [
+        {
+          "repo": "fastapi/fastapi",
+          "adapter_name": "fastapi_dependency",
+          "plan_type": "DIRECT_DEPENDENCY_CANDIDATE",
+          "emits_native_types": true,
+          "notes": "Add to project dependencies; no adapter wrapper required."
+        }
+      ],
+      "scan_summary": {
+        "files_scanned": 0,
+        "files_considered": 0,
+        "tree_size": 14,
+        "direct_order_hits": [],
+        "kalshi_order_hits": [],
+        "polymarket_order_hits": [],
+        "private_key_hits": [],
+        "api_secret_hits": [],
+        "strategy_hits": [],
+        "forecast_hits": [],
+        "risk_hits": [],
+        "arbitrage_hits": [],
+        "websocket_hits": [],
+        "settlement_hits": [],
+        "dashboard_hits": [],
+        "sports_hits": [],
+        "weather_hits": [],
+        "stocks_hits": [],
+        "commodities_hits": [],
+        "crypto_hits": []
+      }
+    },
+    {
+      "repo": "vitejs/vite",
+      "category": "dashboard_api_observability",
+      "verdict": "ADAPTER_TARGET",
+      "verdict_reasons": [
+        "Source contains useful logic suitable for adapter wrapping: settlement, stocks"
+      ],
+      "plans": [
+        {
+          "repo": "vitejs/vite",
+          "adapter_name": "vite_adapter",
+          "plan_type": "ADAPTER_TARGET",
+          "emits_native_types": true,
+          "notes": "Wrap source logic into Dumby-native types. Detected categories: settlement, stocks."
+        }
+      ],
+      "scan_summary": {
+        "files_scanned": 3,
+        "files_considered": 3,
+        "tree_size": 21,
+        "direct_order_hits": [],
+        "kalshi_order_hits": [],
+        "polymarket_order_hits": [],
+        "private_key_hits": [],
+        "api_secret_hits": [],
+        "strategy_hits": [],
+        "forecast_hits": [],
+        "risk_hits": [],
+        "arbitrage_hits": [],
+        "websocket_hits": [],
+        "settlement_hits": [
+          "vitest.config.ts",
+          "vitest.config.e2e.ts",
+          "eslint.config.js"
+        ],
+        "dashboard_hits": [],
+        "sports_hits": [],
+        "weather_hits": [],
+        "stocks_hits": [
+          "eslint.config.js"
+        ],
+        "commodities_hits": [],
+        "crypto_hits": []
+      }
+    },
+    {
+      "repo": "vercel/next.js",
+      "category": "dashboard_api_observability",
+      "verdict": "ADAPTER_TARGET",
+      "verdict_reasons": [
+        "Source contains useful logic suitable for adapter wrapping: strategy, settlement, dashboard, sports, stocks, commodities"
+      ],
+      "plans": [
+        {
+          "repo": "vercel/next.js",
+          "adapter_name": "next.js_adapter",
+          "plan_type": "ADAPTER_TARGET",
+          "emits_native_types": true,
+          "notes": "Wrap source logic into Dumby-native types. Detected categories: strategy, settlement, dashboard, sports, stocks, commodities."
+        }
+      ],
+      "scan_summary": {
+        "files_scanned": 6,
+        "files_considered": 6,
+        "tree_size": 72,
+        "direct_order_hits": [],
+        "kalshi_order_hits": [],
+        "polymarket_order_hits": [],
+        "private_key_hits": [],
+        "api_secret_hits": [],
+        "strategy_hits": [
+          "run-evals.js",
+          "run-tests.js"
+        ],
+        "forecast_hits": [],
+        "risk_hits": [],
+        "arbitrage_hits": [],
+        "websocket_hits": [],
+        "settlement_hits": [
+          "jest.config.js",
+          "run-evals.js",
+          "run-tests.js"
+        ],
+        "dashboard_hits": [
+          "run-tests.js"
+        ],
+        "sports_hits": [
+          "jest.config.js",
+          "release.js",
+          "run-tests.js"
+        ],
+        "weather_hits": [],
+        "stocks_hits": [
+          "run-tests.js"
+        ],
+        "commodities_hits": [
+          "run-tests.js"
+        ],
+        "crypto_hits": []
+      }
+    },
+    {
+      "repo": "tailwindlabs/tailwindcss",
+      "category": "dashboard_api_observability",
+      "verdict": "DIRECT_DEPENDENCY_CANDIDATE",
+      "verdict_reasons": [
+        "Stable upstream library in dependency category with no trading/order logic"
+      ],
+      "plans": [
+        {
+          "repo": "tailwindlabs/tailwindcss",
+          "adapter_name": "tailwindcss_dependency",
+          "plan_type": "DIRECT_DEPENDENCY_CANDIDATE",
+          "emits_native_types": true,
+          "notes": "Add to project dependencies; no adapter wrapper required."
+        }
+      ],
+      "scan_summary": {
+        "files_scanned": 1,
+        "files_considered": 1,
+        "tree_size": 20,
+        "direct_order_hits": [],
+        "kalshi_order_hits": [],
+        "polymarket_order_hits": [],
+        "private_key_hits": [],
+        "api_secret_hits": [],
+        "strategy_hits": [],
+        "forecast_hits": [],
+        "risk_hits": [],
+        "arbitrage_hits": [],
+        "websocket_hits": [],
+        "settlement_hits": [],
+        "dashboard_hits": [],
+        "sports_hits": [],
+        "weather_hits": [],
+        "stocks_hits": [],
+        "commodities_hits": [],
+        "crypto_hits": []
+      }
+    },
+    {
+      "repo": "recharts/recharts",
+      "category": "dashboard_api_observability",
+      "verdict": "ADAPTER_TARGET",
+      "verdict_reasons": [
+        "Source contains useful logic suitable for adapter wrapping: settlement, dashboard"
+      ],
+      "plans": [
+        {
+          "repo": "recharts/recharts",
+          "adapter_name": "recharts_adapter",
+          "plan_type": "ADAPTER_TARGET",
+          "emits_native_types": true,
+          "notes": "Wrap source logic into Dumby-native types. Detected categories: settlement, dashboard."
+        }
+      ],
+      "scan_summary": {
+        "files_scanned": 3,
+        "files_considered": 3,
+        "tree_size": 37,
+        "direct_order_hits": [],
+        "kalshi_order_hits": [],
+        "polymarket_order_hits": [],
+        "private_key_hits": [],
+        "api_secret_hits": [],
+        "strategy_hits": [],
+        "forecast_hits": [],
+        "risk_hits": [],
+        "arbitrage_hits": [],
+        "websocket_hits": [],
+        "settlement_hits": [
+          "webpack.config.js"
+        ],
+        "dashboard_hits": [
+          ".babelrc.js",
+          "webpack.config.js"
+        ],
+        "sports_hits": [],
+        "weather_hits": [],
+        "stocks_hits": [],
+        "commodities_hits": [],
+        "crypto_hits": []
+      }
+    },
+    {
+      "repo": "streamlit/streamlit",
+      "category": "dashboard_api_observability",
+      "verdict": "DIRECT_DEPENDENCY_CANDIDATE",
+      "verdict_reasons": [
+        "Stable upstream library in dependency category with no trading/order logic"
+      ],
+      "plans": [
+        {
+          "repo": "streamlit/streamlit",
+          "adapter_name": "streamlit_dependency",
+          "plan_type": "DIRECT_DEPENDENCY_CANDIDATE",
+          "emits_native_types": true,
+          "notes": "Add to project dependencies; no adapter wrapper required."
+        }
+      ],
+      "scan_summary": {
+        "files_scanned": 0,
+        "files_considered": 0,
+        "tree_size": 28,
+        "direct_order_hits": [],
+        "kalshi_order_hits": [],
+        "polymarket_order_hits": [],
+        "private_key_hits": [],
+        "api_secret_hits": [],
+        "strategy_hits": [],
+        "forecast_hits": [],
+        "risk_hits": [],
+        "arbitrage_hits": [],
+        "websocket_hits": [],
+        "settlement_hits": [],
+        "dashboard_hits": [],
+        "sports_hits": [],
+        "weather_hits": [],
+        "stocks_hits": [],
+        "commodities_hits": [],
+        "crypto_hits": []
+      }
+    },
+    {
+      "repo": "plotly/dash",
+      "category": "dashboard_api_observability",
+      "verdict": "ADAPTER_TARGET",
+      "verdict_reasons": [
+        "Source contains useful logic suitable for adapter wrapping: forecast, arbitrage, settlement, dashboard, sports"
+      ],
+      "plans": [
+        {
+          "repo": "plotly/dash",
+          "adapter_name": "dash_adapter",
+          "plan_type": "ADAPTER_TARGET",
+          "emits_native_types": true,
+          "notes": "Wrap source logic into Dumby-native types. Detected categories: forecast, arbitrage, settlement, dashboard, sports."
+        }
+      ],
+      "scan_summary": {
+        "files_scanned": 3,
+        "files_considered": 3,
+        "tree_size": 33,
+        "direct_order_hits": [],
+        "kalshi_order_hits": [],
+        "polymarket_order_hits": [],
+        "private_key_hits": [],
+        "api_secret_hits": [],
+        "strategy_hits": [],
+        "forecast_hits": [
+          "setup.py"
+        ],
+        "risk_hits": [],
+        "arbitrage_hits": [
+          "setup.py"
+        ],
+        "websocket_hits": [],
+        "settlement_hits": [
+          ".lintstagedrc.js"
+        ],
+        "dashboard_hits": [
+          "setup.py"
+        ],
+        "sports_hits": [
+          ".lintstagedrc.js"
+        ],
+        "weather_hits": [],
+        "stocks_hits": [],
+        "commodities_hits": [],
+        "crypto_hits": []
+      }
+    },
+    {
+      "repo": "getredash/redash",
+      "category": "dashboard_api_observability",
+      "verdict": "ADAPTER_TARGET",
+      "verdict_reasons": [
+        "Source contains useful logic suitable for adapter wrapping: strategy, settlement, dashboard, sports, stocks"
+      ],
+      "plans": [
+        {
+          "repo": "getredash/redash",
+          "adapter_name": "redash_adapter",
+          "plan_type": "ADAPTER_TARGET",
+          "emits_native_types": true,
+          "notes": "Wrap source logic into Dumby-native types. Detected categories: strategy, settlement, dashboard, sports, stocks."
+        }
+      ],
+      "scan_summary": {
+        "files_scanned": 3,
+        "files_considered": 3,
+        "tree_size": 39,
+        "direct_order_hits": [],
+        "kalshi_order_hits": [],
+        "polymarket_order_hits": [],
+        "private_key_hits": [],
+        "api_secret_hits": [],
+        "strategy_hits": [
+          "webpack.config.js"
+        ],
+        "forecast_hits": [],
+        "risk_hits": [],
+        "arbitrage_hits": [],
+        "websocket_hits": [],
+        "settlement_hits": [
+          "webpack.config.js"
+        ],
+        "dashboard_hits": [
+          "webpack.config.js"
+        ],
+        "sports_hits": [
+          "webpack.config.js"
+        ],
+        "weather_hits": [],
+        "stocks_hits": [
+          "webpack.config.js"
+        ],
+        "commodities_hits": [],
+        "crypto_hits": []
+      }
+    },
+    {
+      "repo": "ClickHouse/ClickHouse",
+      "category": "dashboard_api_observability",
+      "verdict": "DIRECT_DEPENDENCY_CANDIDATE",
+      "verdict_reasons": [
+        "Stable upstream library in dependency category with no trading/order logic"
+      ],
+      "plans": [
+        {
+          "repo": "ClickHouse/ClickHouse",
+          "adapter_name": "ClickHouse_dependency",
+          "plan_type": "DIRECT_DEPENDENCY_CANDIDATE",
+          "emits_native_types": true,
+          "notes": "Add to project dependencies; no adapter wrapper required."
+        }
+      ],
+      "scan_summary": {
+        "files_scanned": 0,
+        "files_considered": 0,
+        "tree_size": 41,
+        "direct_order_hits": [],
+        "kalshi_order_hits": [],
+        "polymarket_order_hits": [],
+        "private_key_hits": [],
+        "api_secret_hits": [],
+        "strategy_hits": [],
+        "forecast_hits": [],
+        "risk_hits": [],
+        "arbitrage_hits": [],
+        "websocket_hits": [],
+        "settlement_hits": [],
+        "dashboard_hits": [],
+        "sports_hits": [],
+        "weather_hits": [],
+        "stocks_hits": [],
+        "commodities_hits": [],
+        "crypto_hits": []
+      }
+    },
+    {
+      "repo": "prometheus/prometheus",
+      "category": "dashboard_api_observability",
+      "verdict": "DIRECT_DEPENDENCY_CANDIDATE",
+      "verdict_reasons": [
+        "Stable upstream library in dependency category with no trading/order logic"
+      ],
+      "plans": [
+        {
+          "repo": "prometheus/prometheus",
+          "adapter_name": "prometheus_dependency",
+          "plan_type": "DIRECT_DEPENDENCY_CANDIDATE",
+          "emits_native_types": true,
+          "notes": "Add to project dependencies; no adapter wrapper required."
+        }
+      ],
+      "scan_summary": {
+        "files_scanned": 0,
+        "files_considered": 0,
+        "tree_size": 52,
+        "direct_order_hits": [],
+        "kalshi_order_hits": [],
+        "polymarket_order_hits": [],
+        "private_key_hits": [],
+        "api_secret_hits": [],
+        "strategy_hits": [],
+        "forecast_hits": [],
+        "risk_hits": [],
+        "arbitrage_hits": [],
+        "websocket_hits": [],
+        "settlement_hits": [],
+        "dashboard_hits": [],
+        "sports_hits": [],
+        "weather_hits": [],
+        "stocks_hits": [],
+        "commodities_hits": [],
+        "crypto_hits": []
+      }
+    },
+    {
+      "repo": "crewAIInc/crewAI",
+      "category": "agent_automation_evaluation",
+      "verdict": "ADAPTER_TARGET",
+      "verdict_reasons": [
+        "Source contains useful logic suitable for adapter wrapping: forecast, settlement, sports, stocks"
+      ],
+      "plans": [
+        {
+          "repo": "crewAIInc/crewAI",
+          "adapter_name": "crewAI_adapter",
+          "plan_type": "ADAPTER_TARGET",
+          "emits_native_types": true,
+          "notes": "Wrap source logic into Dumby-native types. Detected categories: forecast, settlement, sports, stocks."
+        }
+      ],
+      "scan_summary": {
+        "files_scanned": 1,
+        "files_considered": 1,
+        "tree_size": 15,
+        "direct_order_hits": [],
+        "kalshi_order_hits": [],
+        "polymarket_order_hits": [],
+        "private_key_hits": [],
+        "api_secret_hits": [
+          "conftest.py"
+        ],
+        "strategy_hits": [],
+        "forecast_hits": [
+          "conftest.py"
+        ],
+        "risk_hits": [],
+        "arbitrage_hits": [],
+        "websocket_hits": [],
+        "settlement_hits": [
+          "conftest.py"
+        ],
+        "dashboard_hits": [],
+        "sports_hits": [
+          "conftest.py"
+        ],
+        "weather_hits": [],
+        "stocks_hits": [
+          "conftest.py"
+        ],
+        "commodities_hits": [],
+        "crypto_hits": []
+      }
+    },
+    {
+      "repo": "promptfoo/promptfoo",
+      "category": "agent_automation_evaluation",
+      "verdict": "ADAPTER_TARGET",
+      "verdict_reasons": [
+        "Source contains useful logic suitable for adapter wrapping: strategy, forecast, settlement, stocks"
+      ],
+      "plans": [
+        {
+          "repo": "promptfoo/promptfoo",
+          "adapter_name": "promptfoo_adapter",
+          "plan_type": "ADAPTER_TARGET",
+          "emits_native_types": true,
+          "notes": "Wrap source logic into Dumby-native types. Detected categories: strategy, forecast, settlement, stocks."
+        }
+      ],
+      "scan_summary": {
+        "files_scanned": 6,
+        "files_considered": 6,
+        "tree_size": 58,
+        "direct_order_hits": [],
+        "kalshi_order_hits": [],
+        "polymarket_order_hits": [],
+        "private_key_hits": [],
+        "api_secret_hits": [
+          "vitest.setup.ts"
+        ],
+        "strategy_hits": [
+          "vitest.config.ts"
+        ],
+        "forecast_hits": [
+          "vitest.smoke.config.ts"
+        ],
+        "risk_hits": [],
+        "arbitrage_hits": [],
+        "websocket_hits": [],
+        "settlement_hits": [
+          "vitest.config.ts",
+          "tsdown.config.ts"
+        ],
+        "dashboard_hits": [],
+        "sports_hits": [],
+        "weather_hits": [],
+        "stocks_hits": [
+          "vitest.integration.config.ts",
+          "vitest.config.ts",
+          "tsdown.config.ts"
+        ],
+        "commodities_hits": [],
+        "crypto_hits": []
+      }
+    },
+    {
+      "repo": "TensorBlock/awesome-mcp-servers",
+      "category": "agent_automation_evaluation",
+      "verdict": "ADAPTER_TARGET",
+      "verdict_reasons": [
+        "Source contains useful logic suitable for adapter wrapping: strategy, risk, settlement, sports, stocks"
+      ],
+      "plans": [
+        {
+          "repo": "TensorBlock/awesome-mcp-servers",
+          "adapter_name": "awesome_mcp_servers_adapter",
+          "plan_type": "ADAPTER_TARGET",
+          "emits_native_types": true,
+          "notes": "Wrap source logic into Dumby-native types. Detected categories: strategy, risk, settlement, sports, stocks."
+        }
+      ],
+      "scan_summary": {
+        "files_scanned": 11,
+        "files_considered": 11,
+        "tree_size": 7668,
+        "direct_order_hits": [],
+        "kalshi_order_hits": [],
+        "polymarket_order_hits": [],
+        "private_key_hits": [],
+        "api_secret_hits": [
+          "packages/registry-api/src/server.ts"
+        ],
+        "strategy_hits": [
+          "packages/registry-api/src/profilePage.ts"
+        ],
+        "forecast_hits": [],
+        "risk_hits": [
+          "packages/registry-api/src/profilePage.ts"
+        ],
+        "arbitrage_hits": [],
+        "websocket_hits": [],
+        "settlement_hits": [
+          "packages/registry-mcp/src/server.ts",
+          "packages/registry-api/src/server.ts",
+          "packages/registry-api/src/profilePage.ts"
+        ],
+        "dashboard_hits": [],
+        "sports_hits": [
+          "packages/registry-mcp/src/server.ts",
+          "packages/registry-api/src/search.ts",
+          "packages/registry-api/src/server.ts"
+        ],
+        "weather_hits": [],
+        "stocks_hits": [
+          "packages/registry-api/src/server.ts",
+          "packages/registry-api/src/profilePage.ts"
+        ],
+        "commodities_hits": [],
+        "crypto_hits": []
+      }
+    }
+  ]
+}

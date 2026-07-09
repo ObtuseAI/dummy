@@ -1,9 +1,9 @@
-from adapters.base import DumbyAdapter
+from adapters.base import DummyAdapter
 from core.ontology import Forecast
 from forecasting.engine import ForecastEngine
 
 
-class PredictosReferenceAdapter(DumbyAdapter):
+class PredictosReferenceAdapter(DummyAdapter):
     """Reference adapter for Predictos-style data shapes."""
 
     name = "predictos_reference"

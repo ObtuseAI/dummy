@@ -1,9 +1,9 @@
-from adapters.base import DumbyAdapter
+from adapters.base import DummyAdapter
 from core.ontology import Forecast
 from forecasting.engine import ForecastEngine
 
 
-class PredictionMarketAnalysisAdapter(DumbyAdapter):
+class PredictionMarketAnalysisAdapter(DummyAdapter):
     """Reference adapter for generic prediction market analysis tooling."""
 
     name = "prediction_market_analysis"

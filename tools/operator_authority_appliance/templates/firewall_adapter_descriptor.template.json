@@ -1,0 +1,6 @@
+{
+  "_marker": "NOT_APPROVAL_TEMPLATE_ONLY",
+  "firewall_adapter_injected": "<bool_operator_injected>",
+  "non_broker_double": "<bool>",
+  "operator_confirmed": "<bool>"
+}

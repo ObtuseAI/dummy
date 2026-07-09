@@ -1,0 +1,1671 @@
+{
+  "generated_at": "2026-06-30T19:02:07.975556+00:00",
+  "repos_in_manifest": 223,
+  "repos_scanned": 223,
+  "total_files_scanned": 1863,
+  "verdict_counts": {
+    "REJECT_DIRECT_ORDER_BYPASS": 45,
+    "REJECT_LICENSE": 65,
+    "REJECT_SECRET_RISK": 8,
+    "REFERENCE_MINE": 19,
+    "ADAPTER_TARGET": 43,
+    "REJECT_SCRAPING_RISK": 6,
+    "REJECT_STALE": 16,
+    "DIRECT_DEPENDENCY_CANDIDATE": 21
+  },
+  "category_verdict_counts": {
+    "highest_priority": {
+      "REJECT_DIRECT_ORDER_BYPASS": 17,
+      "REJECT_LICENSE": 3,
+      "REJECT_SECRET_RISK": 1
+    },
+    "prediction_market_native": {
+      "REJECT_DIRECT_ORDER_BYPASS": 10,
+      "REFERENCE_MINE": 1
+    },
+    "kalshi_polymarket_arbitrage": {
+      "REJECT_DIRECT_ORDER_BYPASS": 7,
+      "REJECT_LICENSE": 2
+    },
+    "sports_prediction_odds": {
+      "REJECT_SECRET_RISK": 2,
+      "ADAPTER_TARGET": 5,
+      "REJECT_SCRAPING_RISK": 6,
+      "REJECT_LICENSE": 6,
+      "REJECT_DIRECT_ORDER_BYPASS": 1,
+      "REFERENCE_MINE": 3,
+      "REJECT_STALE": 2
+    },
+    "weather_prediction_market": {
+      "REJECT_LICENSE": 8,
+      "ADAPTER_TARGET": 3,
+      "REJECT_STALE": 2
+    },
+    "stocks_equities_options_macro": {
+      "ADAPTER_TARGET": 6,
+      "REFERENCE_MINE": 5,
+      "REJECT_LICENSE": 11,
+      "REJECT_DIRECT_ORDER_BYPASS": 3,
+      "REJECT_SECRET_RISK": 2,
+      "REJECT_STALE": 9
+    },
+    "commodities_energy_agriculture": {
+      "REJECT_STALE": 1,
+      "ADAPTER_TARGET": 7,
+      "REJECT_LICENSE": 6,
+      "REJECT_SECRET_RISK": 2,
+      "REFERENCE_MINE": 1
+    },
+    "crypto_btc_event_market": {
+      "ADAPTER_TARGET": 1,
+      "REJECT_LICENSE": 7,
+      "REJECT_DIRECT_ORDER_BYPASS": 5,
+      "REFERENCE_MINE": 1,
+      "REJECT_SECRET_RISK": 1
+    },
+    "universal_ml_forecasting_optimization": {
+      "DIRECT_DEPENDENCY_CANDIDATE": 15,
+      "REJECT_LICENSE": 8,
+      "ADAPTER_TARGET": 8
+    },
+    "financial_data_market_data": {
+      "REJECT_LICENSE": 4,
+      "ADAPTER_TARGET": 5,
+      "REJECT_STALE": 2,
+      "DIRECT_DEPENDENCY_CANDIDATE": 1
+    },
+    "dashboard_api_observability": {
+      "DIRECT_DEPENDENCY_CANDIDATE": 5,
+      "REJECT_LICENSE": 7,
+      "ADAPTER_TARGET": 5
+    },
+    "agent_automation_evaluation": {
+      "REFERENCE_MINE": 8,
+      "REJECT_LICENSE": 3,
+      "ADAPTER_TARGET": 3,
+      "REJECT_DIRECT_ORDER_BYPASS": 2
+    }
+  },
+  "finding_category_repo_counts": {
+    "direct_order": 20,
+    "kalshi_order": 29,
+    "polymarket_order": 32,
+    "private_key": 28,
+    "api_secret": 63,
+    "dashboard": 33,
+    "forecast": 90,
+    "strategy": 106,
+    "risk": 57,
+    "arbitrage": 53,
+    "websocket": 26,
+    "settlement": 86,
+    "sports": 90,
+    "weather": 35,
+    "stocks": 119,
+    "commodities": 39,
+    "crypto": 69
+  },
+  "repo_summaries": [
+    {
+      "repo": "pmxt-dev/pmxt",
+      "category": "highest_priority",
+      "files_scanned": 30,
+      "tree_size": 802,
+      "verdict": "REJECT_DIRECT_ORDER_BYPASS"
+    },
+    {
+      "repo": "pmxt-dev/pmxt-mcp",
+      "category": "highest_priority",
+      "files_scanned": 7,
+      "tree_size": 20,
+      "verdict": "REJECT_DIRECT_ORDER_BYPASS"
+    },
+    {
+      "repo": "Polymarket/py-clob-client",
+      "category": "highest_priority",
+      "files_scanned": 30,
+      "tree_size": 126,
+      "verdict": "REJECT_DIRECT_ORDER_BYPASS"
+    },
+    {
+      "repo": "Polymarket/agents",
+      "category": "highest_priority",
+      "files_scanned": 16,
+      "tree_size": 51,
+      "verdict": "REJECT_DIRECT_ORDER_BYPASS"
+    },
+    {
+      "repo": "gnosis/prediction-market-agent-tooling",
+      "category": "highest_priority",
+      "files_scanned": 30,
+      "tree_size": 362,
+      "verdict": "REJECT_LICENSE"
+    },
+    {
+      "repo": "microprediction/manifoldbot",
+      "category": "highest_priority",
+      "files_scanned": 20,
+      "tree_size": 82,
+      "verdict": "REJECT_SECRET_RISK"
+    },
+    {
+      "repo": "GodlyPeeta/prediction-markets.py",
+      "category": "highest_priority",
+      "files_scanned": 9,
+      "tree_size": 19,
+      "verdict": "REJECT_DIRECT_ORDER_BYPASS"
+    },
+    {
+      "repo": "gtg7784/dr-manhattan-ts",
+      "category": "highest_priority",
+      "files_scanned": 30,
+      "tree_size": 65,
+      "verdict": "REJECT_DIRECT_ORDER_BYPASS"
+    },
+    {
+      "repo": "gtg7784/dr-manhattan-rust",
+      "category": "highest_priority",
+      "files_scanned": 30,
+      "tree_size": 100,
+      "verdict": "REJECT_DIRECT_ORDER_BYPASS"
+    },
+    {
+      "repo": "erickdronski/kalshi-polymarket-trader",
+      "category": "highest_priority",
+      "files_scanned": 0,
+      "tree_size": 4,
+      "verdict": "REJECT_LICENSE"
+    },
+    {
+      "repo": "suislanchez/polymarket-kalshi-weather-bot",
+      "category": "highest_priority",
+      "files_scanned": 30,
+      "tree_size": 75,
+      "verdict": "REJECT_DIRECT_ORDER_BYPASS"
+    },
+    {
+      "repo": "ryanfrigo/kalshi-ai-trading-bot",
+      "category": "highest_priority",
+      "files_scanned": 30,
+      "tree_size": 136,
+      "verdict": "REJECT_DIRECT_ORDER_BYPASS"
+    },
+    {
+      "repo": "OctagonAI/kalshi-trading-bot-cli",
+      "category": "highest_priority",
+      "files_scanned": 30,
+      "tree_size": 309,
+      "verdict": "REJECT_DIRECT_ORDER_BYPASS"
+    },
+    {
+      "repo": "ImMike/polymarket-arbitrage",
+      "category": "highest_priority",
+      "files_scanned": 23,
+      "tree_size": 41,
+      "verdict": "REJECT_DIRECT_ORDER_BYPASS"
+    },
+    {
+      "repo": "CarlosIbCu/polymarket-kalshi-btc-arbitrage-bot",
+      "category": "highest_priority",
+      "files_scanned": 22,
+      "tree_size": 71,
+      "verdict": "REJECT_DIRECT_ORDER_BYPASS"
+    },
+    {
+      "repo": "braedonsaunders/homerun",
+      "category": "highest_priority",
+      "files_scanned": 2,
+      "tree_size": 21,
+      "verdict": "REJECT_DIRECT_ORDER_BYPASS"
+    },
+    {
+      "repo": "PredictionXBT/PredictOS",
+      "category": "highest_priority",
+      "files_scanned": 30,
+      "tree_size": 188,
+      "verdict": "REJECT_DIRECT_ORDER_BYPASS"
+    },
+    {
+      "repo": "realfishsam/prediction-market-arbitrage-bot",
+      "category": "highest_priority",
+      "files_scanned": 5,
+      "tree_size": 17,
+      "verdict": "REJECT_DIRECT_ORDER_BYPASS"
+    },
+    {
+      "repo": "kmizzi/karb",
+      "category": "highest_priority",
+      "files_scanned": 30,
+      "tree_size": 111,
+      "verdict": "REJECT_DIRECT_ORDER_BYPASS"
+    },
+    {
+      "repo": "Drakkar-Software/OctoBot-Prediction-Market",
+      "category": "highest_priority",
+      "files_scanned": 6,
+      "tree_size": 32,
+      "verdict": "REJECT_LICENSE"
+    },
+    {
+      "repo": "mihai-stancescu/polymarket-ai-trade-bot",
+      "category": "highest_priority",
+      "files_scanned": 18,
+      "tree_size": 35,
+      "verdict": "REJECT_DIRECT_ORDER_BYPASS"
+    },
+    {
+      "repo": "Kalshi/kalshi-starter-code-python",
+      "category": "prediction_market_native",
+      "files_scanned": 2,
+      "tree_size": 5,
+      "verdict": "REJECT_DIRECT_ORDER_BYPASS"
+    },
+    {
+      "repo": "Kalshi/tools-and-analysis",
+      "category": "prediction_market_native",
+      "files_scanned": 1,
+      "tree_size": 14,
+      "verdict": "REJECT_DIRECT_ORDER_BYPASS"
+    },
+    {
+      "repo": "TexasCoding/kalshi-python-sdk",
+      "category": "prediction_market_native",
+      "files_scanned": 30,
+      "tree_size": 463,
+      "verdict": "REJECT_DIRECT_ORDER_BYPASS"
+    },
+    {
+      "repo": "arshka/pykalshi",
+      "category": "prediction_market_native",
+      "files_scanned": 30,
+      "tree_size": 124,
+      "verdict": "REJECT_DIRECT_ORDER_BYPASS"
+    },
+    {
+      "repo": "humz2k/kalshi-python-unofficial",
+      "category": "prediction_market_native",
+      "files_scanned": 13,
+      "tree_size": 30,
+      "verdict": "REJECT_DIRECT_ORDER_BYPASS"
+    },
+    {
+      "repo": "vaguenebula/kalshi-client",
+      "category": "prediction_market_native",
+      "files_scanned": 12,
+      "tree_size": 17,
+      "verdict": "REJECT_DIRECT_ORDER_BYPASS"
+    },
+    {
+      "repo": "AndrewNolte/KalshiPythonClient",
+      "category": "prediction_market_native",
+      "files_scanned": 30,
+      "tree_size": 271,
+      "verdict": "REJECT_DIRECT_ORDER_BYPASS"
+    },
+    {
+      "repo": "EllAchE/kalshi_cli",
+      "category": "prediction_market_native",
+      "files_scanned": 14,
+      "tree_size": 26,
+      "verdict": "REJECT_DIRECT_ORDER_BYPASS"
+    },
+    {
+      "repo": "Polymarket/clob-client-v2",
+      "category": "prediction_market_native",
+      "files_scanned": 30,
+      "tree_size": 175,
+      "verdict": "REJECT_DIRECT_ORDER_BYPASS"
+    },
+    {
+      "repo": "quantified-uncertainty/metaforecast",
+      "category": "prediction_market_native",
+      "files_scanned": 3,
+      "tree_size": 27,
+      "verdict": "REFERENCE_MINE"
+    },
+    {
+      "repo": "vigji/mootlib",
+      "category": "prediction_market_native",
+      "files_scanned": 21,
+      "tree_size": 41,
+      "verdict": "REJECT_DIRECT_ORDER_BYPASS"
+    },
+    {
+      "repo": "tswaim/polymarket-kalshi-arbitrage-bot",
+      "category": "kalshi_polymarket_arbitrage",
+      "files_scanned": 14,
+      "tree_size": 31,
+      "verdict": "REJECT_DIRECT_ORDER_BYPASS"
+    },
+    {
+      "repo": "Longbridges/polymarket-kalshi-arbitrage-bot",
+      "category": "kalshi_polymarket_arbitrage",
+      "files_scanned": 0,
+      "tree_size": 8,
+      "verdict": "REJECT_LICENSE"
+    },
+    {
+      "repo": "defi-ape/polymarket-kalshi-arbitrage-bot",
+      "category": "kalshi_polymarket_arbitrage",
+      "files_scanned": 0,
+      "tree_size": 7,
+      "verdict": "REJECT_LICENSE"
+    },
+    {
+      "repo": "TopTrenDev/polymarket-kalshi-arbitrage-bot",
+      "category": "kalshi_polymarket_arbitrage",
+      "files_scanned": 17,
+      "tree_size": 23,
+      "verdict": "REJECT_DIRECT_ORDER_BYPASS"
+    },
+    {
+      "repo": "ashercn97/predmarket",
+      "category": "kalshi_polymarket_arbitrage",
+      "files_scanned": 17,
+      "tree_size": 30,
+      "verdict": "REJECT_DIRECT_ORDER_BYPASS"
+    },
+    {
+      "repo": "aulekator/Polymarket-BTC-15-Minute-Trading-Bot",
+      "category": "kalshi_polymarket_arbitrage",
+      "files_scanned": 30,
+      "tree_size": 147,
+      "verdict": "REJECT_DIRECT_ORDER_BYPASS"
+    },
+    {
+      "repo": "discountifu/polymarket-trading-bot",
+      "category": "kalshi_polymarket_arbitrage",
+      "files_scanned": 30,
+      "tree_size": 292,
+      "verdict": "REJECT_DIRECT_ORDER_BYPASS"
+    },
+    {
+      "repo": "Ronesfe/Polymarket-Automated-Trading-Bot",
+      "category": "kalshi_polymarket_arbitrage",
+      "files_scanned": 18,
+      "tree_size": 28,
+      "verdict": "REJECT_DIRECT_ORDER_BYPASS"
+    },
+    {
+      "repo": "Anmoldureha/polymarket-trading-bot-strategies",
+      "category": "kalshi_polymarket_arbitrage",
+      "files_scanned": 30,
+      "tree_size": 88,
+      "verdict": "REJECT_DIRECT_ORDER_BYPASS"
+    },
+    {
+      "repo": "the-odds-api/samples-python",
+      "category": "sports_prediction_odds",
+      "files_scanned": 6,
+      "tree_size": 10,
+      "verdict": "REJECT_SECRET_RISK"
+    },
+    {
+      "repo": "odds-api/odds-api",
+      "category": "sports_prediction_odds",
+      "files_scanned": 9,
+      "tree_size": 122,
+      "verdict": "REJECT_SECRET_RISK"
+    },
+    {
+      "repo": "Sharp-API/SharpAPI-TS",
+      "category": "sports_prediction_odds",
+      "files_scanned": 2,
+      "tree_size": 17,
+      "verdict": "ADAPTER_TARGET"
+    },
+    {
+      "repo": "carterlasalle/SportsArbFinder",
+      "category": "sports_prediction_odds",
+      "files_scanned": 6,
+      "tree_size": 10,
+      "verdict": "REJECT_SCRAPING_RISK"
+    },
+    {
+      "repo": "daankoning/ArbitrageFinder",
+      "category": "sports_prediction_odds",
+      "files_scanned": 2,
+      "tree_size": 7,
+      "verdict": "REJECT_LICENSE"
+    },
+    {
+      "repo": "robbiehaynes/arbitrage-finder",
+      "category": "sports_prediction_odds",
+      "files_scanned": 4,
+      "tree_size": 12,
+      "verdict": "REJECT_SCRAPING_RISK"
+    },
+    {
+      "repo": "ratsam3474/autoarbitrage",
+      "category": "sports_prediction_odds",
+      "files_scanned": 21,
+      "tree_size": 28,
+      "verdict": "REJECT_SCRAPING_RISK"
+    },
+    {
+      "repo": "personal-coding/Live-Sports-Arbitrage-Bet-Finder",
+      "category": "sports_prediction_odds",
+      "files_scanned": 4,
+      "tree_size": 6,
+      "verdict": "REJECT_LICENSE"
+    },
+    {
+      "repo": "jhonatan-dev/Betting-Arbitrage",
+      "category": "sports_prediction_odds",
+      "files_scanned": 8,
+      "tree_size": 17,
+      "verdict": "REJECT_DIRECT_ORDER_BYPASS"
+    },
+    {
+      "repo": "lumunge/Arb",
+      "category": "sports_prediction_odds",
+      "files_scanned": 25,
+      "tree_size": 62,
+      "verdict": "REJECT_LICENSE"
+    },
+    {
+      "repo": "odds-api/arbitrage-betting-scanner-bot",
+      "category": "sports_prediction_odds",
+      "files_scanned": 8,
+      "tree_size": 29,
+      "verdict": "ADAPTER_TARGET"
+    },
+    {
+      "repo": "jordantete/OddsHarvester",
+      "category": "sports_prediction_odds",
+      "files_scanned": 30,
+      "tree_size": 235,
+      "verdict": "REJECT_SCRAPING_RISK"
+    },
+    {
+      "repo": "pierridotite/ArbitrageOdds",
+      "category": "sports_prediction_odds",
+      "files_scanned": 2,
+      "tree_size": 8,
+      "verdict": "REJECT_SCRAPING_RISK"
+    },
+    {
+      "repo": "lines64/True-Odds-Calculator",
+      "category": "sports_prediction_odds",
+      "files_scanned": 0,
+      "tree_size": 9,
+      "verdict": "REJECT_LICENSE"
+    },
+    {
+      "repo": "WFord26/BetTrack",
+      "category": "sports_prediction_odds",
+      "files_scanned": 0,
+      "tree_size": 11,
+      "verdict": "REFERENCE_MINE"
+    },
+    {
+      "repo": "coryypeters/nrl-odds-intelligence-pipeline",
+      "category": "sports_prediction_odds",
+      "files_scanned": 21,
+      "tree_size": 47,
+      "verdict": "REJECT_SCRAPING_RISK"
+    },
+    {
+      "repo": "georgedouzas/sports-betting",
+      "category": "sports_prediction_odds",
+      "files_scanned": 1,
+      "tree_size": 16,
+      "verdict": "REFERENCE_MINE"
+    },
+    {
+      "repo": "NBA-Betting/NBA_Betting",
+      "category": "sports_prediction_odds",
+      "files_scanned": 2,
+      "tree_size": 13,
+      "verdict": "ADAPTER_TARGET"
+    },
+    {
+      "repo": "IanDublew/Machine-Learning-Football-Soccer-Prediction-Model-",
+      "category": "sports_prediction_odds",
+      "files_scanned": 0,
+      "tree_size": 4,
+      "verdict": "REJECT_LICENSE"
+    },
+    {
+      "repo": "ronyka77/SoccerPredictor_byRichardSzita",
+      "category": "sports_prediction_odds",
+      "files_scanned": 0,
+      "tree_size": 8,
+      "verdict": "REFERENCE_MINE"
+    },
+    {
+      "repo": "manuelpeba/world-cup-2026-forecast",
+      "category": "sports_prediction_odds",
+      "files_scanned": 30,
+      "tree_size": 97,
+      "verdict": "ADAPTER_TARGET"
+    },
+    {
+      "repo": "nickpadd/EuropeanFootballLeaguePredictor",
+      "category": "sports_prediction_odds",
+      "files_scanned": 6,
+      "tree_size": 18,
+      "verdict": "ADAPTER_TARGET"
+    },
+    {
+      "repo": "msoczi/football_predictions",
+      "category": "sports_prediction_odds",
+      "files_scanned": 0,
+      "tree_size": 12,
+      "verdict": "REJECT_STALE"
+    },
+    {
+      "repo": "ratloop/MatchOutcomeAI",
+      "category": "sports_prediction_odds",
+      "files_scanned": 5,
+      "tree_size": 39,
+      "verdict": "REJECT_STALE"
+    },
+    {
+      "repo": "siddhu21/Powerplay-Based-IPL-Match-Prediction",
+      "category": "sports_prediction_odds",
+      "files_scanned": 2,
+      "tree_size": 6,
+      "verdict": "REJECT_LICENSE"
+    },
+    {
+      "repo": "open-meteo/open-meteo",
+      "category": "weather_prediction_market",
+      "files_scanned": 0,
+      "tree_size": 417,
+      "verdict": "REJECT_LICENSE"
+    },
+    {
+      "repo": "paulokuong/noaa",
+      "category": "weather_prediction_market",
+      "files_scanned": 7,
+      "tree_size": 15,
+      "verdict": "ADAPTER_TARGET"
+    },
+    {
+      "repo": "weather-mcp/weather-mcp",
+      "category": "weather_prediction_market",
+      "files_scanned": 30,
+      "tree_size": 202,
+      "verdict": "ADAPTER_TARGET"
+    },
+    {
+      "repo": "GClunies/noaa_coops",
+      "category": "weather_prediction_market",
+      "files_scanned": 12,
+      "tree_size": 48,
+      "verdict": "ADAPTER_TARGET"
+    },
+    {
+      "repo": "tlaceby/weather",
+      "category": "weather_prediction_market",
+      "files_scanned": 4,
+      "tree_size": 11,
+      "verdict": "REJECT_LICENSE"
+    },
+    {
+      "repo": "nst-guide/ndfd_current",
+      "category": "weather_prediction_market",
+      "files_scanned": 3,
+      "tree_size": 15,
+      "verdict": "REJECT_STALE"
+    },
+    {
+      "repo": "jessehamner/WeatherWidget",
+      "category": "weather_prediction_market",
+      "files_scanned": 15,
+      "tree_size": 43,
+      "verdict": "REJECT_STALE"
+    },
+    {
+      "repo": "Hrishikesh332/Weather-Forecasting-Using-Ml",
+      "category": "weather_prediction_market",
+      "files_scanned": 0,
+      "tree_size": 8,
+      "verdict": "REJECT_LICENSE"
+    },
+    {
+      "repo": "Adhokshaj04/weather_predict",
+      "category": "weather_prediction_market",
+      "files_scanned": 0,
+      "tree_size": 6,
+      "verdict": "REJECT_LICENSE"
+    },
+    {
+      "repo": "abz-mhd/ai-weather-forecasting",
+      "category": "weather_prediction_market",
+      "files_scanned": 1,
+      "tree_size": 10,
+      "verdict": "REJECT_LICENSE"
+    },
+    {
+      "repo": "miketobz/ML-Rainfall-Prediction",
+      "category": "weather_prediction_market",
+      "files_scanned": 0,
+      "tree_size": 7,
+      "verdict": "REJECT_LICENSE"
+    },
+    {
+      "repo": "mohsin-riad/future-weather-forecasting",
+      "category": "weather_prediction_market",
+      "files_scanned": 0,
+      "tree_size": 11,
+      "verdict": "REJECT_LICENSE"
+    },
+    {
+      "repo": "kshitizrohilla/weather-app-using-openweathermap-api",
+      "category": "weather_prediction_market",
+      "files_scanned": 2,
+      "tree_size": 37,
+      "verdict": "REJECT_LICENSE"
+    },
+    {
+      "repo": "microsoft/qlib",
+      "category": "stocks_equities_options_macro",
+      "files_scanned": 30,
+      "tree_size": 757,
+      "verdict": "ADAPTER_TARGET"
+    },
+    {
+      "repo": "microsoft/RD-Agent",
+      "category": "stocks_equities_options_macro",
+      "files_scanned": 1,
+      "tree_size": 25,
+      "verdict": "REFERENCE_MINE"
+    },
+    {
+      "repo": "QuantConnect/Lean",
+      "category": "stocks_equities_options_macro",
+      "files_scanned": 4,
+      "tree_size": 54,
+      "verdict": "ADAPTER_TARGET"
+    },
+    {
+      "repo": "QuantConnect/Lean.Brokerages.InteractiveBrokers",
+      "category": "stocks_equities_options_macro",
+      "files_scanned": 0,
+      "tree_size": 79,
+      "verdict": "REFERENCE_MINE"
+    },
+    {
+      "repo": "nautechsystems/nautilus_trader",
+      "category": "stocks_equities_options_macro",
+      "files_scanned": 0,
+      "tree_size": 55,
+      "verdict": "REJECT_LICENSE"
+    },
+    {
+      "repo": "polakowo/vectorbt",
+      "category": "stocks_equities_options_macro",
+      "files_scanned": 2,
+      "tree_size": 19,
+      "verdict": "REJECT_LICENSE"
+    },
+    {
+      "repo": "backtrader/backtrader",
+      "category": "stocks_equities_options_macro",
+      "files_scanned": 0,
+      "tree_size": 0,
+      "verdict": "REJECT_LICENSE"
+    },
+    {
+      "repo": "mementum/backtrader",
+      "category": "stocks_equities_options_macro",
+      "files_scanned": 1,
+      "tree_size": 14,
+      "verdict": "REJECT_LICENSE"
+    },
+    {
+      "repo": "kernc/backtesting.py",
+      "category": "stocks_equities_options_macro",
+      "files_scanned": 12,
+      "tree_size": 62,
+      "verdict": "REJECT_DIRECT_ORDER_BYPASS"
+    },
+    {
+      "repo": "zipline-reloaded/zipline-reloaded",
+      "category": "stocks_equities_options_macro",
+      "files_scanned": 0,
+      "tree_size": 0,
+      "verdict": "REJECT_LICENSE"
+    },
+    {
+      "repo": "quantrocket-llc/zipline",
+      "category": "stocks_equities_options_macro",
+      "files_scanned": 2,
+      "tree_size": 11,
+      "verdict": "ADAPTER_TARGET"
+    },
+    {
+      "repo": "StockSharp/StockSharp",
+      "category": "stocks_equities_options_macro",
+      "files_scanned": 0,
+      "tree_size": 55,
+      "verdict": "REFERENCE_MINE"
+    },
+    {
+      "repo": "coding-kitties/investing-algorithm-framework",
+      "category": "stocks_equities_options_macro",
+      "files_scanned": 1,
+      "tree_size": 17,
+      "verdict": "REFERENCE_MINE"
+    },
+    {
+      "repo": "kieran-mackle/AutoTrader",
+      "category": "stocks_equities_options_macro",
+      "files_scanned": 24,
+      "tree_size": 145,
+      "verdict": "REJECT_DIRECT_ORDER_BYPASS"
+    },
+    {
+      "repo": "Lumiwealth/lumibot",
+      "category": "stocks_equities_options_macro",
+      "files_scanned": 1,
+      "tree_size": 33,
+      "verdict": "REJECT_LICENSE"
+    },
+    {
+      "repo": "marketcalls/openalgo",
+      "category": "stocks_equities_options_macro",
+      "files_scanned": 8,
+      "tree_size": 64,
+      "verdict": "REJECT_SECRET_RISK"
+    },
+    {
+      "repo": "Doggie52/Lean-Batch-Launcher",
+      "category": "stocks_equities_options_macro",
+      "files_scanned": 0,
+      "tree_size": 33,
+      "verdict": "REJECT_STALE"
+    },
+    {
+      "repo": "vrindger/actually_open_lean",
+      "category": "stocks_equities_options_macro",
+      "files_scanned": 3,
+      "tree_size": 28,
+      "verdict": "REJECT_LICENSE"
+    },
+    {
+      "repo": "aarjaneiro/QtLean",
+      "category": "stocks_equities_options_macro",
+      "files_scanned": 0,
+      "tree_size": 32,
+      "verdict": "REJECT_LICENSE"
+    },
+    {
+      "repo": "AI4Finance-Foundation/Awesome_AI4Finance",
+      "category": "stocks_equities_options_macro",
+      "files_scanned": 0,
+      "tree_size": 2,
+      "verdict": "REFERENCE_MINE"
+    },
+    {
+      "repo": "huseinzol05/Stock-Prediction-Models",
+      "category": "stocks_equities_options_macro",
+      "files_scanned": 0,
+      "tree_size": 14,
+      "verdict": "REJECT_STALE"
+    },
+    {
+      "repo": "shirosaidev/stocksight",
+      "category": "stocks_equities_options_macro",
+      "files_scanned": 2,
+      "tree_size": 22,
+      "verdict": "REJECT_STALE"
+    },
+    {
+      "repo": "stefan-jansen/machine-learning-for-trading",
+      "category": "stocks_equities_options_macro",
+      "files_scanned": 1,
+      "tree_size": 29,
+      "verdict": "ADAPTER_TARGET"
+    },
+    {
+      "repo": "shashankvemuri/Finance",
+      "category": "stocks_equities_options_macro",
+      "files_scanned": 3,
+      "tree_size": 19,
+      "verdict": "ADAPTER_TARGET"
+    },
+    {
+      "repo": "HusseinJammal/Liquid-Neural-Networks-in-Stock-Market-Prediction",
+      "category": "stocks_equities_options_macro",
+      "files_scanned": 6,
+      "tree_size": 29,
+      "verdict": "REJECT_STALE"
+    },
+    {
+      "repo": "louisowen6/SENN",
+      "category": "stocks_equities_options_macro",
+      "files_scanned": 2,
+      "tree_size": 11,
+      "verdict": "REJECT_STALE"
+    },
+    {
+      "repo": "0xpranjal/Stock-Prediction-using-different-models",
+      "category": "stocks_equities_options_macro",
+      "files_scanned": 6,
+      "tree_size": 77,
+      "verdict": "REJECT_DIRECT_ORDER_BYPASS"
+    },
+    {
+      "repo": "PyFi-Training/Stock-Price-Forecasting-with-Machine-Learning",
+      "category": "stocks_equities_options_macro",
+      "files_scanned": 1,
+      "tree_size": 5,
+      "verdict": "REJECT_STALE"
+    },
+    {
+      "repo": "jinglescode/time-series-forecasting-pytorch",
+      "category": "stocks_equities_options_macro",
+      "files_scanned": 12,
+      "tree_size": 24,
+      "verdict": "REJECT_STALE"
+    },
+    {
+      "repo": "Vatshayan/Final-Year-Machine-Learning-Stock-Price-Prediction-Project",
+      "category": "stocks_equities_options_macro",
+      "files_scanned": 1,
+      "tree_size": 6,
+      "verdict": "REJECT_LICENSE"
+    },
+    {
+      "repo": "virajbhutada/Google-Stock-Price-Forecasting-LSTM",
+      "category": "stocks_equities_options_macro",
+      "files_scanned": 0,
+      "tree_size": 14,
+      "verdict": "REJECT_LICENSE"
+    },
+    {
+      "repo": "gsaini/financial-research-analyst-agent",
+      "category": "stocks_equities_options_macro",
+      "files_scanned": 30,
+      "tree_size": 193,
+      "verdict": "REJECT_LICENSE"
+    },
+    {
+      "repo": "devfinwiz/Fin-Maestro-Web",
+      "category": "stocks_equities_options_macro",
+      "files_scanned": 30,
+      "tree_size": 776,
+      "verdict": "REJECT_STALE"
+    },
+    {
+      "repo": "navam-io/navam-invest",
+      "category": "stocks_equities_options_macro",
+      "files_scanned": 30,
+      "tree_size": 235,
+      "verdict": "REJECT_SECRET_RISK"
+    },
+    {
+      "repo": "s-kerin/finance_calendars",
+      "category": "stocks_equities_options_macro",
+      "files_scanned": 1,
+      "tree_size": 8,
+      "verdict": "REJECT_STALE"
+    },
+    {
+      "repo": "cfdude/mcp-finnhub",
+      "category": "stocks_equities_options_macro",
+      "files_scanned": 30,
+      "tree_size": 165,
+      "verdict": "ADAPTER_TARGET"
+    },
+    {
+      "repo": "NDelventhal/cot_reports",
+      "category": "commodities_energy_agriculture",
+      "files_scanned": 3,
+      "tree_size": 9,
+      "verdict": "REJECT_STALE"
+    },
+    {
+      "repo": "philsv/pycot",
+      "category": "commodities_energy_agriculture",
+      "files_scanned": 7,
+      "tree_size": 25,
+      "verdict": "ADAPTER_TARGET"
+    },
+    {
+      "repo": "Mcamin/cftc-cot",
+      "category": "commodities_energy_agriculture",
+      "files_scanned": 2,
+      "tree_size": 16,
+      "verdict": "ADAPTER_TARGET"
+    },
+    {
+      "repo": "Mcamin/cot-analysis",
+      "category": "commodities_energy_agriculture",
+      "files_scanned": 9,
+      "tree_size": 20,
+      "verdict": "REJECT_LICENSE"
+    },
+    {
+      "repo": "jensolson/CFTC-COT",
+      "category": "commodities_energy_agriculture",
+      "files_scanned": 1,
+      "tree_size": 7,
+      "verdict": "REJECT_LICENSE"
+    },
+    {
+      "repo": "MarcinLinkl/Positions-CoT-Explorer",
+      "category": "commodities_energy_agriculture",
+      "files_scanned": 7,
+      "tree_size": 15,
+      "verdict": "REJECT_LICENSE"
+    },
+    {
+      "repo": "philsv/myeia",
+      "category": "commodities_energy_agriculture",
+      "files_scanned": 4,
+      "tree_size": 34,
+      "verdict": "ADAPTER_TARGET"
+    },
+    {
+      "repo": "EIAgov/dash-benchmark",
+      "category": "commodities_energy_agriculture",
+      "files_scanned": 4,
+      "tree_size": 24,
+      "verdict": "ADAPTER_TARGET"
+    },
+    {
+      "repo": "OilpriceAPI/python-sdk",
+      "category": "commodities_energy_agriculture",
+      "files_scanned": 30,
+      "tree_size": 234,
+      "verdict": "REJECT_SECRET_RISK"
+    },
+    {
+      "repo": "OilpriceAPI/oilpriceapi-node",
+      "category": "commodities_energy_agriculture",
+      "files_scanned": 30,
+      "tree_size": 107,
+      "verdict": "REJECT_SECRET_RISK"
+    },
+    {
+      "repo": "datasets/oil-prices",
+      "category": "commodities_energy_agriculture",
+      "files_scanned": 1,
+      "tree_size": 29,
+      "verdict": "ADAPTER_TARGET"
+    },
+    {
+      "repo": "omkarcloud/commodity-price-api",
+      "category": "commodities_energy_agriculture",
+      "files_scanned": 0,
+      "tree_size": 1,
+      "verdict": "REJECT_LICENSE"
+    },
+    {
+      "repo": "aedessler/EIA-predictions",
+      "category": "commodities_energy_agriculture",
+      "files_scanned": 5,
+      "tree_size": 32,
+      "verdict": "REJECT_LICENSE"
+    },
+    {
+      "repo": "gabsbruh/price-forecasting",
+      "category": "commodities_energy_agriculture",
+      "files_scanned": 0,
+      "tree_size": 10,
+      "verdict": "REFERENCE_MINE"
+    },
+    {
+      "repo": "robindevelops/btc-forex-gold-silver-price-predictor",
+      "category": "commodities_energy_agriculture",
+      "files_scanned": 30,
+      "tree_size": 85,
+      "verdict": "REJECT_LICENSE"
+    },
+    {
+      "repo": "BaseMax/XAUUSD-LSTM",
+      "category": "commodities_energy_agriculture",
+      "files_scanned": 1,
+      "tree_size": 11,
+      "verdict": "ADAPTER_TARGET"
+    },
+    {
+      "repo": "je-suis-tm/quant-trading",
+      "category": "commodities_energy_agriculture",
+      "files_scanned": 26,
+      "tree_size": 191,
+      "verdict": "ADAPTER_TARGET"
+    },
+    {
+      "repo": "ccxt/ccxt",
+      "category": "crypto_btc_event_market",
+      "files_scanned": 6,
+      "tree_size": 67,
+      "verdict": "ADAPTER_TARGET"
+    },
+    {
+      "repo": "freqtrade/freqtrade",
+      "category": "crypto_btc_event_market",
+      "files_scanned": 0,
+      "tree_size": 37,
+      "verdict": "REJECT_LICENSE"
+    },
+    {
+      "repo": "hummingbot/hummingbot",
+      "category": "crypto_btc_event_market",
+      "files_scanned": 1,
+      "tree_size": 31,
+      "verdict": "REJECT_DIRECT_ORDER_BYPASS"
+    },
+    {
+      "repo": "Drakkar-Software/OctoBot",
+      "category": "crypto_btc_event_market",
+      "files_scanned": 2,
+      "tree_size": 40,
+      "verdict": "REJECT_LICENSE"
+    },
+    {
+      "repo": "Drakkar-Software/OctoBot-Market-Making",
+      "category": "crypto_btc_event_market",
+      "files_scanned": 6,
+      "tree_size": 41,
+      "verdict": "REJECT_LICENSE"
+    },
+    {
+      "repo": "nelso0/barbotine-arbitrage-bot",
+      "category": "crypto_btc_event_market",
+      "files_scanned": 4,
+      "tree_size": 11,
+      "verdict": "REJECT_LICENSE"
+    },
+    {
+      "repo": "nkaz001/hftbacktest",
+      "category": "crypto_btc_event_market",
+      "files_scanned": 0,
+      "tree_size": 18,
+      "verdict": "REFERENCE_MINE"
+    },
+    {
+      "repo": "ccxt/binance-trade-bot",
+      "category": "crypto_btc_event_market",
+      "files_scanned": 26,
+      "tree_size": 56,
+      "verdict": "REJECT_DIRECT_ORDER_BYPASS"
+    },
+    {
+      "repo": "Laser420/fund_arb_bot",
+      "category": "crypto_btc_event_market",
+      "files_scanned": 2,
+      "tree_size": 21,
+      "verdict": "REJECT_SECRET_RISK"
+    },
+    {
+      "repo": "nexwave-so/energy-operator",
+      "category": "crypto_btc_event_market",
+      "files_scanned": 30,
+      "tree_size": 79,
+      "verdict": "REJECT_DIRECT_ORDER_BYPASS"
+    },
+    {
+      "repo": "second-state/fintool",
+      "category": "crypto_btc_event_market",
+      "files_scanned": 30,
+      "tree_size": 150,
+      "verdict": "REJECT_DIRECT_ORDER_BYPASS"
+    },
+    {
+      "repo": "moss-site/moss-trade-bot-skills",
+      "category": "crypto_btc_event_market",
+      "files_scanned": 0,
+      "tree_size": 16,
+      "verdict": "REJECT_LICENSE"
+    },
+    {
+      "repo": "Mattbusel/FinRL_DeepSeek_Crypto_Trading",
+      "category": "crypto_btc_event_market",
+      "files_scanned": 30,
+      "tree_size": 71,
+      "verdict": "REJECT_DIRECT_ORDER_BYPASS"
+    },
+    {
+      "repo": "botcrypto-io/awesome-crypto-trading-bots",
+      "category": "crypto_btc_event_market",
+      "files_scanned": 0,
+      "tree_size": 3,
+      "verdict": "REJECT_LICENSE"
+    },
+    {
+      "repo": "suenot/awesome-ccxt",
+      "category": "crypto_btc_event_market",
+      "files_scanned": 0,
+      "tree_size": 2,
+      "verdict": "REJECT_LICENSE"
+    },
+    {
+      "repo": "unit8co/darts",
+      "category": "universal_ml_forecasting_optimization",
+      "files_scanned": 0,
+      "tree_size": 21,
+      "verdict": "DIRECT_DEPENDENCY_CANDIDATE"
+    },
+    {
+      "repo": "autogluon/autogluon",
+      "category": "universal_ml_forecasting_optimization",
+      "files_scanned": 0,
+      "tree_size": 29,
+      "verdict": "DIRECT_DEPENDENCY_CANDIDATE"
+    },
+    {
+      "repo": "optuna/optuna",
+      "category": "universal_ml_forecasting_optimization",
+      "files_scanned": 0,
+      "tree_size": 17,
+      "verdict": "DIRECT_DEPENDENCY_CANDIDATE"
+    },
+    {
+      "repo": "optuna/optuna-dashboard",
+      "category": "universal_ml_forecasting_optimization",
+      "files_scanned": 1,
+      "tree_size": 26,
+      "verdict": "REJECT_LICENSE"
+    },
+    {
+      "repo": "optuna/optunahub",
+      "category": "universal_ml_forecasting_optimization",
+      "files_scanned": 19,
+      "tree_size": 77,
+      "verdict": "ADAPTER_TARGET"
+    },
+    {
+      "repo": "statsmodels/statsmodels",
+      "category": "universal_ml_forecasting_optimization",
+      "files_scanned": 0,
+      "tree_size": 31,
+      "verdict": "DIRECT_DEPENDENCY_CANDIDATE"
+    },
+    {
+      "repo": "scikit-learn/scikit-learn",
+      "category": "universal_ml_forecasting_optimization",
+      "files_scanned": 0,
+      "tree_size": 29,
+      "verdict": "DIRECT_DEPENDENCY_CANDIDATE"
+    },
+    {
+      "repo": "scipy/scipy",
+      "category": "universal_ml_forecasting_optimization",
+      "files_scanned": 0,
+      "tree_size": 32,
+      "verdict": "DIRECT_DEPENDENCY_CANDIDATE"
+    },
+    {
+      "repo": "numpy/numpy",
+      "category": "universal_ml_forecasting_optimization",
+      "files_scanned": 0,
+      "tree_size": 35,
+      "verdict": "REJECT_LICENSE"
+    },
+    {
+      "repo": "pandas-dev/pandas",
+      "category": "universal_ml_forecasting_optimization",
+      "files_scanned": 2,
+      "tree_size": 29,
+      "verdict": "DIRECT_DEPENDENCY_CANDIDATE"
+    },
+    {
+      "repo": "dmlc/xgboost",
+      "category": "universal_ml_forecasting_optimization",
+      "files_scanned": 0,
+      "tree_size": 30,
+      "verdict": "DIRECT_DEPENDENCY_CANDIDATE"
+    },
+    {
+      "repo": "microsoft/LightGBM",
+      "category": "universal_ml_forecasting_optimization",
+      "files_scanned": 0,
+      "tree_size": 0,
+      "verdict": "REJECT_LICENSE"
+    },
+    {
+      "repo": "catboost/catboost",
+      "category": "universal_ml_forecasting_optimization",
+      "files_scanned": 1,
+      "tree_size": 45,
+      "verdict": "ADAPTER_TARGET"
+    },
+    {
+      "repo": "Nixtla/statsforecast",
+      "category": "universal_ml_forecasting_optimization",
+      "files_scanned": 1,
+      "tree_size": 28,
+      "verdict": "ADAPTER_TARGET"
+    },
+    {
+      "repo": "Nixtla/mlforecast",
+      "category": "universal_ml_forecasting_optimization",
+      "files_scanned": 0,
+      "tree_size": 20,
+      "verdict": "DIRECT_DEPENDENCY_CANDIDATE"
+    },
+    {
+      "repo": "Nixtla/neuralforecast",
+      "category": "universal_ml_forecasting_optimization",
+      "files_scanned": 0,
+      "tree_size": 24,
+      "verdict": "DIRECT_DEPENDENCY_CANDIDATE"
+    },
+    {
+      "repo": "Nixtla/hierarchicalforecast",
+      "category": "universal_ml_forecasting_optimization",
+      "files_scanned": 1,
+      "tree_size": 25,
+      "verdict": "ADAPTER_TARGET"
+    },
+    {
+      "repo": "Nixtla/utilsforecast",
+      "category": "universal_ml_forecasting_optimization",
+      "files_scanned": 19,
+      "tree_size": 105,
+      "verdict": "ADAPTER_TARGET"
+    },
+    {
+      "repo": "facebook/prophet",
+      "category": "universal_ml_forecasting_optimization",
+      "files_scanned": 0,
+      "tree_size": 17,
+      "verdict": "DIRECT_DEPENDENCY_CANDIDATE"
+    },
+    {
+      "repo": "timeseriesAI/tsai",
+      "category": "universal_ml_forecasting_optimization",
+      "files_scanned": 0,
+      "tree_size": 15,
+      "verdict": "DIRECT_DEPENDENCY_CANDIDATE"
+    },
+    {
+      "repo": "pytorch/pytorch",
+      "category": "universal_ml_forecasting_optimization",
+      "files_scanned": 1,
+      "tree_size": 74,
+      "verdict": "REJECT_LICENSE"
+    },
+    {
+      "repo": "lightning-ai/pytorch-lightning",
+      "category": "universal_ml_forecasting_optimization",
+      "files_scanned": 1,
+      "tree_size": 23,
+      "verdict": "ADAPTER_TARGET"
+    },
+    {
+      "repo": "ray-project/ray",
+      "category": "universal_ml_forecasting_optimization",
+      "files_scanned": 3,
+      "tree_size": 51,
+      "verdict": "DIRECT_DEPENDENCY_CANDIDATE"
+    },
+    {
+      "repo": "DEAP/deap",
+      "category": "universal_ml_forecasting_optimization",
+      "files_scanned": 30,
+      "tree_size": 264,
+      "verdict": "REJECT_LICENSE"
+    },
+    {
+      "repo": "automl/auto-sklearn",
+      "category": "universal_ml_forecasting_optimization",
+      "files_scanned": 1,
+      "tree_size": 23,
+      "verdict": "ADAPTER_TARGET"
+    },
+    {
+      "repo": "EpistasisLab/tpot",
+      "category": "universal_ml_forecasting_optimization",
+      "files_scanned": 0,
+      "tree_size": 12,
+      "verdict": "REJECT_LICENSE"
+    },
+    {
+      "repo": "mlflow/mlflow",
+      "category": "universal_ml_forecasting_optimization",
+      "files_scanned": 1,
+      "tree_size": 46,
+      "verdict": "DIRECT_DEPENDENCY_CANDIDATE"
+    },
+    {
+      "repo": "wandb/wandb",
+      "category": "universal_ml_forecasting_optimization",
+      "files_scanned": 1,
+      "tree_size": 34,
+      "verdict": "ADAPTER_TARGET"
+    },
+    {
+      "repo": "great-expectations/great_expectations",
+      "category": "universal_ml_forecasting_optimization",
+      "files_scanned": 0,
+      "tree_size": 0,
+      "verdict": "REJECT_LICENSE"
+    },
+    {
+      "repo": "evidentlyai/evidently",
+      "category": "universal_ml_forecasting_optimization",
+      "files_scanned": 0,
+      "tree_size": 28,
+      "verdict": "DIRECT_DEPENDENCY_CANDIDATE"
+    },
+    {
+      "repo": "Arize-ai/phoenix",
+      "category": "universal_ml_forecasting_optimization",
+      "files_scanned": 0,
+      "tree_size": 66,
+      "verdict": "REJECT_LICENSE"
+    },
+    {
+      "repo": "OpenBB-finance/OpenBB",
+      "category": "financial_data_market_data",
+      "files_scanned": 0,
+      "tree_size": 24,
+      "verdict": "REJECT_LICENSE"
+    },
+    {
+      "repo": "yfinance/yfinance",
+      "category": "financial_data_market_data",
+      "files_scanned": 0,
+      "tree_size": 0,
+      "verdict": "REJECT_LICENSE"
+    },
+    {
+      "repo": "ranaroussi/yfinance",
+      "category": "financial_data_market_data",
+      "files_scanned": 30,
+      "tree_size": 240,
+      "verdict": "ADAPTER_TARGET"
+    },
+    {
+      "repo": "ranaroussi/quantstats",
+      "category": "financial_data_market_data",
+      "files_scanned": 13,
+      "tree_size": 51,
+      "verdict": "ADAPTER_TARGET"
+    },
+    {
+      "repo": "quantopian/pyfolio",
+      "category": "financial_data_market_data",
+      "files_scanned": 2,
+      "tree_size": 16,
+      "verdict": "REJECT_STALE"
+    },
+    {
+      "repo": "quantopian/empyrical",
+      "category": "financial_data_market_data",
+      "files_scanned": 11,
+      "tree_size": 37,
+      "verdict": "ADAPTER_TARGET"
+    },
+    {
+      "repo": "ranaroussi/empyrical",
+      "category": "financial_data_market_data",
+      "files_scanned": 11,
+      "tree_size": 37,
+      "verdict": "REJECT_STALE"
+    },
+    {
+      "repo": "pmorissette/bt",
+      "category": "financial_data_market_data",
+      "files_scanned": 12,
+      "tree_size": 237,
+      "verdict": "ADAPTER_TARGET"
+    },
+    {
+      "repo": "twopirllc/pandas-ta",
+      "category": "financial_data_market_data",
+      "files_scanned": 0,
+      "tree_size": 0,
+      "verdict": "REJECT_LICENSE"
+    },
+    {
+      "repo": "bukosabino/ta",
+      "category": "financial_data_market_data",
+      "files_scanned": 20,
+      "tree_size": 89,
+      "verdict": "ADAPTER_TARGET"
+    },
+    {
+      "repo": "duckdb/duckdb",
+      "category": "financial_data_market_data",
+      "files_scanned": 0,
+      "tree_size": 34,
+      "verdict": "DIRECT_DEPENDENCY_CANDIDATE"
+    },
+    {
+      "repo": "polarsource/polars",
+      "category": "financial_data_market_data",
+      "files_scanned": 0,
+      "tree_size": 0,
+      "verdict": "REJECT_LICENSE"
+    },
+    {
+      "repo": "fastapi/fastapi",
+      "category": "dashboard_api_observability",
+      "files_scanned": 0,
+      "tree_size": 14,
+      "verdict": "DIRECT_DEPENDENCY_CANDIDATE"
+    },
+    {
+      "repo": "encode/starlette",
+      "category": "dashboard_api_observability",
+      "files_scanned": 0,
+      "tree_size": 0,
+      "verdict": "REJECT_LICENSE"
+    },
+    {
+      "repo": "encode/uvicorn",
+      "category": "dashboard_api_observability",
+      "files_scanned": 0,
+      "tree_size": 0,
+      "verdict": "REJECT_LICENSE"
+    },
+    {
+      "repo": "tiangolo/full-stack-fastapi-template",
+      "category": "dashboard_api_observability",
+      "files_scanned": 0,
+      "tree_size": 0,
+      "verdict": "REJECT_LICENSE"
+    },
+    {
+      "repo": "vitejs/vite",
+      "category": "dashboard_api_observability",
+      "files_scanned": 3,
+      "tree_size": 21,
+      "verdict": "ADAPTER_TARGET"
+    },
+    {
+      "repo": "vercel/next.js",
+      "category": "dashboard_api_observability",
+      "files_scanned": 6,
+      "tree_size": 72,
+      "verdict": "ADAPTER_TARGET"
+    },
+    {
+      "repo": "tailwindlabs/tailwindcss",
+      "category": "dashboard_api_observability",
+      "files_scanned": 1,
+      "tree_size": 20,
+      "verdict": "DIRECT_DEPENDENCY_CANDIDATE"
+    },
+    {
+      "repo": "recharts/recharts",
+      "category": "dashboard_api_observability",
+      "files_scanned": 3,
+      "tree_size": 37,
+      "verdict": "ADAPTER_TARGET"
+    },
+    {
+      "repo": "streamlit/streamlit",
+      "category": "dashboard_api_observability",
+      "files_scanned": 0,
+      "tree_size": 28,
+      "verdict": "DIRECT_DEPENDENCY_CANDIDATE"
+    },
+    {
+      "repo": "plotly/dash",
+      "category": "dashboard_api_observability",
+      "files_scanned": 3,
+      "tree_size": 33,
+      "verdict": "ADAPTER_TARGET"
+    },
+    {
+      "repo": "grafana/grafana",
+      "category": "dashboard_api_observability",
+      "files_scanned": 11,
+      "tree_size": 85,
+      "verdict": "REJECT_LICENSE"
+    },
+    {
+      "repo": "getredash/redash",
+      "category": "dashboard_api_observability",
+      "files_scanned": 3,
+      "tree_size": 39,
+      "verdict": "ADAPTER_TARGET"
+    },
+    {
+      "repo": "metabase/metabase",
+      "category": "dashboard_api_observability",
+      "files_scanned": 13,
+      "tree_size": 90,
+      "verdict": "REJECT_LICENSE"
+    },
+    {
+      "repo": "ClickHouse/ClickHouse",
+      "category": "dashboard_api_observability",
+      "files_scanned": 0,
+      "tree_size": 41,
+      "verdict": "DIRECT_DEPENDENCY_CANDIDATE"
+    },
+    {
+      "repo": "redis/redis",
+      "category": "dashboard_api_observability",
+      "files_scanned": 0,
+      "tree_size": 30,
+      "verdict": "REJECT_LICENSE"
+    },
+    {
+      "repo": "prometheus/prometheus",
+      "category": "dashboard_api_observability",
+      "files_scanned": 0,
+      "tree_size": 52,
+      "verdict": "DIRECT_DEPENDENCY_CANDIDATE"
+    },
+    {
+      "repo": "grafana/loki",
+      "category": "dashboard_api_observability",
+      "files_scanned": 0,
+      "tree_size": 45,
+      "verdict": "REJECT_LICENSE"
+    },
+    {
+      "repo": "openai/openai-agents-python",
+      "category": "agent_automation_evaluation",
+      "files_scanned": 0,
+      "tree_size": 21,
+      "verdict": "REFERENCE_MINE"
+    },
+    {
+      "repo": "microsoft/autogen",
+      "category": "agent_automation_evaluation",
+      "files_scanned": 0,
+      "tree_size": 20,
+      "verdict": "REJECT_LICENSE"
+    },
+    {
+      "repo": "crewAIInc/crewAI",
+      "category": "agent_automation_evaluation",
+      "files_scanned": 1,
+      "tree_size": 15,
+      "verdict": "ADAPTER_TARGET"
+    },
+    {
+      "repo": "langchain-ai/langchain",
+      "category": "agent_automation_evaluation",
+      "files_scanned": 0,
+      "tree_size": 16,
+      "verdict": "REFERENCE_MINE"
+    },
+    {
+      "repo": "langchain-ai/langgraph",
+      "category": "agent_automation_evaluation",
+      "files_scanned": 0,
+      "tree_size": 11,
+      "verdict": "REFERENCE_MINE"
+    },
+    {
+      "repo": "run-llama/llama_index",
+      "category": "agent_automation_evaluation",
+      "files_scanned": 0,
+      "tree_size": 24,
+      "verdict": "REFERENCE_MINE"
+    },
+    {
+      "repo": "SWE-agent/SWE-agent",
+      "category": "agent_automation_evaluation",
+      "files_scanned": 0,
+      "tree_size": 22,
+      "verdict": "REFERENCE_MINE"
+    },
+    {
+      "repo": "aider-AI/aider",
+      "category": "agent_automation_evaluation",
+      "files_scanned": 0,
+      "tree_size": 20,
+      "verdict": "REFERENCE_MINE"
+    },
+    {
+      "repo": "All-Hands-AI/OpenHands",
+      "category": "agent_automation_evaluation",
+      "files_scanned": 0,
+      "tree_size": 0,
+      "verdict": "REJECT_LICENSE"
+    },
+    {
+      "repo": "BerriAI/litellm",
+      "category": "agent_automation_evaluation",
+      "files_scanned": 0,
+      "tree_size": 69,
+      "verdict": "REJECT_LICENSE"
+    },
+    {
+      "repo": "promptfoo/promptfoo",
+      "category": "agent_automation_evaluation",
+      "files_scanned": 6,
+      "tree_size": 58,
+      "verdict": "ADAPTER_TARGET"
+    },
+    {
+      "repo": "Br0ski777/x402-agent-tools",
+      "category": "agent_automation_evaluation",
+      "files_scanned": 12,
+      "tree_size": 20,
+      "verdict": "REJECT_DIRECT_ORDER_BYPASS"
+    },
+    {
+      "repo": "BlockRunAI/awesome-blockrun",
+      "category": "agent_automation_evaluation",
+      "files_scanned": 0,
+      "tree_size": 89,
+      "verdict": "REFERENCE_MINE"
+    },
+    {
+      "repo": "BlockRunAI/blockrun-llm",
+      "category": "agent_automation_evaluation",
+      "files_scanned": 30,
+      "tree_size": 81,
+      "verdict": "REJECT_DIRECT_ORDER_BYPASS"
+    },
+    {
+      "repo": "punkpeye/awesome-mcp-servers",
+      "category": "agent_automation_evaluation",
+      "files_scanned": 0,
+      "tree_size": 11,
+      "verdict": "REFERENCE_MINE"
+    },
+    {
+      "repo": "TensorBlock/awesome-mcp-servers",
+      "category": "agent_automation_evaluation",
+      "files_scanned": 11,
+      "tree_size": 7668,
+      "verdict": "ADAPTER_TARGET"
+    }
+  ]
+}

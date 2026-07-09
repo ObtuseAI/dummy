@@ -1,0 +1,480 @@
+[
+  {
+    "owner": "Kalshi",
+    "name": "kalshi-starter-code-python",
+    "url": "https://github.com/Kalshi/kalshi-starter-code-python",
+    "license": null,
+    "last_pushed_at": "2025-03-07 18:17:48+00:00",
+    "languages": {
+      "Python": 9817
+    },
+    "verdict": "REJECT_LICENSE",
+    "verdict_reasons": [
+      "No OSI license"
+    ]
+  },
+  {
+    "owner": "Kalshi",
+    "name": "tools-and-analysis",
+    "url": "https://github.com/Kalshi/tools-and-analysis",
+    "license": "MIT",
+    "last_pushed_at": "2023-06-15 01:30:21+00:00",
+    "languages": {
+      "Jupyter Notebook": 165375,
+      "Python": 844
+    },
+    "verdict": "REJECT_STALE",
+    "verdict_reasons": [
+      "Stale repo > 2 years"
+    ]
+  },
+  {
+    "owner": "TexasCoding",
+    "name": "kalshi-python-sdk",
+    "url": "https://github.com/TexasCoding/kalshi-python-sdk",
+    "license": "MIT",
+    "last_pushed_at": "2026-06-28 19:39:32+00:00",
+    "languages": {
+      "Python": 3355980
+    },
+    "verdict": "REFERENCE_MINE",
+    "verdict_reasons": [
+      "Permissive license; safe reference mine"
+    ]
+  },
+  {
+    "owner": "arshka",
+    "name": "pykalshi",
+    "url": "https://github.com/arshka/pykalshi",
+    "license": "MIT",
+    "last_pushed_at": "2026-05-02 08:07:12+00:00",
+    "languages": {
+      "Python": 537356,
+      "JavaScript": 102121,
+      "HTML": 2374
+    },
+    "verdict": "REFERENCE_MINE",
+    "verdict_reasons": [
+      "Permissive license; safe reference mine"
+    ]
+  },
+  {
+    "owner": "ryanfrigo",
+    "name": "kalshi-ai-trading-bot",
+    "url": "https://github.com/ryanfrigo/kalshi-ai-trading-bot",
+    "license": "MIT",
+    "last_pushed_at": "2026-06-19 19:52:12+00:00",
+    "languages": {
+      "Python": 1067020
+    },
+    "verdict": "REFERENCE_MINE",
+    "verdict_reasons": [
+      "Permissive license; safe reference mine"
+    ]
+  },
+  {
+    "owner": "OctagonAI",
+    "name": "kalshi-trading-bot-cli",
+    "url": "https://github.com/OctagonAI/kalshi-trading-bot-cli",
+    "license": "MIT",
+    "last_pushed_at": "2026-06-25 21:39:56+00:00",
+    "languages": {
+      "TypeScript": 1369103,
+      "Shell": 2600
+    },
+    "verdict": "REFERENCE_MINE",
+    "verdict_reasons": [
+      "Permissive license; safe reference mine"
+    ]
+  },
+  {
+    "owner": "spfunctions",
+    "name": "awesome-prediction-markets",
+    "url": "https://github.com/spfunctions/awesome-prediction-markets",
+    "license": "MIT",
+    "last_pushed_at": "2026-06-16 20:43:39+00:00",
+    "languages": {
+      "Jupyter Notebook": 10039
+    },
+    "verdict": "REFERENCE_MINE",
+    "verdict_reasons": [
+      "Permissive license; safe reference mine"
+    ]
+  },
+  {
+    "owner": "aarora4",
+    "name": "Awesome-Prediction-Market-Tools",
+    "url": "https://github.com/aarora4/Awesome-Prediction-Market-Tools",
+    "license": null,
+    "last_pushed_at": "2026-06-18 19:57:23+00:00",
+    "languages": {},
+    "verdict": "REJECT_LICENSE",
+    "verdict_reasons": [
+      "No OSI license"
+    ]
+  },
+  {
+    "owner": "microsoft",
+    "name": "qlib",
+    "url": "https://github.com/microsoft/qlib",
+    "license": "MIT",
+    "last_pushed_at": "2026-04-22 07:08:01+00:00",
+    "languages": {
+      "Python": 2401041,
+      "Cython": 10262,
+      "Makefile": 9109,
+      "Shell": 1069,
+      "JavaScript": 928,
+      "Dockerfile": 796
+    },
+    "verdict": "REFERENCE_MINE",
+    "verdict_reasons": [
+      "Permissive license; safe reference mine"
+    ]
+  },
+  {
+    "owner": "AI4Finance-Foundation",
+    "name": "FinRL",
+    "url": "https://github.com/AI4Finance-Foundation/FinRL",
+    "license": "MIT",
+    "last_pushed_at": "2026-05-25 22:29:44+00:00",
+    "languages": {
+      "Jupyter Notebook": 2882300,
+      "Python": 585567,
+      "Dockerfile": 601,
+      "Shell": 168
+    },
+    "verdict": "REFERENCE_MINE",
+    "verdict_reasons": [
+      "Permissive license; safe reference mine"
+    ]
+  },
+  {
+    "owner": "unit8co",
+    "name": "darts",
+    "url": "https://github.com/unit8co/darts",
+    "license": "Apache-2.0",
+    "last_pushed_at": "2026-06-29 16:53:10+00:00",
+    "languages": {
+      "Python": 6200550,
+      "Dockerfile": 939,
+      "Shell": 748
+    },
+    "verdict": "REFERENCE_MINE",
+    "verdict_reasons": [
+      "Permissive license; safe reference mine"
+    ]
+  },
+  {
+    "owner": "autogluon",
+    "name": "autogluon",
+    "url": "https://github.com/autogluon/autogluon",
+    "license": "Apache-2.0",
+    "last_pushed_at": "2026-06-29 10:32:15+00:00",
+    "languages": {
+      "Python": 7096359,
+      "Shell": 13500,
+      "Dockerfile": 281,
+      "Batchfile": 206
+    },
+    "verdict": "REFERENCE_MINE",
+    "verdict_reasons": [
+      "Permissive license; safe reference mine"
+    ]
+  },
+  {
+    "owner": "facebook",
+    "name": "prophet",
+    "url": "https://github.com/facebook/prophet",
+    "license": "MIT",
+    "last_pushed_at": "2026-05-08 13:44:33+00:00",
+    "languages": {
+      "Python": 255306,
+      "R": 152174,
+      "Stan": 7265,
+      "Dockerfile": 174,
+      "Makefile": 117,
+      "C++": 48
+    },
+    "verdict": "REFERENCE_MINE",
+    "verdict_reasons": [
+      "Permissive license; safe reference mine"
+    ]
+  },
+  {
+    "owner": "nixtla",
+    "name": "statsforecast",
+    "url": "https://github.com/Nixtla/statsforecast",
+    "license": "Apache-2.0",
+    "last_pushed_at": "2026-06-29 21:14:13+00:00",
+    "languages": {
+      "Python": 943407,
+      "C++": 81794,
+      "Jupyter Notebook": 71419,
+      "Makefile": 2197,
+      "Shell": 1255
+    },
+    "verdict": "REFERENCE_MINE",
+    "verdict_reasons": [
+      "Permissive license; safe reference mine"
+    ]
+  },
+  {
+    "owner": "OpenBB-finance",
+    "name": "OpenBB",
+    "url": "https://github.com/OpenBB-finance/OpenBB",
+    "license": "NOASSERTION",
+    "last_pushed_at": "2026-06-29 15:33:52+00:00",
+    "languages": {
+      "Python": 8867282
+    },
+    "verdict": "REJECT_LICENSE",
+    "verdict_reasons": [
+      "No OSI license"
+    ]
+  },
+  {
+    "owner": "ranaroussi",
+    "name": "quantstats",
+    "url": "https://github.com/ranaroussi/quantstats",
+    "license": "Apache-2.0",
+    "last_pushed_at": "2026-06-19 14:12:27+00:00",
+    "languages": {
+      "Python": 451645,
+      "HTML": 3939
+    },
+    "verdict": "REFERENCE_MINE",
+    "verdict_reasons": [
+      "Permissive license; safe reference mine"
+    ]
+  },
+  {
+    "owner": "hummingbot",
+    "name": "hummingbot",
+    "url": "https://github.com/hummingbot/hummingbot",
+    "license": "Apache-2.0",
+    "last_pushed_at": "2026-06-30 05:14:58+00:00",
+    "languages": {
+      "Python": 15838323,
+      "Cython": 445251,
+      "C++": 18032,
+      "Shell": 5134,
+      "Makefile": 2527,
+      "Dockerfile": 2436,
+      "Batchfile": 52
+    },
+    "verdict": "REFERENCE_MINE",
+    "verdict_reasons": [
+      "Permissive license; safe reference mine"
+    ]
+  },
+  {
+    "owner": "freqtrade",
+    "name": "freqtrade",
+    "url": "https://github.com/freqtrade/freqtrade",
+    "license": "GPL-3.0",
+    "last_pushed_at": "2026-06-30 01:53:28+00:00",
+    "languages": {
+      "Python": 5146938,
+      "Jinja": 38570,
+      "PowerShell": 15797,
+      "Jupyter Notebook": 14363,
+      "Shell": 10740,
+      "Dockerfile": 1551,
+      "HTML": 753,
+      "Gnuplot": 221
+    },
+    "verdict": "REFERENCE_MINE",
+    "verdict_reasons": [
+      "License OK but not obviously reusable"
+    ]
+  },
+  {
+    "owner": "ccxt",
+    "name": "ccxt",
+    "url": "https://github.com/ccxt/ccxt",
+    "license": "MIT",
+    "last_pushed_at": "2026-06-29 21:01:12+00:00",
+    "languages": {
+      "Python": 36741174,
+      "C#": 28566454,
+      "Go": 24898899,
+      "TypeScript": 22784675,
+      "JavaScript": 22007679,
+      "Java": 18385992,
+      "PHP": 17830361,
+      "C": 64542,
+      "Shell": 54810,
+      "Cython": 33830,
+      "CSS": 23333,
+      "C++": 21527,
+      "Dockerfile": 8279,
+      "Handlebars": 5411,
+      "HTML": 3986,
+      "Batchfile": 1025
+    },
+    "verdict": "REFERENCE_MINE",
+    "verdict_reasons": [
+      "Permissive license; safe reference mine"
+    ]
+  },
+  {
+    "owner": "streamlit",
+    "name": "streamlit",
+    "url": "https://github.com/streamlit/streamlit",
+    "license": "Apache-2.0",
+    "last_pushed_at": "2026-06-30 07:46:44+00:00",
+    "languages": {
+      "Python": 11411466,
+      "TypeScript": 7147745,
+      "JavaScript": 38138,
+      "Makefile": 32563,
+      "Shell": 9779,
+      "HTML": 9296,
+      "SCSS": 3714,
+      "Dockerfile": 1121,
+      "CSS": 146
+    },
+    "verdict": "REFERENCE_MINE",
+    "verdict_reasons": [
+      "Permissive license; safe reference mine"
+    ]
+  },
+  {
+    "owner": "fastapi",
+    "name": "fastapi",
+    "url": "https://github.com/fastapi/fastapi",
+    "license": "MIT",
+    "last_pushed_at": "2026-06-29 12:43:58+00:00",
+    "languages": {
+      "Python": 3920443,
+      "JavaScript": 1066,
+      "Shell": 574,
+      "HTML": 235,
+      "CSS": 25
+    },
+    "verdict": "REFERENCE_MINE",
+    "verdict_reasons": [
+      "Permissive license; safe reference mine"
+    ]
+  },
+  {
+    "owner": "gradio-app",
+    "name": "gradio",
+    "url": "https://github.com/gradio-app/gradio",
+    "license": "Apache-2.0",
+    "last_pushed_at": "2026-06-30 07:32:04+00:00",
+    "languages": {
+      "Python": 4037494,
+      "TypeScript": 2104823,
+      "Svelte": 2012221,
+      "mdsvex": 232173,
+      "CSS": 112426,
+      "JavaScript": 85959,
+      "Jupyter Notebook": 32640,
+      "HTML": 17915,
+      "Shell": 11655,
+      "SCSS": 4955,
+      "Batchfile": 4777,
+      "MDX": 1681,
+      "Dockerfile": 641
+    },
+    "verdict": "REFERENCE_MINE",
+    "verdict_reasons": [
+      "Permissive license; safe reference mine"
+    ]
+  },
+  {
+    "owner": "plotly",
+    "name": "plotly.py",
+    "url": "https://github.com/plotly/plotly.py",
+    "license": "MIT",
+    "last_pushed_at": "2026-06-22 22:58:40+00:00",
+    "languages": {
+      "Python": 20696541,
+      "TypeScript": 70422,
+      "JavaScript": 459
+    },
+    "verdict": "REFERENCE_MINE",
+    "verdict_reasons": [
+      "Permissive license; safe reference mine"
+    ]
+  },
+  {
+    "owner": "openai",
+    "name": "openai-agents-python",
+    "url": "https://github.com/openai/openai-agents-python",
+    "license": "MIT",
+    "last_pushed_at": "2026-06-30 06:11:46+00:00",
+    "languages": {
+      "Python": 8605360,
+      "Shell": 15574,
+      "PowerShell": 6476,
+      "Makefile": 1790
+    },
+    "verdict": "REFERENCE_MINE",
+    "verdict_reasons": [
+      "Permissive license; safe reference mine"
+    ]
+  },
+  {
+    "owner": "openai",
+    "name": "openai-python",
+    "url": "https://github.com/openai/openai-python",
+    "license": "Apache-2.0",
+    "last_pushed_at": "2026-06-25 23:09:18+00:00",
+    "languages": {
+      "Python": 6846551,
+      "Shell": 5712,
+      "Dockerfile": 332,
+      "Ruby": 12
+    },
+    "verdict": "REFERENCE_MINE",
+    "verdict_reasons": [
+      "Permissive license; safe reference mine"
+    ]
+  },
+  {
+    "owner": "microsoft",
+    "name": "autogen",
+    "url": "https://github.com/microsoft/autogen",
+    "license": "CC-BY-4.0",
+    "last_pushed_at": "2026-04-15 11:59:09+00:00",
+    "languages": {
+      "Python": 4308493,
+      "C#": 1754112,
+      "TypeScript": 868342,
+      "HTML": 21662,
+      "JavaScript": 15184,
+      "Jupyter Notebook": 8972,
+      "CSS": 8326,
+      "Dockerfile": 4327,
+      "PowerShell": 3167,
+      "Shell": 2140
+    },
+    "verdict": "REFERENCE_MINE",
+    "verdict_reasons": [
+      "License OK but not obviously reusable"
+    ]
+  },
+  {
+    "owner": "langchain-ai",
+    "name": "langchain",
+    "url": "https://github.com/langchain-ai/langchain",
+    "license": "MIT",
+    "last_pushed_at": "2026-06-29 19:47:27+00:00",
+    "languages": {
+      "Python": 13112388,
+      "Makefile": 62844,
+      "Shell": 20230,
+      "XSLT": 7380,
+      "HTML": 1900,
+      "Dockerfile": 1060,
+      "JavaScript": 157
+    },
+    "verdict": "REFERENCE_MINE",
+    "verdict_reasons": [
+      "Permissive license; safe reference mine"
+    ]
+  }
+]

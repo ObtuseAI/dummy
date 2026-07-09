@@ -1,9 +1,9 @@
-from adapters.base import DumbyAdapter
+from adapters.base import DummyAdapter
 from core.ontology import Forecast
 from forecasting.engine import ForecastEngine
 
 
-class DartsAdapter(DumbyAdapter):
+class DartsAdapter(DummyAdapter):
     """Reference adapter for Darts (time-series forecasting) model outputs."""
 
     name = "darts"

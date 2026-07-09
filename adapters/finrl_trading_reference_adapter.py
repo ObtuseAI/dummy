@@ -1,9 +1,9 @@
-from adapters.base import DumbyAdapter
+from adapters.base import DummyAdapter
 from core.ontology import Forecast
 from forecasting.engine import ForecastEngine
 
 
-class FinRLTradingReferenceAdapter(DumbyAdapter):
+class FinRLTradingReferenceAdapter(DummyAdapter):
     """Reference adapter for FinRL-Trading task-specific payloads."""
 
     name = "finrl_trading_reference"

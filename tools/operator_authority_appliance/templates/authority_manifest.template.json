@@ -1,0 +1,23 @@
+{
+  "_marker": "NOT_APPROVAL_TEMPLATE_ONLY",
+  "version": "v3",
+  "proof_target": "FIRST_REAL_PILOT_PROOF",
+  "scope": "one_controlled_production_pilot_via_firewall_only",
+  "reason": "<reason>",
+  "operator_metadata": {
+    "operator": "<operator>",
+    "timestamp": "<iso>"
+  },
+  "expiry": "<iso>",
+  "config_descriptors": {
+    "live_submit": "<bool>",
+    "caps": "<bool>"
+  },
+  "adapter_descriptors": {
+    "firewall": "<bool>"
+  },
+  "approvals": {
+    "exact_phrase": "<REQUIRED_EXACT_PHRASE>"
+  },
+  "not_self_authorized_by_dummy": true
+}

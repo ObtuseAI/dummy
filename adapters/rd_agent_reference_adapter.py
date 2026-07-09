@@ -1,9 +1,9 @@
-from adapters.base import DumbyAdapter
+from adapters.base import DummyAdapter
 from core.ontology import Forecast
 from forecasting.engine import ForecastEngine
 
 
-class RDAgentReferenceAdapter(DumbyAdapter):
+class RDAgentReferenceAdapter(DummyAdapter):
     """Reference adapter for RD-Agent (research-and-development agent) outputs."""
 
     name = "rd_agent_reference"

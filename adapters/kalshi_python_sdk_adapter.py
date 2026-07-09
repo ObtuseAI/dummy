@@ -1,12 +1,12 @@
-from adapters.base import DumbyAdapter
+from adapters.base import DummyAdapter
 from core.ontology import Forecast
 from forecasting.engine import ForecastEngine
 
 
-class KalshiPythonSdkAdapter(DumbyAdapter):
+class KalshiPythonSdkAdapter(DummyAdapter):
     """Reference adapter for the community Kalshi Python SDK data shapes.
 
-    Strips SDK-specific wrappers and emits a Dumby-native Forecast. No live
+    Strips SDK-specific wrappers and emits a Dummy-native Forecast. No live
     order endpoints are imported or invoked.
     """
 

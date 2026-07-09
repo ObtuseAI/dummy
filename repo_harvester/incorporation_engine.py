@@ -3,7 +3,7 @@ from pathlib import Path
 from core.ontology import RepoVerdict
 from repo_harvester.incorporation_registry import load_registry, save_registry
 
-ARTIFACTS = Path("C:/src/engine/dumby/artifacts/repo_harvester")
+ARTIFACTS = Path("C:/src/engine/dummy/artifacts/repo_harvester")
 
 
 def load_adapter_plans_v2() -> list[dict]:

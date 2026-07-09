@@ -1,9 +1,9 @@
-from adapters.base import DumbyAdapter
+from adapters.base import DummyAdapter
 from core.ontology import Forecast
 from forecasting.engine import ForecastEngine
 
 
-class BacktraderReferenceAdapter(DumbyAdapter):
+class BacktraderReferenceAdapter(DummyAdapter):
     """Reference adapter for Backtrader strategy/data feeds."""
 
     name = "backtrader_reference"

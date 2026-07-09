@@ -1,0 +1,22 @@
+{
+  "live_submit_enabled": true,
+  "operator_confirmed": true,
+  "not_self_authorized_by_dummy": true,
+  "_meta": {
+    "not_self_authorized_by_dummy": true,
+    "proof_target": "FIRST_REAL_PILOT_PROOF",
+    "scope": "one_controlled_production_pilot_via_firewall_only",
+    "expiry": "2026-07-08T21:00:00Z",
+    "operator": "chris",
+    "hash_ledger": {
+      "authority_manifest.json": "05624a03199dac23eda6996a9721c2eb29e2d77c91dcab31b9b2ebb77a17ef0b",
+      "dummy_controlled_production_pilot_approval.json": "dc48844dc21a65f05c3e21a98113697c1a5071ecba4146110fcf3bd8b066e8b7",
+      "live_submit_descriptor.json": "e33978fbc3b15ca985a4e2d635b5859d07c63b90bd6b3a028b6c3dc60c787bbb",
+      "caps_descriptor.json": "d7a934a1844a53ed60a57d947f36c94f39e497afbaecf96401a376e2bb2d9754",
+      "firewall_adapter_descriptor.json": "e6f53fa774e8883243cd1c9c7f414fe9c0237a50e63b5a49a1a935b5390b635d"
+    },
+    "market_order_permitted": false,
+    "scale_permitted": false,
+    "autonomy_permitted": false
+  }
+}

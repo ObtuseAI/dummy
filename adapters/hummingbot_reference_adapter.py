@@ -1,9 +1,9 @@
-from adapters.base import DumbyAdapter
+from adapters.base import DummyAdapter
 from core.ontology import Forecast
 from forecasting.engine import ForecastEngine
 
 
-class HummingbotReferenceAdapter(DumbyAdapter):
+class HummingbotReferenceAdapter(DummyAdapter):
     """Reference adapter for Hummingbot market data/strategy outputs."""
 
     name = "hummingbot_reference"

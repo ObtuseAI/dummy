@@ -1,0 +1,11 @@
+{
+  "meta": null,
+  "scan": {
+    "owner": "microsoft",
+    "name": "LightGBM",
+    "category": "universal_ml_forecasting_optimization",
+    "error": "Redirect response '301 Moved Permanently' for url 'https://api.github.com/repos/microsoft/LightGBM'\nRedirect location: 'https://api.github.com/repositories/64991887'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/301",
+    "files_scanned": 0
+  },
+  "version": 1
+}

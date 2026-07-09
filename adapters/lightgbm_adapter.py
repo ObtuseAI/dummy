@@ -1,9 +1,9 @@
-from adapters.base import DumbyAdapter
+from adapters.base import DummyAdapter
 from core.ontology import Forecast
 from forecasting.engine import ForecastEngine
 
 
-class LightGBMAdapter(DumbyAdapter):
+class LightGBMAdapter(DummyAdapter):
     """Reference adapter for LightGBM model inference outputs."""
 
     name = "lightgbm"

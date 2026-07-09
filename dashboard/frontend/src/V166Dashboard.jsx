@@ -1,0 +1,9 @@
+import StageDashboard from './StageDashboard';
+
+const endpoints = [["Repeat Preflight Controller", "/api/v166/repeat-preflight-controller"], ["V165 Baseline", "/api/v166/v165-baseline"], ["Repeat Approval Proof", "/api/v166/repeat-approval-proof"], ["First Pilot Reconcile Proof", "/api/v166/first-pilot-reconcile-proof"], ["First Pilot Forensic Proof", "/api/v166/first-pilot-forensic-proof"], ["Live Submit Caps Snapshot Proof", "/api/v166/live-submit-caps-snapshot-proof"], ["Firewall Adapter Proof", "/api/v166/firewall-adapter-proof"], ["Limit Only Proof", "/api/v166/limit-only-proof"], ["No Market Order Proof", "/api/v166/no-market-order-proof"], ["Stricter Max Order Size", "/api/v166/stricter-max-order-size"], ["Stricter Exposure Threshold", "/api/v166/stricter-exposure-threshold"], ["No Loss Lock", "/api/v166/no-loss-lock"], ["No Drift Lock", "/api/v166/no-drift-lock"], ["No Liquidity Lock", "/api/v166/no-liquidity-lock"], ["No Broker Error Lock", "/api/v166/no-broker-error-lock"], ["No Slippage Lock", "/api/v166/no-slippage-lock"], ["Kill Switch Proof", "/api/v166/kill-switch-proof"], ["Rollback Proof", "/api/v166/rollback-proof"], ["Idempotency Proof", "/api/v166/idempotency-proof"], ["No Submit Proof", "/api/v166/no-submit-proof"], ["Readiness Governor", "/api/v166/readiness-governor"], ["Execution Lock", "/api/v166/execution-lock"], ["Mission State", "/api/v166/mission-state"]];
+
+const summaryFields = [["Mission", "mission_state_verdict"], ["Repeat Preflight", "repeat_preflight_controller_status"], ["Preflight Ready", "repeat_preflight_ready"], ["Live Orders", "live_orders"], ["Next Action", "current_next_action"], ["Blockers", "current_blockers"]];
+
+export default function V166Dashboard() {
+  return <StageDashboard title="Dummy V166 Repeat Pilot Final Preflight" endpoints={endpoints} missionKey="dummy_mission_state_report_v152" summaryFields={summaryFields} />;
+}

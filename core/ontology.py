@@ -5,6 +5,88 @@ from enum import Enum
 from typing import Any, Optional
 from pydantic import BaseModel, Field
 
+
+class ForecastOpinion(BaseModel):
+    market_ticker: str
+    contract_ticker: str
+    forecast_reference: str
+    market_implied_probability: Decimal
+    dummy_probability: Decimal
+    probability_delta: Decimal
+    confidence_score: Decimal
+    uncertainty_band: tuple[Decimal, Decimal]
+    model_summary: str
+    reasoning: str
+    no_trade_reason: str | None = None
+    calibration_notes: list[str] = Field(default_factory=list)
+    timestamp: datetime
+    expiration: datetime
+    proof_reference: str
+
+
+class StrategyCritique(BaseModel):
+    strategy_family: str
+    market_ticker: str
+    contract_ticker: str
+    verdict: str  # "proceed", "warn", "block"
+    edge_assessment: str
+    risk_assessment: str
+    confidence_adjustment: Decimal = Decimal("0")
+    reasoning: str
+    timestamp: datetime
+    proof_reference: str
+
+
+class NoTradeReason(BaseModel):
+    market_ticker: str
+    contract_ticker: str
+    reason: str
+    contributing_factors: list[str] = Field(default_factory=list)
+    model_summary: str
+    timestamp: datetime
+    proof_reference: str
+
+
+class TradeProposalDraft(BaseModel):
+    market_ticker: str
+    contract_ticker: str
+    side: str
+    price_cents: int
+    size: int
+    reasoning: str
+    timestamp: datetime
+
+
+class HybridReviewResult(BaseModel):
+    task: str
+    primary: dict
+    secondary: dict
+    agreement_score: Decimal
+    confidence_adjustment: Decimal
+    verdict: str
+    reasoning: str
+    timestamp: datetime
+    proof_reference: str
+
+
+class CalibrationNote(BaseModel):
+    market_ticker: str
+    contract_ticker: str
+    note: str
+    source: str
+    timestamp: datetime
+
+
+class MarketThesis(BaseModel):
+    market_ticker: str
+    contract_ticker: str
+    thesis: str
+    bullish_signals: list[str] = Field(default_factory=list)
+    bearish_signals: list[str] = Field(default_factory=list)
+    source: str
+    timestamp: datetime
+
+
 class AccountMode(str, Enum):
     OFF = "OFF"
     READ_ONLY = "READ_ONLY"
@@ -21,6 +103,9 @@ class OrderBook(BaseModel):
     bids: list[OrderBookLevel]
     asks: list[OrderBookLevel]
     timestamp: datetime
+    source_ts: Optional[datetime] = None
+    freshness_score: Optional[Decimal] = None
+    depth_summary: Optional[dict[str, Any]] = None
 
 class ProbabilityEstimate(BaseModel):
     value: Decimal = Field(..., ge=0, le=1)
@@ -38,7 +123,7 @@ class Forecast(BaseModel):
     event_title: str
     contract_title: str
     market_implied_probability: Decimal
-    dumby_probability: Decimal
+    dummy_probability: Decimal
     probability_delta: Decimal
     confidence_score: Decimal
     uncertainty_band: tuple[Decimal, Decimal]
@@ -106,6 +191,13 @@ class LiveOrderResult(BaseModel):
     order_id: Optional[str] = None
     error: Optional[str] = None
     proof_reference: str
+    # Structured broker-rejection diagnostics (safe, non-secret)
+    broker_rejection_code: Optional[str] = None
+    broker_rejection_safe_message: Optional[str] = None
+    broker_rejection_http_status: Optional[int] = None
+    broker_rejection_adapter_error_type: Optional[str] = None
+    broker_rejection_stage: Optional[str] = None
+    broker_rejection_raw_redacted: Optional[dict[str, Any]] = None
 
 class CancelRequest(BaseModel):
     order_id: str
@@ -146,6 +238,8 @@ class Position(BaseModel):
     quantity: int
     avg_price_cents: int
     unrealized_pnl_cents: int
+    source_ts: Optional[datetime] = None
+    freshness_score: Optional[Decimal] = None
 
 class RepoVerdict(str, Enum):
     DIRECT_DEPENDENCY_CANDIDATE = "DIRECT_DEPENDENCY_CANDIDATE"
@@ -193,3 +287,82 @@ class DecisionTrace(BaseModel):
     strategy_ref: str
     proposal_id: str
     firewall_verdict: FirewallVerdict
+
+
+class Fill(BaseModel):
+    fill_id: str
+    market_ticker: str
+    contract_ticker: str
+    side: str
+    count: int
+    price_cents: int
+    timestamp: datetime
+    source_ts: Optional[datetime] = None
+    freshness_score: Optional[Decimal] = None
+
+
+class RestingOrder(BaseModel):
+    order_id: str
+    market_ticker: str
+    contract_ticker: str
+    side: str
+    action: str
+    type: str
+    count: int
+    price_cents: int
+    status: str
+    created_at: datetime
+    source_ts: Optional[datetime] = None
+    freshness_score: Optional[Decimal] = None
+
+
+class KalshiAccount(BaseModel):
+    user_id: str
+    email: str
+    balance_cents: int
+    available_cents: int
+    portfolio_witness: Optional[str] = None
+    source_ts: Optional[datetime] = None
+    freshness_score: Optional[Decimal] = None
+
+
+class Contract(BaseModel):
+    ticker: str
+    title: str
+    status: str
+    yes_bid: Optional[int] = None
+    yes_ask: Optional[int] = None
+    last_price: Optional[int] = None
+    source_ts: Optional[datetime] = None
+
+
+class Market(BaseModel):
+    ticker: str
+    title: str
+    status: str
+    category: str
+    event_ticker: str
+    contracts: list[Contract] = Field(default_factory=list)
+    source_ts: Optional[datetime] = None
+    freshness_score: Optional[Decimal] = None
+
+
+class Event(BaseModel):
+    ticker: str
+    title: str
+    category: str
+    status: str
+    markets: list[Market] = Field(default_factory=list)
+    source_ts: Optional[datetime] = None
+    freshness_score: Optional[Decimal] = None
+
+
+class ForecastInput(BaseModel):
+    market_ticker: str
+    contract_ticker: str
+    yes_bid: int
+    yes_ask: int
+    timestamp: datetime
+    volume: Optional[int] = None
+    open_interest: Optional[int] = None
+    freshness_score: Optional[Decimal] = None

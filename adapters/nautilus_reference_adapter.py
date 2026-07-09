@@ -1,9 +1,9 @@
-from adapters.base import DumbyAdapter
+from adapters.base import DummyAdapter
 from core.ontology import Forecast
 from forecasting.engine import ForecastEngine
 
 
-class NautilusReferenceAdapter(DumbyAdapter):
+class NautilusReferenceAdapter(DummyAdapter):
     """Reference adapter for Nautilus Trader data/event shapes."""
 
     name = "nautilus_reference"

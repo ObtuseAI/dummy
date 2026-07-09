@@ -1,13 +1,13 @@
-from adapters.base import DumbyAdapter
+from adapters.base import DummyAdapter
 from core.ontology import Forecast
 from forecasting.engine import ForecastEngine
 
 
-class KalshiOfficialReferenceAdapter(DumbyAdapter):
+class KalshiOfficialReferenceAdapter(DummyAdapter):
     """Reference adapter for Kalshi's official API documentation / demo data.
 
     This adapter consumes public market data shapes (e.g., market tickers,
-    contract definitions, orderbook snapshots) and converts them into Dumby
+    contract definitions, orderbook snapshots) and converts them into Dummy
     native forecasts. It deliberately does not import or call any live order
     endpoints.
     """

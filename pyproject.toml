@@ -26,4 +26,4 @@ timeout = 60
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["core*", "kalshi*", "live_firewall*", "compliance*", "forecasting*", "strategies*", "risk*", "repo_harvester*", "dashboard*", "services*", "adapters*", "proof*", "execution*", "model_router*", "predator_mesh*"]
+include = ["core*", "kalshi*", "live_firewall*", "compliance*", "forecasting*", "strategies*", "risk*", "repo_harvester*", "dashboard*", "services*", "adapters*", "proof*", "execution*", "model_router*", "predator_mesh*", "calibration*", "autonomy*"]

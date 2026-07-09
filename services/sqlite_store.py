@@ -1,7 +1,7 @@
 import aiosqlite
 from pathlib import Path
 
-DB_PATH = Path(__file__).parent.parent / "dumby.db"
+DB_PATH = Path(__file__).parent.parent / "dummy.db"
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS status (

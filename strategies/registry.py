@@ -14,6 +14,27 @@ from strategies.event_cluster_hedging import EventClusterHedging
 from strategies.correlated_contract_arbitrage import CorrelatedContractArbitrage
 from strategies.volume_dislocation import VolumeDislocation
 from strategies.implied_probability_reversion import ImpliedProbabilityReversion
+from strategies.repo_derived import (
+    KalshiWeatherForecastStrategy,
+    SportsMomentumStrategy,
+    CryptoEventMarketStrategy,
+    StockMacroMomentumStrategy,
+    CommoditiesEnergyStrategy,
+    RepoDerivedCrossMarketArbitrage,
+    OrderbookSpreadCaptureStrategy,
+    StaleQuoteDetectionStrategy,
+)
+
+REPO_DERIVED_STRATEGIES = [
+    KalshiWeatherForecastStrategy(),
+    SportsMomentumStrategy(),
+    CryptoEventMarketStrategy(),
+    StockMacroMomentumStrategy(),
+    CommoditiesEnergyStrategy(),
+    RepoDerivedCrossMarketArbitrage(),
+    OrderbookSpreadCaptureStrategy(),
+    StaleQuoteDetectionStrategy(),
+]
 
 STRATEGIES = [
     ProbabilityDisagreement(),
@@ -32,4 +53,10 @@ STRATEGIES = [
     CorrelatedContractArbitrage(),
     VolumeDislocation(),
     ImpliedProbabilityReversion(),
+    *REPO_DERIVED_STRATEGIES,
 ]
+
+
+def get_repo_derived_strategies() -> list:
+    """Return the 8 repo-derived strategy instances."""
+    return list(REPO_DERIVED_STRATEGIES)

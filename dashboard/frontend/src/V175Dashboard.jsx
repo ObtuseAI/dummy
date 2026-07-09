@@ -1,0 +1,9 @@
+import StageDashboard from './StageDashboard';
+
+const endpoints = [["Controlled Operation Approval Controller", "/api/v175/controlled-operation-approval-controller"], ["V174 Baseline", "/api/v175/v174-baseline"], ["Controlled Operation Approval Validator", "/api/v175/controlled-operation-approval-validator"], ["Controlled Session Approval Validator", "/api/v175/controlled-session-approval-validator"], ["First Pilot Proof Checker", "/api/v175/first-pilot-proof-checker"], ["Repeat Pilot Proof Checker", "/api/v175/repeat-pilot-proof-checker"], ["Pilot Pair Proof Checker", "/api/v175/pilot-pair-proof-checker"], ["Scale Evidence Status Checker", "/api/v175/scale-evidence-status-checker"], ["Risk Abstention Prerequisite Checker", "/api/v175/risk-abstention-prerequisite-checker"], ["Live Submit Caps Status Checker", "/api/v175/live-submit-caps-status-checker"], ["Firewall Adapter Checker", "/api/v175/firewall-adapter-checker"], ["Approval Hash Only Ledger", "/api/v175/approval-hash-only-ledger"], ["No Submit Proof", "/api/v175/no-submit-proof"], ["No Broker Contact Proof", "/api/v175/no-broker-contact-proof"], ["No Approval File Write Proof", "/api/v175/no-approval-file-write-proof"], ["Readiness Governor", "/api/v175/readiness-governor"], ["Execution Lock", "/api/v175/execution-lock"], ["Mission State", "/api/v175/mission-state"]];
+
+const summaryFields = [["Mission", "mission_state_verdict"], ["Approval Validator", "controlled_operation_approval_controller_status"], ["Live Orders", "live_orders"], ["Broker Contacted", "real_broker_contacted"], ["Next Action", "current_next_action"], ["Blockers", "current_blockers"]];
+
+export default function V175Dashboard() {
+  return <StageDashboard title="Dummy V175 Controlled Operation Approval Validator" endpoints={endpoints} missionKey="dummy_mission_state_report_v161" summaryFields={summaryFields} />;
+}

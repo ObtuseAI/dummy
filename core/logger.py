@@ -5,7 +5,7 @@ from core.secret_guard import redact
 
 LOG_DIR = Path(__file__).parent.parent / "logs"
 LOG_DIR.mkdir(parents=True, exist_ok=True)
-LOG_FILE = LOG_DIR / "dumby.jsonl"
+LOG_FILE = LOG_DIR / "dummy.jsonl"
 
 class JsonlHandler(logging.Handler):
     def emit(self, record: logging.LogRecord):
@@ -22,6 +22,6 @@ class JsonlHandler(logging.Handler):
         with LOG_FILE.open("a") as f:
             f.write(json.dumps(safe, default=str) + "\n")
 
-logger = logging.getLogger("dumby")
+logger = logging.getLogger("dummy")
 logger.setLevel(logging.INFO)
 logger.addHandler(JsonlHandler())

@@ -1,0 +1,9 @@
+import StageDashboard from './StageDashboard';
+
+const endpoints = [["Production Lock Controller", "/api/v194/production-lock-controller"], ["V193 Baseline", "/api/v194/v193-baseline"], ["Live Proof Blocker Summary", "/api/v194/live-proof-blocker-summary"], ["Controlled Session Authority Summary", "/api/v194/controlled-session-authority-summary"], ["Autonomy Dryrun Approval Summary", "/api/v194/autonomy-dryrun-approval-summary"], ["Shadow Governor Summary", "/api/v194/shadow-governor-summary"], ["Shadow Forensic Summary", "/api/v194/shadow-forensic-summary"], ["Autonomy Quorum Summary", "/api/v194/autonomy-quorum-summary"], ["Limited Autonomy Gate Summary", "/api/v194/limited-autonomy-gate-summary"], ["Guarded Autonomy Rehearsal Summary", "/api/v194/guarded-autonomy-rehearsal-summary"], ["Production Hardening Summary", "/api/v194/production-hardening-summary"], ["Total Live Order Count", "/api/v194/total-live-order-count"], ["Next Action Matrix", "/api/v194/next-action-matrix"], ["No Scale Proof", "/api/v194/no-scale-proof"], ["No Autonomy Proof", "/api/v194/no-autonomy-proof"], ["No New Order Proof", "/api/v194/no-new-order-proof"], ["Readiness Governor", "/api/v194/readiness-governor"], ["Execution Lock", "/api/v194/execution-lock"], ["Mission State", "/api/v194/mission-state"]];
+
+const summaryFields = [["Mission", "mission_state_verdict"], ["Production Lock", "production_lock_controller_status"], ["Next Action Matrix", "next_action_matrix_selection"], ["Total Live Orders", "total_real_live_orders_submitted"], ["Next Action", "current_next_action"], ["Blockers", "current_blockers"]];
+
+export default function V194Dashboard() {
+  return <StageDashboard title="Dummy V194 Production Lock V6" endpoints={endpoints} missionKey="dummy_mission_state_report_v180" summaryFields={summaryFields} />;
+}

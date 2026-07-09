@@ -1,0 +1,11 @@
+{
+  "meta": null,
+  "scan": {
+    "owner": "backtrader",
+    "name": "backtrader",
+    "category": "stocks_equities_options_macro",
+    "error": "Redirect response '301 Moved Permanently' for url 'https://api.github.com/repos/backtrader/backtrader'\nRedirect location: 'https://api.github.com/repositories/29050338'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/301",
+    "files_scanned": 0
+  },
+  "version": 1
+}

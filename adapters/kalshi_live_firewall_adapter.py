@@ -1,12 +1,12 @@
-from adapters.base import DumbyAdapter
+from adapters.base import DummyAdapter
 from core.ontology import Forecast
 
 
-class KalshiLiveFirewallAdapter(DumbyAdapter):
+class KalshiLiveFirewallAdapter(DummyAdapter):
     """Firewall-side adapter for Kalshi live data.
 
     This stub intentionally does NOT import or call any Kalshi live order
-    endpoints. It only exposes the DumbyAdapter interface so the firewall can
+    endpoints. It only exposes the DummyAdapter interface so the firewall can
     attach a native forecast to a market data snapshot if one is supplied.
     """
 

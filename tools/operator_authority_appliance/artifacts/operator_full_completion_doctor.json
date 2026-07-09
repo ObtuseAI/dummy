@@ -1,0 +1,25 @@
+{
+  "tool": "operator_full_completion",
+  "proof_starvation_stop_rule_active": true,
+  "first_hard_blocker": "MISSING_OPERATOR_VALUES",
+  "command_seal_status": "PASS_EXECUTE_ONCE_COMMAND_SEAL_READY_NO_SUBMIT",
+  "env_gate_present": false,
+  "runtime_approvals_exists": true,
+  "proof_lock_used": false,
+  "missing_operator_values": [
+    "DUMMY_OPERATOR_NAME",
+    "DUMMY_OPERATOR_REASON",
+    "DUMMY_OPERATOR_EXPIRES_AT",
+    "DUMMY_AUTHORITY_PACK_DIR",
+    "DUMMY_TYPED_APPROVAL",
+    "DUMMY_RISK_ACK"
+  ],
+  "live_orders": 0,
+  "broker_contacted": false,
+  "approval_files_written_by_dummy": 0,
+  "live_submit_modified": false,
+  "caps_modified": false,
+  "scale_applied": false,
+  "autonomous_trading": false,
+  "not_self_authorized_by_dummy": true
+}

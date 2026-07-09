@@ -1,9 +1,9 @@
-from adapters.base import DumbyAdapter
+from adapters.base import DummyAdapter
 from core.ontology import Forecast
 from forecasting.engine import ForecastEngine
 
 
-class PolymarketReferenceAdapter(DumbyAdapter):
+class PolymarketReferenceAdapter(DummyAdapter):
     """Reference adapter for Polymarket-style prediction market data."""
 
     name = "polymarket_reference"

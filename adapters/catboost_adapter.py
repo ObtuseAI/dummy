@@ -1,9 +1,9 @@
-from adapters.base import DumbyAdapter
+from adapters.base import DummyAdapter
 from core.ontology import Forecast
 from forecasting.engine import ForecastEngine
 
 
-class CatBoostAdapter(DumbyAdapter):
+class CatBoostAdapter(DummyAdapter):
     """Reference adapter for CatBoost model inference outputs."""
 
     name = "catboost"

@@ -4,7 +4,7 @@ from datetime import datetime, timezone, timedelta
 from decimal import Decimal
 from unittest.mock import AsyncMock, patch
 from core import state as state_module
-from core.state import DumbyState, STATE
+from core.state import DummyState, STATE
 from core.ontology import AccountMode, LiveOrderRequest, OrderBook, OrderBookLevel, Forecast, EdgeEstimate, Position
 from live_firewall.firewall import LiveBrokerFirewall, REJECTED_ADAPTERS, mark_adapter_rejected
 from live_firewall.exposure_tracker import ExposureTracker
@@ -12,8 +12,8 @@ from live_firewall.exposure_tracker import ExposureTracker
 
 @pytest.fixture(autouse=True)
 def reset_state():
-    """Reset the global DumbyState and firewall guards before every test."""
-    fresh = DumbyState()
+    """Reset the global DummyState and firewall guards before every test."""
+    fresh = DummyState()
     state_module.STATE = fresh
     # The firewall module imported STATE at load time, so update its reference too.
     import live_firewall.firewall as firewall_module
@@ -55,7 +55,7 @@ def _make_forecast():
         event_title="Event",
         contract_title="Yes",
         market_implied_probability=Decimal("0.5"),
-        dumby_probability=Decimal("0.55"),
+        dummy_probability=Decimal("0.55"),
         probability_delta=Decimal("0.05"),
         confidence_score=Decimal("0.7"),
         uncertainty_band=(Decimal("0.5"), Decimal("0.6")),
@@ -192,7 +192,9 @@ async def test_submit_creates_order_and_tracks_exposure():
     exposure = ExposureTracker()
     client = AsyncMock()
     client.create_order.return_value = {"order": {"order_id": "ord-123"}}
-    with patch("live_firewall.firewall.load_caps", return_value=caps):
+    with patch("live_firewall.firewall.load_caps", return_value=caps), patch.object(
+        LiveBrokerFirewall, "_live_submit_enabled", return_value=True
+    ):
         fw = LiveBrokerFirewall(client, exposure)
         result = await fw.submit(_make_request(), _make_book(), _make_forecast())
         assert result.success

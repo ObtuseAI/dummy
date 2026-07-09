@@ -1,7 +1,7 @@
 from datetime import datetime, timezone
 from core.ontology import AccountMode, KillSwitchState, EmergencyStopState
 
-class DumbyState:
+class DummyState:
     def __init__(self):
         self.mode = AccountMode.OFF
         self.kill_switch = KillSwitchState(active=False)
@@ -30,4 +30,7 @@ class DumbyState:
             triggered_at=datetime.now(timezone.utc),
         )
 
-STATE = DumbyState()
+STATE = DummyState()
+
+# Compatibility alias for legacy pre-rename artifact readers.
+DumbyState = DummyState

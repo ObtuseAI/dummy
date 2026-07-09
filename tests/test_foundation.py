@@ -2,7 +2,7 @@ import os
 from core.ontology import AccountMode, CapConfig, Forecast, LiveOrderRequest
 from core.config_loader import load_caps
 from core.secret_guard import redact
-from core.state import DumbyState
+from core.state import DummyState
 
 def test_load_caps_defaults():
     caps = load_caps()
@@ -20,7 +20,7 @@ def test_secret_redaction():
     assert "***REDACTED***" in str(out)
 
 def test_state_mode_transitions():
-    s = DumbyState()
+    s = DummyState()
     s.set_mode(AccountMode.READ_ONLY)
     assert s.mode == AccountMode.READ_ONLY
     s.enable_kill_switch("test")

@@ -11,7 +11,7 @@ def test_incorporate_only_adapter_targets(tmp_path):
         "verdict": RepoVerdict.ADAPTER_TARGET.value,
         "plans": [{"adapter_name": "y_adapter", "emits_native_types": True, "notes": ""}]
     }
-    path = Path("C:/src/engine/dumby/artifacts/repo_harvester/adapter_plan_v2.json")
+    path = Path("C:/src/engine/dummy/artifacts/repo_harvester/adapter_plan_v2.json")
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps({"plans": [plan]}))
     result = incorporate_adapter_plans(require_tests=True)

@@ -7,4 +7,4 @@ def test_write_proof():
     ref = write_proof("test", "pass", {"x": 1})
     after = set(list_proofs())
     assert ref in after - before
-    assert (Path("C:/src/engine/dumby/proof") / f"{ref}.json").exists()
+    assert (Path("C:/src/engine/dummy/proof") / f"{ref}.json").exists()

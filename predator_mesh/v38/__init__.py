@@ -1,0 +1,4 @@
+"""DUMMY V38 operator-gated real read-only public probe completion."""
+
+MILESTONE = "DUMMY_V38_OPERATOR_GATED_REAL_READONLY_PROBE_RUN_LIVE_PUBLIC_SCORE_COMPLETION_V1"
+

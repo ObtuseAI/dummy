@@ -1,0 +1,6 @@
+{
+  "_marker": "NOT_APPROVAL_TEMPLATE_ONLY",
+  "caps_confirmed": "<bool>",
+  "strict_caps": true,
+  "operator_confirmed": "<bool>"
+}

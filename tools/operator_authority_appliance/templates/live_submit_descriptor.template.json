@@ -1,0 +1,5 @@
+{
+  "_marker": "NOT_APPROVAL_TEMPLATE_ONLY",
+  "live_submit_enabled": "<bool_operator_enabled>",
+  "operator_confirmed": "<bool>"
+}

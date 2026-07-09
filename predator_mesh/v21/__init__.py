@@ -1,0 +1,6 @@
+"""DUMMY V21 source activation breakout package."""
+
+from __future__ import annotations
+
+MILESTONE = "DUMMY_V21_SOURCE_ACTIVATION_BREAKOUT_OFFICIAL_PUBLIC_FEEDS_MARKET_DATA_ACQUISITION_AND_EDGE_TERRAIN_BOOTSTRAP_V1"
+

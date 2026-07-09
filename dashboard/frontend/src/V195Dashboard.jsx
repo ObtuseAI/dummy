@@ -1,0 +1,9 @@
+import StageDashboard from './StageDashboard';
+
+const endpoints = [["Activation Binder Controller", "/api/v195/activation-binder-controller"], ["V194 Baseline", "/api/v195/v194-baseline"], ["Production Pilot Approval Validator", "/api/v195/production-pilot-approval-validator"], ["Controlled Operation Approval Validator", "/api/v195/controlled-operation-approval-validator"], ["Controlled Session Approval Validator", "/api/v195/controlled-session-approval-validator"], ["Broker Readonly Approval Validator", "/api/v195/broker-readonly-approval-validator"], ["Live Submit Caps Status Checker", "/api/v195/live-submit-caps-status-checker"], ["Firewall Adapter Checker", "/api/v195/firewall-adapter-checker"], ["Mode Firewall Checker", "/api/v195/mode-firewall-checker"], ["Candidate Risk Abstention Proof Checker", "/api/v195/candidate-risk-abstention-proof-checker"], ["Shadow Governor Proof Checker", "/api/v195/shadow-governor-proof-checker"], ["Approval Hash Only Ledger", "/api/v195/approval-hash-only-ledger"], ["No Approval File Write Proof", "/api/v195/no-approval-file-write-proof"], ["No Submit Proof", "/api/v195/no-submit-proof"], ["No Broker Contact Proof", "/api/v195/no-broker-contact-proof"], ["Readiness Governor", "/api/v195/readiness-governor"], ["Execution Lock", "/api/v195/execution-lock"], ["Mission State", "/api/v195/mission-state"]];
+
+const summaryFields = [["Mission", "mission_state_verdict"], ["Activation Binder", "activation_binder_controller_status"], ["Live Orders", "live_orders"], ["Broker Contacted", "real_broker_contacted"], ["Next Action", "current_next_action"], ["Blockers", "current_blockers"]];
+
+export default function V195Dashboard() {
+  return <StageDashboard title="Dummy V195 First Live-Proof Activation Binder" endpoints={endpoints} missionKey="dummy_mission_state_report_v181" summaryFields={summaryFields} />;
+}

@@ -1,7 +1,7 @@
 import json
 from pathlib import Path
 
-REGISTRY_PATH = Path("C:/src/engine/dumby/artifacts/repo_harvester/incorporation_registry.json")
+REGISTRY_PATH = Path("C:/src/engine/dummy/artifacts/repo_harvester/incorporation_registry.json")
 
 def load_registry() -> dict:
     if REGISTRY_PATH.exists():

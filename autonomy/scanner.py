@@ -1,0 +1,160 @@
+"""Market scanner: sweep live Kalshi markets, classify verticals, shortlist.
+
+Public GET endpoints only. The scanner is the predator's eyes — it never
+mutates anything and never authenticates.
+"""
+from __future__ import annotations
+
+import os
+from typing import Any, Callable
+
+from autonomy.ontology import MarketView, Vertical
+
+_VERTICAL_PREFIXES: list[tuple[str, Vertical]] = [
+    ("KXHIGH", Vertical.WEATHER),
+    ("KXLOW", Vertical.WEATHER),
+    ("KXRAIN", Vertical.WEATHER),
+    ("KXSNOW", Vertical.WEATHER),
+    ("KXBTC", Vertical.CRYPTO),
+    ("KXETH", Vertical.CRYPTO),
+    ("KXSOL", Vertical.CRYPTO),
+    ("KXXRP", Vertical.CRYPTO),
+    ("KXDOGE", Vertical.CRYPTO),
+    ("KXNBA", Vertical.SPORTS),
+    ("KXNFL", Vertical.SPORTS),
+    ("KXMLB", Vertical.SPORTS),
+    ("KXNHL", Vertical.SPORTS),
+    ("KXUFC", Vertical.SPORTS),
+    ("KXWTA", Vertical.SPORTS),
+    ("KXATP", Vertical.SPORTS),
+    ("KXMVESPORTS", Vertical.SPORTS),
+    ("KXESPORTS", Vertical.SPORTS),
+    ("KXOIL", Vertical.COMMODITIES),
+    ("KXWTI", Vertical.COMMODITIES),
+    ("KXGAS", Vertical.COMMODITIES),
+    ("KXGOLD", Vertical.COMMODITIES),
+    ("KXCPI", Vertical.ECON),
+    ("KXFED", Vertical.ECON),
+    ("KXGDP", Vertical.ECON),
+    ("KXPAYROLL", Vertical.ECON),
+]
+
+
+def classify_vertical(ticker: str) -> Vertical:
+    upper = ticker.upper()
+    for prefix, vertical in _VERTICAL_PREFIXES:
+        if upper.startswith(prefix):
+            return vertical
+    return Vertical.OTHER
+
+
+# Curated hunting grounds: series with real exogenous signal coverage. A raw
+# paginated sweep of /markets drowns in thousands of auto-generated MVE parlay
+# combos; series-targeted queries go straight to where the edge sources live.
+WATCHLIST_SERIES: list[str] = [
+    # Daily high temperature (Open-Meteo ensemble coverage)
+    "KXHIGHNY", "KXHIGHCHI", "KXHIGHMIA", "KXHIGHAUS", "KXHIGHDEN",
+    "KXHIGHPHIL", "KXHIGHLAX", "KXHIGHTSEA",
+    # Crypto strike ladders (spot + realized vol coverage)
+    "KXBTCD", "KXBTC", "KXETHD", "KXETH",
+    # Single-game sports moneylines (ESPN + Elo coverage)
+    "KXMLBGAME", "KXNBAGAME", "KXNFLGAME", "KXNHLGAME", "KXWNBAGAME",
+    # Commodity price thresholds (Yahoo spot + realized vol coverage)
+    "KXWTI", "KXNATGAS", "KXGOLD",
+]
+
+
+def _public_base() -> str:
+    base = os.environ.get("KALSHI_API_BASE", "https://api.elections.kalshi.com").rstrip("/")
+    version = os.environ.get("KALSHI_API_VERSION", "trade-api/v2").strip("/")
+    return f"{base}/{version}"
+
+
+def default_fetch_series_markets(series_ticker: str) -> dict[str, Any]:
+    import httpx
+
+    response = httpx.get(
+        f"{_public_base()}/markets",
+        params={"series_ticker": series_ticker, "status": "open", "limit": 200},
+        timeout=20,
+    )
+    response.raise_for_status()
+    return response.json()
+
+
+def _dollars_to_cents(value: Any) -> int | None:
+    if value is None:
+        return None
+    try:
+        return int(round(float(value) * 100))
+    except Exception:
+        return None
+
+
+def _price_field(raw: dict[str, Any], cent_key: str) -> int | None:
+    """Prefer integer-cent fields; fall back to the *_dollars string schema."""
+    if raw.get(cent_key) is not None:
+        try:
+            return int(raw[cent_key])
+        except Exception:
+            pass
+    return _dollars_to_cents(raw.get(f"{cent_key}_dollars"))
+
+
+def to_market_view(raw: dict[str, Any]) -> MarketView:
+    ticker = str(raw.get("ticker", ""))
+    volume = raw.get("volume")
+    if volume is None:
+        try:
+            volume = float(raw.get("volume_fp") or raw.get("volume_24h_fp") or 0)
+        except Exception:
+            volume = 0
+    liquidity = raw.get("liquidity")
+    if liquidity is None:
+        liquidity = _dollars_to_cents(raw.get("liquidity_dollars")) or 0
+    return MarketView(
+        ticker=ticker,
+        title=str(raw.get("title", "")),
+        vertical=classify_vertical(ticker),
+        status=str(raw.get("status", "")),
+        close_time=str(raw.get("close_time", "")),
+        yes_bid=_price_field(raw, "yes_bid"),
+        yes_ask=_price_field(raw, "yes_ask"),
+        no_bid=_price_field(raw, "no_bid"),
+        no_ask=_price_field(raw, "no_ask"),
+        volume=int(volume or 0),
+        liquidity=int(liquidity or 0),
+        tick_size=int(raw.get("tick_size") or 1),
+        raw=raw,
+    )
+
+
+class MarketScanner:
+    def __init__(
+        self,
+        fetch_series: Callable[[str], dict[str, Any]] | None = None,
+        watchlist: list[str] | None = None,
+        verticals: set[Vertical] | None = None,
+    ) -> None:
+        self.fetch_series = fetch_series or default_fetch_series_markets
+        self.watchlist = watchlist or list(WATCHLIST_SERIES)
+        self.verticals = verticals or {Vertical.WEATHER, Vertical.CRYPTO, Vertical.SPORTS,
+                                       Vertical.COMMODITIES, Vertical.ECON}
+
+    def scan(self) -> list[MarketView]:
+        views: list[MarketView] = []
+        seen: set[str] = set()
+        for series in self.watchlist:
+            try:
+                page = self.fetch_series(series)
+            except Exception:
+                continue  # one dead series never stalls the hunt
+            for raw in page.get("markets", []):
+                view = to_market_view(raw)
+                if view.ticker in seen or view.status not in ("active", "open"):
+                    continue
+                if view.vertical not in self.verticals:
+                    continue
+                seen.add(view.ticker)
+                views.append(view)
+        return views

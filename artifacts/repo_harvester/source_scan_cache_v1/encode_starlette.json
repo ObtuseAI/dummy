@@ -1,0 +1,11 @@
+{
+  "meta": null,
+  "scan": {
+    "owner": "encode",
+    "name": "starlette",
+    "category": "dashboard_api_observability",
+    "error": "Redirect response '301 Moved Permanently' for url 'https://api.github.com/repos/encode/starlette'\nRedirect location: 'https://api.github.com/repositories/138597372'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/301",
+    "files_scanned": 0
+  },
+  "version": 1
+}

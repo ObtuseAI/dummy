@@ -1,0 +1,14 @@
+{
+  "_marker": "NOT_APPROVAL_TEMPLATE_ONLY",
+  "exact_phrase": "<REQUIRED_EXACT_PHRASE>",
+  "operator": "<operator>",
+  "timestamp": "<iso>",
+  "reason": "<reason>",
+  "scope": "one_controlled_production_pilot_via_firewall_only",
+  "expiration": "<iso>",
+  "no_market_order_acknowledgment": "no market order",
+  "strict_caps_acknowledgment": "strict caps",
+  "live_submit_operator_enabled_acknowledgment": "live-submit already operator-enabled",
+  "per_order_fail_closed_acknowledgment": "per-order fail-closed",
+  "pilot_auto_lock_acknowledgment": "immediate pilot auto-lock"
+}

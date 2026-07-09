@@ -1,11 +1,11 @@
 import pytest
 from adapters.qlib_adapter import QlibAdapter
-from adapters.base import DumbyAdapter
+from adapters.base import DummyAdapter
 
 
 def test_adapter_base_abstract():
     with pytest.raises(TypeError):
-        DumbyAdapter()
+        DummyAdapter()
 
 
 def test_qlib_adapter_emits_native_forecast():
@@ -35,6 +35,6 @@ def test_all_adapter_files_exist():
         "lightgbm_adapter.py", "catboost_adapter.py", "nixtla_statsforecast_adapter.py",
         "yfinance_reference_adapter.py",
     ]
-    root = Path("C:/src/engine/dumby/adapters")
+    root = Path("C:/src/engine/dummy/adapters")
     for name in expected:
         assert (root / name).exists(), f"Missing adapter: {name}"

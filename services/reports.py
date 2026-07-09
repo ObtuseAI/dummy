@@ -4,7 +4,7 @@ from pathlib import Path
 from core.state import STATE
 from core.config_loader import load_caps
 
-ARTIFACTS = Path("C:/src/engine/dumby/artifacts/dumby")
+ARTIFACTS = Path("C:/src/engine/dummy/artifacts/dummy")
 ARTIFACTS.mkdir(parents=True, exist_ok=True)
 
 

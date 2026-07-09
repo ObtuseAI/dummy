@@ -4,8 +4,2418 @@
       "repo": "x/y",
       "adapter_name": "y_adapter",
       "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "Sharp-API/SharpAPI-TS",
+      "adapter_name": "SharpAPI_TS_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "odds-api/arbitrage-betting-scanner-bot",
+      "adapter_name": "arbitrage_betting_scanner_bot_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "NBA-Betting/NBA_Betting",
+      "adapter_name": "NBA_Betting_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "manuelpeba/world-cup-2026-forecast",
+      "adapter_name": "world_cup_2026_forecast_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "nickpadd/EuropeanFootballLeaguePredictor",
+      "adapter_name": "EuropeanFootballLeaguePredictor_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "paulokuong/noaa",
+      "adapter_name": "noaa_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "weather-mcp/weather-mcp",
+      "adapter_name": "weather_mcp_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "GClunies/noaa_coops",
+      "adapter_name": "noaa_coops_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "microsoft/qlib",
+      "adapter_name": "qlib_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "QuantConnect/Lean",
+      "adapter_name": "Lean_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "quantrocket-llc/zipline",
+      "adapter_name": "zipline_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "stefan-jansen/machine-learning-for-trading",
+      "adapter_name": "machine_learning_for_trading_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "shashankvemuri/Finance",
+      "adapter_name": "Finance_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "cfdude/mcp-finnhub",
+      "adapter_name": "mcp_finnhub_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "philsv/pycot",
+      "adapter_name": "pycot_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "Mcamin/cftc-cot",
+      "adapter_name": "cftc_cot_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "philsv/myeia",
+      "adapter_name": "myeia_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "EIAgov/dash-benchmark",
+      "adapter_name": "dash_benchmark_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "datasets/oil-prices",
+      "adapter_name": "oil_prices_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "BaseMax/XAUUSD-LSTM",
+      "adapter_name": "XAUUSD_LSTM_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "je-suis-tm/quant-trading",
+      "adapter_name": "quant_trading_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "ccxt/ccxt",
+      "adapter_name": "ccxt_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "optuna/optunahub",
+      "adapter_name": "optunahub_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "catboost/catboost",
+      "adapter_name": "catboost_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "Nixtla/statsforecast",
+      "adapter_name": "statsforecast_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "Nixtla/hierarchicalforecast",
+      "adapter_name": "hierarchicalforecast_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "Nixtla/utilsforecast",
+      "adapter_name": "utilsforecast_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "lightning-ai/pytorch-lightning",
+      "adapter_name": "pytorch_lightning_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "automl/auto-sklearn",
+      "adapter_name": "auto_sklearn_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "wandb/wandb",
+      "adapter_name": "wandb_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "ranaroussi/yfinance",
+      "adapter_name": "yfinance_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "ranaroussi/quantstats",
+      "adapter_name": "quantstats_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "quantopian/empyrical",
+      "adapter_name": "empyrical_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "pmorissette/bt",
+      "adapter_name": "bt_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "bukosabino/ta",
+      "adapter_name": "ta_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "vitejs/vite",
+      "adapter_name": "vite_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "vercel/next.js",
+      "adapter_name": "next.js_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "recharts/recharts",
+      "adapter_name": "recharts_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "plotly/dash",
+      "adapter_name": "dash_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "getredash/redash",
+      "adapter_name": "redash_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "crewAIInc/crewAI",
+      "adapter_name": "crewAI_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "promptfoo/promptfoo",
+      "adapter_name": "promptfoo_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "TensorBlock/awesome-mcp-servers",
+      "adapter_name": "awesome_mcp_servers_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
+    },
+    {
+      "repo": "x/y",
+      "adapter_name": "y_adapter",
+      "tests_passed": true
     }
   ],
   "rejected": [],
-  "pending_tests": []
+  "pending_tests": [],
+  "synced_from": "adapter_plan_v3.json",
+  "generated_at": "2026-06-30T19:20:00.151110+00:00",
+  "direct_dependency_candidates": [
+    {
+      "repo": "unit8co/darts",
+      "adapter_name": "darts_dependency",
+      "tests_passed": false
+    },
+    {
+      "repo": "autogluon/autogluon",
+      "adapter_name": "autogluon_dependency",
+      "tests_passed": false
+    },
+    {
+      "repo": "optuna/optuna",
+      "adapter_name": "optuna_dependency",
+      "tests_passed": false
+    },
+    {
+      "repo": "statsmodels/statsmodels",
+      "adapter_name": "statsmodels_dependency",
+      "tests_passed": false
+    },
+    {
+      "repo": "scikit-learn/scikit-learn",
+      "adapter_name": "scikit_learn_dependency",
+      "tests_passed": false
+    },
+    {
+      "repo": "scipy/scipy",
+      "adapter_name": "scipy_dependency",
+      "tests_passed": false
+    },
+    {
+      "repo": "pandas-dev/pandas",
+      "adapter_name": "pandas_dependency",
+      "tests_passed": false
+    },
+    {
+      "repo": "dmlc/xgboost",
+      "adapter_name": "xgboost_dependency",
+      "tests_passed": false
+    },
+    {
+      "repo": "Nixtla/mlforecast",
+      "adapter_name": "mlforecast_dependency",
+      "tests_passed": false
+    },
+    {
+      "repo": "Nixtla/neuralforecast",
+      "adapter_name": "neuralforecast_dependency",
+      "tests_passed": false
+    },
+    {
+      "repo": "facebook/prophet",
+      "adapter_name": "prophet_dependency",
+      "tests_passed": false
+    },
+    {
+      "repo": "timeseriesAI/tsai",
+      "adapter_name": "tsai_dependency",
+      "tests_passed": false
+    },
+    {
+      "repo": "ray-project/ray",
+      "adapter_name": "ray_dependency",
+      "tests_passed": false
+    },
+    {
+      "repo": "mlflow/mlflow",
+      "adapter_name": "mlflow_dependency",
+      "tests_passed": false
+    },
+    {
+      "repo": "evidentlyai/evidently",
+      "adapter_name": "evidently_dependency",
+      "tests_passed": false
+    },
+    {
+      "repo": "duckdb/duckdb",
+      "adapter_name": "duckdb_dependency",
+      "tests_passed": false
+    },
+    {
+      "repo": "fastapi/fastapi",
+      "adapter_name": "fastapi_dependency",
+      "tests_passed": false
+    },
+    {
+      "repo": "tailwindlabs/tailwindcss",
+      "adapter_name": "tailwindcss_dependency",
+      "tests_passed": false
+    },
+    {
+      "repo": "streamlit/streamlit",
+      "adapter_name": "streamlit_dependency",
+      "tests_passed": false
+    },
+    {
+      "repo": "ClickHouse/ClickHouse",
+      "adapter_name": "ClickHouse_dependency",
+      "tests_passed": false
+    },
+    {
+      "repo": "prometheus/prometheus",
+      "adapter_name": "prometheus_dependency",
+      "tests_passed": false
+    }
+  ],
+  "reference_only_strategy_mines": []
 }

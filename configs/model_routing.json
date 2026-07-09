@@ -1,0 +1,77 @@
+{
+  "default_provider": {
+    "forecast_opinion": "deepseek_v4_flash",
+    "strategy_critique": "minimax_m3",
+    "risk_critique": "deepseek_v4_flash",
+    "no_trade_reason": "minimax_m3",
+    "trade_draft": "deepseek_v4_flash",
+    "calibration_note": "minimax_m3",
+    "market_thesis": "minimax_m3",
+    "hybrid_review": "hybrid"
+  },
+  "provider_configs": {
+    "deepseek_v4_flash": {
+      "api_base": "https://openrouter.ai/api",
+      "api_key_env": "OPENROUTER_API_KEY",
+      "model_name": "deepseek/deepseek-chat",
+      "model_aliases": [
+        "deepseek-chat",
+        "deepseek-v3",
+        "deepseek/deepseek-chat",
+        "deepseek-v4-flash"
+      ],
+      "rpm": 60,
+      "tpm": 100000,
+      "timeout_seconds": 20.0,
+      "route_mode": "openrouter"
+    },
+    "minimax_m3": {
+      "api_base": "https://openrouter.ai/api",
+      "api_key_env": "OPENROUTER_API_KEY",
+      "model_name": "minimax/minimax-01",
+      "model_aliases": [
+        "minimax-01",
+        "MiniMax-Text-01",
+        "minimax/minimax-01"
+      ],
+      "rpm": 60,
+      "tpm": 100000,
+      "timeout_seconds": 20.0,
+      "route_mode": "openrouter"
+    },
+    "panel_llama": {
+      "api_base": "https://openrouter.ai/api",
+      "api_key_env": "OPENROUTER_API_KEY",
+      "model_name": "meta-llama/llama-3.3-70b-instruct",
+      "rpm": 60, "tpm": 100000, "timeout_seconds": 20.0,
+      "route_mode": "openrouter"
+    },
+    "panel_gpt": {
+      "api_base": "https://openrouter.ai/api",
+      "api_key_env": "OPENROUTER_API_KEY",
+      "model_name": "openai/gpt-4o-mini",
+      "rpm": 60, "tpm": 100000, "timeout_seconds": 20.0,
+      "route_mode": "openrouter"
+    },
+    "panel_qwen": {
+      "api_base": "https://openrouter.ai/api",
+      "api_key_env": "OPENROUTER_API_KEY",
+      "model_name": "qwen/qwen-2.5-72b-instruct",
+      "rpm": 60, "tpm": 100000, "timeout_seconds": 20.0,
+      "route_mode": "openrouter"
+    }
+  },
+  "mock_fallback_enabled": true,
+  "openrouter_enabled": true,
+  "provider_native_enabled": true,
+  "live_model_calls_enabled": false,
+  "max_prompt_length": 16000,
+  "blocked_prompt_categories": ["secret_leak", "instruction_injection", "order_endpoint", "cap_modification"],
+  "secret_key_env_names": [
+    "OPENROUTER_API_KEY",
+    "DEEPSEEK_API_KEY",
+    "MINIMAX_API_KEY",
+    "KALSHI_API_KEY_ID",
+    "KALSHI_API_PRIVATE_KEY_PEM"
+  ]
+}

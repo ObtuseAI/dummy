@@ -1,9 +1,9 @@
-from adapters.base import DumbyAdapter
+from adapters.base import DummyAdapter
 from core.ontology import Forecast
 from forecasting.engine import ForecastEngine
 
 
-class NixtlaStatsforecastAdapter(DumbyAdapter):
+class NixtlaStatsforecastAdapter(DummyAdapter):
     """Reference adapter for Nixtla StatsForecast model outputs."""
 
     name = "nixtla_statsforecast"

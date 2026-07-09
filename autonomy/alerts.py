@@ -1,0 +1,122 @@
+"""Operator alerts: surface the few events that change what the operator does.
+
+An unattended predator needs to shout only when it matters — it self-stopped,
+it de-risked on drawdown, the evidence gate finally went green, or cycles are
+erroring in a streak. Alerts are appended to a JSONL log and the latest is
+mirrored to a small JSON file a dashboard or notifier can poll. De-duplicated
+so the same standing condition does not spam every cycle.
+"""
+from __future__ import annotations
+
+import json
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Any
+
+RUNTIME_DIR = Path("runtime/autonomy")
+ALERTS_LOG = RUNTIME_DIR / "alerts.jsonl"
+ALERTS_LATEST = RUNTIME_DIR / "alerts_latest.json"
+ALERT_STATE = RUNTIME_DIR / "alert_state.json"
+
+SEVERITY = {
+    "SELF_STOP": "critical",
+    "DRAWDOWN_LADDER": "warning",
+    "GATE_GREEN": "info",
+    "CYCLE_ERROR_STREAK": "warning",
+}
+
+
+def _load_state() -> dict[str, Any]:
+    if ALERT_STATE.exists():
+        try:
+            return json.loads(ALERT_STATE.read_text(encoding="utf-8"))
+        except Exception:
+            return {}
+    return {}
+
+
+def _save_state(state: dict[str, Any]) -> None:
+    RUNTIME_DIR.mkdir(parents=True, exist_ok=True)
+    ALERT_STATE.write_text(json.dumps(state, indent=2, sort_keys=True), encoding="utf-8")
+
+
+def emit_alert(kind: str, message: str, detail: dict[str, Any] | None = None, now_iso: str | None = None) -> dict[str, Any]:
+    """Append + mirror one alert. Returns the alert record."""
+    record = {
+        "kind": kind,
+        "severity": SEVERITY.get(kind, "info"),
+        "message": message,
+        "detail": detail or {},
+        "at": now_iso or datetime.now(timezone.utc).isoformat(),
+    }
+    RUNTIME_DIR.mkdir(parents=True, exist_ok=True)
+    with ALERTS_LOG.open("a", encoding="utf-8") as fh:
+        fh.write(json.dumps(record, sort_keys=True) + "\n")
+    ALERTS_LATEST.write_text(json.dumps(record, indent=2, sort_keys=True), encoding="utf-8")
+    return record
+
+
+def evaluate_alerts(cycle_record: dict[str, Any], risk_state: dict[str, Any] | None,
+                    gate_ready: bool, now_iso: str | None = None) -> list[dict[str, Any]]:
+    """Decide which alerts to emit this cycle, de-duplicated against prior state."""
+    state = _load_state()
+    fired: list[dict[str, Any]] = []
+
+    status = str(cycle_record.get("status", ""))
+
+    # Self-stop: fire once per stop episode.
+    if status.startswith("HALTED_SELF_STOP"):
+        if not state.get("self_stopped"):
+            fired.append(emit_alert("SELF_STOP", status, {"cycle": cycle_record}, now_iso))
+            state["self_stopped"] = True
+    else:
+        state["self_stopped"] = False
+
+    # Drawdown ladder: fire when the ladder rung deepens.
+    if risk_state:
+        peak = risk_state.get("equity_peak_cents") or 0
+        bankroll = risk_state.get("bankroll_cents") or 0
+        dd = (1.0 - bankroll / peak) if peak else 0.0
+        rung = 0
+        for threshold in (0.10, 0.20, 0.30):
+            if dd >= threshold - 1e-9:
+                rung += 1
+        if rung > int(state.get("drawdown_rung", 0)):
+            fired.append(emit_alert("DRAWDOWN_LADDER", f"drawdown {dd:.1%} reached rung {rung}",
+                                    {"drawdown": round(dd, 4), "rung": rung}, now_iso))
+        state["drawdown_rung"] = rung
+
+    # Evidence gate flips green: fire once on the rising edge.
+    if gate_ready and not state.get("gate_green"):
+        fired.append(emit_alert("GATE_GREEN", "live canary evidence gate is READY", {}, now_iso))
+    state["gate_green"] = bool(gate_ready)
+
+    # Cycle-error streak.
+    if status.startswith("CYCLE_ERROR"):
+        streak = int(state.get("error_streak", 0)) + 1
+        state["error_streak"] = streak
+        if streak >= 3 and streak != int(state.get("last_error_alert_streak", 0)):
+            fired.append(emit_alert("CYCLE_ERROR_STREAK", f"{streak} consecutive cycle errors",
+                                    {"status": status}, now_iso))
+            state["last_error_alert_streak"] = streak
+    else:
+        state["error_streak"] = 0
+
+    _save_state(state)
+    return fired
+
+
+def recent_alerts(limit: int = 20) -> list[dict[str, Any]]:
+    if not ALERTS_LOG.exists():
+        return []
+    try:
+        lines = ALERTS_LOG.read_text(encoding="utf-8").strip().splitlines()
+    except Exception:
+        return []
+    out = []
+    for line in lines[-limit:]:
+        try:
+            out.append(json.loads(line))
+        except Exception:
+            continue
+    return out

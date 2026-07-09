@@ -1,0 +1,1641 @@
+{
+  "generated_at": "2026-06-30T19:02:07.981039+00:00",
+  "candidate_count": 135,
+  "candidates": [
+    {
+      "repo": "Sharp-API/SharpAPI-TS",
+      "source_category": "sports_prediction_odds",
+      "strategy_name": "SportsMomentumStrategy",
+      "description": "Mine repo odds/forecast logic for momentum and mispricing signals; emit TradeProposal for sports event contracts only.",
+      "market_types": [
+        "sports"
+      ],
+      "output": "TradeProposal",
+      "calls_live_order_endpoints": false
+    },
+    {
+      "repo": "Sharp-API/SharpAPI-TS",
+      "source_category": "sports_prediction_odds",
+      "strategy_name": "StockMacroMomentumStrategy",
+      "description": "Use repo stock/index/macro forecasting patterns to generate TradeProposal objects for relevant Kalshi macro contracts.",
+      "market_types": [
+        "stocks",
+        "indices",
+        "macro"
+      ],
+      "output": "TradeProposal",
+      "calls_live_order_endpoints": false
+    },
+    {
+      "repo": "Sharp-API/SharpAPI-TS",
+      "source_category": "sports_prediction_odds",
+      "strategy_name": "CommoditiesEnergyStrategy",
+      "description": "Apply commodities/energy price-forecast logic to Kalshi energy contracts; output TradeProposal only.",
+      "market_types": [
+        "commodities",
+        "energy"
+      ],
+      "output": "TradeProposal",
+      "calls_live_order_endpoints": false
+    },
+    {
+      "repo": "Sharp-API/SharpAPI-TS",
+      "source_category": "sports_prediction_odds",
+      "strategy_name": "RepoDerivedCrossMarketArbitrage",
+      "description": "Identify price disagreements across prediction markets using repo arbitrage patterns and emit paired TradeProposal legs.",
+      "market_types": [
+        "cross_market",
+        "arbitrage"
+      ],
+      "output": "TradeProposal",
+      "calls_live_order_endpoints": false
+    },
+    {
+      "repo": "Sharp-API/SharpAPI-TS",
+      "source_category": "sports_prediction_odds",
+      "strategy_name": "OrderbookSpreadCaptureStrategy",
+      "description": "Watch orderbook updates via WebSocket logic mined from repos and emit TradeProposal when spread capture meets caps.",
+      "market_types": [
+        "orderbook",
+        "spread"
+      ],
+      "output": "TradeProposal",
+      "calls_live_order_endpoints": false
+    },
+    {
+      "repo": "Sharp-API/SharpAPI-TS",
+      "source_category": "sports_prediction_odds",
+      "strategy_name": "StaleQuoteDetectionStrategy",
+      "description": "Detect stale quotes near settlement/expiration using repo forecast/settlement patterns and emit TradeProposal only.",
+      "market_types": [
+        "stale_quote",
+        "settlement"
+      ],
+      "output": "TradeProposal",
+      "calls_live_order_endpoints": false
+    },
+    {
+      "repo": "odds-api/arbitrage-betting-scanner-bot",
+      "source_category": "sports_prediction_odds",
+      "strategy_name": "SportsMomentumStrategy",
+      "description": "Mine repo odds/forecast logic for momentum and mispricing signals; emit TradeProposal for sports event contracts only.",
+      "market_types": [
+        "sports"
+      ],
+      "output": "TradeProposal",
+      "calls_live_order_endpoints": false
+    },
+    {
+      "repo": "odds-api/arbitrage-betting-scanner-bot",
+      "source_category": "sports_prediction_odds",
+      "strategy_name": "StockMacroMomentumStrategy",
+      "description": "Use repo stock/index/macro forecasting patterns to generate TradeProposal objects for relevant Kalshi macro contracts.",
+      "market_types": [
+        "stocks",
+        "indices",
+        "macro"
+      ],
+      "output": "TradeProposal",
+      "calls_live_order_endpoints": false
+    },
+    {
+      "repo": "odds-api/arbitrage-betting-scanner-bot",
+      "source_category": "sports_prediction_odds",
+      "strategy_name": "RepoDerivedCrossMarketArbitrage",
+      "description": "Identify price disagreements across prediction markets using repo arbitrage patterns and emit paired TradeProposal legs.",
+      "market_types": [
+        "cross_market",
+        "arbitrage"
+      ],
+      "output": "TradeProposal",
+      "calls_live_order_endpoints": false
+    },
+    {
+      "repo": "odds-api/arbitrage-betting-scanner-bot",
+      "source_category": "sports_prediction_odds",
+      "strategy_name": "StaleQuoteDetectionStrategy",
+      "description": "Detect stale quotes near settlement/expiration using repo forecast/settlement patterns and emit TradeProposal only.",
+      "market_types": [
+        "stale_quote",
+        "settlement"
+      ],
+      "output": "TradeProposal",
+      "calls_live_order_endpoints": false
+    },
+    {
+      "repo": "NBA-Betting/NBA_Betting",
+      "source_category": "sports_prediction_odds",
+      "strategy_name": "SportsMomentumStrategy",
+      "description": "Mine repo odds/forecast logic for momentum and mispricing signals; emit TradeProposal for sports event contracts only.",
+      "market_types": [
+        "sports"
+      ],
+      "output": "TradeProposal",
+      "calls_live_order_endpoints": false
+    },
+    {
+      "repo": "NBA-Betting/NBA_Betting",
+      "source_category": "sports_prediction_odds",
+      "strategy_name": "StockMacroMomentumStrategy",
+      "description": "Use repo stock/index/macro forecasting patterns to generate TradeProposal objects for relevant Kalshi macro contracts.",
+      "market_types": [
+        "stocks",
+        "indices",
+        "macro"
+      ],
+      "output": "TradeProposal",
+      "calls_live_order_endpoints": false
+    },
+    {
+      "repo": "NBA-Betting/NBA_Betting",
+      "source_category": "sports_prediction_odds",
+      "strategy_name": "StaleQuoteDetectionStrategy",
+      "description": "Detect stale quotes near settlement/expiration using repo forecast/settlement patterns and emit TradeProposal only.",
+      "market_types": [
+        "stale_quote",
+        "settlement"
+      ],
+      "output": "TradeProposal",
+      "calls_live_order_endpoints": false
+    },
+    {
+      "repo": "manuelpeba/world-cup-2026-forecast",
+      "source_category": "sports_prediction_odds",
+      "strategy_name": "KalshiWeatherForecastStrategy",
+      "description": "Combine NOAA/open-meteo forecasts with Kalshi weather contract orderbooks; emit TradeProposal when model probability diverges from market.",
+      "market_types": [
+        "weather"
+      ],
+      "output": "TradeProposal",
+      "calls_live_order_endpoints": false
+    },
+    {
+      "repo": "manuelpeba/world-cup-2026-forecast",
+      "source_category": "sports_prediction_odds",
+      "strategy_name": "SportsMomentumStrategy",
+      "description": "Mine repo odds/forecast logic for momentum and mispricing signals; emit TradeProposal for sports event contracts only.",
+      "market_types": [
+        "sports"
+      ],
+      "output": "TradeProposal",
+      "calls_live_order_endpoints": false
+    },
+    {
+      "repo": "manuelpeba/world-cup-2026-forecast",
+      "source_category": "sports_prediction_odds",
+      "strategy_name": "StockMacroMomentumStrategy",
+      "description": "Use repo stock/index/macro forecasting patterns to generate TradeProposal objects for relevant Kalshi macro contracts.",
+      "market_types": [
+        "stocks",
+        "indices",
+        "macro"
+      ],
+      "output": "TradeProposal",
+      "calls_live_order_endpoints": false
+    },
+    {
+      "repo": "manuelpeba/world-cup-2026-forecast",
+      "source_category": "sports_prediction_odds",
+      "strategy_name": "CommoditiesEnergyStrategy",
+      "description": "Apply commodities/energy price-forecast logic to Kalshi energy contracts; output TradeProposal only.",
+      "market_types": [
+        "commodities",
+        "energy"
+      ],
+      "output": "TradeProposal",
+      "calls_live_order_endpoints": false
+    },
+    {
+      "repo": "manuelpeba/world-cup-2026-forecast",
+      "source_category": "sports_prediction_odds",
+      "strategy_name": "StaleQuoteDetectionStrategy",
+      "description": "Detect stale quotes near settlement/expiration using repo forecast/settlement patterns and emit TradeProposal only.",
+      "market_types": [
+        "stale_quote",
+        "settlement"
+      ],
+      "output": "TradeProposal",
+      "calls_live_order_endpoints": false
+    },
+    {
+      "repo": "nickpadd/EuropeanFootballLeaguePredictor",
+      "source_category": "sports_prediction_odds",
+      "strategy_name": "SportsMomentumStrategy",
+      "description": "Mine repo odds/forecast logic for momentum and mispricing signals; emit TradeProposal for sports event contracts only.",
+      "market_types": [
+        "sports"
+      ],
+      "output": "TradeProposal",
+      "calls_live_order_endpoints": false
+    },
+    {
+      "repo": "nickpadd/EuropeanFootballLeaguePredictor",
+      "source_category": "sports_prediction_odds",
+      "strategy_name": "StockMacroMomentumStrategy",
+      "description": "Use repo stock/index/macro forecasting patterns to generate TradeProposal objects for relevant Kalshi macro contracts.",
+      "market_types": [
+        "stocks",
+        "indices",
+        "macro"
+      ],
+      "output": "TradeProposal",
+      "calls_live_order_endpoints": false
+    },
+    {
+      "repo": "nickpadd/EuropeanFootballLeaguePredictor",
+      "source_category": "sports_prediction_odds",
+      "strategy_name": "StaleQuoteDetectionStrategy",
+      "description": "Detect stale quotes near settlement/expiration using repo forecast/settlement patterns and emit TradeProposal only.",
+      "market_types": [
+        "stale_quote",
+        "settlement"
+      ],
+      "output": "TradeProposal",
+      "calls_live_order_endpoints": false
+    },
+    {
+      "repo": "paulokuong/noaa",
+      "source_category": "weather_prediction_market",
+      "strategy_name": "KalshiWeatherForecastStrategy",
+      "description": "Combine NOAA/open-meteo forecasts with Kalshi weather contract orderbooks; emit TradeProposal when model probability diverges from market.",
+      "market_types": [
+        "weather"
+      ],
+      "output": "TradeProposal",
+      "calls_live_order_endpoints": false
+    },
+    {
+      "repo": "paulokuong/noaa",
+      "source_category": "weather_prediction_market",
+      "strategy_name": "StockMacroMomentumStrategy",
+      "description": "Use repo stock/index/macro forecasting patterns to generate TradeProposal objects for relevant Kalshi macro contracts.",
+      "market_types": [
+        "stocks",
+        "indices",
+        "macro"
+      ],
+      "output": "TradeProposal",
+      "calls_live_order_endpoints": false
+    },
+    {
+      "repo": "paulokuong/noaa",
+      "source_category": "weather_prediction_market",
+      "strategy_name": "StaleQuoteDetectionStrategy",
+      "description": "Detect stale quotes near settlement/expiration using repo forecast/settlement patterns and emit TradeProposal only.",
+      "market_types": [
+        "stale_quote",
+        "settlement"
+      ],
+      "output": "TradeProposal",
+      "calls_live_order_endpoints": false
+    },
+    {
+      "repo": "weather-mcp/weather-mcp",
+      "source_category": "weather_prediction_market",
+      "strategy_name": "KalshiWeatherForecastStrategy",
+      "description": "Combine NOAA/open-meteo forecasts with Kalshi weather contract orderbooks; emit TradeProposal when model probability diverges from market.",
+      "market_types": [
+        "weather"
+      ],
+      "output": "TradeProposal",
+      "calls_live_order_endpoints": false
+    },
+    {
+      "repo": "weather-mcp/weather-mcp",
+      "source_category": "weather_prediction_market",
+      "strategy_name": "SportsMomentumStrategy",
+      "description": "Mine repo odds/forecast logic for momentum and mispricing signals; emit TradeProposal for sports event contracts only.",
+      "market_types": [
+        "sports"
+      ],
+      "output": "TradeProposal",
+      "calls_live_order_endpoints": false
+    },
+    {
+      "repo": "weather-mcp/weather-mcp",
+      "source_category": "weather_prediction_market",
+      "strategy_name": "CryptoEventMarketStrategy",
+      "description": "Convert repo BTC/crypto event market signals into Dumby-native TradeProposal objects without touching exchange order endpoints.",
+      "market_types": [
+        "crypto",
+        "btc",
+        "event"
+      ],
+      "output": "TradeProposal",
+      "calls_live_order_endpoints": false
+    },
+    {
+      "repo": "weather-mcp/weather-mcp",
+      "source_category": "weather_prediction_market",
+      "strategy_name": "StockMacroMomentumStrategy",
+      "description": "Use repo stock/index/macro forecasting patterns to generate TradeProposal objects for relevant Kalshi macro contracts.",
+      "market_types": [
+        "stocks",
+        "indices",
+        "macro"
+      ],
+      "output": "TradeProposal",
+      "calls_live_order_endpoints": false
+    },
+    {
+      "repo": "weather-mcp/weather-mcp",
+      "source_category": "weather_prediction_market",
+      "strategy_name": "StaleQuoteDetectionStrategy",
+      "description": "Detect stale quotes near settlement/expiration using repo forecast/settlement patterns and emit TradeProposal only.",
+      "market_types": [
+        "stale_quote",
+        "settlement"
+      ],
+      "output": "TradeProposal",
+      "calls_live_order_endpoints": false
+    },
+    {
+      "repo": "GClunies/noaa_coops",
+      "source_category": "weather_prediction_market",
+      "strategy_name": "KalshiWeatherForecastStrategy",
+      "description": "Combine NOAA/open-meteo forecasts with Kalshi weather contract orderbooks; emit TradeProposal when model probability diverges from market.",
+      "market_types": [
+        "weather"
+      ],
+      "output": "TradeProposal",
+      "calls_live_order_endpoints": false
+    },
+    {
+      "repo": "GClunies/noaa_coops",
+      "source_category": "weather_prediction_market",
+      "strategy_name": "SportsMomentumStrategy",
+      "description": "Mine repo odds/forecast logic for momentum and mispricing signals; emit TradeProposal for sports event contracts only.",
+      "market_types": [
+        "sports"
+      ],
+      "output": "TradeProposal",
+      "calls_live_order_endpoints": false
+    },
+    {
+      "repo": "GClunies/noaa_coops",
+      "source_category": "weather_prediction_market",
+      "strategy_name": "StockMacroMomentumStrategy",
+      "description": "Use repo stock/index/macro forecasting patterns to generate TradeProposal objects for relevant Kalshi macro contracts.",
+      "market_types": [
+        "stocks",
+        "indices",
+        "macro"
+      ],
+      "output": "TradeProposal",
+      "calls_live_order_endpoints": false
+    },
+    {
+      "repo": "GClunies/noaa_coops",
+      "source_category": "weather_prediction_market",
+      "strategy_name": "StaleQuoteDetectionStrategy",
+      "description": "Detect stale quotes near settlement/expiration using repo forecast/settlement patterns and emit TradeProposal only.",
+      "market_types": [
+        "stale_quote",
+        "settlement"
+      ],
+      "output": "TradeProposal",
+      "calls_live_order_endpoints": false
+    },
+    {
+      "repo": "microsoft/qlib",
+      "source_category": "stocks_equities_options_macro",
+      "strategy_name": "StockMacroMomentumStrategy",
+      "description": "Use repo stock/index/macro forecasting patterns to generate TradeProposal objects for relevant Kalshi macro contracts.",
+      "market_types": [
+        "stocks",
+        "indices",
+        "macro"
+      ],
+      "output": "TradeProposal",
+      "calls_live_order_endpoints": false
+    },
+    {
+      "repo": "QuantConnect/Lean",
+      "source_category": "stocks_equities_options_macro",
+      "strategy_name": "SportsMomentumStrategy",
+      "description": "Mine repo odds/forecast logic for momentum and mispricing signals; emit TradeProposal for sports event contracts only.",
+      "market_types": [
+        "sports"
+      ],
+      "output": "TradeProposal",
+      "calls_live_order_endpoints": false
+    },
+    {
+      "repo": "QuantConnect/Lean",
+      "source_category": "stocks_equities_options_macro",
+      "strategy_name": "CryptoEventMarketStrategy",
+      "description": "Convert repo BTC/crypto event market signals into Dumby-native TradeProposal objects without touching exchange order endpoints.",
+      "market_types": [
+        "crypto",
+        "btc",
+        "event"
+      ],
+      "output": "TradeProposal",
+      "calls_live_order_endpoints": false
+    },
+    {
+      "repo": "QuantConnect/Lean",
+      "source_category": "stocks_equities_options_macro",
+      "strategy_name": "StockMacroMomentumStrategy",
+      "description": "Use repo stock/index/macro forecasting patterns to generate TradeProposal objects for relevant Kalshi macro contracts.",
+      "market_types": [
+        "stocks",
+        "indices",
+        "macro"
+      ],
+      "output": "TradeProposal",
+      "calls_live_order_endpoints": false
+    },
+    {
+      "repo": "QuantConnect/Lean",
+      "source_category": "stocks_equities_options_macro",
+      "strategy_name": "StaleQuoteDetectionStrategy",
+      "description": "Detect stale quotes near settlement/expiration using repo forecast/settlement patterns and emit TradeProposal only.",
+      "market_types": [
+        "stale_quote",
+        "settlement"
+      ],
+      "output": "TradeProposal",
+      "calls_live_order_endpoints": false
+    },
+    {
+      "repo": "quantrocket-llc/zipline",
+      "source_category": "stocks_equities_options_macro",
+      "strategy_name": "StockMacroMomentumStrategy",
+      "description": "Use repo stock/index/macro forecasting patterns to generate TradeProposal objects for relevant Kalshi macro contracts.",
+      "market_types": [
+        "stocks",
+        "indices",
+        "macro"
+      ],
+      "output": "TradeProposal",
+      "calls_live_order_endpoints": false
+    },
+    {
+      "repo": "quantrocket-llc/zipline",
+      "source_category": "stocks_equities_options_macro",
+      "strategy_name": "CommoditiesEnergyStrategy",
+      "description": "Apply commodities/energy price-forecast logic to Kalshi energy contracts; output TradeProposal only.",
+      "market_types": [
+        "commodities",
+        "energy"
+      ],
+      "output": "TradeProposal",
+      "calls_live_order_endpoints": false
+    },
+    {
+      "repo": "stefan-jansen/machine-learning-for-trading",
+      "source_category": "stocks_equities_options_macro",
+      "strategy_name": "StaleQuoteDetectionStrategy",
+      "description": "Detect stale quotes near settlement/expiration using repo forecast/settlement patterns and emit TradeProposal only.",
+      "market_types": [
+        "stale_quote",
+        "settlement"
+      ],
+      "output": "TradeProposal",
+      "calls_live_order_endpoints": false
+    },
+    {
+      "repo": "shashankvemuri/Finance",
+      "source_category": "stocks_equities_options_macro",
+      "strategy_name": "CryptoEventMarketStrategy",
+      "description": "Convert repo BTC/crypto event market signals into Dumby-native TradeProposal objects without touching exchange order endpoints.",
+      "market_types": [
+        "crypto",
+        "btc",
+        "event"
+      ],
+      "output": "TradeProposal",
+      "calls_live_order_endpoints": false
+    },
+    {
+      "repo": "shashankvemuri/Finance",
+      "source_category": "stocks_equities_options_macro",
+      "strategy_name": "StockMacroMomentumStrategy",
+      "description": "Use repo stock/index/macro forecasting patterns to generate TradeProposal objects for relevant Kalshi macro contracts.",
+      "market_types": [
+        "stocks",
+        "indices",
+        "macro"
+      ],
+      "output": "TradeProposal",
+      "calls_live_order_endpoints": false
+    },
+    {
+      "repo": "shashankvemuri/Finance",
+      "source_category": "stocks_equities_options_macro",
+      "strategy_name": "CommoditiesEnergyStrategy",
+      "description": "Apply commodities/energy price-forecast logic to Kalshi energy contracts; output TradeProposal only.",
+      "market_types": [
+        "commodities",
+        "energy"
+      ],
+      "output": "TradeProposal",
+      "calls_live_order_endpoints": false
+    },
+    {
+      "repo": "shashankvemuri/Finance",
+      "source_category": "stocks_equities_options_macro",
+      "strategy_name": "StaleQuoteDetectionStrategy",
+      "description": "Detect stale quotes near settlement/expiration using repo forecast/settlement patterns and emit TradeProposal only.",
+      "market_types": [
+        "stale_quote",
+        "settlement"
+      ],
+      "output": "TradeProposal",
+      "calls_live_order_endpoints": false
+    },
+    {
+      "repo": "cfdude/mcp-finnhub",
+      "source_category": "stocks_equities_options_macro",
+      "strategy_name": "CryptoEventMarketStrategy",
+      "description": "Convert repo BTC/crypto event market signals into Dumby-native TradeProposal objects without touching exchange order endpoints.",
+      "market_types": [
+        "crypto",
+        "btc",
+        "event"
+      ],
+      "output": "TradeProposal",
+      "calls_live_order_endpoints": false
+    },
+    {
+      "repo": "cfdude/mcp-finnhub",
+      "source_category": "stocks_equities_options_macro",
+      "strategy_name": "StockMacroMomentumStrategy",
+      "description": "Use repo stock/index/macro forecasting patterns to generate TradeProposal objects for relevant Kalshi macro contracts.",
+      "market_types": [
+        "stocks",
+        "indices",
+        "macro"
+      ],
+      "output": "TradeProposal",
+      "calls_live_order_endpoints": false
+    },
+    {
+      "repo": "cfdude/mcp-finnhub",
+      "source_category": "stocks_equities_options_macro",
+      "strategy_name": "CommoditiesEnergyStrategy",
+      "description": "Apply commodities/energy price-forecast logic to Kalshi energy contracts; output TradeProposal only.",
+      "market_types": [
+        "commodities",
+        "energy"
+      ],
+      "output": "TradeProposal",
+      "calls_live_order_endpoints": false
+    },
+    {
+      "repo": "cfdude/mcp-finnhub",
+      "source_category": "stocks_equities_options_macro",
+      "strategy_name": "StaleQuoteDetectionStrategy",
+      "description": "Detect stale quotes near settlement/expiration using repo forecast/settlement patterns and emit TradeProposal only.",
+      "market_types": [
+        "stale_quote",
+        "settlement"
+      ],
+      "output": "TradeProposal",
+      "calls_live_order_endpoints": false
+    },
+    {
+      "repo": "philsv/pycot",
+      "source_category": "commodities_energy_agriculture",
+      "strategy_name": "CryptoEventMarketStrategy",
+      "description": "Convert repo BTC/crypto event market signals into Dumby-native TradeProposal objects without touching exchange order endpoints.",
+      "market_types": [
+        "crypto",
+        "btc",
+        "event"
+      ],
+      "output": "TradeProposal",
+      "calls_live_order_endpoints": false
+    },
+    {
+      "repo": "philsv/pycot",
+      "source_category": "commodities_energy_agriculture",
+      "strategy_name": "StockMacroMomentumStrategy",
+      "description": "Use repo stock/index/macro forecasting patterns to generate TradeProposal objects for relevant Kalshi macro contracts.",
+      "market_types": [
+        "stocks",
+        "indices",
+        "macro"
+      ],
+      "output": "TradeProposal",
+      "calls_live_order_endpoints": false
+    },
+    {
+      "repo": "philsv/pycot",
+      "source_category": "commodities_energy_agriculture",
+      "strategy_name": "CommoditiesEnergyStrategy",
+      "description": "Apply commodities/energy price-forecast logic to Kalshi energy contracts; output TradeProposal only.",
+      "market_types": [
+        "commodities",
+        "energy"
+      ],
+      "output": "TradeProposal",
+      "calls_live_order_endpoints": false
+    },
+    {
+      "repo": "philsv/pycot",
+      "source_category": "commodities_energy_agriculture",
+      "strategy_name": "StaleQuoteDetectionStrategy",
+      "description": "Detect stale quotes near settlement/expiration using repo forecast/settlement patterns and emit TradeProposal only.",
+      "market_types": [
+        "stale_quote",
+        "settlement"
+      ],
+      "output": "TradeProposal",
+      "calls_live_order_endpoints": false
+    },
+    {
+      "repo": "Mcamin/cftc-cot",
+      "source_category": "commodities_energy_agriculture",
+      "strategy_name": "StockMacroMomentumStrategy",
+      "description": "Use repo stock/index/macro forecasting patterns to generate TradeProposal objects for relevant Kalshi macro contracts.",
+      "market_types": [
+        "stocks",
+        "indices",
+        "macro"
+      ],
+      "output": "TradeProposal",
+      "calls_live_order_endpoints": false
+    },
+    {
+      "repo": "Mcamin/cftc-cot",
+      "source_category": "commodities_energy_agriculture",
+      "strategy_name": "CommoditiesEnergyStrategy",
+      "description": "Apply commodities/energy price-forecast logic to Kalshi energy contracts; output TradeProposal only.",
+      "market_types": [
+        "commodities",
+        "energy"
+      ],
+      "output": "TradeProposal",
+      "calls_live_order_endpoints": false
+    },
+    {
+      "repo": "Mcamin/cftc-cot",
+      "source_category": "commodities_energy_agriculture",
+      "strategy_name": "StaleQuoteDetectionStrategy",
+      "description": "Detect stale quotes near settlement/expiration using repo forecast/settlement patterns and emit TradeProposal only.",
+      "market_types": [
+        "stale_quote",
+        "settlement"
+      ],
+      "output": "TradeProposal",
+      "calls_live_order_endpoints": false
+    },
+    {
+      "repo": "philsv/myeia",
+      "source_category": "commodities_energy_agriculture",
+      "strategy_name": "StockMacroMomentumStrategy",
+      "description": "Use repo stock/index/macro forecasting patterns to generate TradeProposal objects for relevant Kalshi macro contracts.",
+      "market_types": [
+        "stocks",
+        "indices",
+        "macro"
+      ],
+      "output": "TradeProposal",
+      "calls_live_order_endpoints": false
+    },
+    {
+      "repo": "philsv/myeia",
+      "source_category": "commodities_energy_agriculture",
+      "strategy_name": "CommoditiesEnergyStrategy",
+      "description": "Apply commodities/energy price-forecast logic to Kalshi energy contracts; output TradeProposal only.",
+      "market_types": [
+        "commodities",
+        "energy"
+      ],
+      "output": "TradeProposal",
+      "calls_live_order_endpoints": false
+    },
+    {
+      "repo": "philsv/myeia",
+      "source_category": "commodities_energy_agriculture",
+      "strategy_name": "StaleQuoteDetectionStrategy",
+      "description": "Detect stale quotes near settlement/expiration using repo forecast/settlement patterns and emit TradeProposal only.",
+      "market_types": [
+        "stale_quote",
+        "settlement"
+      ],
+      "output": "TradeProposal",
+      "calls_live_order_endpoints": false
+    },
+    {
+      "repo": "EIAgov/dash-benchmark",
+      "source_category": "commodities_energy_agriculture",
+      "strategy_name": "KalshiWeatherForecastStrategy",
+      "description": "Combine NOAA/open-meteo forecasts with Kalshi weather contract orderbooks; emit TradeProposal when model probability diverges from market.",
+      "market_types": [
+        "weather"
+      ],
+      "output": "TradeProposal",
+      "calls_live_order_endpoints": false
+    },
+    {
+      "repo": "EIAgov/dash-benchmark",
+      "source_category": "commodities_energy_agriculture",
+      "strategy_name": "StockMacroMomentumStrategy",
+      "description": "Use repo stock/index/macro forecasting patterns to generate TradeProposal objects for relevant Kalshi macro contracts.",
+      "market_types": [
+        "stocks",
+        "indices",
+        "macro"
+      ],
+      "output": "TradeProposal",
+      "calls_live_order_endpoints": false
+    },
+    {
+      "repo": "EIAgov/dash-benchmark",
+      "source_category": "commodities_energy_agriculture",
+      "strategy_name": "CommoditiesEnergyStrategy",
+      "description": "Apply commodities/energy price-forecast logic to Kalshi energy contracts; output TradeProposal only.",
+      "market_types": [
+        "commodities",
+        "energy"
+      ],
+      "output": "TradeProposal",
+      "calls_live_order_endpoints": false
+    },
+    {
+      "repo": "EIAgov/dash-benchmark",
+      "source_category": "commodities_energy_agriculture",
+      "strategy_name": "StaleQuoteDetectionStrategy",
+      "description": "Detect stale quotes near settlement/expiration using repo forecast/settlement patterns and emit TradeProposal only.",
+      "market_types": [
+        "stale_quote",
+        "settlement"
+      ],
+      "output": "TradeProposal",
+      "calls_live_order_endpoints": false
+    },
+    {
+      "repo": "datasets/oil-prices",
+      "source_category": "commodities_energy_agriculture",
+      "strategy_name": "CommoditiesEnergyStrategy",
+      "description": "Apply commodities/energy price-forecast logic to Kalshi energy contracts; output TradeProposal only.",
+      "market_types": [
+        "commodities",
+        "energy"
+      ],
+      "output": "TradeProposal",
+      "calls_live_order_endpoints": false
+    },
+    {
+      "repo": "BaseMax/XAUUSD-LSTM",
+      "source_category": "commodities_energy_agriculture",
+      "strategy_name": "KalshiWeatherForecastStrategy",
+      "description": "Combine NOAA/open-meteo forecasts with Kalshi weather contract orderbooks; emit TradeProposal when model probability diverges from market.",
+      "market_types": [
+        "weather"
+      ],
+      "output": "TradeProposal",
+      "calls_live_order_endpoints": false
+    },
+    {
+      "repo": "BaseMax/XAUUSD-LSTM",
+      "source_category": "commodities_energy_agriculture",
+      "strategy_name": "StockMacroMomentumStrategy",
+      "description": "Use repo stock/index/macro forecasting patterns to generate TradeProposal objects for relevant Kalshi macro contracts.",
+      "market_types": [
+        "stocks",
+        "indices",
+        "macro"
+      ],
+      "output": "TradeProposal",
+      "calls_live_order_endpoints": false
+    },
+    {
+      "repo": "BaseMax/XAUUSD-LSTM",
+      "source_category": "commodities_energy_agriculture",
+      "strategy_name": "StaleQuoteDetectionStrategy",
+      "description": "Detect stale quotes near settlement/expiration using repo forecast/settlement patterns and emit TradeProposal only.",
+      "market_types": [
+        "stale_quote",
+        "settlement"
+      ],
+      "output": "TradeProposal",
+      "calls_live_order_endpoints": false
+    },
+    {
+      "repo": "je-suis-tm/quant-trading",
+      "source_category": "commodities_energy_agriculture",
+      "strategy_name": "KalshiWeatherForecastStrategy",
+      "description": "Combine NOAA/open-meteo forecasts with Kalshi weather contract orderbooks; emit TradeProposal when model probability diverges from market.",
+      "market_types": [
+        "weather"
+      ],
+      "output": "TradeProposal",
+      "calls_live_order_endpoints": false
+    },
+    {
+      "repo": "je-suis-tm/quant-trading",
+      "source_category": "commodities_energy_agriculture",
+      "strategy_name": "CryptoEventMarketStrategy",
+      "description": "Convert repo BTC/crypto event market signals into Dumby-native TradeProposal objects without touching exchange order endpoints.",
+      "market_types": [
+        "crypto",
+        "btc",
+        "event"
+      ],
+      "output": "TradeProposal",
+      "calls_live_order_endpoints": false
+    },
+    {
+      "repo": "je-suis-tm/quant-trading",
+      "source_category": "commodities_energy_agriculture",
+      "strategy_name": "StockMacroMomentumStrategy",
+      "description": "Use repo stock/index/macro forecasting patterns to generate TradeProposal objects for relevant Kalshi macro contracts.",
+      "market_types": [
+        "stocks",
+        "indices",
+        "macro"
+      ],
+      "output": "TradeProposal",
+      "calls_live_order_endpoints": false
+    },
+    {
+      "repo": "je-suis-tm/quant-trading",
+      "source_category": "commodities_energy_agriculture",
+      "strategy_name": "CommoditiesEnergyStrategy",
+      "description": "Apply commodities/energy price-forecast logic to Kalshi energy contracts; output TradeProposal only.",
+      "market_types": [
+        "commodities",
+        "energy"
+      ],
+      "output": "TradeProposal",
+      "calls_live_order_endpoints": false
+    },
+    {
+      "repo": "je-suis-tm/quant-trading",
+      "source_category": "commodities_energy_agriculture",
+      "strategy_name": "RepoDerivedCrossMarketArbitrage",
+      "description": "Identify price disagreements across prediction markets using repo arbitrage patterns and emit paired TradeProposal legs.",
+      "market_types": [
+        "cross_market",
+        "arbitrage"
+      ],
+      "output": "TradeProposal",
+      "calls_live_order_endpoints": false
+    },
+    {
+      "repo": "je-suis-tm/quant-trading",
+      "source_category": "commodities_energy_agriculture",
+      "strategy_name": "StaleQuoteDetectionStrategy",
+      "description": "Detect stale quotes near settlement/expiration using repo forecast/settlement patterns and emit TradeProposal only.",
+      "market_types": [
+        "stale_quote",
+        "settlement"
+      ],
+      "output": "TradeProposal",
+      "calls_live_order_endpoints": false
+    },
+    {
+      "repo": "ccxt/ccxt",
+      "source_category": "crypto_btc_event_market",
+      "strategy_name": "SportsMomentumStrategy",
+      "description": "Mine repo odds/forecast logic for momentum and mispricing signals; emit TradeProposal for sports event contracts only.",
+      "market_types": [
+        "sports"
+      ],
+      "output": "TradeProposal",
+      "calls_live_order_endpoints": false
+    },
+    {
+      "repo": "ccxt/ccxt",
+      "source_category": "crypto_btc_event_market",
+      "strategy_name": "CryptoEventMarketStrategy",
+      "description": "Convert repo BTC/crypto event market signals into Dumby-native TradeProposal objects without touching exchange order endpoints.",
+      "market_types": [
+        "crypto",
+        "btc",
+        "event"
+      ],
+      "output": "TradeProposal",
+      "calls_live_order_endpoints": false
+    },
+    {
+      "repo": "ccxt/ccxt",
+      "source_category": "crypto_btc_event_market",
+      "strategy_name": "StockMacroMomentumStrategy",
+      "description": "Use repo stock/index/macro forecasting patterns to generate TradeProposal objects for relevant Kalshi macro contracts.",
+      "market_types": [
+        "stocks",
+        "indices",
+        "macro"
+      ],
+      "output": "TradeProposal",
+      "calls_live_order_endpoints": false
+    },
+    {
+      "repo": "ccxt/ccxt",
+      "source_category": "crypto_btc_event_market",
+      "strategy_name": "StaleQuoteDetectionStrategy",
+      "description": "Detect stale quotes near settlement/expiration using repo forecast/settlement patterns and emit TradeProposal only.",
+      "market_types": [
+        "stale_quote",
+        "settlement"
+      ],
+      "output": "TradeProposal",
+      "calls_live_order_endpoints": false
+    },
+    {
+      "repo": "optuna/optunahub",
+      "source_category": "universal_ml_forecasting_optimization",
+      "strategy_name": "SportsMomentumStrategy",
+      "description": "Mine repo odds/forecast logic for momentum and mispricing signals; emit TradeProposal for sports event contracts only.",
+      "market_types": [
+        "sports"
+      ],
+      "output": "TradeProposal",
+      "calls_live_order_endpoints": false
+    },
+    {
+      "repo": "optuna/optunahub",
+      "source_category": "universal_ml_forecasting_optimization",
+      "strategy_name": "StockMacroMomentumStrategy",
+      "description": "Use repo stock/index/macro forecasting patterns to generate TradeProposal objects for relevant Kalshi macro contracts.",
+      "market_types": [
+        "stocks",
+        "indices",
+        "macro"
+      ],
+      "output": "TradeProposal",
+      "calls_live_order_endpoints": false
+    },
+    {
+      "repo": "catboost/catboost",
+      "source_category": "universal_ml_forecasting_optimization",
+      "strategy_name": "StockMacroMomentumStrategy",
+      "description": "Use repo stock/index/macro forecasting patterns to generate TradeProposal objects for relevant Kalshi macro contracts.",
+      "market_types": [
+        "stocks",
+        "indices",
+        "macro"
+      ],
+      "output": "TradeProposal",
+      "calls_live_order_endpoints": false
+    },
+    {
+      "repo": "Nixtla/statsforecast",
+      "source_category": "universal_ml_forecasting_optimization",
+      "strategy_name": "KalshiWeatherForecastStrategy",
+      "description": "Combine NOAA/open-meteo forecasts with Kalshi weather contract orderbooks; emit TradeProposal when model probability diverges from market.",
+      "market_types": [
+        "weather"
+      ],
+      "output": "TradeProposal",
+      "calls_live_order_endpoints": false
+    },
+    {
+      "repo": "Nixtla/statsforecast",
+      "source_category": "universal_ml_forecasting_optimization",
+      "strategy_name": "StaleQuoteDetectionStrategy",
+      "description": "Detect stale quotes near settlement/expiration using repo forecast/settlement patterns and emit TradeProposal only.",
+      "market_types": [
+        "stale_quote",
+        "settlement"
+      ],
+      "output": "TradeProposal",
+      "calls_live_order_endpoints": false
+    },
+    {
+      "repo": "Nixtla/hierarchicalforecast",
+      "source_category": "universal_ml_forecasting_optimization",
+      "strategy_name": "KalshiWeatherForecastStrategy",
+      "description": "Combine NOAA/open-meteo forecasts with Kalshi weather contract orderbooks; emit TradeProposal when model probability diverges from market.",
+      "market_types": [
+        "weather"
+      ],
+      "output": "TradeProposal",
+      "calls_live_order_endpoints": false
+    },
+    {
+      "repo": "Nixtla/hierarchicalforecast",
+      "source_category": "universal_ml_forecasting_optimization",
+      "strategy_name": "StaleQuoteDetectionStrategy",
+      "description": "Detect stale quotes near settlement/expiration using repo forecast/settlement patterns and emit TradeProposal only.",
+      "market_types": [
+        "stale_quote",
+        "settlement"
+      ],
+      "output": "TradeProposal",
+      "calls_live_order_endpoints": false
+    },
+    {
+      "repo": "Nixtla/utilsforecast",
+      "source_category": "universal_ml_forecasting_optimization",
+      "strategy_name": "KalshiWeatherForecastStrategy",
+      "description": "Combine NOAA/open-meteo forecasts with Kalshi weather contract orderbooks; emit TradeProposal when model probability diverges from market.",
+      "market_types": [
+        "weather"
+      ],
+      "output": "TradeProposal",
+      "calls_live_order_endpoints": false
+    },
+    {
+      "repo": "Nixtla/utilsforecast",
+      "source_category": "universal_ml_forecasting_optimization",
+      "strategy_name": "SportsMomentumStrategy",
+      "description": "Mine repo odds/forecast logic for momentum and mispricing signals; emit TradeProposal for sports event contracts only.",
+      "market_types": [
+        "sports"
+      ],
+      "output": "TradeProposal",
+      "calls_live_order_endpoints": false
+    },
+    {
+      "repo": "Nixtla/utilsforecast",
+      "source_category": "universal_ml_forecasting_optimization",
+      "strategy_name": "StockMacroMomentumStrategy",
+      "description": "Use repo stock/index/macro forecasting patterns to generate TradeProposal objects for relevant Kalshi macro contracts.",
+      "market_types": [
+        "stocks",
+        "indices",
+        "macro"
+      ],
+      "output": "TradeProposal",
+      "calls_live_order_endpoints": false
+    },
+    {
+      "repo": "Nixtla/utilsforecast",
+      "source_category": "universal_ml_forecasting_optimization",
+      "strategy_name": "CommoditiesEnergyStrategy",
+      "description": "Apply commodities/energy price-forecast logic to Kalshi energy contracts; output TradeProposal only.",
+      "market_types": [
+        "commodities",
+        "energy"
+      ],
+      "output": "TradeProposal",
+      "calls_live_order_endpoints": false
+    },
+    {
+      "repo": "Nixtla/utilsforecast",
+      "source_category": "universal_ml_forecasting_optimization",
+      "strategy_name": "StaleQuoteDetectionStrategy",
+      "description": "Detect stale quotes near settlement/expiration using repo forecast/settlement patterns and emit TradeProposal only.",
+      "market_types": [
+        "stale_quote",
+        "settlement"
+      ],
+      "output": "TradeProposal",
+      "calls_live_order_endpoints": false
+    },
+    {
+      "repo": "lightning-ai/pytorch-lightning",
+      "source_category": "universal_ml_forecasting_optimization",
+      "strategy_name": "StockMacroMomentumStrategy",
+      "description": "Use repo stock/index/macro forecasting patterns to generate TradeProposal objects for relevant Kalshi macro contracts.",
+      "market_types": [
+        "stocks",
+        "indices",
+        "macro"
+      ],
+      "output": "TradeProposal",
+      "calls_live_order_endpoints": false
+    },
+    {
+      "repo": "automl/auto-sklearn",
+      "source_category": "universal_ml_forecasting_optimization",
+      "strategy_name": "StaleQuoteDetectionStrategy",
+      "description": "Detect stale quotes near settlement/expiration using repo forecast/settlement patterns and emit TradeProposal only.",
+      "market_types": [
+        "stale_quote",
+        "settlement"
+      ],
+      "output": "TradeProposal",
+      "calls_live_order_endpoints": false
+    },
+    {
+      "repo": "wandb/wandb",
+      "source_category": "universal_ml_forecasting_optimization",
+      "strategy_name": "StockMacroMomentumStrategy",
+      "description": "Use repo stock/index/macro forecasting patterns to generate TradeProposal objects for relevant Kalshi macro contracts.",
+      "market_types": [
+        "stocks",
+        "indices",
+        "macro"
+      ],
+      "output": "TradeProposal",
+      "calls_live_order_endpoints": false
+    },
+    {
+      "repo": "ranaroussi/yfinance",
+      "source_category": "financial_data_market_data",
+      "strategy_name": "SportsMomentumStrategy",
+      "description": "Mine repo odds/forecast logic for momentum and mispricing signals; emit TradeProposal for sports event contracts only.",
+      "market_types": [
+        "sports"
+      ],
+      "output": "TradeProposal",
+      "calls_live_order_endpoints": false
+    },
+    {
+      "repo": "ranaroussi/yfinance",
+      "source_category": "financial_data_market_data",
+      "strategy_name": "CryptoEventMarketStrategy",
+      "description": "Convert repo BTC/crypto event market signals into Dumby-native TradeProposal objects without touching exchange order endpoints.",
+      "market_types": [
+        "crypto",
+        "btc",
+        "event"
+      ],
+      "output": "TradeProposal",
+      "calls_live_order_endpoints": false
+    },
+    {
+      "repo": "ranaroussi/yfinance",
+      "source_category": "financial_data_market_data",
+      "strategy_name": "StockMacroMomentumStrategy",
+      "description": "Use repo stock/index/macro forecasting patterns to generate TradeProposal objects for relevant Kalshi macro contracts.",
+      "market_types": [
+        "stocks",
+        "indices",
+        "macro"
+      ],
+      "output": "TradeProposal",
+      "calls_live_order_endpoints": false
+    },
+    {
+      "repo": "ranaroussi/yfinance",
+      "source_category": "financial_data_market_data",
+      "strategy_name": "OrderbookSpreadCaptureStrategy",
+      "description": "Watch orderbook updates via WebSocket logic mined from repos and emit TradeProposal when spread capture meets caps.",
+      "market_types": [
+        "orderbook",
+        "spread"
+      ],
+      "output": "TradeProposal",
+      "calls_live_order_endpoints": false
+    },
+    {
+      "repo": "ranaroussi/yfinance",
+      "source_category": "financial_data_market_data",
+      "strategy_name": "StaleQuoteDetectionStrategy",
+      "description": "Detect stale quotes near settlement/expiration using repo forecast/settlement patterns and emit TradeProposal only.",
+      "market_types": [
+        "stale_quote",
+        "settlement"
+      ],
+      "output": "TradeProposal",
+      "calls_live_order_endpoints": false
+    },
+    {
+      "repo": "ranaroussi/quantstats",
+      "source_category": "financial_data_market_data",
+      "strategy_name": "SportsMomentumStrategy",
+      "description": "Mine repo odds/forecast logic for momentum and mispricing signals; emit TradeProposal for sports event contracts only.",
+      "market_types": [
+        "sports"
+      ],
+      "output": "TradeProposal",
+      "calls_live_order_endpoints": false
+    },
+    {
+      "repo": "ranaroussi/quantstats",
+      "source_category": "financial_data_market_data",
+      "strategy_name": "CryptoEventMarketStrategy",
+      "description": "Convert repo BTC/crypto event market signals into Dumby-native TradeProposal objects without touching exchange order endpoints.",
+      "market_types": [
+        "crypto",
+        "btc",
+        "event"
+      ],
+      "output": "TradeProposal",
+      "calls_live_order_endpoints": false
+    },
+    {
+      "repo": "ranaroussi/quantstats",
+      "source_category": "financial_data_market_data",
+      "strategy_name": "StockMacroMomentumStrategy",
+      "description": "Use repo stock/index/macro forecasting patterns to generate TradeProposal objects for relevant Kalshi macro contracts.",
+      "market_types": [
+        "stocks",
+        "indices",
+        "macro"
+      ],
+      "output": "TradeProposal",
+      "calls_live_order_endpoints": false
+    },
+    {
+      "repo": "ranaroussi/quantstats",
+      "source_category": "financial_data_market_data",
+      "strategy_name": "StaleQuoteDetectionStrategy",
+      "description": "Detect stale quotes near settlement/expiration using repo forecast/settlement patterns and emit TradeProposal only.",
+      "market_types": [
+        "stale_quote",
+        "settlement"
+      ],
+      "output": "TradeProposal",
+      "calls_live_order_endpoints": false
+    },
+    {
+      "repo": "quantopian/empyrical",
+      "source_category": "financial_data_market_data",
+      "strategy_name": "SportsMomentumStrategy",
+      "description": "Mine repo odds/forecast logic for momentum and mispricing signals; emit TradeProposal for sports event contracts only.",
+      "market_types": [
+        "sports"
+      ],
+      "output": "TradeProposal",
+      "calls_live_order_endpoints": false
+    },
+    {
+      "repo": "quantopian/empyrical",
+      "source_category": "financial_data_market_data",
+      "strategy_name": "StockMacroMomentumStrategy",
+      "description": "Use repo stock/index/macro forecasting patterns to generate TradeProposal objects for relevant Kalshi macro contracts.",
+      "market_types": [
+        "stocks",
+        "indices",
+        "macro"
+      ],
+      "output": "TradeProposal",
+      "calls_live_order_endpoints": false
+    },
+    {
+      "repo": "quantopian/empyrical",
+      "source_category": "financial_data_market_data",
+      "strategy_name": "CommoditiesEnergyStrategy",
+      "description": "Apply commodities/energy price-forecast logic to Kalshi energy contracts; output TradeProposal only.",
+      "market_types": [
+        "commodities",
+        "energy"
+      ],
+      "output": "TradeProposal",
+      "calls_live_order_endpoints": false
+    },
+    {
+      "repo": "quantopian/empyrical",
+      "source_category": "financial_data_market_data",
+      "strategy_name": "StaleQuoteDetectionStrategy",
+      "description": "Detect stale quotes near settlement/expiration using repo forecast/settlement patterns and emit TradeProposal only.",
+      "market_types": [
+        "stale_quote",
+        "settlement"
+      ],
+      "output": "TradeProposal",
+      "calls_live_order_endpoints": false
+    },
+    {
+      "repo": "pmorissette/bt",
+      "source_category": "financial_data_market_data",
+      "strategy_name": "SportsMomentumStrategy",
+      "description": "Mine repo odds/forecast logic for momentum and mispricing signals; emit TradeProposal for sports event contracts only.",
+      "market_types": [
+        "sports"
+      ],
+      "output": "TradeProposal",
+      "calls_live_order_endpoints": false
+    },
+    {
+      "repo": "pmorissette/bt",
+      "source_category": "financial_data_market_data",
+      "strategy_name": "StockMacroMomentumStrategy",
+      "description": "Use repo stock/index/macro forecasting patterns to generate TradeProposal objects for relevant Kalshi macro contracts.",
+      "market_types": [
+        "stocks",
+        "indices",
+        "macro"
+      ],
+      "output": "TradeProposal",
+      "calls_live_order_endpoints": false
+    },
+    {
+      "repo": "pmorissette/bt",
+      "source_category": "financial_data_market_data",
+      "strategy_name": "RepoDerivedCrossMarketArbitrage",
+      "description": "Identify price disagreements across prediction markets using repo arbitrage patterns and emit paired TradeProposal legs.",
+      "market_types": [
+        "cross_market",
+        "arbitrage"
+      ],
+      "output": "TradeProposal",
+      "calls_live_order_endpoints": false
+    },
+    {
+      "repo": "pmorissette/bt",
+      "source_category": "financial_data_market_data",
+      "strategy_name": "StaleQuoteDetectionStrategy",
+      "description": "Detect stale quotes near settlement/expiration using repo forecast/settlement patterns and emit TradeProposal only.",
+      "market_types": [
+        "stale_quote",
+        "settlement"
+      ],
+      "output": "TradeProposal",
+      "calls_live_order_endpoints": false
+    },
+    {
+      "repo": "bukosabino/ta",
+      "source_category": "financial_data_market_data",
+      "strategy_name": "SportsMomentumStrategy",
+      "description": "Mine repo odds/forecast logic for momentum and mispricing signals; emit TradeProposal for sports event contracts only.",
+      "market_types": [
+        "sports"
+      ],
+      "output": "TradeProposal",
+      "calls_live_order_endpoints": false
+    },
+    {
+      "repo": "bukosabino/ta",
+      "source_category": "financial_data_market_data",
+      "strategy_name": "StockMacroMomentumStrategy",
+      "description": "Use repo stock/index/macro forecasting patterns to generate TradeProposal objects for relevant Kalshi macro contracts.",
+      "market_types": [
+        "stocks",
+        "indices",
+        "macro"
+      ],
+      "output": "TradeProposal",
+      "calls_live_order_endpoints": false
+    },
+    {
+      "repo": "bukosabino/ta",
+      "source_category": "financial_data_market_data",
+      "strategy_name": "CommoditiesEnergyStrategy",
+      "description": "Apply commodities/energy price-forecast logic to Kalshi energy contracts; output TradeProposal only.",
+      "market_types": [
+        "commodities",
+        "energy"
+      ],
+      "output": "TradeProposal",
+      "calls_live_order_endpoints": false
+    },
+    {
+      "repo": "bukosabino/ta",
+      "source_category": "financial_data_market_data",
+      "strategy_name": "RepoDerivedCrossMarketArbitrage",
+      "description": "Identify price disagreements across prediction markets using repo arbitrage patterns and emit paired TradeProposal legs.",
+      "market_types": [
+        "cross_market",
+        "arbitrage"
+      ],
+      "output": "TradeProposal",
+      "calls_live_order_endpoints": false
+    },
+    {
+      "repo": "bukosabino/ta",
+      "source_category": "financial_data_market_data",
+      "strategy_name": "StaleQuoteDetectionStrategy",
+      "description": "Detect stale quotes near settlement/expiration using repo forecast/settlement patterns and emit TradeProposal only.",
+      "market_types": [
+        "stale_quote",
+        "settlement"
+      ],
+      "output": "TradeProposal",
+      "calls_live_order_endpoints": false
+    },
+    {
+      "repo": "vitejs/vite",
+      "source_category": "dashboard_api_observability",
+      "strategy_name": "StockMacroMomentumStrategy",
+      "description": "Use repo stock/index/macro forecasting patterns to generate TradeProposal objects for relevant Kalshi macro contracts.",
+      "market_types": [
+        "stocks",
+        "indices",
+        "macro"
+      ],
+      "output": "TradeProposal",
+      "calls_live_order_endpoints": false
+    },
+    {
+      "repo": "vitejs/vite",
+      "source_category": "dashboard_api_observability",
+      "strategy_name": "StaleQuoteDetectionStrategy",
+      "description": "Detect stale quotes near settlement/expiration using repo forecast/settlement patterns and emit TradeProposal only.",
+      "market_types": [
+        "stale_quote",
+        "settlement"
+      ],
+      "output": "TradeProposal",
+      "calls_live_order_endpoints": false
+    },
+    {
+      "repo": "vercel/next.js",
+      "source_category": "dashboard_api_observability",
+      "strategy_name": "SportsMomentumStrategy",
+      "description": "Mine repo odds/forecast logic for momentum and mispricing signals; emit TradeProposal for sports event contracts only.",
+      "market_types": [
+        "sports"
+      ],
+      "output": "TradeProposal",
+      "calls_live_order_endpoints": false
+    },
+    {
+      "repo": "vercel/next.js",
+      "source_category": "dashboard_api_observability",
+      "strategy_name": "StockMacroMomentumStrategy",
+      "description": "Use repo stock/index/macro forecasting patterns to generate TradeProposal objects for relevant Kalshi macro contracts.",
+      "market_types": [
+        "stocks",
+        "indices",
+        "macro"
+      ],
+      "output": "TradeProposal",
+      "calls_live_order_endpoints": false
+    },
+    {
+      "repo": "vercel/next.js",
+      "source_category": "dashboard_api_observability",
+      "strategy_name": "CommoditiesEnergyStrategy",
+      "description": "Apply commodities/energy price-forecast logic to Kalshi energy contracts; output TradeProposal only.",
+      "market_types": [
+        "commodities",
+        "energy"
+      ],
+      "output": "TradeProposal",
+      "calls_live_order_endpoints": false
+    },
+    {
+      "repo": "vercel/next.js",
+      "source_category": "dashboard_api_observability",
+      "strategy_name": "StaleQuoteDetectionStrategy",
+      "description": "Detect stale quotes near settlement/expiration using repo forecast/settlement patterns and emit TradeProposal only.",
+      "market_types": [
+        "stale_quote",
+        "settlement"
+      ],
+      "output": "TradeProposal",
+      "calls_live_order_endpoints": false
+    },
+    {
+      "repo": "recharts/recharts",
+      "source_category": "dashboard_api_observability",
+      "strategy_name": "StaleQuoteDetectionStrategy",
+      "description": "Detect stale quotes near settlement/expiration using repo forecast/settlement patterns and emit TradeProposal only.",
+      "market_types": [
+        "stale_quote",
+        "settlement"
+      ],
+      "output": "TradeProposal",
+      "calls_live_order_endpoints": false
+    },
+    {
+      "repo": "plotly/dash",
+      "source_category": "dashboard_api_observability",
+      "strategy_name": "SportsMomentumStrategy",
+      "description": "Mine repo odds/forecast logic for momentum and mispricing signals; emit TradeProposal for sports event contracts only.",
+      "market_types": [
+        "sports"
+      ],
+      "output": "TradeProposal",
+      "calls_live_order_endpoints": false
+    },
+    {
+      "repo": "plotly/dash",
+      "source_category": "dashboard_api_observability",
+      "strategy_name": "RepoDerivedCrossMarketArbitrage",
+      "description": "Identify price disagreements across prediction markets using repo arbitrage patterns and emit paired TradeProposal legs.",
+      "market_types": [
+        "cross_market",
+        "arbitrage"
+      ],
+      "output": "TradeProposal",
+      "calls_live_order_endpoints": false
+    },
+    {
+      "repo": "plotly/dash",
+      "source_category": "dashboard_api_observability",
+      "strategy_name": "StaleQuoteDetectionStrategy",
+      "description": "Detect stale quotes near settlement/expiration using repo forecast/settlement patterns and emit TradeProposal only.",
+      "market_types": [
+        "stale_quote",
+        "settlement"
+      ],
+      "output": "TradeProposal",
+      "calls_live_order_endpoints": false
+    },
+    {
+      "repo": "getredash/redash",
+      "source_category": "dashboard_api_observability",
+      "strategy_name": "SportsMomentumStrategy",
+      "description": "Mine repo odds/forecast logic for momentum and mispricing signals; emit TradeProposal for sports event contracts only.",
+      "market_types": [
+        "sports"
+      ],
+      "output": "TradeProposal",
+      "calls_live_order_endpoints": false
+    },
+    {
+      "repo": "getredash/redash",
+      "source_category": "dashboard_api_observability",
+      "strategy_name": "StockMacroMomentumStrategy",
+      "description": "Use repo stock/index/macro forecasting patterns to generate TradeProposal objects for relevant Kalshi macro contracts.",
+      "market_types": [
+        "stocks",
+        "indices",
+        "macro"
+      ],
+      "output": "TradeProposal",
+      "calls_live_order_endpoints": false
+    },
+    {
+      "repo": "getredash/redash",
+      "source_category": "dashboard_api_observability",
+      "strategy_name": "StaleQuoteDetectionStrategy",
+      "description": "Detect stale quotes near settlement/expiration using repo forecast/settlement patterns and emit TradeProposal only.",
+      "market_types": [
+        "stale_quote",
+        "settlement"
+      ],
+      "output": "TradeProposal",
+      "calls_live_order_endpoints": false
+    },
+    {
+      "repo": "crewAIInc/crewAI",
+      "source_category": "agent_automation_evaluation",
+      "strategy_name": "SportsMomentumStrategy",
+      "description": "Mine repo odds/forecast logic for momentum and mispricing signals; emit TradeProposal for sports event contracts only.",
+      "market_types": [
+        "sports"
+      ],
+      "output": "TradeProposal",
+      "calls_live_order_endpoints": false
+    },
+    {
+      "repo": "crewAIInc/crewAI",
+      "source_category": "agent_automation_evaluation",
+      "strategy_name": "StockMacroMomentumStrategy",
+      "description": "Use repo stock/index/macro forecasting patterns to generate TradeProposal objects for relevant Kalshi macro contracts.",
+      "market_types": [
+        "stocks",
+        "indices",
+        "macro"
+      ],
+      "output": "TradeProposal",
+      "calls_live_order_endpoints": false
+    },
+    {
+      "repo": "crewAIInc/crewAI",
+      "source_category": "agent_automation_evaluation",
+      "strategy_name": "StaleQuoteDetectionStrategy",
+      "description": "Detect stale quotes near settlement/expiration using repo forecast/settlement patterns and emit TradeProposal only.",
+      "market_types": [
+        "stale_quote",
+        "settlement"
+      ],
+      "output": "TradeProposal",
+      "calls_live_order_endpoints": false
+    },
+    {
+      "repo": "promptfoo/promptfoo",
+      "source_category": "agent_automation_evaluation",
+      "strategy_name": "StockMacroMomentumStrategy",
+      "description": "Use repo stock/index/macro forecasting patterns to generate TradeProposal objects for relevant Kalshi macro contracts.",
+      "market_types": [
+        "stocks",
+        "indices",
+        "macro"
+      ],
+      "output": "TradeProposal",
+      "calls_live_order_endpoints": false
+    },
+    {
+      "repo": "promptfoo/promptfoo",
+      "source_category": "agent_automation_evaluation",
+      "strategy_name": "StaleQuoteDetectionStrategy",
+      "description": "Detect stale quotes near settlement/expiration using repo forecast/settlement patterns and emit TradeProposal only.",
+      "market_types": [
+        "stale_quote",
+        "settlement"
+      ],
+      "output": "TradeProposal",
+      "calls_live_order_endpoints": false
+    },
+    {
+      "repo": "TensorBlock/awesome-mcp-servers",
+      "source_category": "agent_automation_evaluation",
+      "strategy_name": "SportsMomentumStrategy",
+      "description": "Mine repo odds/forecast logic for momentum and mispricing signals; emit TradeProposal for sports event contracts only.",
+      "market_types": [
+        "sports"
+      ],
+      "output": "TradeProposal",
+      "calls_live_order_endpoints": false
+    },
+    {
+      "repo": "TensorBlock/awesome-mcp-servers",
+      "source_category": "agent_automation_evaluation",
+      "strategy_name": "StockMacroMomentumStrategy",
+      "description": "Use repo stock/index/macro forecasting patterns to generate TradeProposal objects for relevant Kalshi macro contracts.",
+      "market_types": [
+        "stocks",
+        "indices",
+        "macro"
+      ],
+      "output": "TradeProposal",
+      "calls_live_order_endpoints": false
+    },
+    {
+      "repo": "TensorBlock/awesome-mcp-servers",
+      "source_category": "agent_automation_evaluation",
+      "strategy_name": "StaleQuoteDetectionStrategy",
+      "description": "Detect stale quotes near settlement/expiration using repo forecast/settlement patterns and emit TradeProposal only.",
+      "market_types": [
+        "stale_quote",
+        "settlement"
+      ],
+      "output": "TradeProposal",
+      "calls_live_order_endpoints": false
+    }
+  ],
+  "notes": "All repo-derived strategy candidates emit Dumby-native TradeProposal objects and are prohibited from calling live order endpoints."
+}

@@ -1,9 +1,9 @@
-from adapters.base import DumbyAdapter
+from adapters.base import DummyAdapter
 from core.ontology import Forecast
 from forecasting.engine import ForecastEngine
 
 
-class AutoGluonAdapter(DumbyAdapter):
+class AutoGluonAdapter(DummyAdapter):
     """Reference adapter for AutoGluon tabular/forecasting outputs."""
 
     name = "autogluon"

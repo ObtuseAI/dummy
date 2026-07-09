@@ -1,0 +1,9 @@
+import StageDashboard from './StageDashboard';
+
+const endpoints = [["Acceleration Lock Controller", "/api/v234/acceleration-lock-controller"], ["V233 Baseline", "/api/v234/v233-baseline"], ["Activation Pipeline Summary", "/api/v234/activation-pipeline-summary"], ["Manifest Pack Summary", "/api/v234/manifest-pack-summary"], ["Dry Pipeline Summary", "/api/v234/dry-pipeline-summary"], ["Intake Summary", "/api/v234/intake-summary"], ["Arming Summary", "/api/v234/arming-summary"], ["Live Proof Execution Summary", "/api/v234/live-proof-execution-summary"], ["Reconcile Forensic Summary", "/api/v234/reconcile-forensic-summary"], ["Route Decision Summary", "/api/v234/route-decision-summary"], ["Completion Scoreboard Summary", "/api/v234/completion-scoreboard-summary"], ["Operator Command Sequence", "/api/v234/operator-command-sequence"], ["Next Action Matrix", "/api/v234/next-action-matrix"], ["Total Live Order Count", "/api/v234/total-live-order-count"], ["No Scale Proof", "/api/v234/no-scale-proof"], ["No Autonomy Proof", "/api/v234/no-autonomy-proof"], ["No New Order Proof", "/api/v234/no-new-order-proof"], ["Readiness Governor", "/api/v234/readiness-governor"], ["Execution Lock", "/api/v234/execution-lock"], ["Mission State", "/api/v234/mission-state"]];
+
+const summaryFields = [["Mission", "mission_state_verdict"], ["Acceleration Lock", "acceleration_lock_controller_status"], ["Next Action Matrix", "next_action_matrix_selection"], ["Total Live Orders", "total_real_live_orders_submitted"], ["Next Action", "current_next_action"], ["Blockers", "current_blockers"]];
+
+export default function V234Dashboard() {
+  return <StageDashboard title="Dummy V234 Acceleration Lock And Operator Command Sequence" endpoints={endpoints} missionKey="dummy_mission_state_report_v220" summaryFields={summaryFields} />;
+}

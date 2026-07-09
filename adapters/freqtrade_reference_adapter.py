@@ -1,9 +1,9 @@
-from adapters.base import DumbyAdapter
+from adapters.base import DummyAdapter
 from core.ontology import Forecast
 from forecasting.engine import ForecastEngine
 
 
-class FreqtradeReferenceAdapter(DumbyAdapter):
+class FreqtradeReferenceAdapter(DummyAdapter):
     """Reference adapter for Freqtrade strategy/indicator payloads."""
 
     name = "freqtrade_reference"

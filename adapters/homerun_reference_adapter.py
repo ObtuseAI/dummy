@@ -1,9 +1,9 @@
-from adapters.base import DumbyAdapter
+from adapters.base import DummyAdapter
 from core.ontology import Forecast
 from forecasting.engine import ForecastEngine
 
 
-class HomerunReferenceAdapter(DumbyAdapter):
+class HomerunReferenceAdapter(DummyAdapter):
     """Reference adapter for Homerun-style sports/prediction payloads."""
 
     name = "homerun_reference"

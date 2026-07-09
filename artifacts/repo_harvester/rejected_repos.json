@@ -1,0 +1,93 @@
+[
+  {
+    "owner": "Kalshi",
+    "name": "kalshi-starter-code-python",
+    "url": "https://github.com/Kalshi/kalshi-starter-code-python",
+    "license": null,
+    "last_pushed_at": "2025-03-07 18:17:48+00:00",
+    "languages": {
+      "Python": 9817
+    },
+    "verdict": "REJECT_LICENSE",
+    "verdict_reasons": [
+      "No OSI license"
+    ]
+  },
+  {
+    "owner": "Kalshi",
+    "name": "tools-and-analysis",
+    "url": "https://github.com/Kalshi/tools-and-analysis",
+    "license": "MIT",
+    "last_pushed_at": "2023-06-15 01:30:21+00:00",
+    "languages": {
+      "Jupyter Notebook": 165375,
+      "Python": 844
+    },
+    "verdict": "REJECT_STALE",
+    "verdict_reasons": [
+      "Stale repo > 2 years"
+    ]
+  },
+  {
+    "owner": "aarora4",
+    "name": "Awesome-Prediction-Market-Tools",
+    "url": "https://github.com/aarora4/Awesome-Prediction-Market-Tools",
+    "license": null,
+    "last_pushed_at": "2026-06-18 19:57:23+00:00",
+    "languages": {},
+    "verdict": "REJECT_LICENSE",
+    "verdict_reasons": [
+      "No OSI license"
+    ]
+  },
+  {
+    "owner": "microsoft",
+    "name": "forecasting",
+    "error": "Client error '404 Not Found' for url 'https://api.github.com/repos/microsoft/forecasting'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/404",
+    "verdict": "REJECT_BROKEN"
+  },
+  {
+    "owner": "OpenBB-finance",
+    "name": "OpenBB",
+    "url": "https://github.com/OpenBB-finance/OpenBB",
+    "license": "NOASSERTION",
+    "last_pushed_at": "2026-06-29 15:33:52+00:00",
+    "languages": {
+      "Python": 8867282
+    },
+    "verdict": "REJECT_LICENSE",
+    "verdict_reasons": [
+      "No OSI license"
+    ]
+  },
+  {
+    "owner": "yfinance",
+    "name": "yfinance",
+    "error": "Client error '404 Not Found' for url 'https://api.github.com/repos/yfinance/yfinance'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/404",
+    "verdict": "REJECT_BROKEN"
+  },
+  {
+    "owner": "polars",
+    "name": "polars",
+    "error": "Client error '404 Not Found' for url 'https://api.github.com/repos/polars/polars'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/404",
+    "verdict": "REJECT_BROKEN"
+  },
+  {
+    "owner": "twopirllc",
+    "name": "pandas-ta",
+    "error": "Client error '404 Not Found' for url 'https://api.github.com/repos/twopirllc/pandas-ta'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/404",
+    "verdict": "REJECT_BROKEN"
+  },
+  {
+    "owner": "backtrader",
+    "name": "backtrader",
+    "error": "Redirect response '301 Moved Permanently' for url 'https://api.github.com/repos/backtrader/backtrader'\nRedirect location: 'https://api.github.com/repositories/29050338'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/301",
+    "verdict": "REJECT_BROKEN"
+  },
+  {
+    "owner": "pydantic",
+    "name": "pydantic-ai",
+    "error": "Client error '403 rate limit exceeded' for url 'https://api.github.com/repos/pydantic/pydantic-ai/languages'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/403",
+    "verdict": "REJECT_BROKEN"
+  }
+]

@@ -1,0 +1,9 @@
+import StageDashboard from './StageDashboard';
+
+const endpoints = [["Controlled Operation Quorum Controller", "/api/v172/controlled-operation-quorum-controller"], ["V171 Baseline", "/api/v172/v171-baseline"], ["Controlled Operation Approval Validator", "/api/v172/controlled-operation-approval-validator"], ["Pilot Pair Audit Prerequisite", "/api/v172/pilot-pair-audit-prerequisite"], ["Scale Evidence Prerequisite", "/api/v172/scale-evidence-prerequisite"], ["Risk Governor Prerequisite", "/api/v172/risk-governor-prerequisite"], ["Abstention Governor Prerequisite", "/api/v172/abstention-governor-prerequisite"], ["Live Submit Caps Operator Control Prerequisite", "/api/v172/live-submit-caps-operator-control-prerequisite"], ["Firewall Adapter Prerequisite", "/api/v172/firewall-adapter-prerequisite"], ["Broker Readonly Prerequisite", "/api/v172/broker-readonly-prerequisite"], ["Per Order Approval Requirement", "/api/v172/per-order-approval-requirement"], ["No Auto Submit Proof", "/api/v172/no-auto-submit-proof"], ["No Market Order Proof", "/api/v172/no-market-order-proof"], ["No Auto Scale Proof", "/api/v172/no-auto-scale-proof"], ["No Autonomy Proof", "/api/v172/no-autonomy-proof"], ["Readiness Governor", "/api/v172/readiness-governor"], ["Execution Lock", "/api/v172/execution-lock"], ["Mission State", "/api/v172/mission-state"]];
+
+const summaryFields = [["Mission", "mission_state_verdict"], ["Operation Quorum", "controlled_operation_quorum_controller_status"], ["Quorum Ready", "quorum_ready"], ["Autonomous Trading", "autonomous_trading_enabled"], ["Next Action", "current_next_action"], ["Blockers", "current_blockers"]];
+
+export default function V172Dashboard() {
+  return <StageDashboard title="Dummy V172 Controlled Operation Readiness Quorum" endpoints={endpoints} missionKey="dummy_mission_state_report_v158" summaryFields={summaryFields} />;
+}

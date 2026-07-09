@@ -4,7 +4,9 @@ from core.state import STATE
 from core.logger import logger
 
 class KalshiWebSocketFeed:
-    def __init__(self, url: str = "wss://trading-api.kalshi.com/v1/stream", on_message=None):
+    # Current Kalshi market-data WS endpoint; connecting requires the same
+    # signed KALSHI-ACCESS-* headers as REST (not yet wired here).
+    def __init__(self, url: str = "wss://api.elections.kalshi.com/trade-api/ws/v2", on_message=None):
         self.url = url
         self.on_message = on_message or (lambda x: None)
         self.ws = None

@@ -19,9 +19,9 @@ from proof.ledger import list_proofs, write_proof
 
 ROOT = Path(__file__).parent.parent
 BLUNDER_ROOT = Path("C:/src/engine/obtuse/blunder")
-DUMBY_BLUNDER = ROOT / "core" / "inherited_blunder"
+DUMMY_BLUNDER = ROOT / "core" / "inherited_blunder"
 DASHBOARD_DIST = ROOT / "dashboard" / "frontend" / "dist"
-LOG_FILE = ROOT / "logs" / "dumby.jsonl"
+LOG_FILE = ROOT / "logs" / "dummy.jsonl"
 
 
 def sha256_file(p: Path) -> str:
@@ -44,9 +44,9 @@ def _source_manifest(root: Path) -> dict[str, str]:
 def validate_blunder_copy() -> tuple[str, dict]:
     if not BLUNDER_ROOT.exists():
         return "FAIL", {"error": f"Canonical Blunder root missing: {BLUNDER_ROOT}"}
-    if not DUMBY_BLUNDER.exists():
-        return "FAIL", {"error": f"Inherited Blunder root missing: {DUMBY_BLUNDER}"}
-    manifest_path = DUMBY_BLUNDER / ".blunder_source_manifest.json"
+    if not DUMMY_BLUNDER.exists():
+        return "FAIL", {"error": f"Inherited Blunder root missing: {DUMMY_BLUNDER}"}
+    manifest_path = DUMMY_BLUNDER / ".blunder_source_manifest.json"
     if not manifest_path.exists():
         return "FAIL", {"error": "Inherited Blunder manifest missing"}
     copied_manifest = json.loads(manifest_path.read_text())

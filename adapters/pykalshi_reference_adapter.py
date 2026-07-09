@@ -1,12 +1,12 @@
-from adapters.base import DumbyAdapter
+from adapters.base import DummyAdapter
 from core.ontology import Forecast
 from forecasting.engine import ForecastEngine
 
 
-class PyKalshiReferenceAdapter(DumbyAdapter):
+class PyKalshiReferenceAdapter(DummyAdapter):
     """Reference adapter for pykalshi-style payloads.
 
-    Normalizes legacy field names into Dumby's native contract/book model.
+    Normalizes legacy field names into Dummy's native contract/book model.
     """
 
     name = "pykalshi_reference"

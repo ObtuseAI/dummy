@@ -1,9 +1,9 @@
-from adapters.base import DumbyAdapter
+from adapters.base import DummyAdapter
 from core.ontology import Forecast
 from forecasting.engine import ForecastEngine
 
 
-class FinRLReferenceAdapter(DumbyAdapter):
+class FinRLReferenceAdapter(DummyAdapter):
     """Reference adapter for FinRL-style RL training outputs."""
 
     name = "finrl_reference"

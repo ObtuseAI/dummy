@@ -1,0 +1,167 @@
+[
+  {
+    "owner": "Kalshi",
+    "name": "kalshi-starter-code-python",
+    "verdict": "REJECT_LICENSE"
+  },
+  {
+    "owner": "Kalshi",
+    "name": "tools-and-analysis",
+    "verdict": "REJECT_STALE"
+  },
+  {
+    "owner": "TexasCoding",
+    "name": "kalshi-python-sdk",
+    "verdict": "REFERENCE_MINE"
+  },
+  {
+    "owner": "arshka",
+    "name": "pykalshi",
+    "verdict": "REFERENCE_MINE"
+  },
+  {
+    "owner": "ryanfrigo",
+    "name": "kalshi-ai-trading-bot",
+    "verdict": "REFERENCE_MINE"
+  },
+  {
+    "owner": "OctagonAI",
+    "name": "kalshi-trading-bot-cli",
+    "verdict": "REFERENCE_MINE"
+  },
+  {
+    "owner": "spfunctions",
+    "name": "awesome-prediction-markets",
+    "verdict": "REFERENCE_MINE"
+  },
+  {
+    "owner": "aarora4",
+    "name": "Awesome-Prediction-Market-Tools",
+    "verdict": "REJECT_LICENSE"
+  },
+  {
+    "owner": "microsoft",
+    "name": "qlib",
+    "verdict": "REFERENCE_MINE"
+  },
+  {
+    "owner": "AI4Finance-Foundation",
+    "name": "FinRL",
+    "verdict": "REFERENCE_MINE"
+  },
+  {
+    "owner": "unit8co",
+    "name": "darts",
+    "verdict": "REFERENCE_MINE"
+  },
+  {
+    "owner": "autogluon",
+    "name": "autogluon",
+    "verdict": "REFERENCE_MINE"
+  },
+  {
+    "owner": "facebook",
+    "name": "prophet",
+    "verdict": "REFERENCE_MINE"
+  },
+  {
+    "owner": "nixtla",
+    "name": "statsforecast",
+    "verdict": "REFERENCE_MINE"
+  },
+  {
+    "owner": "microsoft",
+    "name": "forecasting",
+    "verdict": "REJECT_BROKEN"
+  },
+  {
+    "owner": "OpenBB-finance",
+    "name": "OpenBB",
+    "verdict": "REJECT_LICENSE"
+  },
+  {
+    "owner": "yfinance",
+    "name": "yfinance",
+    "verdict": "REJECT_BROKEN"
+  },
+  {
+    "owner": "polars",
+    "name": "polars",
+    "verdict": "REJECT_BROKEN"
+  },
+  {
+    "owner": "ranaroussi",
+    "name": "quantstats",
+    "verdict": "REFERENCE_MINE"
+  },
+  {
+    "owner": "twopirllc",
+    "name": "pandas-ta",
+    "verdict": "REJECT_BROKEN"
+  },
+  {
+    "owner": "hummingbot",
+    "name": "hummingbot",
+    "verdict": "REFERENCE_MINE"
+  },
+  {
+    "owner": "freqtrade",
+    "name": "freqtrade",
+    "verdict": "REFERENCE_MINE"
+  },
+  {
+    "owner": "ccxt",
+    "name": "ccxt",
+    "verdict": "REFERENCE_MINE"
+  },
+  {
+    "owner": "backtrader",
+    "name": "backtrader",
+    "verdict": "REJECT_BROKEN"
+  },
+  {
+    "owner": "streamlit",
+    "name": "streamlit",
+    "verdict": "REFERENCE_MINE"
+  },
+  {
+    "owner": "fastapi",
+    "name": "fastapi",
+    "verdict": "REFERENCE_MINE"
+  },
+  {
+    "owner": "gradio-app",
+    "name": "gradio",
+    "verdict": "REFERENCE_MINE"
+  },
+  {
+    "owner": "plotly",
+    "name": "plotly.py",
+    "verdict": "REFERENCE_MINE"
+  },
+  {
+    "owner": "openai",
+    "name": "openai-agents-python",
+    "verdict": "REFERENCE_MINE"
+  },
+  {
+    "owner": "openai",
+    "name": "openai-python",
+    "verdict": "REFERENCE_MINE"
+  },
+  {
+    "owner": "microsoft",
+    "name": "autogen",
+    "verdict": "REFERENCE_MINE"
+  },
+  {
+    "owner": "langchain-ai",
+    "name": "langchain",
+    "verdict": "REFERENCE_MINE"
+  },
+  {
+    "owner": "pydantic",
+    "name": "pydantic-ai",
+    "verdict": "REJECT_BROKEN"
+  }
+]

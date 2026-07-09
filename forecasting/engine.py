@@ -16,20 +16,20 @@ class ForecastEngine:
             mid = Decimal((orderbook.bids[0].price + orderbook.asks[0].price) / 200)
         else:
             mid = Decimal("0.5")
-        dumby_prob = (mid + Decimal("0.03")).quantize(Decimal("0.0001"))
-        edge = (dumby_prob - mid).quantize(Decimal("0.0001"))
+        dummy_prob = (mid + Decimal("0.03")).quantize(Decimal("0.0001"))
+        edge = (dummy_prob - mid).quantize(Decimal("0.0001"))
         return Forecast(
             market_ticker=market_ticker,
             contract_ticker=contract_ticker,
             event_title=event_title,
             contract_title=contract_title,
             market_implied_probability=mid,
-            dumby_probability=dumby_prob,
+            dummy_probability=dummy_prob,
             probability_delta=edge,
             confidence_score=Decimal("0.6"),
             uncertainty_band=(
-                max(Decimal("0"), dumby_prob - Decimal("0.05")),
-                min(Decimal("1"), dumby_prob + Decimal("0.05")),
+                max(Decimal("0"), dummy_prob - Decimal("0.05")),
+                min(Decimal("1"), dummy_prob + Decimal("0.05")),
             ),
             expected_edge=edge,
             edge_after_fees=(edge - Decimal("0.005")).quantize(Decimal("0.0001")),

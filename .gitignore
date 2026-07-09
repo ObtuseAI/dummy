@@ -8,8 +8,21 @@ node_modules/
 dist/
 logs/*.jsonl
 dumby.db
+dummy.db
 artifacts/repo_harvester/work
 artifacts/dumby/
+artifacts/dummy/
 proof/*.json
 .superpowers/
 *.egg-info/
+
+# --- hardened before remote push (2026-07-09) ---
+*.env
+!.env.example
+!*.env.template
+operator_authority_pack/*.env
+runtime/
+*.db
+logs/
+data/*.db
+*.bak

@@ -6,7 +6,7 @@ from repo_harvester.auditor import audit_repo
 from repo_harvester.adapter_planner import generate_adapter_plan
 from core.ontology import RepoVerdict
 
-OUT = Path("C:/src/engine/dumby/artifacts/repo_harvester")
+OUT = Path("C:/src/engine/dummy/artifacts/repo_harvester")
 OUT.mkdir(parents=True, exist_ok=True)
 
 SEM = asyncio.Semaphore(5)

@@ -1,9 +1,9 @@
-from adapters.base import DumbyAdapter
+from adapters.base import DummyAdapter
 from core.ontology import Forecast
 from forecasting.engine import ForecastEngine
 
 
-class CrossMarketReferenceAdapter(DumbyAdapter):
+class CrossMarketReferenceAdapter(DummyAdapter):
     """Reference adapter that normalizes cross-market (Kalshi + Polymarket) payloads."""
 
     name = "cross_market_reference"

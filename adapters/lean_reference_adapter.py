@@ -1,9 +1,9 @@
-from adapters.base import DumbyAdapter
+from adapters.base import DummyAdapter
 from core.ontology import Forecast
 from forecasting.engine import ForecastEngine
 
 
-class LeanReferenceAdapter(DumbyAdapter):
+class LeanReferenceAdapter(DummyAdapter):
     """Reference adapter for QuantConnect Lean algorithm output shapes."""
 
     name = "lean_reference"

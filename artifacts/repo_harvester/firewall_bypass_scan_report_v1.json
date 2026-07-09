@@ -1,0 +1,1521 @@
+{
+  "generated_at": "2026-06-30T19:02:07.976562+00:00",
+  "status": "completed",
+  "repos_scanned": 223,
+  "direct_order_count": 45,
+  "direct_order_repos": [
+    {
+      "repo": "pmxt-dev/pmxt",
+      "category": "highest_priority",
+      "hits": {
+        "direct_order": [],
+        "kalshi_order": [
+          "core/src/exchanges/kalshi/price.ts",
+          "core/src/exchanges/kalshi/utils.ts"
+        ],
+        "polymarket_order": [
+          "core/src/exchanges/opinion/config.ts"
+        ]
+      }
+    },
+    {
+      "repo": "pmxt-dev/pmxt-mcp",
+      "category": "highest_priority",
+      "hits": {
+        "direct_order": [],
+        "kalshi_order": [
+          "src/server.ts",
+          "src/generated/tools.ts"
+        ],
+        "polymarket_order": [
+          "src/server.ts",
+          "src/shaper.ts",
+          "src/generated/tools.ts"
+        ]
+      }
+    },
+    {
+      "repo": "Polymarket/py-clob-client",
+      "category": "highest_priority",
+      "hits": {
+        "direct_order": [],
+        "kalshi_order": [],
+        "polymarket_order": [
+          "py_clob_client/signing/model.py",
+          "examples/get_server_time.py",
+          "examples/get_ok.py",
+          "examples/create_api_key.py",
+          "examples/derive_api_key.py",
+          "examples/get_price.py",
+          "examples/get_orderbook.py",
+          "examples/get_last_trade_price.py",
+          "examples/get_spreads.py",
+          "examples/get_api_keys.py",
+          "examples/get_orderbooks.py",
+          "examples/get_notifications.py",
+          "examples/get_closed_only_mode.py",
+          "examples/cancel_all.py",
+          "examples/get_market_trades_events.py",
+          "examples/get_readonly_api_keys.py",
+          "examples/cancel_order.py",
+          "examples/cancel_orders.py",
+          "examples/create_readonly_api_key.py",
+          "examples/rfq_config.py",
+          "examples/cancel_market_orders.py"
+        ]
+      }
+    },
+    {
+      "repo": "Polymarket/agents",
+      "category": "highest_priority",
+      "hits": {
+        "direct_order": [
+          "agents/polymarket/polymarket.py"
+        ],
+        "kalshi_order": [],
+        "polymarket_order": [
+          "agents/application/trade.py",
+          "agents/connectors/chroma.py",
+          "agents/utils/objects.py",
+          "agents/polymarket/gamma.py",
+          "agents/application/executor.py",
+          "agents/polymarket/polymarket.py"
+        ]
+      }
+    },
+    {
+      "repo": "GodlyPeeta/prediction-markets.py",
+      "category": "highest_priority",
+      "hits": {
+        "direct_order": [
+          "prediction_markets/client.py"
+        ],
+        "kalshi_order": [
+          "prediction_markets/__init__.py",
+          "prediction_markets/kalshi.py"
+        ],
+        "polymarket_order": [
+          "prediction_markets/polymarket.py"
+        ]
+      }
+    },
+    {
+      "repo": "gtg7784/dr-manhattan-ts",
+      "category": "highest_priority",
+      "hits": {
+        "direct_order": [
+          "src/core/strategy.ts",
+          "src/core/exchange.ts",
+          "src/exchanges/kalshi/kalshi.ts",
+          "examples/spread-strategy.ts",
+          "src/exchanges/opinion/index.ts",
+          "examples/weather-bot-strategy.ts"
+        ],
+        "kalshi_order": [
+          "src/exchanges/kalshi/index.ts",
+          "src/index.ts",
+          "src/exchanges/index.ts",
+          "examples/list-markets.ts",
+          "src/exchanges/kalshi/kalshi.ts",
+          "examples/spread-strategy.ts",
+          "src/exchanges/opinion/index.ts"
+        ],
+        "polymarket_order": [
+          "src/types/index.ts",
+          "src/index.ts",
+          "src/types/order.ts",
+          "src/types/market.ts",
+          "src/exchanges/polymarket/polymarket-ws.ts",
+          "src/core/strategy.ts",
+          "src/core/exchange.ts",
+          "src/exchanges/limitless/limitless-ws.ts",
+          "src/exchanges/kalshi/kalshi.ts",
+          "examples/spread-strategy.ts",
+          "src/exchanges/opinion/index.ts",
+          "examples/weather-bot-strategy.ts"
+        ]
+      }
+    },
+    {
+      "repo": "gtg7784/dr-manhattan-rust",
+      "category": "highest_priority",
+      "hits": {
+        "direct_order": [
+          "drm-core/src/exchange/traits.rs"
+        ],
+        "kalshi_order": [
+          "drm-exchange-kalshi/src/error.rs",
+          "drm-exchange-kalshi/src/config.rs"
+        ],
+        "polymarket_order": [
+          "drm-exchange-limitless/src/lib.rs",
+          "drm-exchange-polymarket/src/lib.rs",
+          "drm-exchange-polymarket/src/config.rs",
+          "drm-exchange-polymarket/src/client.rs",
+          "drm-core/src/models/market.rs"
+        ]
+      }
+    },
+    {
+      "repo": "suislanchez/polymarket-kalshi-weather-bot",
+      "category": "highest_priority",
+      "hits": {
+        "direct_order": [],
+        "kalshi_order": [
+          "frontend/src/utils.ts",
+          "backend/config.py",
+          "backend/data/kalshi_client.py",
+          "backend/data/kalshi_markets.py"
+        ],
+        "polymarket_order": []
+      }
+    },
+    {
+      "repo": "ryanfrigo/kalshi-ai-trading-bot",
+      "category": "highest_priority",
+      "hits": {
+        "direct_order": [],
+        "kalshi_order": [
+          "src/__init__.py",
+          "src/events/__init__.py",
+          "src/agents/__init__.py",
+          "tests/conftest.py",
+          "scripts/get_positions.py",
+          "scripts/init_database.py",
+          "scripts/extract_grok_analysis.py",
+          "scripts/analyze_performance.py",
+          "src/strategies/portfolio/runner.py",
+          "scripts/launch_dashboard.py",
+          "src/utils/market_prices.py",
+          "src/utils/prompts.py",
+          "src/utils/logging_setup.py"
+        ],
+        "polymarket_order": []
+      }
+    },
+    {
+      "repo": "OctagonAI/kalshi-trading-bot-cli",
+      "category": "highest_priority",
+      "hits": {
+        "direct_order": [],
+        "kalshi_order": [
+          "src/utils/paths.ts",
+          "src/tools/kalshi/index.ts",
+          "src/tools/index.ts",
+          "src/tools/kalshi/series.ts",
+          "src/tools/search/index.ts"
+        ],
+        "polymarket_order": []
+      }
+    },
+    {
+      "repo": "ImMike/polymarket-arbitrage",
+      "category": "highest_priority",
+      "hits": {
+        "direct_order": [
+          "core/execution.py",
+          "polymarket_client/api.py"
+        ],
+        "kalshi_order": [
+          "kalshi_client/__init__.py",
+          "kalshi_client/models.py",
+          "utils/config_loader.py",
+          "kalshi_client/api.py",
+          "run_with_dashboard.py",
+          "core/cross_platform_arb.py",
+          "polymarket_client/api.py",
+          "dashboard/server.py"
+        ],
+        "polymarket_order": [
+          "kalshi_client/models.py",
+          "utils/config_loader.py",
+          "core/risk_manager.py",
+          "core/portfolio.py",
+          "kalshi_client/api.py",
+          "core/cross_platform_arb.py",
+          "polymarket_client/api.py"
+        ]
+      }
+    },
+    {
+      "repo": "CarlosIbCu/polymarket-kalshi-btc-arbitrage-bot",
+      "category": "highest_priority",
+      "hits": {
+        "direct_order": [],
+        "kalshi_order": [
+          "backend/mock_backend.py",
+          "backend/get_current_markets.py",
+          "backend/explore_kalshi_api.py",
+          "backend/find_new_kalshi_market.py",
+          "backend/fetch_current_kalshi.py",
+          "backend/api.py",
+          "backend/arbitrage_bot.py",
+          "frontend/app/page.tsx"
+        ],
+        "polymarket_order": [
+          "backend/inspect_clob.py",
+          "backend/search_markets.py",
+          "backend/fetch_current_polymarket.py"
+        ]
+      }
+    },
+    {
+      "repo": "braedonsaunders/homerun",
+      "category": "highest_priority",
+      "hits": {
+        "direct_order": [],
+        "kalshi_order": [],
+        "polymarket_order": [
+          "extract_md.py",
+          "gui.py"
+        ]
+      }
+    },
+    {
+      "repo": "PredictionXBT/PredictOS",
+      "category": "highest_priority",
+      "hits": {
+        "direct_order": [],
+        "kalshi_order": [
+          "supabase/functions/_shared/dflow/types.ts",
+          "supabase/functions/get-events/types.ts",
+          "terminal/src/app/layout.tsx",
+          "supabase/functions/_shared/dome/types.ts",
+          "supabase/functions/_shared/dflow/endpoints.ts",
+          "supabase/functions/_shared/ai/prompts/searchQueryGenerator.ts",
+          "supabase/functions/_shared/dflow/client.ts",
+          "terminal/src/app/api/get-events/route.ts"
+        ],
+        "polymarket_order": [
+          "supabase/functions/_shared/polymarket/utils.ts",
+          "supabase/functions/polymarket-put-order/types.ts"
+        ]
+      }
+    },
+    {
+      "repo": "realfishsam/prediction-market-arbitrage-bot",
+      "category": "highest_priority",
+      "hits": {
+        "direct_order": [
+          "src/bot.js"
+        ],
+        "kalshi_order": [
+          "config.js",
+          "src/index.js",
+          "src/arbitrage.js",
+          "src/matcher.js",
+          "src/bot.js"
+        ],
+        "polymarket_order": [
+          "src/bot.js"
+        ]
+      }
+    },
+    {
+      "repo": "kmizzi/karb",
+      "category": "highest_priority",
+      "hits": {
+        "direct_order": [
+          "scripts/debug_order_body.py",
+          "scripts/exit_position.py",
+          "scripts/compare_orders.py",
+          "scripts/compare_sell_orders.py",
+          "scripts/cleanup_and_sell.py",
+          "scripts/sell_position.py"
+        ],
+        "kalshi_order": [
+          "src/karb/tracking/trades.py",
+          "src/karb/config.py"
+        ],
+        "polymarket_order": [
+          "src/karb/api/__init__.py",
+          "scripts/debug_order_body.py",
+          "scripts/exit_position.py",
+          "scripts/check_market_type.py",
+          "scripts/compare_orders.py",
+          "scripts/compare_sell_orders.py",
+          "scripts/cleanup_and_sell.py",
+          "scripts/sell_position.py",
+          "scripts/compare_signatures.py",
+          "src/karb/tracking/portfolio.py",
+          "src/karb/config.py",
+          "src/karb/api/clob.py"
+        ]
+      }
+    },
+    {
+      "repo": "mihai-stancescu/polymarket-ai-trade-bot",
+      "category": "highest_priority",
+      "hits": {
+        "direct_order": [],
+        "kalshi_order": [],
+        "polymarket_order": [
+          "src/config/index.ts",
+          "src/copy/mirror.ts",
+          "src/copy/tracker.ts",
+          "src/api/polymarket.ts"
+        ]
+      }
+    },
+    {
+      "repo": "Kalshi/kalshi-starter-code-python",
+      "category": "prediction_market_native",
+      "hits": {
+        "direct_order": [],
+        "kalshi_order": [
+          "main.py",
+          "clients.py"
+        ],
+        "polymarket_order": []
+      }
+    },
+    {
+      "repo": "Kalshi/tools-and-analysis",
+      "category": "prediction_market_native",
+      "hits": {
+        "direct_order": [],
+        "kalshi_order": [
+          "client/kalshi_client.py"
+        ],
+        "polymarket_order": []
+      }
+    },
+    {
+      "repo": "TexasCoding/kalshi-python-sdk",
+      "category": "prediction_market_native",
+      "hits": {
+        "direct_order": [],
+        "kalshi_order": [
+          "kalshi/resources/__init__.py",
+          "kalshi/perps/klear/resources/__init__.py",
+          "tests/integration/__init__.py",
+          "kalshi/_constants.py",
+          "kalshi/ws/__init__.py",
+          "kalshi/perps/resources/__init__.py",
+          "kalshi/perps/fix/__init__.py",
+          "kalshi/perps/ws/backpressure.py",
+          "kalshi/perps/ws/__init__.py",
+          "kalshi/fix/_timefmt.py",
+          "kalshi/ws/models/order_group.py",
+          "kalshi/perps/klear/__init__.py",
+          "tests/perps/klear/conftest.py",
+          "kalshi/perps/ws/models/trade.py",
+          "kalshi/ws/models/multivariate.py",
+          "kalshi/perps/models/exchange.py",
+          "scripts/generate.py",
+          "kalshi/ws/models/trade.py",
+          "kalshi/perps/ws/models/fill.py",
+          "kalshi/perps/klear/models/__init__.py",
+          "examples/perps_stream_ticker.py"
+        ],
+        "polymarket_order": []
+      }
+    },
+    {
+      "repo": "arshka/pykalshi",
+      "category": "prediction_market_native",
+      "hits": {
+        "direct_order": [
+          "examples/place_order.py"
+        ],
+        "kalshi_order": [
+          "pykalshi/client.py",
+          "pykalshi/aclient.py",
+          "tests/integration/__init__.py",
+          "examples/get_specific_market.py",
+          "web/frontend/utils.js",
+          "tests/conftest.py",
+          "pykalshi/_async/exchange.py",
+          "pykalshi/_sync/exchange.py",
+          "pykalshi/_async/api_keys.py",
+          "pykalshi/_sync/api_keys.py",
+          "examples/basic_usage.py",
+          "web/frontend/app.jsx",
+          "pykalshi/_async/events.py",
+          "pykalshi/_sync/events.py",
+          "pykalshi/exceptions.py",
+          "examples/async_usage.py",
+          "examples/place_order.py"
+        ],
+        "polymarket_order": []
+      }
+    },
+    {
+      "repo": "humz2k/kalshi-python-unofficial",
+      "category": "prediction_market_native",
+      "hits": {
+        "direct_order": [
+          "kalshi/rest/portfolio.py"
+        ],
+        "kalshi_order": [
+          "kalshi/constants.py",
+          "kalshi/rest/exchange.py",
+          "kalshi/rest/collection.py",
+          "setup.py",
+          "docs/source/conf.py",
+          "kalshi/auth.py",
+          "kalshi/rest/market.py",
+          "kalshi/websocket/client.py",
+          "kalshi/rest/portfolio.py"
+        ],
+        "polymarket_order": [
+          "kalshi/rest/portfolio.py"
+        ]
+      }
+    },
+    {
+      "repo": "vaguenebula/kalshi-client",
+      "category": "prediction_market_native",
+      "hits": {
+        "direct_order": [
+          "examples/create_order.py",
+          "kalshi_client/client.py"
+        ],
+        "kalshi_order": [
+          "examples/balance.py",
+          "examples/positions.py",
+          "examples/create_order.py",
+          "setup.py",
+          "examples/basic_example.py",
+          "examples/candlestick.py",
+          "kalshi_client/connector.py",
+          "kalshi_client/client.py"
+        ],
+        "polymarket_order": []
+      }
+    },
+    {
+      "repo": "AndrewNolte/KalshiPythonClient",
+      "category": "prediction_market_native",
+      "hits": {
+        "direct_order": [],
+        "kalshi_order": [
+          "kalshi/api/__init__.py",
+          "kalshi/__init__.py",
+          "kalshi/apis/__init__.py",
+          "setup.py",
+          "kalshi/api/exchange_api.py",
+          "kalshi/exceptions.py",
+          "kalshi/models/__init__.py",
+          "kalshi/api/ranged_markets_api.py",
+          "kalshi/api/ranged_market_api.py",
+          "kalshi/api/default_api.py",
+          "kalshi/api/portfolio_api.py",
+          "kalshi/model/watchlist.py",
+          "kalshi/model/user_order_decrease_request.py",
+          "kalshi/model/subscription_preference.py",
+          "kalshi/model/user_get_balance_response.py",
+          "kalshi/model/reset_password_request.py",
+          "kalshi/model/settlement_source.py",
+          "kalshi/model/user_deposit_response.py",
+          "kalshi/model/user_get_profile_response.py",
+          "kalshi/model/user_get_portfolio_value_response.py",
+          "kalshi/model/user_get_market_response.py",
+          "kalshi/model/user_withdrawal_response.py",
+          "kalshi/model/user_get_markets_response.py",
+          "kalshi/model/user_orders_get_response.py",
+          "kalshi/model/user_trades_get_response.py",
+          "kalshi/model/trades_get_response.py",
+          "kalshi/model/user_get_watchlist_response.py",
+          "kalshi/model/get_market_order_book_response.py"
+        ],
+        "polymarket_order": []
+      }
+    },
+    {
+      "repo": "EllAchE/kalshi_cli",
+      "category": "prediction_market_native",
+      "hits": {
+        "direct_order": [
+          "kalshi/place_order.py",
+          "kalshi/cli.py"
+        ],
+        "kalshi_order": [
+          "kalshi/ENVIRONMENT.py",
+          "kalshi/utils.py",
+          "kalshi/get_positions.py",
+          "kalshi/ticker_to_id.py",
+          "kalshi/get_all_markets.py",
+          "kalshi/get_market.py",
+          "kalshi/place_order.py",
+          "kalshi/auth_methods.py",
+          "kalshi/sample/kalshi_sample.py",
+          "kalshi/cli.py"
+        ],
+        "polymarket_order": [
+          "kalshi/place_order.py",
+          "kalshi/cli.py"
+        ]
+      }
+    },
+    {
+      "repo": "Polymarket/clob-client-v2",
+      "category": "prediction_market_native",
+      "hits": {
+        "direct_order": [],
+        "kalshi_order": [
+          "src/types/index.ts"
+        ],
+        "polymarket_order": [
+          "src/types/index.ts",
+          "src/signing/constants.ts",
+          "examples/market/getServerTime.ts",
+          "examples/market/getOrderbook.ts",
+          "examples/market/getLastTradePrice.ts",
+          "examples/market/getSpreads.ts",
+          "examples/market/getMidPoint.ts",
+          "examples/market/getSpread.ts",
+          "examples/market/getMidPoints.ts",
+          "src/types/ordersV3.ts",
+          "examples/market/getOrderbooks.ts",
+          "examples/market/getLastTradesPrices.ts",
+          "examples/market/getMarkets.ts",
+          "examples/market/getPrices.ts",
+          "examples/market/getPrice.ts"
+        ]
+      }
+    },
+    {
+      "repo": "vigji/mootlib",
+      "category": "prediction_market_native",
+      "hits": {
+        "direct_order": [],
+        "kalshi_order": [],
+        "polymarket_order": [
+          "mootlib/scrapers/polymarket_gamma.py"
+        ]
+      }
+    },
+    {
+      "repo": "tswaim/polymarket-kalshi-arbitrage-bot",
+      "category": "kalshi_polymarket_arbitrage",
+      "hits": {
+        "direct_order": [
+          "src/arb/index.ts",
+          "src/kalshi/bot.ts"
+        ],
+        "kalshi_order": [
+          "src/scripts/kalshi-single-order.ts",
+          "src/scripts/server.ts",
+          "src/scripts/balance.ts",
+          "src/lib/validate-env.ts",
+          "src/monitor-run.ts",
+          "src/polymarket/prices.ts",
+          "src/arb/index.ts",
+          "src/kalshi/bot.ts",
+          "src/lib/config.ts",
+          "src/monitor/index.ts"
+        ],
+        "polymarket_order": [
+          "src/monitor-run.ts",
+          "src/scripts/place-poly-down.ts",
+          "src/polymarket/prices.ts",
+          "src/arb/index.ts",
+          "src/kalshi/bot.ts",
+          "src/lib/config.ts",
+          "src/polymarket/order.ts"
+        ]
+      }
+    },
+    {
+      "repo": "TopTrenDev/polymarket-kalshi-arbitrage-bot",
+      "category": "kalshi_polymarket_arbitrage",
+      "hits": {
+        "direct_order": [
+          "src/gabagool_executor.rs",
+          "src/trade_executor.rs",
+          "src/polymarket_clob.rs",
+          "src/clients.rs"
+        ],
+        "kalshi_order": [
+          "src/lib.rs",
+          "src/arbitrage_detector.rs",
+          "src/config.rs",
+          "src/bin/monitor.rs",
+          "src/settlement_checker.rs",
+          "src/event.rs",
+          "src/trade_executor.rs",
+          "src/bot.rs",
+          "src/event_matcher.rs",
+          "src/main.rs",
+          "src/clients.rs"
+        ],
+        "polymarket_order": [
+          "src/lib.rs",
+          "src/polymarket_blockchain.rs",
+          "src/trade_executor.rs",
+          "src/polymarket_clob.rs",
+          "src/main.rs",
+          "src/clients.rs"
+        ]
+      }
+    },
+    {
+      "repo": "ashercn97/predmarket",
+      "category": "kalshi_polymarket_arbitrage",
+      "hits": {
+        "direct_order": [],
+        "kalshi_order": [
+          "src/predmarket/kalshi/__init__.py",
+          "src/predmarket/__init__.py",
+          "src/predmarket/model/rest/__init__.py",
+          "src/predmarket/model/rest/question.py",
+          "src/predmarket/model/rest/price.py",
+          "src/predmarket/model/rest/contract.py",
+          "src/predmarket/kalshi/rest.py",
+          "src/predmarket/model/ws/normalize.py"
+        ],
+        "polymarket_order": [
+          "main.py",
+          "src/predmarket/polymarket/ws.py"
+        ]
+      }
+    },
+    {
+      "repo": "aulekator/Polymarket-BTC-15-Minute-Trading-Bot",
+      "category": "kalshi_polymarket_arbitrage",
+      "hits": {
+        "direct_order": [],
+        "kalshi_order": [],
+        "polymarket_order": [
+          "patch_market_orders.py"
+        ]
+      }
+    },
+    {
+      "repo": "discountifu/polymarket-trading-bot",
+      "category": "kalshi_polymarket_arbitrage",
+      "hits": {
+        "direct_order": [
+          "src/__init__.py",
+          "examples/basic_trading.py",
+          "examples/quickstart.py"
+        ],
+        "kalshi_order": [],
+        "polymarket_order": [
+          "docs/official-examples/src/abis/index.ts",
+          "src/__init__.py",
+          "docs/official-examples/src/encode/index.ts",
+          "src/gamma_client.py"
+        ]
+      }
+    },
+    {
+      "repo": "Ronesfe/Polymarket-Automated-Trading-Bot",
+      "category": "kalshi_polymarket_arbitrage",
+      "hits": {
+        "direct_order": [
+          "src/services/polymarket.ts",
+          "src/services/bot.ts"
+        ],
+        "kalshi_order": [],
+        "polymarket_order": [
+          "src/setup.ts",
+          "src/strategies/scanner.ts",
+          "src/types/index.ts",
+          "src/config/index.ts",
+          "src/strategies/copy-trader.ts",
+          "src/services/polymarket.ts",
+          "src/services/bot.ts"
+        ]
+      }
+    },
+    {
+      "repo": "Anmoldureha/polymarket-trading-bot-strategies",
+      "category": "kalshi_polymarket_arbitrage",
+      "hits": {
+        "direct_order": [
+          "src/exchanges/base_exchange.py",
+          "src/exchanges/polymarket/adapter.py",
+          "src/strategies/tail_end_strategy.py",
+          "src/strategies/legged_arbitrage.py"
+        ],
+        "kalshi_order": [],
+        "polymarket_order": [
+          "src/strategies/tail_end_strategy.py",
+          "src/utils/market_cache.py",
+          "src/strategies/legged_arbitrage.py"
+        ]
+      }
+    },
+    {
+      "repo": "jhonatan-dev/Betting-Arbitrage",
+      "category": "sports_prediction_odds",
+      "hits": {
+        "direct_order": [],
+        "kalshi_order": [],
+        "polymarket_order": [
+          "betfair/bfairapi.py"
+        ]
+      }
+    },
+    {
+      "repo": "kernc/backtesting.py",
+      "category": "stocks_equities_options_macro",
+      "hits": {
+        "direct_order": [],
+        "kalshi_order": [],
+        "polymarket_order": [
+          "backtesting/backtesting.py"
+        ]
+      }
+    },
+    {
+      "repo": "kieran-mackle/AutoTrader",
+      "category": "stocks_equities_options_macro",
+      "hits": {
+        "direct_order": [
+          "autotrader/comms/notifier.py",
+          "autotrader/brokers/broker.py",
+          "autotrader/comms/tg.py",
+          "autotrader/autobot.py",
+          "autotrader/brokers/ccxt.py",
+          "autotrader/brokers/ib.py",
+          "autotrader/brokers/oanda.py",
+          "autotrader/brokers/virtual.py"
+        ],
+        "kalshi_order": [],
+        "polymarket_order": [
+          "autotrader/brokers/ib.py"
+        ]
+      }
+    },
+    {
+      "repo": "0xpranjal/Stock-Prediction-using-different-models",
+      "category": "stocks_equities_options_macro",
+      "hits": {
+        "direct_order": [
+          "pyrobot/robot.py"
+        ],
+        "kalshi_order": [
+          "pyrobot/robot.py"
+        ],
+        "polymarket_order": []
+      }
+    },
+    {
+      "repo": "hummingbot/hummingbot",
+      "category": "crypto_btc_event_market",
+      "hits": {
+        "direct_order": [],
+        "kalshi_order": [],
+        "polymarket_order": [
+          "setup.py"
+        ]
+      }
+    },
+    {
+      "repo": "ccxt/binance-trade-bot",
+      "category": "crypto_btc_event_market",
+      "hits": {
+        "direct_order": [],
+        "kalshi_order": [],
+        "polymarket_order": [
+          "binance_trade_bot/binance_api_manager.py"
+        ]
+      }
+    },
+    {
+      "repo": "nexwave-so/energy-operator",
+      "category": "crypto_btc_event_market",
+      "hits": {
+        "direct_order": [],
+        "kalshi_order": [],
+        "polymarket_order": [
+          "src/nexwave/schemas/trading.py"
+        ]
+      }
+    },
+    {
+      "repo": "second-state/fintool",
+      "category": "crypto_btc_event_market",
+      "hits": {
+        "direct_order": [
+          "src/commands/predict.rs",
+          "src/okx.rs"
+        ],
+        "kalshi_order": [
+          "src/okx.rs",
+          "src/coinbase.rs"
+        ],
+        "polymarket_order": [
+          "src/polymarket.rs",
+          "src/commands/balance.rs",
+          "src/commands/predict.rs"
+        ]
+      }
+    },
+    {
+      "repo": "Mattbusel/FinRL_DeepSeek_Crypto_Trading",
+      "category": "crypto_btc_event_market",
+      "hits": {
+        "direct_order": [
+          "exchange_connector.py"
+        ],
+        "kalshi_order": [],
+        "polymarket_order": []
+      }
+    },
+    {
+      "repo": "Br0ski777/x402-agent-tools",
+      "category": "agent_automation_evaluation",
+      "hits": {
+        "direct_order": [],
+        "kalshi_order": [
+          "src/catalog.ts"
+        ],
+        "polymarket_order": []
+      }
+    },
+    {
+      "repo": "BlockRunAI/blockrun-llm",
+      "category": "agent_automation_evaluation",
+      "hits": {
+        "direct_order": [],
+        "kalshi_order": [
+          "examples/arbitrage_analyzer.py",
+          "blockrun_llm/surf.py"
+        ],
+        "polymarket_order": []
+      }
+    }
+  ],
+  "secret_risk_count": 36,
+  "secret_risk_repos": [
+    {
+      "repo": "pmxt-dev/pmxt-mcp",
+      "category": "highest_priority",
+      "hits": {
+        "private_key": [
+          "src/server.ts",
+          "src/generated/tools.ts"
+        ],
+        "api_secret": [
+          "src/index.ts",
+          "src/config.ts",
+          "src/client.ts",
+          "src/server.ts",
+          "src/generated/tools.ts"
+        ]
+      }
+    },
+    {
+      "repo": "Polymarket/py-clob-client",
+      "category": "highest_priority",
+      "hits": {
+        "private_key": [
+          "py_clob_client/signer.py"
+        ],
+        "api_secret": [
+          "examples/create_api_key.py",
+          "examples/derive_api_key.py",
+          "examples/get_api_keys.py",
+          "examples/get_notifications.py",
+          "examples/get_closed_only_mode.py",
+          "examples/cancel_all.py",
+          "examples/get_market_trades_events.py",
+          "examples/get_readonly_api_keys.py",
+          "examples/cancel_order.py",
+          "examples/cancel_orders.py",
+          "examples/create_readonly_api_key.py",
+          "examples/rfq_config.py",
+          "examples/cancel_market_orders.py"
+        ]
+      }
+    },
+    {
+      "repo": "Polymarket/agents",
+      "category": "highest_priority",
+      "hits": {
+        "private_key": [
+          "agents/polymarket/polymarket.py"
+        ],
+        "api_secret": [
+          "agents/connectors/search.py",
+          "agents/connectors/news.py",
+          "agents/application/executor.py",
+          "agents/polymarket/polymarket.py"
+        ]
+      }
+    },
+    {
+      "repo": "microprediction/manifoldbot",
+      "category": "highest_priority",
+      "hits": {
+        "private_key": [],
+        "api_secret": [
+          "manifoldbot/ai/openai_client.py",
+          "manifoldbot/config/settings.py",
+          "manifoldbot/manifold/writer.py",
+          "manifoldbot/manifold/bot.py"
+        ]
+      }
+    },
+    {
+      "repo": "GodlyPeeta/prediction-markets.py",
+      "category": "highest_priority",
+      "hits": {
+        "private_key": [
+          "prediction_markets/kalshi.py"
+        ],
+        "api_secret": [
+          "prediction_markets/kalshi.py"
+        ]
+      }
+    },
+    {
+      "repo": "gtg7784/dr-manhattan-ts",
+      "category": "highest_priority",
+      "hits": {
+        "private_key": [
+          "examples/list-markets.ts",
+          "src/core/exchange.ts",
+          "src/exchanges/kalshi/kalshi.ts",
+          "examples/spread-strategy.ts",
+          "src/exchanges/opinion/index.ts",
+          "examples/weather-bot-strategy.ts"
+        ],
+        "api_secret": [
+          "src/exchanges/polymarket/polymarket-ws.ts",
+          "examples/list-markets.ts",
+          "src/core/exchange.ts",
+          "src/exchanges/kalshi/kalshi.ts",
+          "examples/spread-strategy.ts",
+          "src/exchanges/opinion/index.ts",
+          "examples/weather-bot-strategy.ts"
+        ]
+      }
+    },
+    {
+      "repo": "gtg7784/dr-manhattan-rust",
+      "category": "highest_priority",
+      "hits": {
+        "private_key": [
+          "drm-exchange-limitless/src/config.rs",
+          "drm-exchange-polymarket/src/config.rs",
+          "drm-exchange-opinion/src/config.rs",
+          "drm-exchange-kalshi/src/config.rs"
+        ],
+        "api_secret": [
+          "drm-exchange-opinion/src/config.rs",
+          "drm-exchange-kalshi/src/config.rs"
+        ]
+      }
+    },
+    {
+      "repo": "suislanchez/polymarket-kalshi-weather-bot",
+      "category": "highest_priority",
+      "hits": {
+        "private_key": [
+          "backend/config.py",
+          "backend/data/kalshi_client.py"
+        ],
+        "api_secret": [
+          "backend/config.py",
+          "backend/data/kalshi_client.py"
+        ]
+      }
+    },
+    {
+      "repo": "ImMike/polymarket-arbitrage",
+      "category": "highest_priority",
+      "hits": {
+        "private_key": [
+          "utils/config_loader.py",
+          "main.py",
+          "run_with_dashboard.py",
+          "polymarket_client/api.py"
+        ],
+        "api_secret": [
+          "utils/config_loader.py",
+          "main.py",
+          "run_with_dashboard.py",
+          "polymarket_client/api.py"
+        ]
+      }
+    },
+    {
+      "repo": "PredictionXBT/PredictOS",
+      "category": "highest_priority",
+      "hits": {
+        "private_key": [],
+        "api_secret": [
+          "supabase/functions/_shared/dome/client.ts",
+          "supabase/functions/_shared/dflow/client.ts",
+          "terminal/src/app/api/arbitrage-finder/route.ts",
+          "terminal/src/app/api/get-events/route.ts",
+          "terminal/src/app/api/polyfactual-research/route.ts",
+          "terminal/src/app/api/event-analysis-agent/route.ts"
+        ]
+      }
+    },
+    {
+      "repo": "realfishsam/prediction-market-arbitrage-bot",
+      "category": "highest_priority",
+      "hits": {
+        "private_key": [
+          "config.js",
+          "src/index.js",
+          "src/bot.js"
+        ],
+        "api_secret": [
+          "config.js",
+          "src/index.js",
+          "src/bot.js"
+        ]
+      }
+    },
+    {
+      "repo": "kmizzi/karb",
+      "category": "highest_priority",
+      "hits": {
+        "private_key": [
+          "scripts/debug_order_body.py",
+          "scripts/check_market_type.py",
+          "scripts/compare_orders.py",
+          "scripts/compare_sell_orders.py",
+          "scripts/cleanup_and_sell.py",
+          "scripts/sell_position.py",
+          "scripts/compare_signatures.py",
+          "src/karb/tracking/portfolio.py",
+          "src/karb/config.py"
+        ],
+        "api_secret": [
+          "scripts/debug_order_body.py",
+          "scripts/check_market_type.py",
+          "scripts/compare_orders.py",
+          "scripts/compare_sell_orders.py",
+          "scripts/cleanup_and_sell.py",
+          "scripts/sell_position.py",
+          "src/karb/config.py"
+        ]
+      }
+    },
+    {
+      "repo": "mihai-stancescu/polymarket-ai-trade-bot",
+      "category": "highest_priority",
+      "hits": {
+        "private_key": [
+          "src/config/index.ts"
+        ],
+        "api_secret": [
+          "src/config/index.ts"
+        ]
+      }
+    },
+    {
+      "repo": "Kalshi/kalshi-starter-code-python",
+      "category": "prediction_market_native",
+      "hits": {
+        "private_key": [
+          "main.py",
+          "clients.py"
+        ],
+        "api_secret": [
+          "clients.py"
+        ]
+      }
+    },
+    {
+      "repo": "TexasCoding/kalshi-python-sdk",
+      "category": "prediction_market_native",
+      "hits": {
+        "private_key": [
+          "examples/perps_stream_ticker.py"
+        ],
+        "api_secret": [
+          "kalshi/perps/klear/__init__.py",
+          "tests/perps/klear/conftest.py"
+        ]
+      }
+    },
+    {
+      "repo": "arshka/pykalshi",
+      "category": "prediction_market_native",
+      "hits": {
+        "private_key": [
+          "tests/integration/__init__.py",
+          "tests/conftest.py",
+          "pykalshi/_async/api_keys.py",
+          "pykalshi/_sync/api_keys.py",
+          "examples/basic_usage.py",
+          "examples/async_usage.py"
+        ],
+        "api_secret": [
+          "pykalshi/api_keys.py",
+          "tests/integration/__init__.py",
+          "tests/conftest.py",
+          "pykalshi/_async/api_keys.py",
+          "pykalshi/_sync/api_keys.py",
+          "examples/basic_usage.py",
+          "examples/async_usage.py"
+        ]
+      }
+    },
+    {
+      "repo": "humz2k/kalshi-python-unofficial",
+      "category": "prediction_market_native",
+      "hits": {
+        "private_key": [
+          "kalshi/auth.py"
+        ],
+        "api_secret": [
+          "kalshi/auth.py"
+        ]
+      }
+    },
+    {
+      "repo": "vaguenebula/kalshi-client",
+      "category": "prediction_market_native",
+      "hits": {
+        "private_key": [
+          "examples/balance.py",
+          "kalshi_client/utils.py",
+          "examples/positions.py",
+          "examples/create_order.py",
+          "examples/basic_example.py",
+          "examples/candlestick.py",
+          "kalshi_client/connector.py",
+          "kalshi_client/client.py"
+        ],
+        "api_secret": [
+          "kalshi_client/connector.py"
+        ]
+      }
+    },
+    {
+      "repo": "tswaim/polymarket-kalshi-arbitrage-bot",
+      "category": "kalshi_polymarket_arbitrage",
+      "hits": {
+        "private_key": [
+          "src/scripts/balance.ts",
+          "src/lib/validate-env.ts",
+          "src/scripts/place-poly-down.ts",
+          "src/kalshi/bot.ts",
+          "src/lib/config.ts",
+          "src/polymarket/order.ts",
+          "src/monitor/index.ts"
+        ],
+        "api_secret": [
+          "src/scripts/balance.ts",
+          "src/lib/validate-env.ts",
+          "src/kalshi/bot.ts",
+          "src/lib/config.ts",
+          "src/polymarket/order.ts",
+          "src/monitor/index.ts"
+        ]
+      }
+    },
+    {
+      "repo": "TopTrenDev/polymarket-kalshi-arbitrage-bot",
+      "category": "kalshi_polymarket_arbitrage",
+      "hits": {
+        "private_key": [
+          "src/config.rs",
+          "src/polymarket_blockchain.rs",
+          "src/bin/monitor.rs",
+          "src/polymarket_clob.rs",
+          "src/main.rs",
+          "src/clients.rs"
+        ],
+        "api_secret": [
+          "src/config.rs",
+          "src/main.rs",
+          "src/clients.rs"
+        ]
+      }
+    },
+    {
+      "repo": "discountifu/polymarket-trading-bot",
+      "category": "kalshi_polymarket_arbitrage",
+      "hits": {
+        "private_key": [
+          "src/__init__.py",
+          "examples/basic_trading.py",
+          "apps/run_flash_crash.py",
+          "examples/quickstart.py",
+          "src/utils.py",
+          "src/crypto.py",
+          "scripts/setup.py"
+        ],
+        "api_secret": [
+          "src/utils.py",
+          "scripts/setup.py"
+        ]
+      }
+    },
+    {
+      "repo": "Ronesfe/Polymarket-Automated-Trading-Bot",
+      "category": "kalshi_polymarket_arbitrage",
+      "hits": {
+        "private_key": [
+          "src/setup.ts",
+          "src/types/index.ts",
+          "src/config/index.ts",
+          "src/services/polymarket.ts"
+        ],
+        "api_secret": [
+          "src/ai/router.ts",
+          "src/setup.ts",
+          "src/ai/anthropic.ts",
+          "src/ai/openai.ts",
+          "src/types/index.ts",
+          "src/config/index.ts",
+          "src/services/polymarket.ts"
+        ]
+      }
+    },
+    {
+      "repo": "Anmoldureha/polymarket-trading-bot-strategies",
+      "category": "kalshi_polymarket_arbitrage",
+      "hits": {
+        "private_key": [
+          "src/utils/config_loader.py",
+          "src/api/auth.py",
+          "src/exchanges/polymarket/adapter.py"
+        ],
+        "api_secret": [
+          "src/utils/config_loader.py",
+          "src/api/auth.py",
+          "src/exchanges/polymarket/adapter.py"
+        ]
+      }
+    },
+    {
+      "repo": "the-odds-api/samples-python",
+      "category": "sports_prediction_odds",
+      "hits": {
+        "private_key": [],
+        "api_secret": [
+          "event_odds.py",
+          "historical_odds.py",
+          "odds.py",
+          "historical_event_odds.py"
+        ]
+      }
+    },
+    {
+      "repo": "odds-api/odds-api",
+      "category": "sports_prediction_odds",
+      "hits": {
+        "private_key": [],
+        "api_secret": [
+          "examples/minimal-rest/python/odds.py",
+          "examples/python/line-movement-chart/main.py",
+          "examples/python/positive-ev-scanner/main.py",
+          "examples/python/arbitrage-scanner/main.py",
+          "sdks/python/src/odds_api/client.py",
+          "sdks/typescript/src/index.ts",
+          "mcp-server/src/index.ts"
+        ]
+      }
+    },
+    {
+      "repo": "kieran-mackle/AutoTrader",
+      "category": "stocks_equities_options_macro",
+      "hits": {
+        "private_key": [],
+        "api_secret": [
+          "autotrader/comms/tg.py",
+          "autotrader/brokers/ccxt.py",
+          "autotrader/utilities.py",
+          "autotrader/autotrader.py"
+        ]
+      }
+    },
+    {
+      "repo": "marketcalls/openalgo",
+      "category": "stocks_equities_options_macro",
+      "hits": {
+        "private_key": [
+          "app.py"
+        ],
+        "api_secret": [
+          "benchmark_api.py",
+          "app.py"
+        ]
+      }
+    },
+    {
+      "repo": "navam-io/navam-invest",
+      "category": "stocks_equities_options_macro",
+      "hits": {
+        "private_key": [],
+        "api_secret": [
+          "src/navam_invest/config/settings.py",
+          "src/navam_invest/tools/alpha_vantage.py",
+          "src/navam_invest/tools/fred.py",
+          "src/navam_invest/agents/research.py",
+          "src/navam_invest/cache/common_queries.py",
+          "src/navam_invest/agents/portfolio.py",
+          "scripts/validate_newsapi_key.py",
+          "src/navam_invest/agents/tax_scout.py",
+          "src/navam_invest/agents/quill.py",
+          "src/navam_invest/agents/screen_forge.py"
+        ]
+      }
+    },
+    {
+      "repo": "OilpriceAPI/python-sdk",
+      "category": "commodities_energy_agriculture",
+      "hits": {
+        "private_key": [],
+        "api_secret": [
+          "tests/contract/conftest.py",
+          "oilpriceapi/__init__.py",
+          "tests/integration/conftest.py",
+          "tests/conftest.py",
+          "examples/visualization_demo.py"
+        ]
+      }
+    },
+    {
+      "repo": "OilpriceAPI/oilpriceapi-node",
+      "category": "commodities_energy_agriculture",
+      "hits": {
+        "private_key": [],
+        "api_secret": [
+          "example-commodities.ts",
+          "example.ts",
+          "examples/basic.ts",
+          "examples/streaming.ts",
+          "examples/webhook-server.ts",
+          "examples/nextjs-api-route.ts",
+          "example-walk.ts",
+          "examples/express.ts",
+          "examples/commodities.ts",
+          "examples/error-handling.ts",
+          "src/resources/ei/rig-counts.ts",
+          "src/resources/raw.ts",
+          "src/resources/spreads.ts",
+          "src/resources/commodities.ts",
+          "src/resources/ei/opec-production.ts",
+          "src/resources/ei/oil-inventories.ts",
+          "src/resources/ei/forecasts.ts",
+          "src/resources/ei/index.ts",
+          "src/resources/indicators.ts",
+          "src/resources/ei/drilling-productivity.ts",
+          "src/resources/storage.ts",
+          "src/resources/ei/well-permits.ts"
+        ]
+      }
+    },
+    {
+      "repo": "ccxt/binance-trade-bot",
+      "category": "crypto_btc_event_market",
+      "hits": {
+        "private_key": [
+          "binance_trade_bot/config.py",
+          "binance_trade_bot/binance_stream_manager.py",
+          "binance_trade_bot/binance_api_manager.py"
+        ],
+        "api_secret": [
+          "binance_trade_bot/config.py",
+          "binance_trade_bot/binance_stream_manager.py",
+          "binance_trade_bot/binance_api_manager.py"
+        ]
+      }
+    },
+    {
+      "repo": "Laser420/fund_arb_bot",
+      "category": "crypto_btc_event_market",
+      "hits": {
+        "private_key": [
+          "lighter_comprehensive_diagnostic.py"
+        ],
+        "api_secret": [
+          "lighter_comprehensive_diagnostic.py"
+        ]
+      }
+    },
+    {
+      "repo": "nexwave-so/energy-operator",
+      "category": "crypto_btc_event_market",
+      "hits": {
+        "private_key": [
+          "scripts/check_hyperliquid_assets.py",
+          "scripts/approve_hyperliquid_agent.py",
+          "src/nexwave/common/config.py"
+        ],
+        "api_secret": [
+          "src/nexwave/common/config.py"
+        ]
+      }
+    },
+    {
+      "repo": "second-state/fintool",
+      "category": "crypto_btc_event_market",
+      "hits": {
+        "private_key": [
+          "src/polymarket.rs",
+          "src/config.rs"
+        ],
+        "api_secret": [
+          "src/commands/options.rs",
+          "src/commands/transfer.rs",
+          "src/commands/cancel.rs",
+          "src/commands/positions.rs",
+          "src/commands/balance.rs",
+          "src/config.rs",
+          "src/commands/orders.rs",
+          "src/commands/order.rs",
+          "src/okx.rs",
+          "src/coinbase.rs",
+          "src/commands/orderbook.rs"
+        ]
+      }
+    },
+    {
+      "repo": "Br0ski777/x402-agent-tools",
+      "category": "agent_automation_evaluation",
+      "hits": {
+        "private_key": [
+          "examples/security-audit.ts",
+          "examples/vercel-ai-agent.ts",
+          "examples/trading-agent.ts",
+          "examples/research-agent.ts",
+          "examples/sales-agent.ts",
+          "src/ai-sdk.ts",
+          "src/client.ts",
+          "src/langchain.ts"
+        ],
+        "api_secret": [
+          "examples/vercel-ai-agent.ts"
+        ]
+      }
+    },
+    {
+      "repo": "BlockRunAI/blockrun-llm",
+      "category": "agent_automation_evaluation",
+      "hits": {
+        "private_key": [
+          "tests/integration/conftest.py",
+          "tests/helpers.py",
+          "blockrun_llm/anthropic_client.py",
+          "blockrun_llm/search.py",
+          "blockrun_llm/music.py",
+          "blockrun_llm/portrait.py",
+          "blockrun_llm/price.py",
+          "blockrun_llm/phone.py",
+          "blockrun_llm/speech.py",
+          "examples/benchmark_claude.py",
+          "blockrun_llm/rpc.py",
+          "blockrun_llm/validation.py",
+          "blockrun_llm/solana_wallet.py",
+          "blockrun_llm/voice.py",
+          "blockrun_llm/surf.py",
+          "blockrun_llm/wallet.py",
+          "blockrun_llm/image.py",
+          "blockrun_llm/realface.py",
+          "blockrun_llm/video.py"
+        ],
+        "api_secret": [
+          "tests/helpers.py",
+          "blockrun_llm/anthropic_client.py",
+          "blockrun_llm/validation.py"
+        ]
+      }
+    }
+  ],
+  "notes": "Source-level firewall bypass scan. Repos with direct order paths or excessive secret handling are rejected."
+}
