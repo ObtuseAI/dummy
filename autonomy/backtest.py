@@ -129,7 +129,10 @@ def run_backtest(ledger: AutonomyLedger, bootstrap_weights: bool = False) -> dic
         return {"report_name": "AUTONOMY_BACKTEST", "settled_markets": 0,
                 "note": "no settlements to score", "created_at": datetime.now(timezone.utc).isoformat()}
 
+    from autonomy.scanner import classify_vertical
+
     trackers: dict[str, SourceScoreTracker] = {}
+    scoped_trackers: dict[str, SourceScoreTracker] = {}
     for ticker, result in settlements.items():
         rows = conn.execute(
             "SELECT source, probability_yes FROM signals WHERE market_ticker=?", (ticker,)
@@ -139,8 +142,12 @@ def run_backtest(ledger: AutonomyLedger, bootstrap_weights: bool = False) -> dic
             latest[source] = float(prob)  # last write wins = latest opinion
         market_p = latest.get("market_prior", 0.5)
         market_brier = _brier(market_p, result)
+        vertical = classify_vertical(ticker).value
         for source, prob in latest.items():
             trackers.setdefault(source, SourceScoreTracker(source)).observe(
+                prob, result, market_brier, market_p=market_p)
+            scoped_key = f"{source}@{vertical}"
+            scoped_trackers.setdefault(scoped_key, SourceScoreTracker(scoped_key)).observe(
                 prob, result, market_brier, market_p=market_p)
 
     # Realized decision P&L (settled decisions only).
@@ -153,16 +160,23 @@ def run_backtest(ledger: AutonomyLedger, bootstrap_weights: bool = False) -> dic
 
     source_summaries = {s: t.summary() for s, t in trackers.items()}
     derived = {s: round(t.derived_weight(), 3) for s, t in trackers.items()}
+    derived_scoped = {s: round(t.derived_weight(), 3) for s, t in scoped_trackers.items()}
 
     if bootstrap_weights:
         for source, weight in derived.items():
             ledger.update_weight(source, weight)
+        for scoped_key, weight in derived_scoped.items():
+            ledger.update_weight(scoped_key, weight)
 
     return {
         "report_name": "AUTONOMY_BACKTEST",
         "settled_markets": len(settlements),
         "sources": source_summaries,
+        "sources_by_vertical": {s: {k: t.summary()[k] for k in
+                                    ("n", "mean_brier", "contested_n", "contested_beat_rate")}
+                                for s, t in scoped_trackers.items()},
         "derived_weights": derived,
+        "derived_weights_by_vertical": derived_scoped,
         "weights_written": bootstrap_weights,
         "realized_decision_pnl_cents": realized_pnl,
         "graded_decisions": graded,

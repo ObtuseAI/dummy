@@ -19,6 +19,53 @@ from autonomy.ontology import SessionMode
 RUNTIME_DIR = Path("runtime/autonomy")
 HEARTBEAT_PATH = RUNTIME_DIR / "heartbeat.json"
 CYCLE_LOG_PATH = RUNTIME_DIR / "cycles.jsonl"
+RECAL_STAMP_PATH = RUNTIME_DIR / "last_recalibration.json"
+RECAL_INTERVAL_HOURS = 6.0
+
+
+def _maybe_recalibrate(now_iso: str) -> dict[str, Any] | None:
+    """Periodic self-recalibration: the machine re-derives its own trust.
+
+    Every RECAL_INTERVAL_HOURS the daemon re-runs the backtest bootstrap
+    (global + per-vertical weights, contested caps included) and refits the
+    market-debias curve from the full settlement history. No operator in the
+    loop: calibration is a metabolic process, not a maintenance chore.
+    Gated off in unit tests via DUMMY_DAEMON_RECAL=0.
+    """
+    import os
+
+    if os.environ.get("DUMMY_DAEMON_RECAL", "1") != "1":
+        return None
+    try:
+        if RECAL_STAMP_PATH.exists():
+            stamp = json.loads(RECAL_STAMP_PATH.read_text(encoding="utf-8"))
+            last = datetime.fromisoformat(str(stamp.get("at")))
+            age_h = (datetime.fromisoformat(now_iso) - last).total_seconds() / 3600.0
+            if age_h < RECAL_INTERVAL_HOURS:
+                return None
+    except Exception:
+        pass  # unreadable stamp -> recalibrate now
+    try:
+        from autonomy.backtest import run_backtest
+        from autonomy.ledger import AutonomyLedger
+        from autonomy.signals.market_debias import fit_curve, ledger_samples, write_curve
+
+        ledger = AutonomyLedger()
+        try:
+            report = run_backtest(ledger, bootstrap_weights=True)
+            write_curve(fit_curve(ledger_samples(ledger)))
+        finally:
+            ledger.close()
+        summary = {
+            "at": now_iso,
+            "settled_markets": report.get("settled_markets"),
+            "derived_weights": report.get("derived_weights"),
+        }
+        RUNTIME_DIR.mkdir(parents=True, exist_ok=True)
+        RECAL_STAMP_PATH.write_text(json.dumps(summary, indent=2, sort_keys=True), encoding="utf-8")
+        return summary
+    except Exception:
+        return None  # recalibration must never wedge a cycle
 
 
 def _write_heartbeat(payload: dict[str, Any]) -> None:
@@ -53,6 +100,10 @@ def run_one_cycle(now_iso: str, mode: SessionMode = SessionMode.SHADOW) -> dict[
             brain.ledger.close()  # type: ignore[name-defined]
         except Exception:
             pass
+
+    recal = _maybe_recalibrate(now_iso)
+    if recal is not None:
+        record["recalibrated"] = True
 
     _append_cycle_log(record)
     _write_heartbeat({

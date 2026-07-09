@@ -22,7 +22,14 @@ class EnsembleForecaster:
         numerator = 0.0
         denominator = 0.0
         for signal in signals:
-            trust = self.ledger.get_weight(signal.source, default=1.0)
+            # Vertical-scoped trust when the ledger has earned one; a source's
+            # authority is domain-specific, not global. Duck-typed fallback
+            # keeps minimal ledger stand-ins working.
+            scoped = getattr(self.ledger, "get_weight_scoped", None)
+            if callable(scoped):
+                trust = scoped(signal.source, market.vertical.value)
+            else:
+                trust = self.ledger.get_weight(signal.source, default=1.0)
             variance = max(1e-4, signal.uncertainty**2)
             weight = trust / variance
             weighted[signal.source] = weight

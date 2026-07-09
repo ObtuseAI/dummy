@@ -147,6 +147,12 @@ class AutonomyLedger:
         )
         self._conn.commit()
 
+    def settlement_result(self, market_ticker: str) -> bool | None:
+        row = self._conn.execute(
+            "SELECT result_yes FROM settlements WHERE market_ticker=?", (market_ticker,)
+        ).fetchone()
+        return None if row is None else bool(row[0])
+
     def record_settlement(self, market_ticker: str, result_yes: bool) -> None:
         self._conn.execute(
             "INSERT OR REPLACE INTO settlements(market_ticker, result_yes, settled_at) VALUES (?,?,?)",
@@ -176,6 +182,19 @@ class AutonomyLedger:
         row = self._conn.execute("SELECT weight FROM source_trust WHERE source=?", (source,)).fetchone()
         return float(row[0]) if row else default
 
+    def get_weight_scoped(self, source: str, vertical: str) -> float:
+        """Vertical-scoped trust when earned, else the source's global weight.
+
+        Scoped rows use the key convention 'source@VERTICAL'. A source can be
+        an authority on crypto and a fish on weather; fusion should know.
+        """
+        row = self._conn.execute(
+            "SELECT weight FROM source_trust WHERE source=?", (f"{source}@{vertical}",)
+        ).fetchone()
+        if row:
+            return float(row[0])
+        return self.get_weight(source)
+
     def all_weights(self) -> dict[str, float]:
         return {r[0]: float(r[1]) for r in self._conn.execute("SELECT source, weight FROM source_trust")}
 
@@ -199,14 +218,15 @@ class AutonomyLedger:
     # ------------------------------------------------------------------
 
     def open_decisions(self) -> list[dict[str, Any]]:
-        """Decisions whose latest outcome is ACCEPTED/FILLED but not settled/canceled."""
+        """Decisions whose latest outcome is a live position (accepted/filled)
+        or a shadow-book position, and not yet settled/canceled/expired."""
         rows = self._conn.execute(
             """
             SELECT d.decision_id, d.market_ticker, d.side, d.price_cents, d.count, o.kind, o.order_id
             FROM decisions d
             JOIN outcomes o ON o.decision_id = d.decision_id
             WHERE o.id = (SELECT MAX(id) FROM outcomes WHERE decision_id = d.decision_id)
-              AND o.kind IN ('ACCEPTED', 'FILLED')
+              AND o.kind IN ('ACCEPTED', 'FILLED', 'SHADOW')
             """
         ).fetchall()
         keys = ["decision_id", "market_ticker", "side", "price_cents", "count", "kind", "order_id"]

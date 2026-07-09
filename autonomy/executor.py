@@ -123,7 +123,13 @@ class Executor:
         # Exchange-enforced TTL replaces cancel loops (the repo's
         # no-direct-cancel-bypass gates forbid direct cancels): a resting
         # maker quote the market has moved away from dies on its own.
-        ttl_seconds = 45 * 60
+        # Fast verticals get short quotes: an hourly crypto bucket moves its
+        # fair value in minutes, and a stale maker quote there is standing
+        # adverse selection.
+        from autonomy.ontology import Vertical
+        from autonomy.scanner import classify_vertical
+
+        ttl_seconds = 20 * 60 if classify_vertical(decision.market_ticker) is Vertical.CRYPTO else 45 * 60
         expiration_ts = int(datetime.now(timezone.utc).timestamp()) + ttl_seconds
         request = LimitOrderRequest(
             venue="KALSHI",

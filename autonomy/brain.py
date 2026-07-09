@@ -3,7 +3,9 @@ execute -> reconcile -> learn. Honest status enums out of every cycle."""
 from __future__ import annotations
 
 import asyncio
+import math
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from typing import Any
 
 from autonomy.allocator import Allocator
@@ -21,6 +23,17 @@ SHADOW_BANKROLL_CENTS = 10_000
 MAX_DECISIONS_PER_CYCLE = 10
 # Only the top-K markets by |edge| get the expensive LLM panel each cycle.
 DEBATE_TOP_K = 5
+
+
+def edge_velocity(market: MarketView, forecast: Any) -> float:
+    """Edge per sqrt-hour to settlement: the compounding-rate ranking metric."""
+    hours = 24.0
+    try:
+        close = datetime.fromisoformat(market.close_time.replace("Z", "+00:00"))
+        hours = max(0.5, (close - datetime.now(timezone.utc)).total_seconds() / 3600.0)
+    except Exception:
+        pass
+    return abs(forecast.edge_yes) / math.sqrt(hours)
 
 
 @dataclass
@@ -99,39 +112,51 @@ class PredatorBrain:
                 count += 1
         return exposure, count
 
+    def _close_position(self, state: RiskState, open_decision: dict[str, Any],
+                        result_yes: bool) -> None:
+        """Write the settlement outcome for one open position + risk evidence."""
+        pnl = settlement_pnl_cents(
+            str(open_decision["side"]), int(open_decision["price_cents"]),
+            int(open_decision["count"]), result_yes,
+        )
+        won = pnl > 0
+        self.ledger.record_outcome(
+            TradeOutcome(
+                decision_id=str(open_decision["decision_id"]),
+                market_ticker=str(open_decision["market_ticker"]),
+                kind=OutcomeKind.SETTLED_WIN if won else OutcomeKind.SETTLED_LOSS,
+                order_id=open_decision.get("order_id"),
+                fill_count=int(open_decision["count"]),
+                fill_price_cents=int(open_decision["price_cents"]),
+                pnl_cents=pnl,
+                broker_contacted=self.mode is SessionMode.LIVE,
+                detail={"result_yes": result_yes},
+            )
+        )
+        state.daily_pnl_cents += pnl
+        state.settled_count_at_stage += 1
+        count = max(1, int(open_decision["count"]))
+        # Exponential moving realized edge per contract.
+        state.realized_pnl_per_contract_cents = (
+            0.8 * state.realized_pnl_per_contract_cents + 0.2 * (pnl / count)
+        )
+
     def _apply_settlements(self, state: RiskState, report: CycleReport) -> None:
         for ticker, result_yes in self.reconciler.reconcile_settlements():
             report.settlements += 1
             report.weight_updates.update(self.learner.apply_settlement(ticker, result_yes))
-            # Realized P&L for our filled/accepted positions in that market.
-            for open_decision in self.ledger.open_decisions():
-                if open_decision["market_ticker"] != ticker:
-                    continue
-                pnl = settlement_pnl_cents(
-                    str(open_decision["side"]), int(open_decision["price_cents"]),
-                    int(open_decision["count"]), result_yes,
-                )
-                won = pnl > 0
-                self.ledger.record_outcome(
-                    TradeOutcome(
-                        decision_id=str(open_decision["decision_id"]),
-                        market_ticker=ticker,
-                        kind=OutcomeKind.SETTLED_WIN if won else OutcomeKind.SETTLED_LOSS,
-                        order_id=open_decision.get("order_id"),
-                        fill_count=int(open_decision["count"]),
-                        fill_price_cents=int(open_decision["price_cents"]),
-                        pnl_cents=pnl,
-                        broker_contacted=self.mode is SessionMode.LIVE,
-                        detail={"result_yes": result_yes},
-                    )
-                )
-                state.daily_pnl_cents += pnl
-                state.settled_count_at_stage += 1
-                count = max(1, int(open_decision["count"]))
-                # Exponential moving realized edge per contract.
-                state.realized_pnl_per_contract_cents = (
-                    0.8 * state.realized_pnl_per_contract_cents + 0.2 * (pnl / count)
-                )
+        # Close EVERY open position whose market has a settlement on record —
+        # including positions from earlier sessions whose settlement landed
+        # through another path (phantom sweep, retro). A settled market must
+        # always release its slot. Duck-typed for minimal ledger stand-ins.
+        settlement_result = getattr(self.ledger, "settlement_result", None)
+        if not callable(settlement_result):
+            return
+        for open_decision in self.ledger.open_decisions():
+            result = settlement_result(str(open_decision["market_ticker"]))
+            if result is None:
+                continue
+            self._close_position(state, open_decision, result)
 
     def _apply_phantom_settlements(self, report: CycleReport) -> None:
         """Grade every forecasted market that settled — trades or not.
@@ -156,8 +181,19 @@ class PredatorBrain:
 
         for idx in range(min(DEBATE_TOP_K, len(scored))):
             market, forecast, signals = scored[idx]
+            # Read the tape for the panel: recent momentum/volume/spread from
+            # 1-minute candlesticks. Absent tape never blocks the debate.
+            tape_line = None
             try:
-                result = await run_debate(self.router, market, base_prob=forecast.probability_yes)
+                from autonomy.tape import describe_tape, tape_features
+
+                series = market.ticker.split("-")[0]
+                tape_line = describe_tape(tape_features(series, market.ticker)) or None
+            except Exception:
+                tape_line = None
+            try:
+                result = await run_debate(self.router, market, base_prob=forecast.probability_yes,
+                                          context=tape_line)
             except Exception:
                 result = None
             if result is None:
@@ -189,6 +225,13 @@ class PredatorBrain:
         self._apply_settlements(state, report)
         self._apply_phantom_settlements(report)
         self.reconciler.reconcile_open_orders()
+        # Open exposure is a fact of the ledger, not a counter: recompute from
+        # live positions so settled markets RELEASE their slots. (A persisted
+        # increment-only counter deadlocks the stage at max_open_markets.)
+        open_positions = self.ledger.open_decisions()
+        state.open_markets = len({p["market_ticker"] for p in open_positions})
+        state.open_exposure_cents = sum(
+            int(p["price_cents"]) * int(p["count"]) for p in open_positions)
         state = self.risk_brain.maybe_promote(state)
         report.stage = int(state.stage)
 
@@ -217,14 +260,15 @@ class PredatorBrain:
                 continue
             scored.append((market, forecast, signals))
 
-        # Chase the largest absolute disagreement first; bounded per cycle so
-        # one sweep can never spray orders across the whole exchange.
-        scored.sort(key=lambda triple: abs(triple[1].edge_yes), reverse=True)
+        # Capital velocity: rank by edge per unit of settlement time, not raw
+        # edge. A 3c edge that settles in an hour compounds faster than a 5c
+        # edge parked for five days; sqrt damping keeps big slow edges alive.
+        scored.sort(key=lambda t: edge_velocity(t[0], t[1]), reverse=True)
 
         # LLM panel adjudicates only the top-K edge markets, then re-fuse.
         if self.router is not None and scored:
             await self._adjudicate_top_k(forecaster, scored, report)
-            scored.sort(key=lambda triple: abs(triple[1].edge_yes), reverse=True)
+            scored.sort(key=lambda t: edge_velocity(t[0], t[1]), reverse=True)
 
         from autonomy.correlation import group_key
 

@@ -50,6 +50,9 @@ class Learner:
         signals = self.ledger.signals_for_market(market_ticker)
         if not signals:
             return {}
+        from autonomy.scanner import classify_vertical
+
+        vertical = classify_vertical(market_ticker).value
         by_source: dict[str, float] = {}
         for signal in signals:
             # Latest opinion per source wins.
@@ -59,11 +62,16 @@ class Learner:
         for source, probability in by_source.items():
             score = brier(probability, result_yes)
             advantage = baseline - score  # positive = beat the market
+            multiplier = pow(2.718281828, ETA * advantage / 0.25)  # 0.25 = max Brier scale
             old = self.ledger.get_weight(source, default=1.0)
-            new = old * pow(2.718281828, ETA * advantage / 0.25)  # 0.25 = max Brier scale
-            new = max(WEIGHT_FLOOR, min(WEIGHT_CEILING, new))
+            new = max(WEIGHT_FLOOR, min(WEIGHT_CEILING, old * multiplier))
             self.ledger.update_weight(source, new, brier=score)
             updated[source] = new
+            # Vertical-scoped trust learns in parallel: same rule, own row.
+            scoped_key = f"{source}@{vertical}"
+            scoped_old = self.ledger.get_weight(scoped_key, default=1.0)
+            scoped_new = max(WEIGHT_FLOOR, min(WEIGHT_CEILING, scoped_old * multiplier))
+            self.ledger.update_weight(scoped_key, scoped_new, brier=score)
         return updated
 
     # ------------------------------------------------------------------

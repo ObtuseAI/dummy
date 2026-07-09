@@ -18,6 +18,8 @@ def _isolated_evidence_root(monkeypatch, tmp_path):
     # Keep the daemon's alert path (which opens the real ledger) out of unit
     # tests; alert logic is covered directly in test_autonomy_alerts.
     monkeypatch.setenv("DUMMY_DAEMON_ALERTS", "0")
+    # Same for the daemon's periodic self-recalibration (real ledger + curve).
+    monkeypatch.setenv("DUMMY_DAEMON_RECAL", "0")
 
 
 @pytest.fixture(autouse=True)

@@ -33,6 +33,46 @@ class Game:
     away_pitcher_era: float | None = None
     home_pitcher: str | None = None
     away_pitcher: str | None = None
+    # Sportsbook moneylines (american odds) from the scoreboard's embedded
+    # odds block: current ("close") and opening lines for both sides, so a
+    # single snapshot carries the line movement since open.
+    home_ml: int | None = None
+    away_ml: int | None = None
+    home_ml_open: int | None = None
+    away_ml_open: int | None = None
+    odds_provider: str | None = None
+
+
+def _american(value: Any) -> int | None:
+    """Parse an american-odds string ('+101', '-149', 'EVEN') to an int."""
+    if value is None:
+        return None
+    text = str(value).strip().upper()
+    if text in ("EVEN", "EV", "PK"):
+        return 100
+    try:
+        return int(text.replace("+", ""))
+    except Exception:
+        return None
+
+
+def _moneylines(comp: dict[str, Any]) -> tuple[int | None, int | None, int | None, int | None, str | None]:
+    """(home_ml, away_ml, home_ml_open, away_ml_open, provider) from odds[0]."""
+    for odds in comp.get("odds") or []:
+        ml = odds.get("moneyline") or {}
+        home, away = ml.get("home") or {}, ml.get("away") or {}
+        home_close = _american((home.get("close") or {}).get("odds"))
+        away_close = _american((away.get("close") or {}).get("odds"))
+        if home_close is None and away_close is None:
+            continue
+        return (
+            home_close,
+            away_close,
+            _american((home.get("open") or {}).get("odds")),
+            _american((away.get("open") or {}).get("odds")),
+            (odds.get("provider") or {}).get("name"),
+        )
+    return None, None, None, None, None
 
 
 def _probable_era(competitor: dict[str, Any]) -> tuple[float | None, str | None]:
@@ -98,12 +138,16 @@ def parse_scoreboard(league: str, payload: dict[str, Any]) -> list[Game]:
                 resolved = True
             elif home_won is False or away_won is True:
                 resolved = False
+        home_ml, away_ml, home_ml_open, away_ml_open, provider = _moneylines(comp)
         games.append(Game(
             game_id=str(event.get("id", f"{away}@{home}:{event.get('date','')}")),
             league=league, home=home, away=away, status=state or "pre",
             home_won=resolved, date=str(event.get("date", "")),
             home_pitcher_era=home_era, away_pitcher_era=away_era,
             home_pitcher=home_p, away_pitcher=away_p,
+            home_ml=home_ml, away_ml=away_ml,
+            home_ml_open=home_ml_open, away_ml_open=away_ml_open,
+            odds_provider=provider,
         ))
     return games
 

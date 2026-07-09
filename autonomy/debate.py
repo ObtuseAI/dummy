@@ -82,16 +82,18 @@ def _panel_configs(router: Any) -> list[tuple[str, str, float]]:
     return configs
 
 
-def _prompt(market: MarketView, base_prob: float | None, peers: list[float] | None = None) -> str:
+def _prompt(market: MarketView, base_prob: float | None, peers: list[float] | None = None,
+            context: str | None = None) -> str:
     peer_line = ""
     if peers:
         peer_line = f"\nOther analysts estimated: {', '.join(f'{p:.2f}' for p in peers)}. Reconsider and give your own best number."
     base_line = f"\nA quantitative model estimates {base_prob:.2f}." if base_prob is not None else ""
+    context_line = f"\n{context}" if context else ""
     return (
         f"Market: {market.title}\nTicker: {market.ticker}\n"
         f"Rules: {str(market.raw.get('rules_primary',''))[:1200]}\n"
         f"Book: yes_bid={market.yes_bid} yes_ask={market.yes_ask} volume={market.volume}"
-        f"{base_line}{peer_line}\n"
+        f"{context_line}{base_line}{peer_line}\n"
         "Estimate the probability this resolves YES. Return STRICT JSON with keys "
         "dummy_probability (0..1), confidence_score (0..1), reasoning (one line): "
         '{"dummy_probability": <0..1>, "confidence_score": <0..1>, "reasoning": "<one line>"}'
@@ -129,7 +131,7 @@ async def _ask(router: Any, task: Any, prompt: str, provider: str, temp: float) 
 
 
 async def run_debate(router: Any, market: MarketView, base_prob: float | None = None,
-                     revise: bool = True) -> DebateResult | None:
+                     revise: bool = True, context: str | None = None) -> DebateResult | None:
     import asyncio
 
     from model_router.tasks import ModelTask
@@ -139,7 +141,7 @@ async def run_debate(router: Any, market: MarketView, base_prob: float | None = 
         return None
 
     round1 = await asyncio.gather(*[
-        _ask(router, ModelTask.FORECAST_OPINION, _prompt(market, base_prob), provider, temp)
+        _ask(router, ModelTask.FORECAST_OPINION, _prompt(market, base_prob, context=context), provider, temp)
         for _label, provider, temp in configs
     ])
     opinions = [
@@ -151,7 +153,8 @@ async def run_debate(router: Any, market: MarketView, base_prob: float | None = 
     if revise and len(opinions) >= 2:
         peers = [o.probability_yes for o in opinions]
         round2 = await asyncio.gather(*[
-            _ask(router, ModelTask.FORECAST_OPINION, _prompt(market, base_prob, peers), provider, temp)
+            _ask(router, ModelTask.FORECAST_OPINION, _prompt(market, base_prob, peers, context=context),
+                 provider, temp)
             for _label, provider, temp in configs[:len(opinions)]
         ])
         revised = [

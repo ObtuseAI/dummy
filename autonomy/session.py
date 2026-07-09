@@ -167,13 +167,22 @@ def build_brain(mode: SessionMode):
     """Assemble the full predator stack for the given mode."""
     from autonomy.brain import PredatorBrain
 
+    from autonomy.signals.crypto_spot import CryptoEwmaTailSignal
+    from autonomy.signals.sportsbook import SportsbookConsensusSignal
+
     ledger = AutonomyLedger()
-    registry = SourceRegistry()
+    registry = SourceRegistry(health_path=Path("runtime/autonomy/source_health.json"))
     registry.register(MarketPriorSignal())
     registry.register(OpenMeteoWeatherSignal.from_calibration())
     registry.register(CryptoSpotVolSignal())
+    # Challenger crypto model (EWMA vol + fat tails) runs beside the champion
+    # under its own name; the contested record decides which earns weight.
+    registry.register(CryptoEwmaTailSignal())
     registry.register(CommoditiesSpotVolSignal())
     registry.register(SportsEloSignal())
+    # De-vigged sportsbook moneyline + open->close steam: the sharpest public
+    # game forecast, and the trap detector when Elo fights the book.
+    registry.register(SportsbookConsensusSignal())
     registry.register(CrossVenueSignal())
     # Empirical price->outcome curve mined from settled-market history; no
     # curve artifact on disk means the source simply never opines.

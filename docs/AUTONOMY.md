@@ -82,6 +82,9 @@ python scripts/run_dummy_autonomous.py stop
 | `autonomy/signals/crypto_spot.py` | Coinbase public candles → realized vol → driftless lognormal strike probabilities for KXBTC*/KXETH* |
 | `autonomy/signals/market_prior.py` | The book's own mid as a Bayesian anchor, weight decaying with thinness |
 | `autonomy/signals/sports_elo.py` + `autonomy/sports/` | ESPN public feeds + persistent per-league Elo (home edge, K per sport); win-probability for single-game moneylines; self-retrains from finished games each cycle. **MLB is pitcher-aware**: the probable starters' ERAs (from the scoreboard) shift each team's effective Elo, so an ace can overcome a road disadvantage |
+| `autonomy/signals/sportsbook.py` | De-vigged sportsbook moneyline (both sides, vig removed) from the scoreboard's embedded book odds, plus **steam**: the open→current line movement in probability space. The sharpest public game forecast, and the trap detector when Elo fights the book |
+| `autonomy/signals/crypto_spot.py::CryptoEwmaTailSignal` | Challenger crypto model beside the champion: EWMA (RiskMetrics) volatility + a variance-matched two-regime fat-tail mixture. Champion/challenger under separate source names — the contested record decides who earns fusion weight; models evolve by selection, not faith |
+| `autonomy/tape.py` | Tape reader: momentum / volume-surge / range-position / spread from 1-minute candlesticks, fed as context to the LLM debate panel on top-K markets |
 | `autonomy/signals/cross_venue.py` | Polymarket Gamma API implied probability as an independent voice; fail-closed exact team-set+date matching |
 | `autonomy/live_book.py` | Signed Kalshi WebSocket orderbook (snapshot+delta state machine) + synchronous pre-submit fresh-quote guard that skips a maker quote that has crossed |
 | `autonomy/debate.py` | Five-model LLM panel (distinct providers × temperatures) with a revision round; adjudicates only the top-K edge markets per cycle, injected as a trust-weighted signal |
@@ -103,8 +106,14 @@ python scripts/run_dummy_autonomous.py stop
 ## Recursive improvement loops
 
 1. **Calibration**: every settlement scores every source's logged signal
-   (Brier vs the market-prior baseline) and updates trust multiplicatively.
-   Sources gain influence only by beating the market.
+   (Brier vs the market-prior baseline) and updates trust multiplicatively —
+   globally AND per-vertical (`source@VERTICAL` rows), so authority is
+   domain-scoped. Sources gain influence only by beating the market.
+0. **Metabolic recalibration**: every ~6h the daemon re-runs the backtest
+   bootstrap and refits the market-debias curve from the full settlement
+   history — the machine re-derives its own trust with no operator.
+   Failing sources trip a circuit breaker (quarantine + auto-retry), so an
+   upstream outage degrades coverage instead of wedging the loop.
 2. **Risk**: realized P&L per contract is the only currency for stage
    promotion; drawdown demotes instantly with a 24h cooloff.
 3. **Reflexion**: losing decisions are periodically distilled into structured
