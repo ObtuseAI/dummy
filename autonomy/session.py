@@ -18,6 +18,7 @@ from autonomy.signals.base import SourceRegistry
 from autonomy.signals.commodities_spot import CommoditiesSpotVolSignal
 from autonomy.signals.cross_venue import CrossVenueSignal
 from autonomy.signals.crypto_spot import CryptoSpotVolSignal
+from autonomy.signals.market_debias import MarketDebiasSignal
 from autonomy.signals.market_prior import MarketPriorSignal
 from autonomy.signals.sports_elo import SportsEloSignal
 from autonomy.signals.weather_openmeteo import OpenMeteoWeatherSignal
@@ -114,11 +115,23 @@ def session_status(ledger: AutonomyLedger | None = None) -> dict[str, Any]:
     return status
 
 
+def _ensure_creds_loaded() -> None:
+    """Load whitelisted .env credentials (idempotent, never overwrites)."""
+    try:
+        from core.env_loader import load_whitelisted_env
+
+        load_whitelisted_env()
+    except Exception:
+        pass  # absent .env just means the signed call will fail loudly
+
+
 def _live_balance_cents() -> int:
     """Authenticated balance read through the existing signed client."""
     import asyncio
 
     from kalshi.client import KalshiClient
+
+    _ensure_creds_loaded()
 
     async def fetch() -> int:
         client = KalshiClient()
@@ -135,6 +148,8 @@ def _order_status_fn(order_id: str) -> dict[str, Any]:
     import asyncio
 
     from kalshi.client import KalshiClient
+
+    _ensure_creds_loaded()
 
     async def fetch() -> dict[str, Any]:
         client = KalshiClient()
@@ -160,16 +175,26 @@ def build_brain(mode: SessionMode):
     registry.register(CommoditiesSpotVolSignal())
     registry.register(SportsEloSignal())
     registry.register(CrossVenueSignal())
+    # Empirical price->outcome curve mined from settled-market history; no
+    # curve artifact on disk means the source simply never opines.
+    registry.register(MarketDebiasSignal())
     # The LLM panel (debate.py) supersedes the single-model analyst and runs as
     # a post-forecast adjudicator on top-K markets inside the brain, not as a
     # per-market source (it must await the router from the async loop).
 
     live = mode is SessionMode.LIVE
+    if live:
+        # The signed client and the firewall adapter read credentials from the
+        # process environment; a live brain must have them loaded up front.
+        _ensure_creds_loaded()
     # No cancel_fn: the repo's no-direct-cancel-bypass gates forbid direct
     # cancel calls; stale maker quotes die via order-level expiration_ts.
+    from autonomy.reconciler import default_fetch_settled_page
+
     reconciler = Reconciler(
         ledger,
         order_status_fn=_order_status_fn if live else None,
+        fetch_settled_page=default_fetch_settled_page,
     )
     quote_fn = None
     if live:

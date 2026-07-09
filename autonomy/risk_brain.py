@@ -27,11 +27,14 @@ KELLY_FRACTION = 0.25
 # capped in absolute cents so early stages stay tiny regardless of balance.
 # group_frac / max_per_group cap correlated clusters (see autonomy/correlation):
 # many adjacent buckets on one underlying are one concentrated bet, not many.
+# max_days_to_close (0 = uncapped) keeps early stages on near-dated markets:
+# with few position slots, capital parked in a market that settles weeks out
+# is evidence-accrual frozen — slots must recycle to earn promotion.
 STAGE_LIMITS: dict[Stage, dict[str, float | int]] = {
-    Stage.SHADOW_ONLY: {"total_frac": 0.0, "market_frac": 0.0, "group_frac": 0.0, "order_abs_cents": 0, "max_open_markets": 0, "max_per_group": 0},
-    Stage.CANARY: {"total_frac": 0.02, "market_frac": 0.005, "group_frac": 0.008, "order_abs_cents": 100, "max_open_markets": 5, "max_per_group": 1},
-    Stage.RAMP: {"total_frac": 0.10, "market_frac": 0.02, "group_frac": 0.03, "order_abs_cents": 500, "max_open_markets": 12, "max_per_group": 2},
-    Stage.CRUISE: {"total_frac": 0.30, "market_frac": 0.05, "group_frac": 0.08, "order_abs_cents": 2500, "max_open_markets": 25, "max_per_group": 3},
+    Stage.SHADOW_ONLY: {"total_frac": 0.0, "market_frac": 0.0, "group_frac": 0.0, "order_abs_cents": 0, "max_open_markets": 0, "max_per_group": 0, "max_days_to_close": 7},
+    Stage.CANARY: {"total_frac": 0.02, "market_frac": 0.005, "group_frac": 0.008, "order_abs_cents": 100, "max_open_markets": 5, "max_per_group": 1, "max_days_to_close": 7},
+    Stage.RAMP: {"total_frac": 0.10, "market_frac": 0.02, "group_frac": 0.03, "order_abs_cents": 500, "max_open_markets": 12, "max_per_group": 2, "max_days_to_close": 30},
+    Stage.CRUISE: {"total_frac": 0.30, "market_frac": 0.05, "group_frac": 0.08, "order_abs_cents": 2500, "max_open_markets": 25, "max_per_group": 3, "max_days_to_close": 0},
 }
 
 # Drawdown ladder (fraction below equity peak) -> sizing multiplier.

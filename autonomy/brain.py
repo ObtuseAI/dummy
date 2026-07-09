@@ -35,6 +35,7 @@ class CycleReport:
     orders_placed: int = 0
     abstained: int = 0
     settlements: int = 0
+    phantom_settlements: int = 0
     weight_updates: dict[str, float] = field(default_factory=dict)
     notes: list[str] = field(default_factory=list)
 
@@ -132,6 +133,21 @@ class PredatorBrain:
                     0.8 * state.realized_pnl_per_contract_cents + 0.2 * (pnl / count)
                 )
 
+    def _apply_phantom_settlements(self, report: CycleReport) -> None:
+        """Grade every forecasted market that settled — trades or not.
+
+        This is the calibration firehose: trust weights learn from the whole
+        forecast surface, not just the stage-capped handful of positions.
+        Never touches risk state (there is no position to P&L).
+        """
+        try:
+            phantom = self.reconciler.reconcile_forecast_settlements(list(self.scanner.watchlist))
+        except Exception:
+            return
+        for ticker, result_yes in phantom:
+            report.phantom_settlements += 1
+            report.weight_updates.update(self.learner.apply_settlement(ticker, result_yes))
+
     # ------------------------------------------------------------------
 
     async def _adjudicate_top_k(self, forecaster, scored: list, report: CycleReport) -> None:
@@ -171,6 +187,7 @@ class PredatorBrain:
             return report
 
         self._apply_settlements(state, report)
+        self._apply_phantom_settlements(report)
         self.reconciler.reconcile_open_orders()
         state = self.risk_brain.maybe_promote(state)
         report.stage = int(state.stage)

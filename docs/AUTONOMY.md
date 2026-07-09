@@ -33,9 +33,12 @@ type runtime\autonomy\cycles.jsonl
 python scripts/run_dummy_backtest.py --bootstrap
 python scripts/run_dummy_autonomous.py canary        # evidence gate report
 
-# First live canary — BLOCKED until the gate passes (>=20 settled markets, a
-# market-beating source, bootstrapped weights). Enable the LLM panel for the
-# session with the env var. This is the one irreversible step; it's yours.
+# First live canary — BLOCKED until the gate passes: >=20 settled markets,
+# bootstrapped weights, and at least one source with a CONTESTED market-beating
+# record (>=20 settled markets where it disagreed with the market prior by
+# >=5c AND was right more than 55% of the time). Agreeing with the market and
+# being right qualifies nothing. Enable the LLM panel for the session with the
+# env var. This is the one irreversible step; it's yours.
 set DUMMY_DEBATE_LIVE=1
 python scripts/run_dummy_autonomous.py start --live --hours 6 --ack "<exact ack>"
 
@@ -86,9 +89,12 @@ python scripts/run_dummy_autonomous.py stop
 | `autonomy/signals/commodities_spot.py` | WTI/natgas/gold spot + realized vol (keyless Yahoo Finance) → lognormal strike probabilities for KXWTI/KXNATGAS/KXGOLD |
 | `autonomy/correlation.py` + risk brain group caps | Collapses correlated markets (adjacent strike buckets, one city-day, both game sides) into one cluster; per-cluster exposure + position-count caps stop the bankroll piling onto one underlying |
 | `autonomy/backtest.py` | Offline replay of the ledger vs settlements: per-source Brier / log-loss / calibration curve, realized decision P&L, and derived trust weights that `--bootstrap` writes back so live starts pre-ranked |
+| Phantom grading (`ledger.unsettled_forecast_markets` + `reconciler.reconcile_forecast_settlements`) | Settles and grades EVERY market the machine forecasted (~1000/cycle), not just the handful it traded — one settled-markets listing per watchlist series per cycle. Calibration evidence accrues from the whole forecast surface at hundreds of settlements/day |
+| `autonomy/retro.py` | Retro evidence engine: point-in-time replay against markets that already settled. Market prior from Kalshi candlesticks at the historical decision moment; crypto spot/vol from historical Coinbase candles fully closed before it; weather from the Open-Meteo historical-forecast API (the day's own model runs). Signals land in the ledger as `mode='retro'` with historical timestamps; fail-closed (no contemporaneous quote -> market skipped) |
+| `autonomy/signals/market_debias.py` | Empirical price->outcome curve mined from settled-market history (the exchange's own measured miscalibration, longshot bias included). Opines only where a 5-cent price bucket has >=100 observed outcomes; the retro engine never writes retro signals for this source, so its trust weight is earned on live settlements only |
 | `autonomy/forecaster.py` | Inverse-variance fusion scaled by ledger trust weights |
 | `autonomy/allocator.py` | Fee-aware EV, maker-first pricing, symmetric YES/NO evaluation |
-| `autonomy/risk_brain.py` | Self-set dynamic caps: quarter-Kelly, stage ladder (SHADOW→CANARY→RAMP→CRUISE), drawdown ladder (-10% half size, -20% demote, -30% self-stop) |
+| `autonomy/risk_brain.py` | Self-set dynamic caps: quarter-Kelly, stage ladder (SHADOW→CANARY→RAMP→CRUISE), drawdown ladder (-10% half size, -20% demote, -30% self-stop), stage close-horizon (CANARY 7d / RAMP 30d / CRUISE uncapped) so scarce early-stage slots never freeze on far-dated markets |
 | `autonomy/executor.py` | Shadow book, or live through `KalshiLiveBrokerFirewallAdapter` (LIMIT only, per-order validation, transport-witnessed truth) |
 | `autonomy/reconciler.py` | Fills + settlement detection; stale maker quotes expire via order-level `expiration_ts` (the no-direct-cancel-bypass gates forbid cancel calls) |
 | `autonomy/learner.py` | Brier-scored multiplicative trust weights (reward = beating the market prior), Reflexion lessons via ModelRouter |
@@ -132,8 +138,12 @@ python scripts/run_dummy_weather_backfill.py            # pre-train weather (don
 python scripts/run_dummy_sports_warmup.py --league mlb  # warm Elo (done: 590 games)
 python scripts/run_dummy_sports_warmup.py --league nfl  # NFL preseason (KXNFLGAME live from Aug)
 python scripts/run_dummy_autonomous.py start            # shadow — accumulate settlements
-# ...let settlements accrue, then:
-python scripts/run_dummy_backtest.py --bootstrap        # grade sources, pre-rank trust weights
+# Evidence accrues two ways, both honest:
+#  - phantom grading: every forecasted market is graded when it settles
+#    (runs inside every cycle automatically)
+#  - retro replay: grade the recent PAST with point-in-time reconstruction
+python scripts/run_dummy_retro_backfill.py --bootstrap  # replay history + weights + gate report
+python scripts/run_dummy_backtest.py --bootstrap        # re-grade any time
 python scripts/run_dummy_autonomous.py status           # review weights + ROI, then go live
 ```
 

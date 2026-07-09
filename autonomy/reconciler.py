@@ -33,6 +33,23 @@ def default_fetch_market_result(ticker: str) -> dict[str, Any]:
     return market if isinstance(market, dict) else {}
 
 
+def default_fetch_settled_page(series_ticker: str, min_close_ts: int,
+                               cursor: str | None = None) -> dict[str, Any]:
+    """One page of recently settled markets for a series (public GET)."""
+    import httpx
+
+    params: dict[str, Any] = {
+        "series_ticker": series_ticker, "status": "settled",
+        "min_close_ts": min_close_ts, "limit": 200,
+    }
+    if cursor:
+        params["cursor"] = cursor
+    response = httpx.get(f"{_public_base()}/markets", params=params, timeout=20)
+    response.raise_for_status()
+    data = response.json()
+    return data if isinstance(data, dict) else {}
+
+
 class Reconciler:
     def __init__(
         self,
@@ -40,11 +57,14 @@ class Reconciler:
         fetch_market_result: Callable[[str], dict[str, Any]] | None = None,
         order_status_fn: Callable[[str], dict[str, Any]] | None = None,
         cancel_fn: Callable[[str], dict[str, Any]] | None = None,
+        fetch_settled_page: Callable[..., dict[str, Any]] | None = None,
     ) -> None:
         self.ledger = ledger
         self.fetch_market_result = fetch_market_result or default_fetch_market_result
         self.order_status_fn = order_status_fn
         self.cancel_fn = cancel_fn
+        # Opt-in (None = disabled) so hermetic tests never hit the network.
+        self.fetch_settled_page = fetch_settled_page
 
     # ------------------------------------------------------------------
     # Settlements (public data; drives the whole learning loop)
@@ -62,6 +82,49 @@ class Reconciler:
                 result_yes = result == "yes"
                 self.ledger.record_settlement(ticker, result_yes)
                 settled.append((ticker, result_yes))
+        return settled
+
+    def reconcile_forecast_settlements(
+        self,
+        series_list: list[str],
+        lookback_hours: float = 48.0,
+        max_pages_per_series: int = 3,
+    ) -> list[tuple[str, bool]]:
+        """Phantom grading: settle every FORECASTED market, not just traded ones.
+
+        The machine opines on ~1000 markets a cycle; every one that settles is
+        free calibration evidence. Batch sweep: one settled-markets listing per
+        watchlist series (cursor-paged), matched against tickers we recently
+        signaled on. No per-ticker calls, no positions touched — settlements
+        recorded here feed the learner only.
+        """
+        if self.fetch_settled_page is None or not series_list:
+            return []
+        unsettled = set(self.ledger.unsettled_forecast_markets())
+        if not unsettled:
+            return []
+        min_close_ts = int(datetime.now(timezone.utc).timestamp() - lookback_hours * 3600)
+        settled: list[tuple[str, bool]] = []
+        for series in series_list:
+            cursor: str | None = None
+            for _page in range(max_pages_per_series):
+                try:
+                    data = self.fetch_settled_page(series, min_close_ts, cursor)
+                except Exception:
+                    break  # one dead series never stalls the sweep
+                for market in data.get("markets", []):
+                    ticker = str(market.get("ticker", ""))
+                    if ticker not in unsettled:
+                        continue
+                    result = str(market.get("result", "")).lower()
+                    if result in ("yes", "no"):
+                        result_yes = result == "yes"
+                        self.ledger.record_settlement(ticker, result_yes)
+                        settled.append((ticker, result_yes))
+                        unsettled.discard(ticker)
+                cursor = data.get("cursor") or None
+                if not cursor:
+                    break
         return settled
 
     # ------------------------------------------------------------------

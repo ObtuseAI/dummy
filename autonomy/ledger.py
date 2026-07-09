@@ -52,7 +52,8 @@ CREATE TABLE IF NOT EXISTS signals (
     probability_yes REAL NOT NULL,
     uncertainty REAL NOT NULL,
     rationale TEXT NOT NULL,
-    created_at TEXT NOT NULL
+    created_at TEXT NOT NULL,
+    mode TEXT NOT NULL DEFAULT 'live'
 );
 CREATE TABLE IF NOT EXISTS settlements (
     market_ticker TEXT PRIMARY KEY,
@@ -95,19 +96,26 @@ class AutonomyLedger:
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
         self._conn = sqlite3.connect(str(self.db_path))
         self._conn.executescript(_SCHEMA)
+        self._migrate()
         self._conn.commit()
+
+    def _migrate(self) -> None:
+        """Additive migrations for ledgers created before a column existed."""
+        columns = {row[1] for row in self._conn.execute("PRAGMA table_info(signals)")}
+        if "mode" not in columns:
+            self._conn.execute("ALTER TABLE signals ADD COLUMN mode TEXT NOT NULL DEFAULT 'live'")
 
     def close(self) -> None:
         self._conn.close()
 
     # ------------------------------------------------------------------
 
-    def record_signal(self, signal: Signal) -> None:
+    def record_signal(self, signal: Signal, mode: str = "live") -> None:
         self._conn.execute(
-            "INSERT INTO signals(source, market_ticker, probability_yes, uncertainty, rationale, created_at)"
-            " VALUES (?,?,?,?,?,?)",
+            "INSERT INTO signals(source, market_ticker, probability_yes, uncertainty, rationale, created_at, mode)"
+            " VALUES (?,?,?,?,?,?,?)",
             (signal.source, signal.market_ticker, signal.probability_yes, signal.uncertainty,
-             signal.rationale[:500], signal.created_at),
+             signal.rationale[:500], signal.created_at, mode),
         )
         self._conn.commit()
 
@@ -222,6 +230,46 @@ class AutonomyLedger:
             """
         ).fetchall()
         return [r[0] for r in rows]
+
+    def unsettled_forecast_markets(self, max_age_days: float = 7.0) -> list[str]:
+        """Every market we recently opined on that has no settlement yet.
+
+        This is the phantom-grading feed: calibration evidence comes from every
+        forecast the machine makes, not just the handful it traded. Bounded by
+        signal age so the set can't grow without limit.
+        """
+        from datetime import timedelta
+
+        cutoff = (datetime.now(timezone.utc) - timedelta(days=max_age_days)).isoformat()
+        rows = self._conn.execute(
+            """
+            SELECT DISTINCT s.market_ticker FROM signals s
+            WHERE s.created_at >= ?
+              AND s.market_ticker NOT IN (SELECT market_ticker FROM settlements)
+            """,
+            (cutoff,),
+        ).fetchall()
+        return [r[0] for r in rows]
+
+    def evidence_split(self) -> dict[str, int]:
+        """Settled-market counts by evidence provenance (live shadow vs retro)."""
+        live = self._conn.execute(
+            """
+            SELECT COUNT(DISTINCT st.market_ticker) FROM settlements st
+            WHERE EXISTS (SELECT 1 FROM signals s
+                          WHERE s.market_ticker = st.market_ticker AND s.mode = 'live')
+            """
+        ).fetchone()
+        retro_only = self._conn.execute(
+            """
+            SELECT COUNT(DISTINCT st.market_ticker) FROM settlements st
+            WHERE NOT EXISTS (SELECT 1 FROM signals s
+                              WHERE s.market_ticker = st.market_ticker AND s.mode = 'live')
+              AND EXISTS (SELECT 1 FROM signals s
+                          WHERE s.market_ticker = st.market_ticker AND s.mode = 'retro')
+            """
+        ).fetchone()
+        return {"live_settled": int(live[0]), "retro_settled": int(retro_only[0])}
 
     def performance_summary(self) -> dict[str, Any]:
         pnl = self._conn.execute(

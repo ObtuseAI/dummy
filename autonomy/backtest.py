@@ -23,6 +23,12 @@ from autonomy.ledger import AutonomyLedger
 WEIGHT_FLOOR = 0.05
 WEIGHT_CEILING = 8.0
 CALIBRATION_BINS = 10
+# A source "contests" a market when it disagrees with the market prior by at
+# least this much — the population it would actually trade.
+CONTESTED_DISAGREEMENT = 0.05
+# Contested records smaller than this are noise; they neither cap the weight
+# nor qualify a source at the canary gate.
+MIN_CONTESTED_N = 20
 
 
 def _brier(p: float, outcome: int) -> float:
@@ -44,15 +50,29 @@ class SourceScoreTracker:
         self.brier_sum = 0.0
         self.logloss_sum = 0.0
         self.beat_market = 0
+        # Contested markets: the source materially disagreed with the market.
+        # This is the population that actually gets traded, so it is the one
+        # that decides trust. Beating the market on markets where you AGREED
+        # with it proves nothing about edge.
+        self.contested_n = 0
+        self.contested_beat = 0
+        self.contested_edge_sum = 0.0  # sum of (market_brier - source_brier)
         # Per calibration bin: [count, sum_predicted, sum_outcome].
         self.bins: list[list[float]] = [[0.0, 0.0, 0.0] for _ in range(CALIBRATION_BINS)]
 
-    def observe(self, p: float, outcome: int, market_brier: float) -> None:
+    def observe(self, p: float, outcome: int, market_brier: float,
+                market_p: float | None = None) -> None:
         self.n += 1
-        self.brier_sum += _brier(p, outcome)
+        source_brier = _brier(p, outcome)
+        self.brier_sum += source_brier
         self.logloss_sum += _log_loss(p, outcome)
-        if _brier(p, outcome) < market_brier:
+        if source_brier < market_brier:
             self.beat_market += 1
+        if market_p is not None and abs(p - market_p) >= CONTESTED_DISAGREEMENT:
+            self.contested_n += 1
+            self.contested_edge_sum += market_brier - source_brier
+            if source_brier < market_brier:
+                self.contested_beat += 1
         b = min(CALIBRATION_BINS - 1, int(p * CALIBRATION_BINS))
         self.bins[b][0] += 1
         self.bins[b][1] += p
@@ -73,16 +93,31 @@ class SourceScoreTracker:
             "mean_brier": round(self.brier_sum / self.n, 4) if self.n else None,
             "mean_log_loss": round(self.logloss_sum / self.n, 4) if self.n else None,
             "beat_market_rate": round(self.beat_market / self.n, 3) if self.n else None,
+            "contested_n": self.contested_n,
+            "contested_beat_rate": (round(self.contested_beat / self.contested_n, 3)
+                                    if self.contested_n else None),
+            "contested_net_brier_edge": round(self.contested_edge_sum, 4),
             "calibration": calibration,
         }
 
     def derived_weight(self) -> float:
-        """Weight from mean Brier vs the 0.25 no-skill reference (p=0.5)."""
+        """Trust from realized performance.
+
+        Base: mean Brier vs the 0.25 no-skill reference. When the contested
+        record is large enough to mean something, the weight is additionally
+        capped by contested performance — a source that looks well-calibrated
+        overall but loses when it disagrees with the market must not carry an
+        above-market voice into the fusion.
+        """
         if self.n == 0:
             return 1.0
         mean_brier = self.brier_sum / self.n
         advantage = (0.25 - mean_brier) / 0.25
         weight = math.exp(1.2 * advantage)
+        if self.contested_n >= MIN_CONTESTED_N:
+            contested_rate = self.contested_beat / self.contested_n
+            contested_weight = math.exp(2.5 * (contested_rate - 0.5))
+            weight = min(weight, contested_weight)
         return max(WEIGHT_FLOOR, min(WEIGHT_CEILING, weight))
 
 
@@ -105,7 +140,8 @@ def run_backtest(ledger: AutonomyLedger, bootstrap_weights: bool = False) -> dic
         market_p = latest.get("market_prior", 0.5)
         market_brier = _brier(market_p, result)
         for source, prob in latest.items():
-            trackers.setdefault(source, SourceScoreTracker(source)).observe(prob, result, market_brier)
+            trackers.setdefault(source, SourceScoreTracker(source)).observe(
+                prob, result, market_brier, market_p=market_p)
 
     # Realized decision P&L (settled decisions only).
     pnl_rows = conn.execute(

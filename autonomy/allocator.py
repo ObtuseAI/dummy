@@ -8,9 +8,17 @@ audit selectivity as well as accuracy.
 from __future__ import annotations
 
 import uuid
+from datetime import datetime, timezone
 
 from autonomy.ontology import Decision, DecisionAction, Forecast, MarketView
-from autonomy.risk_brain import OrderBudget, RiskBrain, RiskState, kalshi_taker_fee_cents, kelly_fraction_yes
+from autonomy.risk_brain import (
+    STAGE_LIMITS,
+    OrderBudget,
+    RiskBrain,
+    RiskState,
+    kalshi_taker_fee_cents,
+    kelly_fraction_yes,
+)
 
 # Minimum fee-adjusted expected value per contract (cents) before we act.
 MIN_EV_CENTS = 3.0
@@ -63,6 +71,20 @@ class Allocator:
         snapshot: dict = {}
         if forecast.uncertainty > MAX_UNCERTAINTY:
             return _abstain(market, forecast, f"uncertainty {forecast.uncertainty:.2f} too high", snapshot)
+
+        # Stage horizon: early stages hold few slots, and a slot parked in a
+        # market that settles weeks out freezes evidence accrual. Far-dated
+        # markets wait for CRUISE.
+        max_days = float(STAGE_LIMITS[state.stage].get("max_days_to_close") or 0)
+        if max_days > 0:
+            try:
+                close = datetime.fromisoformat(market.close_time.replace("Z", "+00:00"))
+                days_out = (close - datetime.now(timezone.utc)).total_seconds() / 86400.0
+            except Exception:
+                days_out = None
+            if days_out is not None and days_out > max_days:
+                return _abstain(market, forecast,
+                                f"close {days_out:.1f}d out exceeds stage horizon {max_days:.0f}d", snapshot)
 
         # Evaluate YES and NO sides symmetrically: buying NO at price p_no is
         # a YES-frame bet at probability (1 - q).

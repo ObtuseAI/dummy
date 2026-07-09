@@ -12,11 +12,15 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
-from autonomy.backtest import run_backtest
+from autonomy.backtest import MIN_CONTESTED_N, run_backtest
 from autonomy.ledger import AutonomyLedger
 
 MIN_SETTLED_MARKETS = 20
 MIN_BEATEN_MARKET_SOURCES = 1
+# A source qualifies as a market-beater only on its CONTESTED record: markets
+# where it disagreed with the market prior by >=5c — the population it would
+# actually trade. Agreeing with the market and being right proves nothing.
+MIN_CONTESTED_BEAT_RATE = 0.55
 MIN_KALSHI_BALANCE_CENTS = 100  # need at least $1 to place the smallest order
 
 
@@ -50,11 +54,16 @@ def evaluate_canary_readiness(
 
     sources = backtest.get("sources", {})
     beaters = [s for s, v in sources.items()
-               if s != "market_prior" and (v.get("beat_market_rate") or 0) > 0.5 and (v.get("n") or 0) >= 5]
+               if s != "market_prior"
+               and (v.get("contested_n") or 0) >= MIN_CONTESTED_N
+               and (v.get("contested_beat_rate") or 0) > MIN_CONTESTED_BEAT_RATE]
     if len(beaters) < MIN_BEATEN_MARKET_SOURCES:
         blockers.append(
-            f"no source has beaten the market on >=5 settled markets "
-            f"(beaters={beaters})"
+            f"no source beats the market where it disagrees (need contested_n>="
+            f"{MIN_CONTESTED_N} and contested_beat_rate>{MIN_CONTESTED_BEAT_RATE}; "
+            f"contested records: "
+            + str({s: {"n": v.get("contested_n"), "beat": v.get("contested_beat_rate")}
+                   for s, v in sources.items() if s != "market_prior"})
         )
 
     weights = ledger.all_weights()
@@ -67,6 +76,11 @@ def evaluate_canary_readiness(
 
     evidence = {
         "settled_markets": settled,
+        # Provenance split: 'retro' evidence is point-in-time replay against
+        # markets that settled before we traded them (autonomy/retro.py);
+        # 'live' is shadow/live forecasts graded as they settled. Both are
+        # real markets, real outcomes, no-lookahead inputs.
+        "evidence_split": ledger.evidence_split(),
         "market_beating_sources": beaters,
         "bootstrapped_weights": non_default,
         "realized_shadow_pnl_cents": backtest.get("realized_decision_pnl_cents"),
