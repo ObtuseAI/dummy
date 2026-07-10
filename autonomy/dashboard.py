@@ -52,10 +52,19 @@ def assemble_dashboard_state(runtime_dir: Path | None = None) -> dict[str, Any]:
     simulation_training = _load_json(rd / "simulation_training_latest.json") or {}
     crypto_paper_twin = _load_json(rd / "crypto_paper_twin_latest.json") or {}
     from autonomy.paper_dashboard import assemble_paper_dashboard, scheduled_task_status
+    from autonomy.sports.dashboard import SPORTS_TASK_NAME, assemble_sports_dashboard
 
     paper_operation = assemble_paper_dashboard(rd)
+    sports_operation = assemble_sports_dashboard(rd)
     paper_scheduler = scheduled_task_status() if runtime_dir is None else {
         "task_name": "DummyCryptoPaperTwin",
+        "supported": False,
+        "enabled": False,
+        "state": "ALTERNATE_RUNTIME",
+        "healthy": False,
+    }
+    sports_scheduler = scheduled_task_status(SPORTS_TASK_NAME) if runtime_dir is None else {
+        "task_name": SPORTS_TASK_NAME,
         "supported": False,
         "enabled": False,
         "state": "ALTERNATE_RUNTIME",
@@ -121,6 +130,8 @@ def assemble_dashboard_state(runtime_dir: Path | None = None) -> dict[str, Any]:
         "crypto_paper_twin": crypto_paper_twin,
         "paper_operation": paper_operation,
         "paper_scheduler": paper_scheduler,
+        "sports_operation": sports_operation,
+        "sports_scheduler": sports_scheduler,
         "execution_quality": (
             (backtest.get("execution_quality_by_book") or {}).get("shadow", {})
         ),
@@ -164,6 +175,8 @@ _HTML = """<!doctype html>
  <div class="metric"><div class="label">Settled paper trades</div><div class="value" id="mSettled">—</div><div class="note" id="mWin">forward ledger</div></div>
  <div class="metric"><div class="label">Quote-simulated P&amp;L</div><div class="value" id="mPnl">—</div><div class="note">not witnessed-fill P&amp;L</div></div>
  <div class="metric"><div class="label">Target evidence</div><div class="value" id="mTargets">—</div><div class="note" id="mClusters">settled candidates</div></div>
+ <div class="metric"><div class="label">Forced crypto papers</div><div class="value" id="mForcedOpen">—</div><div class="note" id="mForcedSettled">coverage-probe lane</div></div>
+ <div class="metric"><div class="label">Crypto scopes covered</div><div class="value" id="mForcedCoverage">—</div><div class="note" id="mForcedCoverageNote">of 12 designated scopes</div></div>
  <div class="metric"><div class="label">Promotion state</div><div class="value warn" id="mPromotion">HOLD</div><div class="note">explicit review required</div></div>
 </div>
 <div class="paper-grid">
@@ -171,8 +184,27 @@ _HTML = """<!doctype html>
  <div class="card"><h2>Forward evidence progress</h2><div id="progress"></div></div>
  <div class="card span"><h2>Active paper trades</h2><div id="activeTrades" class="table-wrap"></div></div>
  <div class="card span"><h2>Lane performance</h2><div id="lanePerformance" class="table-wrap"></div></div>
+ <div class="card span"><h2>Forced crypto target coverage</h2><div id="cryptoCoverage" class="table-wrap"></div></div>
+ <div class="card span"><h2>Active forced crypto papers</h2><div id="cryptoCoverageTrades" class="table-wrap"></div></div>
  <div class="card"><h2>Recent decisions and explanations</h2><div id="paperDecisions" class="table-wrap"></div></div>
  <div class="card"><h2>Weakness and improvement queue</h2><div id="paperWeaknesses" class="table-wrap"></div></div>
+</div>
+<div class="section-title">Sports forced-coverage paper twin</div>
+<div class="topbar"><div><div class="eyebrow">Every designated prediction type</div><div class="sub">Real listed markets only · forced diagnostic trades never count toward promotion</div></div>
+<div class="controls"><span id="sportsSchedulerBadge" class="pill dead">CHECKING</span><button id="sportsStartBtn" class="btn start" onclick="controlSports('start')">Start sports twin</button><button id="sportsStopBtn" class="btn stop" onclick="controlSports('stop')">Stop sports after cycle</button><div id="sportsControlMsg" class="control-msg"></div></div></div>
+<div class="hero">
+ <div class="metric"><div class="label">Sports scheduler</div><div class="value" id="sScheduler">—</div><div class="note" id="sNext">Windows task</div></div>
+ <div class="metric"><div class="label">Active sports papers</div><div class="value" id="sOpen">—</div><div class="note">policy + coverage-probe lanes</div></div>
+ <div class="metric"><div class="label">Settled sports papers</div><div class="value" id="sSettled">—</div><div class="note" id="sWin">forward outcomes</div></div>
+ <div class="metric"><div class="label">Sports paper P&amp;L</div><div class="value" id="sPnl">—</div><div class="note">one-contract quote simulation</div></div>
+ <div class="metric"><div class="label">Types without gaps</div><div class="value" id="sCoverage">—</div><div class="note" id="sCoverageNote">of 17 designated types</div></div>
+ <div class="metric"><div class="label">Promotion use</div><div class="value warn">EXCLUDED</div><div class="note">forced lane is diagnostic only</div></div>
+</div>
+<div class="paper-grid">
+ <div class="card span"><h2>Designated prediction-type coverage</h2><div id="sportsCoverage" class="table-wrap"></div></div>
+ <div class="card span"><h2>Active forced and policy sports papers</h2><div id="sportsTrades" class="table-wrap"></div></div>
+ <div class="card"><h2>Sports lane results</h2><div id="sportsLanes" class="table-wrap"></div></div>
+ <div class="card"><h2>Recent sports explanations</h2><div id="sportsExplanations" class="table-wrap"></div></div>
 </div>
 <div class="section-title">Autonomy evidence and risk detail</div>
 <div class="grid">
@@ -218,6 +250,7 @@ function renderScheduler(s){
 }
 function renderPaper(d){
  const op=d.paper_operation||{},m=op.metrics||{},s=d.paper_scheduler||{},latest=op.latest_cycle||{},tc=op.target_candidate_counts||{};
+ const forced=op.forced_crypto_coverage||{},forcedSummary=forced.summary||{};
  renderScheduler(s);
  document.getElementById('mOpen').textContent=m.open_trades??0;
  document.getElementById('mRisk').textContent=`${cents(m.open_paper_cost_cents)} paper cost at risk`;
@@ -227,6 +260,10 @@ function renderPaper(d){
  document.getElementById('mPnl').className=`value ${Number(m.quote_simulated_net_pnl_cents||0)>=0?'ok':'bad'}`;
  document.getElementById('mTargets').textContent=tc.settled_forecasts??0;
  document.getElementById('mClusters').textContent=`${tc.settled_event_clusters??0} event clusters · ${tc.forecasts??0} captured`;
+ document.getElementById('mForcedOpen').textContent=forcedSummary.open_decisions??0;
+ document.getElementById('mForcedSettled').textContent=`${forcedSummary.settled_decisions??0} settled · ${cents(forcedSummary.net_pnl_cents)} P&L`;
+ document.getElementById('mForcedCoverage').textContent=forced.scopes_observed_this_cycle??0;
+ document.getElementById('mForcedCoverageNote').textContent=`of ${forced.designated_scopes??12} scopes · ${forced.coverage_gap_count??0} gaps`;
  const hp=((op.hourly_calibration||{}).profile)||{}, auth=op.authority||{};
  const promotion=(auth.execution_authority||auth.capital_authority)?'AUTHORITY ERROR':(hp.status==='ACTIVE_FORWARD_CALIBRATION'?'REVIEW':'HOLD');
  document.getElementById('mPromotion').textContent=promotion;
@@ -246,22 +283,64 @@ function renderPaper(d){
  const lanes=(op.lanes||[]).filter(x=>Number(x.trades||0)>0||Number(x.settled_trades||0)>0);
  document.getElementById('lanePerformance').innerHTML=lanes.length?'<table><tr><th>lane</th><th>trades</th><th>settled</th><th>wins</th><th>quote P&amp;L</th><th>Brier skill</th><th>maker fills</th><th>maker P&amp;L</th><th>drawdown</th></tr>'
    +lanes.map(x=>`<tr><td>${esc(x.vertical)} · ${esc(x.timeframe)} · ${esc(x.strategy)}</td><td>${x.trades??0}</td><td>${x.settled_trades??0}</td><td>${x.wins??0}</td><td class="${Number(x.net_pnl_cents||0)>=0?'ok':'bad'}">${cents(x.net_pnl_cents)}</td><td>${pct(x.brier_skill_vs_market)}</td><td>${x.maker_fills??0} / ${x.maker_orders??0}</td><td>${cents(x.maker_net_pnl_cents)}</td><td>${cents(-(Number(x.max_drawdown_cents||0)))}</td></tr>`).join('')+'</table>':'<div class="muted">No lane evidence yet.</div>';
+ const coverageMatrix=forced.matrix||[];
+ document.getElementById('cryptoCoverage').innerHTML=coverageMatrix.length?'<table><tr><th>asset</th><th>horizon</th><th>status</th><th>targets now</th><th>new forced</th><th>open</th><th>settled</th><th>P&amp;L</th><th>explanation</th></tr>'
+   +coverageMatrix.map(x=>`<tr><td><b>${esc(x.asset)}</b></td><td>${esc(x.timeframe)}</td><td class="${x.is_coverage_gap?'warn':'ok'}">${esc(x.status)}</td><td>${x.targets_observed_this_cycle??0}</td><td>${x.forced_trades_recorded_this_cycle??0}</td><td>${x.open_decisions??0}</td><td>${x.settled_decisions??0}</td><td>${cents(x.net_pnl_cents)}</td><td class="explain">${esc(x.explanation)}</td></tr>`).join('')+'</table>':'<div class="muted">Waiting for the first forced crypto coverage cycle.</div>';
+ const coverageTrades=forced.active_trades||[];
+ document.getElementById('cryptoCoverageTrades').innerHTML=coverageTrades.length?'<table><tr><th>closes</th><th>asset / horizon</th><th>target</th><th>side</th><th>entry</th><th>model / market</th><th>EV</th><th>normal-policy status</th><th>explanation</th></tr>'
+   +coverageTrades.map(x=>`<tr><td>${dt(x.close_time)}</td><td><b>${esc(x.asset)} ${esc(x.timeframe)}</b><br><span class="muted">coverage_probe</span></td><td>${esc((x.target||{}).label||x.ticker)}</td><td>${esc(String(x.side||'').toUpperCase())}</td><td>${x.entry_price_cents}¢ + ${x.fee_cents}¢</td><td>${pct(x.probability_yes)} / ${pct(x.market_probability)}</td><td>${Number(x.conservative_ev_cents||0).toFixed(2)}¢</td><td class="${x.normal_policy_eligible?'ok':'warn'}">${esc(x.normal_policy_reason)}</td><td class="explain">${esc(x.explanation)}</td></tr>`).join('')+'</table>':'<div class="muted">No open forced crypto papers. Coverage gaps remain explicit when no real quoted target exists.</div>';
  const decisions=op.recent_decisions||[];
  document.getElementById('paperDecisions').innerHTML=decisions.length?decisions.slice(0,12).map(x=>`<div style="padding:8px 0;border-bottom:1px solid #243041"><div><b>${esc(x.asset)} ${esc(x.timeframe)} · ${esc(x.action)}</b> <span class="muted">${dt(x.created_at)}</span></div><div class="explain">${esc(x.explanation)}</div></div>`).join(''):'<div class="muted">No decisions recorded.</div>';
  const weak=op.weaknesses||[];
  document.getElementById('paperWeaknesses').innerHTML=weak.length?weak.slice(0,12).map(x=>`<div style="padding:8px 0;border-bottom:1px solid #243041"><b class="warn">${esc(x.component)}</b><div class="explain">${esc(x.reason)}</div><span class="muted">${x.observations!=null?esc(x.observations)+' observations':''}${x.net_pnl_cents!=null?' · '+cents(x.net_pnl_cents):''}</span></div>`).join(''):'<div class="muted">No current weaknesses reported.</div>';
+}
+function renderSportsScheduler(s){
+ const enabled=!!s.enabled,healthy=!!s.healthy;
+ document.getElementById('sportsSchedulerBadge').className=`pill ${enabled&&healthy?'live':'dead'}`;
+ document.getElementById('sportsSchedulerBadge').textContent=enabled?(s.running?'RUNNING':healthy?'SCHEDULED':'DEGRADED'):'STOPPED';
+ document.getElementById('sScheduler').textContent=enabled?(s.running?'RUNNING':'ON'):'OFF';
+ document.getElementById('sScheduler').className=`value ${enabled&&healthy?'ok':'bad'}`;
+ document.getElementById('sNext').textContent=`next ${dt(s.next_run_time)} · result ${s.last_result??'—'}`;
+ document.getElementById('sportsStartBtn').disabled=!!s.running;
+ document.getElementById('sportsStopBtn').disabled=!enabled;
+}
+function renderSports(d){
+ const op=d.sports_operation||{},m=op.metrics||{},coverage=op.coverage||{},s=d.sports_scheduler||{};
+ renderSportsScheduler(s);
+ document.getElementById('sOpen').textContent=m.open_trades??0;
+ document.getElementById('sSettled').textContent=m.settled_trades??0;
+ document.getElementById('sWin').textContent=`${pct(m.win_rate)} quote-simulated win rate`;
+ document.getElementById('sPnl').textContent=cents(m.net_pnl_cents);
+ document.getElementById('sPnl').className=`value ${Number(m.net_pnl_cents||0)>=0?'ok':'bad'}`;
+ document.getElementById('sCoverage').textContent=coverage.types_covered_without_gap??coverage.types_observed_this_cycle??0;
+ document.getElementById('sCoverageNote').textContent=`${coverage.coverage_gap_count??0} explicit gaps · ${coverage.types_observed_this_cycle??0} types observed`;
+ const matrix=coverage.matrix||[];
+ document.getElementById('sportsCoverage').innerHTML=matrix.length?'<table><tr><th>sport</th><th>prediction type</th><th>status</th><th>markets now</th><th>forced now</th><th>tracked</th><th>explanation</th></tr>'
+   +matrix.map(x=>`<tr><td>${esc(String(x.sport||'').toUpperCase())}</td><td>${esc(x.market_type)}</td><td class="${x.is_coverage_gap===false||(!('is_coverage_gap' in x)&&x.status==='TRACKING_FORCED_PAPER')?'ok':'warn'}">${esc(x.status)}</td><td>${x.markets_observed_this_cycle??0}</td><td>${x.forced_trades_recorded_this_cycle??0}</td><td>${x.tracked_forced_trades??0}</td><td class="explain">${esc(x.explanation)}</td></tr>`).join('')+'</table>':'<div class="muted">Waiting for the first forced-coverage sports cycle.</div>';
+ const trades=op.active_trades||[];
+ document.getElementById('sportsTrades').innerHTML=trades.length?'<table><tr><th>event</th><th>sport / type</th><th>lane</th><th>side</th><th>entry</th><th>model / market</th><th>EV</th><th>decision explanation</th></tr>'
+   +trades.map(x=>`<tr><td>${dt(x.event_start)}</td><td><b>${esc(String(x.sport||'').toUpperCase())}</b><br><span class="muted">${esc(x.market_type)}</span></td><td class="${x.lane==='coverage_probe'?'warn':'ok'}">${esc(x.lane)}</td><td>${esc(String(x.side||'').toUpperCase())}</td><td>${x.price_cents}¢ + ${x.fee_cents}¢</td><td>${pct(x.model_probability)} / ${pct(x.market_probability)}</td><td>${Number(x.conservative_ev_cents||0).toFixed(2)}¢</td><td class="explain">${esc(x.explanation)}</td></tr>`).join('')+'</table>':'<div class="muted">No active sports paper trades yet.</div>';
+ const lanes=op.lane_summary||[];
+ document.getElementById('sportsLanes').innerHTML=lanes.length?'<table><tr><th>lane / scope</th><th>paper</th><th>settled</th><th>wins</th><th>P&amp;L</th></tr>'
+   +lanes.map(x=>`<tr><td>${esc(x.lane)} · ${esc(String(x.sport||'').toUpperCase())} ${esc(x.market_type)}</td><td>${x.decisions??0}</td><td>${x.settled_decisions??0}</td><td>${x.wins??0}</td><td class="${Number(x.pnl_cents||0)>=0?'ok':'bad'}">${cents(x.pnl_cents)}</td></tr>`).join('')+'</table>':'<div class="muted">No settled sports lane evidence yet.</div>';
+ const explanations=[...(op.active_trades||[]),...(op.recent_settlements||[])];
+ document.getElementById('sportsExplanations').innerHTML=explanations.length?explanations.slice(0,12).map(x=>`<div style="padding:8px 0;border-bottom:1px solid #243041"><div><b>${esc(String(x.sport||'').toUpperCase())} ${esc(x.market_type)} · ${esc(x.lane)}</b> <span class="muted">${dt(x.observed_at)}</span></div><div class="explain">${esc(x.explanation)}</div></div>`).join(''):'<div class="muted">Waiting for explained sports paper decisions.</div>';
 }
 let tickGeneration=0;
 async function controlPaper(action){
  const msg=document.getElementById('controlMsg'),buttons=[document.getElementById('startBtn'),document.getElementById('stopBtn')];buttons.forEach(x=>x.disabled=true);msg.textContent=action==='start'?'Starting paper scheduler…':'Pausing future cycles…';
  try{const r=await fetch('/api/paper-scheduler/'+action,{method:'POST',headers:{'X-Dummy-Paper-Control':'paper-twin-scheduler-v1'}});const v=await r.json();msg.textContent=v.message||v.detail||v.error||'Control completed';tickGeneration++;if(v.scheduler)renderScheduler(v.scheduler);tick();}catch(e){msg.textContent='Control request failed';}finally{setTimeout(()=>{msg.textContent='';},6000);}
 }
+async function controlSports(action){
+ const msg=document.getElementById('sportsControlMsg'),buttons=[document.getElementById('sportsStartBtn'),document.getElementById('sportsStopBtn')];buttons.forEach(x=>x.disabled=true);msg.textContent=action==='start'?'Starting sports scheduler…':'Pausing future sports cycles…';
+ try{const r=await fetch('/api/sports-paper-scheduler/'+action,{method:'POST',headers:{'X-Dummy-Paper-Control':'paper-twin-scheduler-v1'}});const v=await r.json();msg.textContent=v.message||v.detail||v.error||'Control completed';tickGeneration++;if(v.scheduler)renderSportsScheduler(v.scheduler);tick();}catch(e){msg.textContent='Sports control request failed';}finally{setTimeout(()=>{msg.textContent='';},6000);}
+}
 async function tick(){
  const generation=++tickGeneration;
  let d; try{ d=await (await fetch('/api/autonomy')).json(); }catch(e){ document.getElementById('ts').textContent='backend unreachable'; return; }
  if(generation!==tickGeneration)return;
  document.getElementById('ts').textContent='updated '+new Date().toLocaleTimeString();
- try{renderPaper(d);}catch(e){document.getElementById('ts').textContent+=' · paper render error: '+e.message;console.error('paper render',e);}
+ try{renderPaper(d);renderSports(d);}catch(e){document.getElementById('ts').textContent+=' · paper render error: '+e.message;console.error('paper render',e);}
  const hb=d.heartbeat||{};
  document.getElementById('live').innerHTML =
    kv('status', `<span class="pill ${hb.alive?'live':'dead'}">${hb.alive?'ALIVE':'STALE'}</span>`)
@@ -403,6 +482,7 @@ def build_app():
         control_paper_scheduler,
         scheduled_task_status,
     )
+    from autonomy.sports.dashboard import SPORTS_TASK_NAME
 
     app = FastAPI(title="Dummy Autonomy Dashboard")
     # The report includes a 1,000-resample cluster bootstrap over a large
@@ -440,6 +520,23 @@ def build_app():
         state_cache["at"] = 0.0
         state_cache["value"] = None
         result["scheduler"] = scheduled_task_status()
+        return JSONResponse(result, status_code=200 if result.get("ok") else 503)
+
+    @app.post("/api/sports-paper-scheduler/{action}")
+    def sports_paper_scheduler_control(action: str, request: Request) -> JSONResponse:
+        if request.headers.get("x-dummy-paper-control") != PAPER_CONTROL_HEADER:
+            raise HTTPException(status_code=403, detail="paper control header required")
+        origin = request.headers.get("origin")
+        if origin and urlparse(origin).hostname not in {"127.0.0.1", "localhost", "::1"}:
+            raise HTTPException(status_code=403, detail="loopback origin required")
+        try:
+            result = control_paper_scheduler(action, task_name=SPORTS_TASK_NAME)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        state_cache["epoch"] = int(state_cache["epoch"]) + 1
+        state_cache["at"] = 0.0
+        state_cache["value"] = None
+        result["scheduler"] = scheduled_task_status(SPORTS_TASK_NAME)
         return JSONResponse(result, status_code=200 if result.get("ok") else 503)
 
     @app.get("/")

@@ -23,6 +23,34 @@ from autonomy.ontology import MarketView, Signal
 LAB_VERSION = "sports-recursive-lab-v1"
 MIN_SETTLED_OBSERVATIONS = 40
 MIN_EVENT_CLUSTERS = 20
+POLICY_LANE = "policy"
+FORCED_COVERAGE_LANE = "coverage_probe"
+DESIGNATED_SPORTS_PREDICTION_TYPES: tuple[tuple[str, str], ...] = (
+    ("mlb", "winner"),
+    ("mlb", "total_runs"),
+    ("mlb", "yrfi"),
+    ("nba", "winner"),
+    ("nba", "total"),
+    ("nfl", "winner"),
+    ("nfl", "total"),
+    ("ncaaf", "winner"),
+    ("ncaaf", "total"),
+    ("nhl", "winner"),
+    ("nhl", "total"),
+    ("ncaamb", "winner"),
+    ("ncaamb", "total"),
+    ("ufc", "winner"),
+    ("ufc", "before_round"),
+    ("ufc", "distance"),
+    ("f1", "winner"),
+)
+DECLARED_SPORTS_COVERAGE_GAPS: dict[tuple[str, str], str] = {
+    ("nfl", "winner"): (
+        "NFL winner remains a coverage gap until forward settlements and "
+        "scope-specific calibration validate the model; listed-market visibility "
+        "and forced paper capture alone do not close the gap."
+    ),
+}
 
 ARENA_DIFFICULTIES = {
     "REGULATION": {"shrink": 1.00, "uncertainty": 1.00},
@@ -30,6 +58,50 @@ ARENA_DIFFICULTIES = {
     "META_SHIFT": {"shrink": 0.68, "uncertainty": 1.70},
     "BOSS_CHAOS": {"shrink": 0.50, "uncertainty": 2.00},
 }
+
+
+def sports_coverage_assessment(
+    sport: str,
+    market_type: str,
+    observed_markets: int,
+) -> dict[str, Any]:
+    """Classify listing visibility separately from validated prediction coverage."""
+    scope = (str(sport).lower(), str(market_type).lower())
+    observed = max(0, int(observed_markets))
+    declared_gap = DECLARED_SPORTS_COVERAGE_GAPS.get(scope)
+    if declared_gap:
+        prefix = (
+            f"{observed} real listed signal-compatible market observation(s) were "
+            "evaluated and retained in the forced paper ledger. "
+            if observed
+            else "No real listed market produced a point-in-time forecast this cycle. "
+        )
+        return {
+            "status": "TRACKING_FORCED_PAPER_COVERAGE_GAP",
+            "is_coverage_gap": True,
+            "coverage_gap_reason": declared_gap,
+            "explanation": prefix + declared_gap,
+        }
+    if observed:
+        return {
+            "status": "TRACKING_FORCED_PAPER",
+            "is_coverage_gap": False,
+            "coverage_gap_reason": None,
+            "explanation": (
+                f"{observed} real listed signal-compatible market observation(s) "
+                "were evaluated; the earliest quote is frozen in the coverage ledger."
+            ),
+        }
+    reason = (
+        "No real listed market produced a point-in-time model forecast this cycle; "
+        "Dummy recorded the coverage gap and did not fabricate a trade."
+    )
+    return {
+        "status": "NO_LISTED_SIGNAL_COMPATIBLE_MARKET",
+        "is_coverage_gap": True,
+        "coverage_gap_reason": reason,
+        "explanation": reason,
+    }
 
 
 def curriculum_stage(observations: int, event_clusters: int) -> str:
@@ -206,6 +278,17 @@ def paper_action(row: SportsObservation, genome: SportsGenome) -> dict[str, Any]
     )
     minimum_sample = 3 if row.sport in {"ufc", "f1"} else 10
     sample_ready = row.sample_size >= minimum_sample
+    blockers = []
+    if not sample_ready:
+        blockers.append("insufficient participant history")
+    if price > genome.maximum_entry_price:
+        blockers.append(
+            f"entry price {price}c exceeds {genome.maximum_entry_price}c maximum"
+        )
+    if ev < 100.0 * genome.minimum_edge:
+        blockers.append(
+            f"conservative EV {ev:.2f}c below {100.0 * genome.minimum_edge:.2f}c minimum"
+        )
     eligible = (
         sample_ready
         and price <= genome.maximum_entry_price
@@ -221,8 +304,64 @@ def paper_action(row: SportsObservation, genome: SportsGenome) -> dict[str, Any]
         "eligible": eligible,
         "sample_size": row.sample_size,
         "minimum_sample": minimum_sample,
-        "blocker": "" if sample_ready else "insufficient participant history",
+        "blocker": blockers[0] if blockers else "",
+        "blockers": blockers,
+        "forced": False,
+        "counts_toward_promotion": True,
     }
+
+
+def forced_coverage_action(
+    row: SportsObservation, genome: SportsGenome,
+) -> dict[str, Any]:
+    """Freeze a one-contract paper action even when the policy would abstain.
+
+    This lane exists to maximize diagnostic coverage. It never counts toward a
+    champion, readiness, execution, or capital decision.
+    """
+    policy = paper_action(row, genome)
+    return {
+        **policy,
+        "action": f"PAPER_FORCE_{str(policy['side']).upper()}",
+        "policy_eligible": bool(policy["eligible"]),
+        "forced": True,
+        "counts_toward_promotion": False,
+        "coverage_reason": (
+            "policy also eligible" if policy["eligible"]
+            else "; ".join(policy.get("blockers") or ["policy abstained"])
+        ),
+    }
+
+
+def paper_decision_explanation(
+    row: SportsObservation,
+    decision: dict[str, Any],
+    rationale: str,
+    *,
+    lane: str,
+) -> str:
+    forced = bool(decision.get("forced"))
+    prefix = "FORCED COVERAGE PAPER" if forced else "POLICY PAPER"
+    side = str(decision["side"]).upper()
+    scope = f"{row.sport.upper()} {row.market_type}"
+    basis = (
+        f"model YES={row.model_probability:.1%}, market YES={row.market_probability:.1%}, "
+        f"uncertainty={row.uncertainty:.1%}, sample={row.sample_size}; "
+        f"{side} entry={decision['price_cents']}c + {decision['fee_cents']}c fee, "
+        f"conservative EV={float(decision['conservative_ev_cents']):.2f}c"
+    )
+    if forced:
+        boundary = (
+            "Diagnostic one-contract simulation forced for designated-type coverage; "
+            f"normal policy status: {decision.get('coverage_reason')}. "
+            "Excluded from promotion, readiness, execution, and capital evidence."
+        )
+    else:
+        boundary = (
+            "Normal paper policy cleared every configured gate; still a simulated quote "
+            "entry and not witnessed live-fill evidence."
+        )
+    return f"{prefix} {side} on {row.ticker} [{scope}; lane={lane}]. {basis}. {rationale} {boundary}"
 
 
 def _pnl(row: SportsObservation, decision: dict[str, Any]) -> int:
@@ -523,6 +662,21 @@ CREATE TABLE IF NOT EXISTS observations(
 );
 CREATE INDEX IF NOT EXISTS sports_observation_settlement
  ON observations(result_yes,sport,market_type,event_start);
+CREATE TABLE IF NOT EXISTS paper_decisions(
+ decision_id TEXT PRIMARY KEY, observation_id TEXT NOT NULL, cycle_id TEXT NOT NULL,
+ lane TEXT NOT NULL, ticker TEXT NOT NULL, event_cluster TEXT NOT NULL,
+ sport TEXT NOT NULL, market_type TEXT NOT NULL, source TEXT NOT NULL,
+ side TEXT NOT NULL, price_cents INTEGER NOT NULL, fee_cents INTEGER NOT NULL,
+ model_probability REAL NOT NULL, calibrated_probability REAL NOT NULL,
+ market_probability REAL NOT NULL, uncertainty REAL NOT NULL,
+ conservative_ev_cents REAL NOT NULL, policy_eligible INTEGER NOT NULL,
+ forced INTEGER NOT NULL, counts_toward_promotion INTEGER NOT NULL DEFAULT 0,
+ explanation TEXT NOT NULL, observed_at TEXT NOT NULL, event_start TEXT NOT NULL,
+ status TEXT NOT NULL DEFAULT 'OPEN', result_yes INTEGER, settled_at TEXT,
+ pnl_cents INTEGER, UNIQUE(lane,ticker)
+);
+CREATE INDEX IF NOT EXISTS sports_paper_decision_settlement
+ ON paper_decisions(status,sport,market_type,event_start);
 """
 
 
@@ -606,6 +760,103 @@ class SportsEvidenceLedger:
         )
         self.connection.commit()
         return cursor.rowcount
+
+    def record_paper_decision(
+        self,
+        observation: SportsObservation,
+        decision: dict[str, Any],
+        explanation: str,
+        *,
+        lane: str,
+    ) -> bool:
+        cursor = self.connection.execute(
+            "INSERT OR IGNORE INTO paper_decisions("
+            "decision_id,observation_id,cycle_id,lane,ticker,event_cluster,sport,market_type,"
+            "source,side,price_cents,fee_cents,model_probability,calibrated_probability,"
+            "market_probability,uncertainty,conservative_ev_cents,policy_eligible,forced,"
+            "counts_toward_promotion,explanation,observed_at,event_start,status"
+            ") VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,'OPEN')",
+            (
+                "sports-paper-" + uuid.uuid4().hex[:16], observation.observation_id,
+                observation.cycle_id, lane, observation.ticker, observation.event_cluster,
+                observation.sport, observation.market_type, observation.source,
+                str(decision["side"]), int(decision["price_cents"]),
+                int(decision["fee_cents"]), observation.model_probability,
+                float(decision["calibrated_probability_yes"]),
+                observation.market_probability, observation.uncertainty,
+                float(decision["conservative_ev_cents"]),
+                int(bool(decision.get("policy_eligible", decision.get("eligible")))),
+                int(bool(decision.get("forced"))),
+                int(bool(decision.get("counts_toward_promotion"))),
+                explanation, observation.observed_at, observation.event_start,
+            ),
+        )
+        self.connection.commit()
+        return cursor.rowcount > 0
+
+    def settle_paper_decisions(
+        self, ticker: str, result_yes: bool, *, settled_at: str | None = None,
+    ) -> int:
+        rows = self.connection.execute(
+            "SELECT decision_id,side,price_cents,fee_cents FROM paper_decisions "
+            "WHERE ticker=? AND status='OPEN'",
+            (ticker,),
+        ).fetchall()
+        timestamp = settled_at or datetime.now(timezone.utc).isoformat()
+        for row in rows:
+            won = result_yes if str(row["side"]) == "yes" else not result_yes
+            price = int(row["price_cents"])
+            pnl = (100 - price if won else -price) - int(row["fee_cents"])
+            self.connection.execute(
+                "UPDATE paper_decisions SET status='SETTLED',result_yes=?,settled_at=?,"
+                "pnl_cents=? WHERE decision_id=?",
+                (int(result_yes), timestamp, pnl, str(row["decision_id"])),
+            )
+        self.connection.commit()
+        return len(rows)
+
+    def paper_decision_summary(self) -> dict[str, Any]:
+        totals = self.connection.execute(
+            "SELECT COUNT(*) decisions,"
+            "SUM(CASE WHEN status='OPEN' THEN 1 ELSE 0 END) open_decisions,"
+            "SUM(CASE WHEN status='SETTLED' THEN 1 ELSE 0 END) settled_decisions,"
+            "SUM(CASE WHEN status='SETTLED' AND pnl_cents>0 THEN 1 ELSE 0 END) wins,"
+            "COALESCE(SUM(CASE WHEN status='SETTLED' THEN pnl_cents END),0) pnl_cents "
+            "FROM paper_decisions"
+        ).fetchone()
+        lanes = [dict(row) for row in self.connection.execute(
+            "SELECT lane,sport,market_type,COUNT(*) decisions,"
+            "SUM(CASE WHEN status='OPEN' THEN 1 ELSE 0 END) open_decisions,"
+            "SUM(CASE WHEN status='SETTLED' THEN 1 ELSE 0 END) settled_decisions,"
+            "SUM(CASE WHEN status='SETTLED' AND pnl_cents>0 THEN 1 ELSE 0 END) wins,"
+            "COALESCE(SUM(CASE WHEN status='SETTLED' THEN pnl_cents END),0) pnl_cents "
+            "FROM paper_decisions GROUP BY lane,sport,market_type "
+            "ORDER BY lane,sport,market_type"
+        )]
+        settled = int(totals["settled_decisions"] or 0)
+        wins = int(totals["wins"] or 0)
+        return {
+            "decisions": int(totals["decisions"] or 0),
+            "open_decisions": int(totals["open_decisions"] or 0),
+            "settled_decisions": settled,
+            "wins": wins,
+            "win_rate": round(wins / settled, 6) if settled else None,
+            "net_pnl_cents": int(totals["pnl_cents"] or 0),
+            "lanes": lanes,
+            "forced_coverage_counts_toward_promotion": False,
+        }
+
+    def recent_paper_decisions(
+        self, *, status: str | None = None, limit: int = 100,
+    ) -> list[dict[str, Any]]:
+        query = "SELECT * FROM paper_decisions"
+        params: list[Any] = []
+        if status is not None:
+            query += " WHERE status=?"
+            params.append(status)
+        query += " ORDER BY observed_at DESC,decision_id DESC LIMIT ?"
+        params.append(max(1, int(limit)))
+        return [dict(row) for row in self.connection.execute(query, params)]
 
     def rows(self, *, earliest_per_ticker_source: bool = True) -> list[SportsObservation]:
         raw = list(self.connection.execute(

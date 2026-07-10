@@ -6,6 +6,22 @@ settlement evidence; the new challengers are explicitly excluded from the
 execution ensemble until their own league and market-type scope passes the
 forward promotion gates.
 
+Every ten-minute cycle now freezes two distinct paper lanes. `policy` records
+only predictions that clear the normal sample, price, uncertainty, and edge
+gates. `coverage_probe` forces a one-contract quote-simulated decision for
+every real listed, signal-compatible designated market so cold models, losing
+types, and abstention gates produce inspectable forward evidence. Every forced
+trade includes a plain-language explanation and is permanently excluded from
+champion selection, readiness, execution, and capital evidence. If a designated
+type has no real model-compatible listing, the report records an explicit gap;
+Dummy never fabricates a sports market or synthetic trade.
+
+Coverage status is deliberately stricter than listing visibility. NFL winner
+remains an explicit coverage gap while its visible contracts continue through
+the forced paper lane; it does not become covered merely because listings were
+observed. The gap closes only after scope-specific forward settlements and
+calibration support a later, reviewed change.
+
 ## Contract coverage
 
 | Sport | Winner | Total | Specialized markets |
@@ -77,6 +93,9 @@ powershell -ExecutionPolicy Bypass -File scripts/install_sports_simulation_task.
 Evidence is stored at `runtime/autonomy/sports_simulation.db`. Models and
 research champions stay under `runtime/autonomy/`. Timestamped reports and the
 atomic latest report are under `artifacts/dummy/sports_simulation/`.
+The operator dashboard at `http://127.0.0.1:8787/` shows sports scheduler
+health, designated-type coverage, active papers, separate lane P&L, settlement
+progress, explanations, and paper-only Start/Stop controls.
 
 ## Authority boundary
 

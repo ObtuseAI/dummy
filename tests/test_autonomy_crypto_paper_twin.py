@@ -6,6 +6,8 @@ from datetime import datetime, timedelta, timezone
 
 from autonomy.crypto_paper_twin import (
     COHORTS,
+    CRYPTO_COVERAGE_LANE,
+    CRYPTO_COVERAGE_VERSION,
     HOURLY_CALIBRATED_STRATEGY,
     CryptoPaperTwin,
     PaperTwinLedger,
@@ -17,6 +19,7 @@ from autonomy.crypto_paper_twin import (
     cohort_for_ticker,
     compounding_proposal,
     fit_hourly_calibration_profile,
+    forced_crypto_coverage_decision,
     market_listing_duration_hours,
     maker_fill_witness,
     price_target_metadata,
@@ -205,6 +208,26 @@ def test_parallel_paper_cycle_records_explanations_and_never_has_authority(tmp_p
         assert report["authority"]["execution_authority"] is False
         assert report["authority"]["capital_authority"] is False
         assert report["evidence_quarantine"]["counts_toward_canary"] is False
+        forced = report["forced_crypto_coverage"]
+        assert forced["designated_scopes"] == 12
+        assert forced["scopes_observed_this_cycle"] == 12
+        assert forced["coverage_gap_count"] == 0
+        assert forced["targets_observed_this_cycle"] == 12
+        assert forced["forced_trades_recorded_this_cycle"] == 12
+        assert forced["summary"]["open_decisions"] == 12
+        assert forced["counts_toward_promotion"] is False
+        assert forced["counts_toward_readiness"] is False
+        assert all(row["counts_toward_promotion"] is False for row in forced["matrix"])
+        assert twin.ledger.connection.execute(
+            "SELECT COUNT(*) FROM crypto_coverage_trades "
+            "WHERE counts_toward_promotion!=0 OR counts_toward_readiness!=0 "
+            "OR broker_contacted!=0"
+        ).fetchone()[0] == 0
+        assert twin.ledger.connection.execute(
+            "SELECT COUNT(*) FROM trades WHERE strategy=?",
+            (CRYPTO_COVERAGE_LANE,),
+        ).fetchone()[0] == 0
+        assert CRYPTO_COVERAGE_LANE not in report["timeframe_comparison"]
         assert report["hourly_calibration"]["profile"]["model_share"] == 0.0
         assert report["hourly_calibration"]["profile"]["status"] == (
             "COLLECTING_FORWARD_EVIDENCE"
@@ -259,9 +282,12 @@ def test_same_lane_never_pyramids_same_asset_expiry(tmp_path):
     try:
         first = twin.run_cycle()
         first_count = first["trades_opened"]
+        first_forced = first["forced_crypto_trades_recorded"]
         second = twin.run_cycle()
         assert first_count > 0
+        assert first_forced == 12
         assert second["trades_opened"] == 0
+        assert second["forced_crypto_trades_recorded"] == 0
         assert second["observations_written"] == 57
         assert second["hourly_calibration_forecasts_recorded"] == 0
     finally:
@@ -314,6 +340,8 @@ def test_settlement_uses_simulated_taker_quote_and_keeps_paper_quarantined(tmp_p
     try:
         report = second.run_cycle()
         assert report["settlements_recorded"] > 0
+        assert report["forced_crypto_settlements_recorded"] == 12
+        assert report["forced_crypto_coverage"]["summary"]["settled_decisions"] == 12
         assert report["hourly_calibration_settlements_recorded"] == 3
         assert report["hourly_calibration"]["forward_ledger"][
             "settled_event_clusters"
@@ -529,6 +557,37 @@ def test_target_candidate_can_choose_no_and_invalid_strikes_fail_closed():
     assert invalid["reason"] == "missing_valid_floor_strike"
 
 
+def test_forced_crypto_coverage_chooses_a_side_but_never_promotes():
+    market = _market("BTC", "15m")
+    forecast = Forecast(
+        market_ticker=market.ticker,
+        probability_yes=0.52,
+        uncertainty=0.20,
+        sources_used={"fixture": 1.0},
+        market_implied_yes=0.50,
+        edge_yes=0.02,
+        rationale="fixture",
+    )
+    candidate = _candidate(
+        market, forecast, None, strategy="exploratory", timeframe="15m",
+        genome=ResearchGenome(0.75, 8, 0.25, 75),
+    )
+    candidate["eligible"] = False
+    candidate["reason"] = "conservative EV below normal gate"
+    candidate["event_cluster"] = "coverage-cluster"
+
+    forced = forced_crypto_coverage_decision(candidate, "BTC")
+
+    assert forced["coverage_version"] == CRYPTO_COVERAGE_VERSION
+    assert forced["lane"] == CRYPTO_COVERAGE_LANE
+    assert forced["side"] in {"yes", "no"}
+    assert forced["normal_policy_eligible"] is False
+    assert forced["counts_toward_promotion"] is False
+    assert forced["counts_toward_readiness"] is False
+    assert "FORCED PAPER" in forced["explanation"]
+    assert "excluded from model promotion" in forced["explanation"]
+
+
 def _hourly_target_ladder(asset: str) -> list[MarketView]:
     base = _market(asset, "1h")
     series = {"BTC": "KXBTCD", "ETH": "KXETHD", "SOL": "KXSOLD"}[asset]
@@ -614,6 +673,14 @@ def test_cycle_audits_and_selects_full_hourly_target_ladder_for_all_crypto(tmp_p
             "BTC", "ETH", "SOL",
         }
         assert report["price_target_selection"]["raw_win_rate_is_not_the_objective"] is True
+        forced_hourly = [
+            row for row in report["forced_crypto_coverage"]["matrix"]
+            if row["timeframe"] == "1h"
+        ]
+        assert sum(row["targets_observed_this_cycle"] for row in forced_hourly) == 9
+        assert twin.ledger.connection.execute(
+            "SELECT COUNT(*) FROM crypto_coverage_trades WHERE timeframe='1h'"
+        ).fetchone()[0] == 9
         duplicate_positions = twin.ledger.connection.execute(
             "SELECT strategy,asset,event_cluster,COUNT(*) FROM trades "
             "WHERE vertical='CRYPTO' AND timeframe='1h' "
@@ -828,6 +895,12 @@ def test_scheduler_summary_preserves_dashboard_contract_without_heavy_sections(t
         "price_target_selection": {
             "rejection_regret": {"counts": {"candidate_forecasts": 7}}
         },
+        "forced_crypto_coverage": {
+            "designated_scopes": 12,
+            "scopes_observed_this_cycle": 10,
+            "coverage_gap_count": 2,
+            "summary": {"open_decisions": 11},
+        },
         "authority": {
             "broker_contacted": False,
             "execution_authority": False,
@@ -845,6 +918,7 @@ def test_scheduler_summary_preserves_dashboard_contract_without_heavy_sections(t
     assert summary["lanes"] == report["lanes"]
     assert summary["cohorts"] == report["cohorts"]
     assert summary["target_candidate_counts"] == {"candidate_forecasts": 7}
+    assert summary["forced_crypto_coverage"]["summary"]["open_decisions"] == 11
     assert "phase_3_execution" not in summary
     assert "recent_explanations" not in summary
     assert len(json.dumps(summary)) < 100_000
