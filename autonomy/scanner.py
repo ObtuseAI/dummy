@@ -59,9 +59,8 @@ WATCHLIST_SERIES: list[str] = [
     # Daily high temperature (Open-Meteo ensemble coverage)
     "KXHIGHNY", "KXHIGHCHI", "KXHIGHMIA", "KXHIGHAUS", "KXHIGHDEN",
     "KXHIGHPHIL", "KXHIGHLAX", "KXHIGHTSEA",
-    # Exact crypto universe: BTC/ETH/SOL at native 15m, hourly, and compatible
-    # daily terminal-price series. Weekly cohorts abstain until a directly
-    # model-compatible terminal-price series exists.
+    # Exact crypto universe: BTC/ETH/SOL at native 15m plus mixed-cadence
+    # direct-price series. Event duration separates hourly/daily/weekly rows.
     "KXBTC15M", "KXETH15M", "KXSOL15M",
     "KXBTCD", "KXBTC", "KXETHD", "KXETH", "KXSOLD", "KXSOLE",
     "BTCD", "BTC", "ETHD", "ETH",
@@ -84,7 +83,7 @@ def default_fetch_series_markets(series_ticker: str) -> dict[str, Any]:
 
     response = httpx.get(
         f"{_public_base()}/markets",
-        params={"series_ticker": series_ticker, "status": "open", "limit": 200},
+        params={"series_ticker": series_ticker, "status": "open", "limit": 1000},
         timeout=20,
     )
     response.raise_for_status()

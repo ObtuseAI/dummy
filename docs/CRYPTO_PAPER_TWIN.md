@@ -27,11 +27,16 @@ The allowlist is intentionally closed:
 | Vertical | Horizon | Assets | Compatible series |
 |---|---|---|---|
 | Crypto | 15m | BTC, ETH, SOL | `KXBTC15M`, `KXETH15M`, `KXSOL15M` |
-| Crypto | 1h | BTC, ETH, SOL | `KXBTCD`/`KXBTC`, `KXETHD`/`KXETH`, `KXSOLD`/`KXSOLE` |
-| Crypto | 1d | BTC, ETH, SOL | `BTCD`/`BTC`, `ETHD`/`ETH`; SOL abstains until a compatible listing exists |
-| Crypto | 1w | BTC, ETH, SOL | No compatible terminal-price series currently; all three abstain |
+| Crypto | 1h | BTC, ETH, SOL | Mixed-cadence `KXBTCD`/`KXBTC`, `KXETHD`/`KXETH`, `KXSOLD`/`KXSOLE` events with listing duration at most 6 hours |
+| Crypto | 1d | BTC, ETH, SOL | The same mixed-cadence series with listing duration over 6 and under 120 hours; legacy `BTCD`/`BTC` and `ETHD`/`ETH` aliases remain accepted |
+| Crypto | 1w | BTC, ETH, SOL | The same mixed-cadence series with listing duration of at least 120 hours |
 | Commodities | 1d | WTI, natural gas, gold | `KXWTI`, `KXNATGASD`, `KXGOLDD` |
 | Commodities | 1w | WTI, natural gas, gold | `KXWTIW`, `KXNATGASW`, `KXGOLDW` |
+
+Kalshi can publish hourly and weekly events inside the same crypto series. Dummy
+therefore routes each market from its own `open_time` to `close_time` duration,
+not from the series-level frequency label. Missing or invalid listing timestamps
+fail closed instead of being guessed into a horizon.
 
 Series availability is evaluated from the public API every cycle. Other crypto
 assets and horizons are outside policy even if the exchange lists them.

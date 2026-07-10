@@ -11,8 +11,10 @@ from autonomy.crypto_paper_twin import (
     ResearchGenome,
     TrustSnapshot,
     bucket_start,
+    cohort_for_market,
     cohort_for_ticker,
     compounding_proposal,
+    market_listing_duration_hours,
     maker_fill_witness,
     timeframe_state,
 )
@@ -28,11 +30,24 @@ def _market(asset: str, timeframe: str = "1h") -> MarketView:
     if timeframe == "15m":
         ticker = f"KX{asset}15M-26JUL100730-00"
         close_time = NOW + timedelta(minutes=15)
+        open_time = NOW
         strike_type = "greater_or_equal"
     else:
         series = {"BTC": "KXBTCD", "ETH": "KXETHD", "SOL": "KXSOLD"}[asset]
-        ticker = f"{series}-26JUL1008-T{strike:g}"
-        close_time = NOW + timedelta(minutes=30)
+        if timeframe == "1h":
+            ticker = f"{series}-26JUL1008-T{strike:g}"
+            close_time = NOW + timedelta(minutes=30)
+            open_time = close_time - timedelta(hours=1)
+        elif timeframe == "1d":
+            ticker = f"{series}-26JUL1117-T{strike:g}"
+            close_time = NOW + timedelta(days=1)
+            open_time = close_time - timedelta(hours=24)
+        elif timeframe == "1w":
+            ticker = f"{series}-26JUL1717-T{strike:g}"
+            close_time = NOW + timedelta(days=5)
+            open_time = close_time - timedelta(days=7)
+        else:
+            raise ValueError(timeframe)
         strike_type = "greater"
     return MarketView(
         ticker=ticker,
@@ -46,7 +61,12 @@ def _market(asset: str, timeframe: str = "1h") -> MarketView:
         no_ask=60,
         volume=10_000,
         liquidity=1_000,
-        raw={"strike_type": strike_type, "floor_strike": strike, "cap_strike": None},
+        raw={
+            "strike_type": strike_type,
+            "floor_strike": strike,
+            "cap_strike": None,
+            "open_time": open_time.isoformat(),
+        },
     )
 
 
@@ -122,7 +142,7 @@ class FakeScanner:
     def scan(self):
         crypto = [
             _market(asset, timeframe)
-            for timeframe in ("15m", "1h")
+            for timeframe in ("15m", "1h", "1d", "1w")
             for asset in ("BTC", "ETH", "SOL")
         ]
         commodities = [
@@ -198,11 +218,11 @@ def test_parallel_paper_cycle_records_explanations_and_never_has_authority(tmp_p
         assert {asset for _timeframe, asset, _ticker in routed} == {"BTC", "ETH", "SOL"}
         assert all("15M-" in ticker for timeframe, _asset, ticker in routed if timeframe == "15m")
         assert all("15M-" not in ticker for timeframe, _asset, ticker in routed if timeframe == "1h")
-        unavailable = twin.ledger.connection.execute(
+        weekly_routed = twin.ledger.connection.execute(
             "SELECT COUNT(*) FROM observations WHERE vertical='CRYPTO' "
-            "AND timeframe='1w' AND ticker IS NULL AND action='ABSTAIN'"
+            "AND timeframe='1w' AND ticker IS NOT NULL"
         ).fetchone()[0]
-        assert unavailable == 9
+        assert weekly_routed == 9
         commodity_observations = twin.ledger.connection.execute(
             "SELECT COUNT(*) FROM observations WHERE vertical='COMMODITIES' "
             "AND timeframe IN ('1d','1w') AND ticker IS NOT NULL"
@@ -262,7 +282,7 @@ def test_settlement_uses_simulated_taker_quote_and_keeps_paper_quarantined(tmp_p
         first.close()
     results = {
         _market(asset, timeframe).ticker: {"result": "yes"}
-        for timeframe in ("15m", "1h")
+        for timeframe in ("15m", "1h", "1d", "1w")
         for asset in ("BTC", "ETH", "SOL")
     }
     results.update({
@@ -399,9 +419,38 @@ def test_exact_crypto_and_commodity_horizon_allowlist():
     }
     assert cohort_for_ticker("KXDOGE15M-26JUL100430-30") is None
     assert cohort_for_ticker("KXBTCMAXW-26JUL10-T80000") is None
+    assert cohort_for_ticker("KXBTCD-26JUL1017-T63999.99") is None
     assert cohort_for_ticker("KXWTIW-26JUL1014-T75.99").asset == "WTI"
+    assert cohort_for_market(_market("BTC", "1h")).timeframe == "1h"
+    assert cohort_for_market(_market("BTC", "1d")).timeframe == "1d"
+    assert cohort_for_market(_market("BTC", "1w")).timeframe == "1w"
     monday = datetime(2026, 7, 6, tzinfo=timezone.utc)
     assert bucket_start(NOW, "1w") == monday.isoformat()
+
+
+def test_kalshi_weekly_btc_listing_is_routed_from_event_duration():
+    market = MarketView(
+        ticker="KXBTCD-26JUL1017-T63999.99",
+        title="Bitcoin price on Jul 10, 2026?",
+        vertical=Vertical.CRYPTO,
+        status="active",
+        close_time="2026-07-10T21:00:00+00:00",
+        yes_bid=55,
+        yes_ask=57,
+        no_bid=43,
+        no_ask=45,
+        volume=3_250_909,
+        liquidity=1_000,
+        raw={
+            "open_time": "2026-07-03T20:00:00Z",
+            "strike_type": "greater",
+            "floor_strike": 63_999.99,
+            "cap_strike": None,
+        },
+    )
+
+    assert market_listing_duration_hours(market) == 169.0
+    assert cohort_for_market(market).timeframe == "1w"
 
 
 def test_compounding_and_canary_outputs_never_grant_live_authority():

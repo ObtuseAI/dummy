@@ -75,17 +75,19 @@ COHORTS = (
     MarketCohort(Vertical.CRYPTO, "BTC", "1h", ("KXBTCD", "KXBTC")),
     MarketCohort(Vertical.CRYPTO, "ETH", "1h", ("KXETHD", "KXETH")),
     MarketCohort(Vertical.CRYPTO, "SOL", "1h", ("KXSOLD", "KXSOLE")),
-    # Direct terminal-price daily series. They are retained in the requested
-    # universe even when the exchange currently lists no open event.
-    MarketCohort(Vertical.CRYPTO, "BTC", "1d", ("BTCD", "BTC")),
-    MarketCohort(Vertical.CRYPTO, "ETH", "1d", ("ETHD", "ETH")),
-    MarketCohort(Vertical.CRYPTO, "SOL", "1d", ()),
-    # No directly model-compatible weekly terminal-price series is currently
-    # listed for BTC/ETH/SOL. Max-price and head-to-head contracts are excluded
-    # rather than mispriced with a terminal-price model.
-    MarketCohort(Vertical.CRYPTO, "BTC", "1w", ()),
-    MarketCohort(Vertical.CRYPTO, "ETH", "1w", ()),
-    MarketCohort(Vertical.CRYPTO, "SOL", "1w", ()),
+    # The same direct-price series carries mixed event cadences. Route each
+    # event from its actual open_time-to-close_time duration, not the series-
+    # level frequency label. Legacy daily aliases remain accepted when listed.
+    MarketCohort(
+        Vertical.CRYPTO, "BTC", "1d", ("KXBTCD", "KXBTC", "BTCD", "BTC"),
+    ),
+    MarketCohort(
+        Vertical.CRYPTO, "ETH", "1d", ("KXETHD", "KXETH", "ETHD", "ETH"),
+    ),
+    MarketCohort(Vertical.CRYPTO, "SOL", "1d", ("KXSOLD", "KXSOLE")),
+    MarketCohort(Vertical.CRYPTO, "BTC", "1w", ("KXBTCD", "KXBTC")),
+    MarketCohort(Vertical.CRYPTO, "ETH", "1w", ("KXETHD", "KXETH")),
+    MarketCohort(Vertical.CRYPTO, "SOL", "1w", ("KXSOLD", "KXSOLE")),
     MarketCohort(Vertical.COMMODITIES, "WTI", "1d", ("KXWTI",)),
     MarketCohort(Vertical.COMMODITIES, "NATGAS", "1d", ("KXNATGASD",)),
     MarketCohort(Vertical.COMMODITIES, "GOLD", "1d", ("KXGOLDD",)),
@@ -233,12 +235,42 @@ def _vertical_name(value: Vertical | str) -> str:
     return value.value if isinstance(value, Vertical) else str(value)
 
 
-def cohort_for_ticker(ticker: str) -> MarketCohort | None:
+def _cohorts_for_ticker(ticker: str) -> list[MarketCohort]:
     upper = ticker.upper()
-    for cohort in COHORTS:
-        if any(upper.startswith(f"{series.upper()}-") for series in cohort.series):
-            return cohort
-    return None
+    return [
+        cohort for cohort in COHORTS
+        if any(upper.startswith(f"{series.upper()}-") for series in cohort.series)
+    ]
+
+
+def cohort_for_ticker(ticker: str) -> MarketCohort | None:
+    """Return a cohort only when the ticker's series maps unambiguously."""
+    matches = _cohorts_for_ticker(ticker)
+    return matches[0] if len(matches) == 1 else None
+
+
+def market_listing_duration_hours(market: MarketView) -> float | None:
+    try:
+        opened = _utc(market.raw.get("open_time"))
+        closed = _utc(market.close_time)
+    except (TypeError, ValueError):
+        return None
+    duration = (closed - opened).total_seconds() / 3600.0
+    return duration if duration > 0 else None
+
+
+def cohort_for_market(market: MarketView) -> MarketCohort | None:
+    matches = _cohorts_for_ticker(market.ticker)
+    if len(matches) <= 1:
+        return matches[0] if matches else None
+    duration = market_listing_duration_hours(market)
+    if duration is None:
+        return None
+    timeframe = "1h" if duration <= 6.0 else "1d" if duration < 120.0 else "1w"
+    return next(
+        (cohort for cohort in matches if cohort.timeframe == timeframe),
+        None,
+    )
 
 
 def bucket_start(now: datetime, timeframe: str) -> str:
@@ -1308,7 +1340,7 @@ class CryptoPaperTwin:
     ) -> list[MarketView]:
         candidates: list[tuple[datetime, MarketView]] = []
         for market in markets:
-            cohort = cohort_for_ticker(market.ticker)
+            cohort = cohort_for_market(market)
             if cohort is None:
                 continue
             if (
@@ -1391,7 +1423,7 @@ class CryptoPaperTwin:
             active_genome = ResearchGenome.from_mapping(epoch.get("genome")) or proposed
             eligible_markets = [
                 market for market in markets
-                if cohort_for_ticker(market.ticker) is not None
+                if cohort_for_market(market) is not None
                 and None not in (market.yes_bid, market.yes_ask, market.no_bid, market.no_ask)
             ]
             forecasts, source_features = self._base_forecasts(eligible_markets, states)
@@ -1441,6 +1473,10 @@ class CryptoPaperTwin:
                             if best_candidate.get("eligible") else "ABSTAIN"
                         )
                         market = best_candidate.get("market")
+                        listing_duration_hours = (
+                            market_listing_duration_hours(market)
+                            if isinstance(market, MarketView) else None
+                        )
                         observation_id = self.ledger.record_observation({
                             "cycle_id": cycle_id,
                             "epoch_id": epoch.get("epoch_id") if strategy == "recursive" else None,
@@ -1463,6 +1499,7 @@ class CryptoPaperTwin:
                                     else "terminal_price"
                                 ),
                                 "listed_series": list(cohort.series),
+                                "listing_duration_hours": listing_duration_hours,
                                 "paper_only": True,
                             },
                             "created_at": now.isoformat(),
@@ -1497,6 +1534,7 @@ class CryptoPaperTwin:
                             ),
                             "technical": technical.features if technical is not None else None,
                             "source_features": source_features.get(market.ticker, {}),
+                            "listing_duration_hours": listing_duration_hours,
                             "queue_snapshot_error": queue_error,
                             "spot_state": {
                                 key: states.get(asset, {}).get(key)
