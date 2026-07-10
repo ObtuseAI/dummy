@@ -1,10 +1,23 @@
 # Dummy
 
-Autonomous, recursively improving prediction-market research and shadow-
-execution engine for Kalshi. It collects point-in-time public evidence,
-calibrates competing forecasters, simulates and stress-tests challengers, and
-records every decision in an auditable ledger. Live execution remains
-fail-closed, evidence-gated, and subject to explicit operator authorization.
+Private, evidence-gated prediction-market intelligence for crypto and sports.
+Dummy collects point-in-time public evidence, calibrates competing forecasts,
+simulates and stress-tests challengers, explains every paper decision, and
+records the full lifecycle in an auditable ledger.
+
+- **Crypto arsenal:** BTC, ETH, and SOL across native 15-minute, hourly, daily,
+  and weekly horizons, combining realized and implied volatility, market
+  regime, momentum, technical, volume, order-book, and cross-venue evidence.
+- **Sports arsenal:** MLB winners, totals, and YRFI/NRFI; UFC winners, round
+  totals, and distance; NBA, NCAAB, NFL, NCAAF, and NHL winners and totals;
+  plus Formula One race-winner modeling.
+- **Training arsenal:** point-in-time replay, Monte Carlo simulation,
+  adversarial arenas, event-purged walk-forward validation, calibration and
+  risk analytics, deterministic replay buffers, and bounded recursive
+  challenger evolution.
+
+Live execution remains fail-closed, evidence-gated, and subject to explicit
+operator authorization.
 
 ## The loop
 
@@ -18,28 +31,6 @@ opinions by earned trust, ranks opportunities by capital velocity
 (edge per √hour-to-settlement), sizes with quarter-Kelly under a stage
 ladder, places maker-first LIMIT orders in the active book (shadow by
 default), reconciles settlements, and grades every source against reality.
-
-## Signal sources (all fail-closed)
-
-| Source | Edge basis |
-|---|---|
-| `weather_openmeteo` | Multi-model NWP ensemble (GFS/ECMWF/ICON) vs temperature strikes, bias/sigma calibrated per city from historical-forecast-vs-ERA5 backfill |
-| `crypto_spot_vol` | Driftless lognormal from realized vol (Coinbase candles) vs BTC/ETH/SOL direction and strike contracts |
-| `crypto_ewma_t` | Challenger model: EWMA volatility + fat-tail mixture — runs beside the champion; the contested record selects |
-| `crypto_empirical_regime` | Quarantined horizon-matched historical simulation with momentum, RSI, MACD, volatility regime, volume, microprice/order-book, and cross-venue indicator telemetry |
-| `crypto_technical_composite` | Quarantined bounded technical forecast: momentum/RSI/MACD/volume/book/microprice shift capped at 0.45 horizon sigma, with missing-data uncertainty |
-| `crypto_dvol_implied` | Quarantined Deribit implied-volatility distribution challenger |
-| `sports_elo` | Per-league Elo from ESPN results, pitcher-aware for MLB (probable starters' ERA shifts effective rating) |
-| `sportsbook_consensus` | De-vigged book moneyline (both sides) + steam: open→current line movement in probability space |
-| `mlb_*` sports challengers | Coherent MLB winner/run-total/YRFI-NRFI distribution using team form, starter ERA, venue, weather, and first-inning tendencies |
-| `*_game_total` sports challengers | League-isolated NFL/NCAAF/NHL/NBA/NCAAB score distributions for winners and totals |
-| `ufc_*` sports challengers | Fighter and weight-class Elo plus survival-linked winner, round-total, and distance probabilities |
-| `f1_race_winner` | Multi-competitor Formula One field ratings and recent finishing form, normalized across the race field |
-| `cross_venue` | Polymarket public CLOB midpoint, spread, and top depth for an exactly matched outcome token; Gamma price is fail-closed fallback |
-| `commodities_spot_vol` | WTI/gold/natgas spot + realized vol vs price thresholds |
-| `market_debias` | The exchange's own measured miscalibration: empirical price→outcome curve from thousands of graded settlements |
-| `market_prior` | The book's mid as a Bayesian anchor, weight decaying with thinness |
-| `llm_debate` | Five-model panel (distinct providers) with a revision round, adjudicating only top-K edge markets, fed live tape features |
 
 ## Recursive improvement
 
