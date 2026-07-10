@@ -31,6 +31,10 @@ default), reconciles settlements, and grades every source against reality.
 | `crypto_dvol_implied` | Quarantined Deribit implied-volatility distribution challenger |
 | `sports_elo` | Per-league Elo from ESPN results, pitcher-aware for MLB (probable starters' ERA shifts effective rating) |
 | `sportsbook_consensus` | De-vigged book moneyline (both sides) + steam: open→current line movement in probability space |
+| `mlb_*` sports challengers | Coherent MLB winner/run-total/YRFI-NRFI distribution using team form, starter ERA, venue, weather, and first-inning tendencies |
+| `*_game_total` sports challengers | League-isolated NFL/NCAAF/NHL/NBA/NCAAB score distributions for winners and totals |
+| `ufc_*` sports challengers | Fighter and weight-class Elo plus survival-linked winner, round-total, and distance probabilities |
+| `f1_race_winner` | Multi-competitor Formula One field ratings and recent finishing form, normalized across the race field |
 | `cross_venue` | Polymarket public CLOB midpoint, spread, and top depth for an exactly matched outcome token; Gamma price is fail-closed fallback |
 | `commodities_spot_vol` | WTI/gold/natgas spot + realized vol vs price thresholds |
 | `market_debias` | The exchange's own measured miscalibration: empirical price→outcome curve from thousands of graded settlements |
@@ -71,6 +75,13 @@ default), reconciles settlements, and grades every source against reality.
   explain every decision, simulate one-contract top-ask entries, and diagnose
   maker execution from public prints. It runs beside shadow and authorized live
   sessions but has no credentials, broker, readiness, execution, or capital authority.
+- **Multi-sport game engine**: MLB, NFL, NCAAF, NHL, NBA, NCAAB, UFC, and F1
+  challengers feed a deterministic replay buffer and Monte Carlo curriculum.
+  League-isolated genomes progress through Rookie/Veteran/Elite/Boss tiers,
+  face fog-of-war/meta-shift/boss-chaos arenas, and unlock mutation skills only
+  after settled event-cluster evidence. Deep analytics include Brier, log loss,
+  ECE/MCE, AUC, sharpness, Sortino, drawdown, and paired-cluster confidence.
+  Research champions cannot rewrite code, alter production weights, or trade.
 - **Reflexion**: losing decisions distilled into structured lessons via the
   model router.
 

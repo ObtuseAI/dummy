@@ -21,8 +21,10 @@ LEAGUE_PARAMS: dict[str, tuple[float, float]] = {
     "nba": (20.0, 100.0),
     "wnba": (20.0, 90.0),
     "nfl": (20.0, 55.0),
+    "ncaaf": (22.0, 65.0),
     "mlb": (6.0, 24.0),
     "nhl": (8.0, 50.0),
+    "ncaamb": (20.0, 90.0),
 }
 
 

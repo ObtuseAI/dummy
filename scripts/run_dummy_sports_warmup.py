@@ -17,7 +17,7 @@ ROOT = Path(__file__).resolve().parent.parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from autonomy.signals.sports_elo import SportsEloSignal
+from autonomy.signals.sports_elo import SportsEloSignal  # noqa: E402
 
 
 def _date_ranges(days_back: int, chunk: int = 10) -> list[str]:
@@ -34,7 +34,10 @@ def _date_ranges(days_back: int, chunk: int = 10) -> list[str]:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--league", required=True, choices=("nba", "wnba", "nfl", "mlb", "nhl"))
+    parser.add_argument(
+        "--league", required=True,
+        choices=("nba", "wnba", "nfl", "ncaaf", "mlb", "nhl", "ncaamb"),
+    )
     parser.add_argument("--days-back", type=int, default=120)
     args = parser.parse_args()
 

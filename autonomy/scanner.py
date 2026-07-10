@@ -27,6 +27,7 @@ _VERTICAL_PREFIXES: list[tuple[str, Vertical]] = [
     ("KXMLB", Vertical.SPORTS),
     ("KXNHL", Vertical.SPORTS),
     ("KXUFC", Vertical.SPORTS),
+    ("KXF1", Vertical.SPORTS),
     ("KXWTA", Vertical.SPORTS),
     ("KXATP", Vertical.SPORTS),
     ("KXMVESPORTS", Vertical.SPORTS),
@@ -64,8 +65,14 @@ WATCHLIST_SERIES: list[str] = [
     "KXBTC15M", "KXETH15M", "KXSOL15M",
     "KXBTCD", "KXBTC", "KXETHD", "KXETH", "KXSOLD", "KXSOLE",
     "BTCD", "BTC", "ETHD", "ETH",
-    # Single-game sports moneylines (ESPN + Elo coverage)
-    "KXMLBGAME", "KXNBAGAME", "KXNFLGAME", "KXNHLGAME", "KXWNBAGAME",
+    # Sports intelligence: active moneylines plus settlement-trained MLB runs
+    # and UFC fight-duration challengers. All external reads are public GETs.
+    "KXMLBGAME", "KXNBAGAME", "KXNFLGAME", "KXNCAAFGAME", "KXNHLGAME",
+    "KXNCAAMBGAME", "KXWNBAGAME",
+    "KXMLBTOTAL", "KXMLBRFI",
+    "KXNBATOTAL", "KXNFLTOTAL", "KXNCAAFTOTAL", "KXNHLTOTAL", "KXNCAAMBTOTAL",
+    "KXUFCFIGHT", "KXUFCROUNDS", "KXUFCDISTANCE",
+    "KXF1RACE",
     # Daily/weekly commodity price thresholds (Yahoo proxy + realized vol).
     "KXWTI", "KXNATGASD", "KXGOLDD",
     "KXWTIW", "KXNATGASW", "KXGOLDW",
