@@ -4,6 +4,14 @@ The evolution lab is Dummy's autonomous, quarantined scientific loop. It
 improves research candidates every hour without granting the loop permission
 to change production code, forecast weights, risk caps, orders, or capital.
 
+It also retains a small quality-diversity archive of out-of-sample research
+genomes. Candidates are preselected only from settled training data, measured
+on a purged future fold, and retained one-per-niche across model anchoring,
+risk posture, edge selectivity, and activity. Archive elites seed only the
+next bounded research population. Adaptive mutation pressure changes only
+after new settled evidence, and each candidate records parent lineage plus its
+evidence fingerprint. None of these mechanisms selects production policy.
+
 ## Recursive loop
 
 1. Fingerprint immutable point-in-time decisions and settlements.

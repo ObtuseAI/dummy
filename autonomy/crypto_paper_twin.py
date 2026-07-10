@@ -5,7 +5,8 @@ credentials, imports a broker adapter, or writes the production autonomy
 ledger. Crypto is restricted to BTC/ETH/SOL at native 15-minute, hourly,
 daily, and weekly horizons. Commodities use equivalent daily and weekly WTI,
 natural-gas, and gold cohorts. Every cohort runs an incumbent lane and a frozen
-recursive-challenger lane, records a plain-language explanation, books one
+recursive-challenger lane, explicitly ranks every compatible nearest-expiry
+price target, records a plain-language explanation, books one
 quote-executable *simulated* taker contract per asset/expiry, and tracks a
 separate conservative maker-fill diagnostic from public prints.
 
@@ -55,9 +56,17 @@ TIMEFRAMES = {
     "1d": 24 * 60 * 60,
     "1w": 7 * 24 * 60 * 60,
 }
-STRATEGIES = ("incumbent", "recursive", "exploratory")
+BASE_STRATEGIES = ("incumbent", "recursive", "exploratory")
+HOURLY_CALIBRATED_STRATEGY = "hourly_calibrated"
+STRATEGIES = (*BASE_STRATEGIES, HOURLY_CALIBRATED_STRATEGY)
 ASSETS = ("BTC", "ETH", "SOL")
 COMMODITY_ASSETS = ("WTI", "NATGAS", "GOLD")
+HOURLY_CALIBRATION_VERSION = "hourly-market-anchor-v1"
+HOURLY_CALIBRATION_MIN_SETTLED = 20
+HOURLY_CALIBRATION_MIN_CLUSTERS = 10
+HOURLY_CALIBRATION_MIN_TRAIN = 10
+HOURLY_CALIBRATION_MIN_FORWARD = 10
+TARGET_CANDIDATE_VERSION = "earliest-target-candidate-v1"
 
 
 @dataclass(frozen=True)
@@ -66,6 +75,26 @@ class MarketCohort:
     asset: str
     timeframe: str
     series: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class HourlyCalibrationProfile:
+    version: str
+    status: str
+    model_share: float
+    fitted_model_share: float
+    uncertainty_floor: float
+    settled_forecasts: int
+    event_clusters: int
+    walk_forward_forecasts: int
+    walk_forward_clusters: int
+    walk_forward_brier_advantage: float | None
+    walk_forward_advantage_ci95: dict[str, Any] | None
+    fitted_through: str | None
+    evidence_source: str = "earliest_forward_hourly_calibration_forecasts"
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
 
 
 COHORTS = (
@@ -110,6 +139,7 @@ PAPER_RESEARCH_MIN_EV_CENTS = 3.0
 CONFIDENCE_HAIRCUT_SIGMAS = 0.5
 MAKER_TTL_SECONDS = 60
 MAX_QUEUE_AHEAD = 50.0
+TARGET_LADDER_AUDIT_LIMIT = 12
 DEFAULT_GENOME = ResearchGenome(0.75, 8, 0.25, 75)
 
 
@@ -210,6 +240,63 @@ CREATE TABLE IF NOT EXISTS trades(
 );
 CREATE INDEX IF NOT EXISTS trade_status ON trades(status,close_time);
 CREATE INDEX IF NOT EXISTS maker_status ON trades(maker_status,maker_expires_at);
+CREATE TABLE IF NOT EXISTS hourly_calibration_forecasts(
+    forecast_id TEXT PRIMARY KEY,
+    cycle_id TEXT NOT NULL,
+    asset TEXT NOT NULL,
+    event_cluster TEXT NOT NULL,
+    ticker TEXT NOT NULL,
+    observed_at TEXT NOT NULL,
+    close_time TEXT NOT NULL,
+    raw_probability REAL NOT NULL,
+    market_probability REAL NOT NULL,
+    calibrated_probability REAL NOT NULL,
+    uncertainty REAL NOT NULL,
+    model_share REAL NOT NULL,
+    calibration_version TEXT NOT NULL,
+    profile_json TEXT NOT NULL,
+    result_yes INTEGER,
+    settled_at TEXT,
+    brier REAL,
+    market_brier REAL,
+    UNIQUE(asset,event_cluster,calibration_version),
+    FOREIGN KEY(cycle_id) REFERENCES cycles(cycle_id)
+);
+CREATE INDEX IF NOT EXISTS hourly_calibration_unsettled
+ON hourly_calibration_forecasts(result_yes,ticker);
+CREATE TABLE IF NOT EXISTS target_candidate_forecasts(
+    candidate_id TEXT PRIMARY KEY,
+    cycle_id TEXT NOT NULL,
+    candidate_version TEXT NOT NULL,
+    strategy TEXT NOT NULL,
+    vertical TEXT NOT NULL,
+    timeframe TEXT NOT NULL,
+    asset TEXT NOT NULL,
+    event_cluster TEXT NOT NULL,
+    ticker TEXT NOT NULL,
+    observed_at TEXT NOT NULL,
+    close_time TEXT NOT NULL,
+    target_json TEXT NOT NULL,
+    side TEXT NOT NULL,
+    rank_selected INTEGER NOT NULL,
+    eligible INTEGER NOT NULL,
+    reason TEXT NOT NULL,
+    probability_yes REAL NOT NULL,
+    market_probability REAL NOT NULL,
+    uncertainty REAL NOT NULL,
+    conservative_ev_cents REAL NOT NULL,
+    entry_price_cents INTEGER NOT NULL,
+    fee_cents INTEGER NOT NULL,
+    result_yes INTEGER,
+    settled_at TEXT,
+    counterfactual_quote_pnl_cents INTEGER,
+    brier REAL,
+    market_brier REAL,
+    UNIQUE(candidate_version,strategy,vertical,timeframe,asset,event_cluster,ticker),
+    FOREIGN KEY(cycle_id) REFERENCES cycles(cycle_id)
+);
+CREATE INDEX IF NOT EXISTS target_candidate_unsettled
+ON target_candidate_forecasts(result_yes,close_time,ticker);
 """
 
 
@@ -273,6 +360,12 @@ def cohort_for_market(market: MarketView) -> MarketCohort | None:
     )
 
 
+def strategies_for(vertical: Vertical, timeframe: str) -> tuple[str, ...]:
+    if vertical is Vertical.CRYPTO and timeframe == "1h":
+        return STRATEGIES
+    return BASE_STRATEGIES
+
+
 def bucket_start(now: datetime, timeframe: str) -> str:
     if timeframe == "1w":
         day = now.astimezone(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
@@ -286,6 +379,253 @@ def event_cluster(vertical: Vertical, timeframe: str, asset: str, close_time: st
     return (
         f"PAPER:{vertical.value}:{timeframe}:{asset}:{_utc(close_time).isoformat()}"
     )
+
+
+def hourly_calibration_event_cluster(close_time: str) -> str:
+    """Cluster correlated BTC/ETH/SOL forecasts by their shared hourly expiry."""
+    return f"PAPER:CRYPTO:1h:{_utc(close_time).isoformat()}"
+
+
+def _positive_finite(value: Any) -> float | None:
+    try:
+        parsed = float(value)
+    except (TypeError, ValueError):
+        return None
+    return parsed if math.isfinite(parsed) and parsed > 0 else None
+
+
+def price_target_metadata(market: MarketView, timeframe: str) -> dict[str, Any]:
+    """Normalize a listed price target without guessing missing strike data."""
+    strike_type = str(market.raw.get("strike_type") or "").strip().lower()
+    floor = _positive_finite(market.raw.get("floor_strike"))
+    cap = _positive_finite(market.raw.get("cap_strike"))
+    if timeframe == "15m":
+        valid = strike_type in {"greater", "greater_or_equal"} and floor is not None
+        return {
+            "contract_family": "15m_direction",
+            "target_type": "opening_reference_direction",
+            "strike_type": strike_type or None,
+            "floor": floor,
+            "cap": None,
+            "label": (
+                f"settle at/above opening reference {floor:g}"
+                if valid else "invalid or missing opening reference"
+            ),
+            "valid": valid,
+            "invalid_reason": None if valid else "missing_valid_15m_opening_reference",
+        }
+    if strike_type in {"greater", "greater_or_equal"}:
+        valid = floor is not None
+        target_type = "above"
+        label = f"settle at/above {floor:g}" if valid else "invalid above target"
+        invalid_reason = None if valid else "missing_valid_floor_strike"
+    elif strike_type == "less":
+        valid = cap is not None
+        target_type = "below"
+        label = f"settle below {cap:g}" if valid else "invalid below target"
+        invalid_reason = None if valid else "missing_valid_cap_strike"
+    elif strike_type == "between":
+        valid = floor is not None and cap is not None and floor < cap
+        target_type = "bucket"
+        label = (
+            f"settle between {floor:g} and {cap:g}"
+            if valid else "invalid bounded target"
+        )
+        invalid_reason = None if valid else "missing_or_invalid_bucket_bounds"
+    else:
+        valid = False
+        target_type = "unknown"
+        label = "unsupported target type"
+        invalid_reason = "unsupported_strike_type"
+    return {
+        "contract_family": "terminal_price",
+        "target_type": target_type,
+        "strike_type": strike_type or None,
+        "floor": floor,
+        "cap": cap,
+        "label": label,
+        "valid": valid,
+        "invalid_reason": invalid_reason,
+    }
+
+
+def _target_rank_ev(candidate: dict[str, Any], strategy: str) -> float:
+    value = (
+        candidate.get("calibration_rank_ev_cents")
+        if strategy == HOURLY_CALIBRATED_STRATEGY
+        else (candidate.get("best") or {}).get("ev_cents")
+    )
+    try:
+        parsed = float(value)
+    except (TypeError, ValueError):
+        return -1e12
+    return parsed if math.isfinite(parsed) else -1e12
+
+
+def price_target_inventory(
+    markets: Sequence[MarketView], timeframe: str,
+) -> dict[str, Any]:
+    """Describe every listed nearest-expiry target, including thin books."""
+    target_type_counts: dict[str, int] = {}
+    invalid_reason_counts: dict[str, int] = {}
+    boundaries: list[float] = []
+    valid = 0
+    complete_quotes = 0
+    for market in markets:
+        target = price_target_metadata(market, timeframe)
+        target_type = str(target.get("target_type") or "unknown")
+        target_type_counts[target_type] = target_type_counts.get(target_type, 0) + 1
+        if bool(target.get("valid")):
+            valid += 1
+        elif target.get("invalid_reason"):
+            reason = str(target["invalid_reason"])
+            invalid_reason_counts[reason] = invalid_reason_counts.get(reason, 0) + 1
+        boundaries.extend(
+            float(value) for value in (target.get("floor"), target.get("cap"))
+            if value is not None
+        )
+        complete_quotes += int(
+            None not in (market.yes_bid, market.yes_ask, market.no_bid, market.no_ask)
+        )
+    return {
+        "all_listed_targets_scanned": True,
+        "listed_targets_seen": len(markets),
+        "listed_valid_targets": valid,
+        "listed_complete_two_sided_quotes": complete_quotes,
+        "listed_target_type_counts": target_type_counts,
+        "listed_invalid_reason_counts": invalid_reason_counts,
+        "listed_boundary_range": {
+            "minimum": min(boundaries) if boundaries else None,
+            "maximum": max(boundaries) if boundaries else None,
+        },
+    }
+
+
+def target_candidate_blockers(reason: str, *, eligible: bool) -> tuple[str, ...]:
+    """Canonical multi-label blockers for settled counterfactual diagnostics."""
+    if eligible:
+        return ("lower_ranked_eligible",)
+    text = str(reason or "").lower()
+    blockers: list[str] = []
+    mappings = (
+        ("uncertainty", "uncertainty_gate"),
+        ("model edge", "edge_gate"),
+        ("entry ", "entry_price_gate"),
+        ("conservative ev", "conservative_ev_gate"),
+        ("calibration status", "calibration_activation_gate"),
+        ("missing_market_probability", "missing_market_probability"),
+        ("missing_executable_side_quote", "missing_executable_quote"),
+        ("missing_valid", "invalid_target"),
+        ("unsupported_strike_type", "invalid_target"),
+    )
+    for needle, blocker in mappings:
+        if needle in text and blocker not in blockers:
+            blockers.append(blocker)
+    return tuple(blockers or ("other_policy_gate",))
+
+
+def select_price_target(
+    candidates: Sequence[dict[str, Any]], strategy: str,
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    """Select one target while retaining a bounded audit of the full ladder.
+
+    An eligible target always outranks an ineligible target. This prevents a
+    spectacular-looking but policy-blocked strike from forcing an abstention
+    when a lower-EV strike actually clears every safety gate.
+    """
+    if not candidates:
+        raise ValueError("target selection requires at least one candidate")
+
+    def ranking_key(row: dict[str, Any]) -> tuple[Any, ...]:
+        market = row.get("market")
+        target = row.get("target") or {}
+        uncertainty = float(row.get("uncertainty") or 1.0)
+        volume = int(market.volume) if isinstance(market, MarketView) else 0
+        liquidity = int(market.liquidity) if isinstance(market, MarketView) else 0
+        ticker = market.ticker if isinstance(market, MarketView) else ""
+        return (
+            0 if bool(row.get("eligible")) else 1,
+            0 if bool(target.get("valid")) else 1,
+            -_target_rank_ev(row, strategy),
+            uncertainty,
+            -volume,
+            -liquidity,
+            ticker,
+        )
+
+    ranked = sorted(candidates, key=ranking_key)
+    selected = ranked[0]
+    target_type_counts: dict[str, int] = {}
+    boundaries: list[float] = []
+    compact: list[dict[str, Any]] = []
+    for rank, row in enumerate(ranked, start=1):
+        market = row.get("market")
+        target = row.get("target") or {}
+        target_type = str(target.get("target_type") or "unknown")
+        target_type_counts[target_type] = target_type_counts.get(target_type, 0) + 1
+        boundaries.extend(
+            float(value) for value in (target.get("floor"), target.get("cap"))
+            if value is not None
+        )
+        if rank > TARGET_LADDER_AUDIT_LIMIT:
+            continue
+        best = row.get("best") or {}
+        compact.append({
+            "rank": rank,
+            "selected": row is selected,
+            "ticker": market.ticker if isinstance(market, MarketView) else None,
+            "target": target,
+            "side": best.get("side"),
+            "entry_price_cents": best.get("price_cents"),
+            "model_probability_yes": (
+                round(float(row["probability_yes"]), 10)
+                if row.get("probability_yes") is not None else None
+            ),
+            "market_probability_yes": (
+                round(float(row["market_probability"]), 10)
+                if row.get("market_probability") is not None else None
+            ),
+            "uncertainty": (
+                round(float(row["uncertainty"]), 10)
+                if row.get("uncertainty") is not None else None
+            ),
+            "conservative_ev_cents": (
+                round(float(best["ev_cents"]), 6)
+                if best.get("ev_cents") is not None else None
+            ),
+            "ranking_ev_cents": round(_target_rank_ev(row, strategy), 6),
+            "eligible": bool(row.get("eligible")),
+            "reason": row.get("reason"),
+            "volume": market.volume if isinstance(market, MarketView) else None,
+            "liquidity": market.liquidity if isinstance(market, MarketView) else None,
+        })
+    selected_market = selected.get("market")
+    summary = {
+        "selection_version": "nearest-expiry-target-ladder-v1",
+        "selection_objective": (
+            "highest fee-and-uncertainty-adjusted conservative EV among policy-eligible "
+            "targets; diagnostic rank when none are eligible"
+        ),
+        "targets_evaluated": len(ranked),
+        "valid_targets": sum(bool((row.get("target") or {}).get("valid")) for row in ranked),
+        "eligible_targets": sum(bool(row.get("eligible")) for row in ranked),
+        "target_type_counts": target_type_counts,
+        "boundary_range": {
+            "minimum": min(boundaries) if boundaries else None,
+            "maximum": max(boundaries) if boundaries else None,
+        },
+        "selected_ticker": (
+            selected_market.ticker if isinstance(selected_market, MarketView) else None
+        ),
+        "selected_target": selected.get("target"),
+        "ranked_candidates": compact,
+        "ranked_candidates_persisted": len(compact),
+        "ranked_candidates_truncated": max(0, len(ranked) - len(compact)),
+        "one_position_per_asset_expiry": True,
+        "optimizes_raw_win_rate": False,
+    }
+    selected["target_ladder"] = summary
+    return selected, summary
 
 
 class TrustSnapshot:
@@ -331,6 +671,7 @@ class PaperTwinLedger:
         self.connection.executescript(_SCHEMA)
         self._ensure_vertical_columns()
         self._quarantine_legacy_15m_ladders()
+        self._normalize_hourly_calibration_clusters()
         self.connection.commit()
 
     def _ensure_vertical_columns(self) -> None:
@@ -353,6 +694,20 @@ class PaperTwinLedger:
             "UPDATE trades SET timeframe='legacy_15m_hourly' "
             "WHERE timeframe='15m' AND ticker NOT LIKE 'KX%15M-%'"
         )
+
+    def _normalize_hourly_calibration_clusters(self) -> None:
+        rows = self.connection.execute(
+            "SELECT forecast_id,close_time FROM hourly_calibration_forecasts"
+        ).fetchall()
+        for row in rows:
+            try:
+                cluster = hourly_calibration_event_cluster(str(row["close_time"]))
+            except (TypeError, ValueError):
+                continue
+            self.connection.execute(
+                "UPDATE hourly_calibration_forecasts SET event_cluster=? WHERE forecast_id=?",
+                (cluster, str(row["forecast_id"])),
+            )
 
     def legacy_quarantine_summary(self) -> dict[str, int]:
         observations = self.connection.execute(
@@ -548,6 +903,262 @@ class PaperTwinLedger:
         self.connection.commit()
         return updated
 
+    def record_hourly_calibration_forecast(self, row: dict[str, Any]) -> bool:
+        """Freeze the earliest clean hourly forecast for one asset/expiry.
+
+        These rows are scored whether or not the calibrated lane places a paper
+        trade.  The uniqueness constraint prevents later, easier snapshots from
+        rewriting the probability that was actually knowable first.
+        """
+        cursor = self.connection.execute(
+            "INSERT OR IGNORE INTO hourly_calibration_forecasts("
+            "forecast_id,cycle_id,asset,event_cluster,ticker,observed_at,close_time,"
+            "raw_probability,market_probability,calibrated_probability,uncertainty,"
+            "model_share,calibration_version,profile_json)"
+            " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            (
+                row["forecast_id"], row["cycle_id"], row["asset"],
+                row["event_cluster"], row["ticker"], row["observed_at"],
+                row["close_time"], row["raw_probability"],
+                row["market_probability"], row["calibrated_probability"],
+                row["uncertainty"], row["model_share"],
+                row["calibration_version"], _json(row["profile"]),
+            ),
+        )
+        self.connection.commit()
+        return bool(cursor.rowcount)
+
+    def unsettled_hourly_calibration_tickers(self) -> list[str]:
+        return [
+            str(row[0]) for row in self.connection.execute(
+                "SELECT DISTINCT ticker FROM hourly_calibration_forecasts "
+                "WHERE result_yes IS NULL ORDER BY ticker"
+            )
+        ]
+
+    def settle_hourly_calibration_ticker(
+        self, ticker: str, result_yes: bool, settled_at: datetime,
+    ) -> int:
+        rows = self.connection.execute(
+            "SELECT forecast_id,calibrated_probability,market_probability "
+            "FROM hourly_calibration_forecasts WHERE ticker=? AND result_yes IS NULL",
+            (ticker,),
+        ).fetchall()
+        outcome = 1.0 if result_yes else 0.0
+        for row in rows:
+            brier = (float(row["calibrated_probability"]) - outcome) ** 2
+            market_brier = (float(row["market_probability"]) - outcome) ** 2
+            self.connection.execute(
+                "UPDATE hourly_calibration_forecasts SET result_yes=?,settled_at=?,"
+                "brier=?,market_brier=? WHERE forecast_id=?",
+                (
+                    int(result_yes), settled_at.isoformat(), round(brier, 10),
+                    round(market_brier, 10), str(row["forecast_id"]),
+                ),
+            )
+        self.connection.commit()
+        return len(rows)
+
+    def hourly_calibration_rows(self, *, settled_only: bool = True) -> list[dict[str, Any]]:
+        query = "SELECT * FROM hourly_calibration_forecasts"
+        if settled_only:
+            query += " WHERE result_yes IS NOT NULL"
+        query += " ORDER BY observed_at,forecast_id"
+        return [dict(row) for row in self.connection.execute(query)]
+
+    def hourly_calibration_counts(self) -> dict[str, int]:
+        row = self.connection.execute(
+            "SELECT COUNT(*),SUM(CASE WHEN result_yes IS NOT NULL THEN 1 ELSE 0 END),"
+            "COUNT(DISTINCT CASE WHEN result_yes IS NOT NULL THEN event_cluster END) "
+            "FROM hourly_calibration_forecasts"
+        ).fetchone()
+        return {
+            "forecasts": int(row[0] or 0),
+            "settled_forecasts": int(row[1] or 0),
+            "settled_event_clusters": int(row[2] or 0),
+        }
+
+    def record_target_candidate_forecasts(
+        self, rows: Sequence[dict[str, Any]],
+    ) -> int:
+        """Freeze the earliest scored snapshot for every listed target candidate."""
+        inserted = 0
+        for row in rows:
+            cursor = self.connection.execute(
+                "INSERT OR IGNORE INTO target_candidate_forecasts("
+                "candidate_id,cycle_id,candidate_version,strategy,vertical,timeframe,asset,"
+                "event_cluster,ticker,observed_at,close_time,target_json,side,rank_selected,"
+                "eligible,reason,probability_yes,market_probability,uncertainty,"
+                "conservative_ev_cents,entry_price_cents,fee_cents)"
+                " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                (
+                    row["candidate_id"], row["cycle_id"], TARGET_CANDIDATE_VERSION,
+                    row["strategy"], _vertical_name(row["vertical"]), row["timeframe"],
+                    row["asset"], row["event_cluster"], row["ticker"],
+                    row["observed_at"], row["close_time"], _json(row["target"]),
+                    row["side"], int(bool(row["rank_selected"])),
+                    int(bool(row["eligible"])), str(row["reason"]),
+                    row["probability_yes"], row["market_probability"],
+                    row["uncertainty"], row["conservative_ev_cents"],
+                    row["entry_price_cents"], row["fee_cents"],
+                ),
+            )
+            inserted += int(bool(cursor.rowcount))
+        self.connection.commit()
+        return inserted
+
+    def unsettled_target_candidate_tickers(self, now: datetime) -> list[str]:
+        return [
+            str(row[0]) for row in self.connection.execute(
+                "SELECT DISTINCT ticker FROM target_candidate_forecasts "
+                "WHERE result_yes IS NULL AND close_time<=? ORDER BY ticker",
+                (now.isoformat(),),
+            )
+        ]
+
+    def settle_target_candidate_ticker(
+        self, ticker: str, result_yes: bool, settled_at: datetime,
+    ) -> int:
+        rows = self.connection.execute(
+            "SELECT candidate_id,side,entry_price_cents,fee_cents,probability_yes,"
+            "market_probability FROM target_candidate_forecasts "
+            "WHERE ticker=? AND result_yes IS NULL",
+            (ticker,),
+        ).fetchall()
+        outcome = 1.0 if result_yes else 0.0
+        for row in rows:
+            won = (str(row["side"]) == "yes" and result_yes) or (
+                str(row["side"]) == "no" and not result_yes
+            )
+            price = int(row["entry_price_cents"])
+            pnl = (100 - price if won else -price) - int(row["fee_cents"])
+            brier = (float(row["probability_yes"]) - outcome) ** 2
+            market_brier = (float(row["market_probability"]) - outcome) ** 2
+            self.connection.execute(
+                "UPDATE target_candidate_forecasts SET result_yes=?,settled_at=?,"
+                "counterfactual_quote_pnl_cents=?,brier=?,market_brier=? "
+                "WHERE candidate_id=?",
+                (
+                    int(result_yes), settled_at.isoformat(), pnl, round(brier, 10),
+                    round(market_brier, 10), str(row["candidate_id"]),
+                ),
+            )
+        self.connection.commit()
+        return len(rows)
+
+    def target_candidate_counts(self) -> dict[str, int]:
+        row = self.connection.execute(
+            "SELECT COUNT(*),SUM(CASE WHEN result_yes IS NOT NULL THEN 1 ELSE 0 END),"
+            "COUNT(DISTINCT CASE WHEN result_yes IS NOT NULL THEN event_cluster END),"
+            "SUM(CASE WHEN rank_selected=1 THEN 1 ELSE 0 END),"
+            "SUM(CASE WHEN eligible=1 THEN 1 ELSE 0 END) "
+            "FROM target_candidate_forecasts"
+        ).fetchone()
+        return {
+            "forecasts": int(row[0] or 0),
+            "settled_forecasts": int(row[1] or 0),
+            "settled_event_clusters": int(row[2] or 0),
+            "rank_selected_forecasts": int(row[3] or 0),
+            "eligible_forecasts": int(row[4] or 0),
+        }
+
+    def target_candidate_regret_summary(self) -> dict[str, Any]:
+        rows = self.connection.execute(
+            "SELECT * FROM target_candidate_forecasts WHERE result_yes IS NOT NULL "
+            "ORDER BY observed_at,candidate_id"
+        ).fetchall()
+        blocker_groups: dict[str, dict[str, Any]] = {}
+        target_groups: dict[str, dict[str, Any]] = {}
+
+        def add(group: dict[str, Any], row: sqlite3.Row) -> None:
+            group.setdefault("forecasts", 0)
+            group.setdefault("clusters", set())
+            group.setdefault("wins", 0)
+            group.setdefault("pnl", [])
+            group.setdefault("brier_advantage", [])
+            group["forecasts"] += 1
+            group["clusters"].add(str(row["event_cluster"]))
+            result_yes = bool(row["result_yes"])
+            won = (str(row["side"]) == "yes" and result_yes) or (
+                str(row["side"]) == "no" and not result_yes
+            )
+            group["wins"] += int(won)
+            group["pnl"].append(float(row["counterfactual_quote_pnl_cents"] or 0))
+            group["brier_advantage"].append(
+                float(row["market_brier"] or 0) - float(row["brier"] or 0)
+            )
+
+        for row in rows:
+            try:
+                target = json.loads(str(row["target_json"]))
+            except (TypeError, ValueError, json.JSONDecodeError):
+                target = {}
+            target_type = str(target.get("target_type") or "unknown")
+            target_key = (
+                f"{row['vertical']}:{row['asset']}:{row['timeframe']}:"
+                f"{row['strategy']}:{target_type}"
+            )
+            add(target_groups.setdefault(target_key, {}), row)
+            # A rank-selected target is still a rejected candidate when it
+            # failed policy and the lane abstained. Excluding it would hide
+            # the most important gate counterfactual from regret analysis.
+            if not bool(row["rank_selected"]) or not bool(row["eligible"]):
+                for blocker in target_candidate_blockers(
+                    str(row["reason"]), eligible=bool(row["eligible"]),
+                ):
+                    blocker_key = (
+                        f"{row['vertical']}:{row['asset']}:{row['timeframe']}:"
+                        f"{row['strategy']}:{blocker}"
+                    )
+                    add(blocker_groups.setdefault(blocker_key, {}), row)
+
+        def finish(groups: dict[str, dict[str, Any]]) -> list[dict[str, Any]]:
+            output: list[dict[str, Any]] = []
+            for key, group in groups.items():
+                count = int(group["forecasts"])
+                pnl = list(group["pnl"])
+                advantages = list(group["brier_advantage"])
+                output.append({
+                    "group": key,
+                    "settled_forecasts": count,
+                    "event_clusters": len(group["clusters"]),
+                    "counterfactual_wins": int(group["wins"]),
+                    "counterfactual_win_rate": round(group["wins"] / count, 6),
+                    "counterfactual_quote_pnl_cents": round(sum(pnl), 4),
+                    "mean_brier_advantage_vs_market": (
+                        round(statistics.fmean(advantages), 8) if advantages else None
+                    ),
+                })
+            return sorted(
+                output,
+                key=lambda item: (-int(item["settled_forecasts"]), str(item["group"])),
+            )
+
+        counts = self.target_candidate_counts()
+        return {
+            "version": TARGET_CANDIDATE_VERSION,
+            "counts": counts,
+            "blocker_diagnostics": finish(blocker_groups),
+            "target_type_diagnostics": finish(target_groups),
+            "automatic_gate_tuning": False,
+            "selection_use": "diagnostic_until_walk_forward_cluster_evidence",
+            "counterfactual_is_fill_evidence": False,
+            "counterfactual_basis": "earliest_live_top_ask_quote_one_contract_after_fee",
+            "correlation_warning": "adjacent targets share event clusters and are not independent",
+            "execution_authority": False,
+            "capital_authority": False,
+        }
+
+    def selected_hourly_bootstrap_rows(self) -> list[dict[str, Any]]:
+        """Legacy selected-trade evidence; diagnostic only, never activation data."""
+        return [
+            dict(row) for row in self.connection.execute(
+                "SELECT * FROM trades WHERE vertical='CRYPTO' AND timeframe='1h' "
+                "AND strategy='exploratory' AND status='SETTLED' "
+                "ORDER BY created_at,trade_id"
+            )
+        ]
+
     def pending_maker_orders(self, now: datetime) -> list[dict[str, Any]]:
         return [
             dict(row) for row in self.connection.execute(
@@ -571,6 +1182,95 @@ class PaperTwinLedger:
                 (max(1, int(limit)),),
             )
         ]
+
+    def cycle_target_selections(self, cycle_id: str) -> list[dict[str, Any]]:
+        selections: list[dict[str, Any]] = []
+        rows = self.connection.execute(
+            "SELECT strategy,timeframe,asset,action,ticker,diagnostics_json "
+            "FROM observations WHERE cycle_id=? AND vertical='CRYPTO' "
+            "ORDER BY timeframe,asset,strategy",
+            (cycle_id,),
+        )
+        for row in rows:
+            try:
+                diagnostics = json.loads(str(row["diagnostics_json"]))
+            except (TypeError, ValueError, json.JSONDecodeError):
+                continue
+            ladder = diagnostics.get("price_target_selection")
+            if not isinstance(ladder, dict):
+                continue
+            selections.append({
+                "strategy": str(row["strategy"]),
+                "timeframe": str(row["timeframe"]),
+                "asset": str(row["asset"]),
+                "action": str(row["action"]),
+                "ticker": row["ticker"],
+                **ladder,
+            })
+        return selections
+
+    def settled_target_performance(self) -> dict[str, dict[str, Any]]:
+        """Descriptive target evidence only; never an automatic selection weight."""
+        groups: dict[str, dict[str, Any]] = {}
+        rows = self.connection.execute(
+            "SELECT asset,timeframe,strategy,side,result_yes,taker_pnl_cents,brier,market_brier,"
+            "market_snapshot_json FROM trades WHERE vertical='CRYPTO' AND status='SETTLED'"
+        )
+        for row in rows:
+            try:
+                snapshot = json.loads(str(row["market_snapshot_json"]))
+                raw = snapshot.get("raw") or {}
+            except (TypeError, ValueError, json.JSONDecodeError):
+                raw = {}
+            strike_type = str(raw.get("strike_type") or "unknown").lower()
+            if str(row["timeframe"]) == "15m":
+                target_type = "opening_reference_direction"
+            else:
+                target_type = {
+                    "greater": "above",
+                    "greater_or_equal": "above",
+                    "less": "below",
+                    "between": "bucket",
+                }.get(strike_type, "unknown")
+            key = f"{row['asset']}:{row['timeframe']}:{row['strategy']}:{target_type}"
+            group = groups.setdefault(key, {
+                "settled_trades": 0,
+                "wins": 0,
+                "pnl": [],
+                "brier": [],
+                "market_brier": [],
+            })
+            group["settled_trades"] += 1
+            result_yes = bool(row["result_yes"])
+            won = (str(row["side"]) == "yes" and result_yes) or (
+                str(row["side"]) == "no" and not result_yes
+            )
+            group["wins"] += int(won)
+            if row["taker_pnl_cents"] is not None:
+                group["pnl"].append(float(row["taker_pnl_cents"]))
+            if row["brier"] is not None:
+                group["brier"].append(float(row["brier"]))
+            if row["market_brier"] is not None:
+                group["market_brier"].append(float(row["market_brier"]))
+        summaries: dict[str, dict[str, Any]] = {}
+        for key, group in sorted(groups.items()):
+            count = int(group["settled_trades"])
+            wins = int(group["wins"])
+            pnl = group["pnl"]
+            brier = group["brier"]
+            market_brier = group["market_brier"]
+            summaries[key] = {
+                "settled_trades": count,
+                "wins": wins,
+                "win_rate": round(wins / count, 6) if count else None,
+                "net_pnl_cents": round(sum(pnl), 4),
+                "mean_brier": round(statistics.fmean(brier), 8) if brier else None,
+                "market_mean_brier": (
+                    round(statistics.fmean(market_brier), 8) if market_brier else None
+                ),
+                "selection_use": "diagnostic_only_until_independent_forward_evidence",
+            }
+        return summaries
 
     def lane_summary(
         self,
@@ -947,9 +1647,27 @@ def _candidate(
     strategy: str,
     timeframe: str,
     genome: ResearchGenome,
+    hourly_calibration: HourlyCalibrationProfile | None = None,
 ) -> dict[str, Any]:
+    target = price_target_metadata(market, timeframe)
+    if market.vertical is Vertical.CRYPTO and not bool(target["valid"]):
+        return {
+            "eligible": False,
+            "reason": str(target["invalid_reason"]),
+            "market": market,
+            "target": target,
+            "strategy": strategy,
+            "timeframe": timeframe,
+        }
     if forecast.market_implied_yes is None:
-        return {"eligible": False, "reason": "missing_market_probability", "market": market}
+        return {
+            "eligible": False,
+            "reason": "missing_market_probability",
+            "market": market,
+            "target": target,
+            "strategy": strategy,
+            "timeframe": timeframe,
+        }
     market_probability = float(forecast.market_implied_yes)
     if strategy == "incumbent":
         probability = float(forecast.probability_yes)
@@ -980,6 +1698,37 @@ def _candidate(
         max_price = 90
         min_ev = 0.0
         blend = {"incumbent": 0.70, "timeframe_technical": 0.30}
+    elif strategy == HOURLY_CALIBRATED_STRATEGY:
+        technical_probability = (
+            float(technical.probability_yes) if technical is not None
+            else float(forecast.probability_yes)
+        )
+        raw_probability = min(0.995, max(
+            0.005,
+            0.70 * float(forecast.probability_yes) + 0.30 * technical_probability,
+        ))
+        profile = hourly_calibration or fit_hourly_calibration_profile([])
+        probability = min(0.995, max(
+            0.005,
+            market_probability + profile.model_share * (
+                raw_probability - market_probability
+            ),
+        ))
+        technical_uncertainty = float(technical.uncertainty) if technical is not None else 0.35
+        disagreement = abs(float(forecast.probability_yes) - technical_probability)
+        uncertainty = min(0.50, max(
+            profile.uncertainty_floor,
+            math.sqrt((0.7 * forecast.uncertainty) ** 2 + (0.3 * technical_uncertainty) ** 2),
+            disagreement,
+        ))
+        edge_threshold = 3
+        max_uncertainty = 0.35
+        max_price = INCUMBENT_MAX_ENTRY_CENTS
+        min_ev = PAPER_RESEARCH_MIN_EV_CENTS
+        blend = {
+            "market_anchor": round(1.0 - profile.model_share, 8),
+            "hourly_raw_model": profile.model_share,
+        }
     else:
         technical_probability = (
             float(technical.probability_yes) if technical is not None
@@ -1000,6 +1749,9 @@ def _candidate(
         max_price = min(INCUMBENT_MAX_ENTRY_CENTS, genome.max_entry_price_cents)
         min_ev = PAPER_RESEARCH_MIN_EV_CENTS
         blend = {"incumbent": 0.80, "timeframe_technical": 0.20}
+        raw_probability = raw
+    if strategy != HOURLY_CALIBRATED_STRATEGY:
+        raw_probability = probability
     raw_edge = abs(probability - market_probability) * 100.0
     options: list[dict[str, Any]] = []
     for side, win_probability, ask in (
@@ -1021,7 +1773,14 @@ def _candidate(
             "ev_cents": ev,
         })
     if not options:
-        return {"eligible": False, "reason": "missing_two_sided_quote", "market": market}
+        return {
+            "eligible": False,
+            "reason": "missing_executable_side_quote",
+            "market": market,
+            "target": target,
+            "strategy": strategy,
+            "timeframe": timeframe,
+        }
     best = max(options, key=lambda row: float(row["ev_cents"]))
     blockers: list[str] = []
     if uncertainty > max_uncertainty:
@@ -1032,19 +1791,46 @@ def _candidate(
         blockers.append(f"entry {best['price_cents']}c>{max_price}c")
     if float(best["ev_cents"]) < min_ev:
         blockers.append(f"conservative EV {best['ev_cents']:.2f}c<{min_ev:.2f}c")
+    if (
+        strategy == HOURLY_CALIBRATED_STRATEGY
+        and (hourly_calibration is None or hourly_calibration.status != "ACTIVE_FORWARD_CALIBRATION")
+    ):
+        status = (
+            hourly_calibration.status if hourly_calibration is not None
+            else "MISSING_CALIBRATION_PROFILE"
+        )
+        blockers.append(f"hourly calibration status {status}")
+    ranking_options: list[float] = []
+    if strategy == HOURLY_CALIBRATED_STRATEGY:
+        for side, win_probability, ask in (
+            ("yes", raw_probability, market.yes_ask),
+            ("no", 1.0 - raw_probability, market.no_ask),
+        ):
+            if ask is None:
+                continue
+            del side
+            price = int(ask)
+            fee = kalshi_taker_fee_cents(price, 1, market.ticker)
+            conservative = max(0.005, win_probability - CONFIDENCE_HAIRCUT_SIGMAS * uncertainty)
+            ranking_options.append(conservative * 100.0 - price - fee)
     return {
         "eligible": not blockers,
         "reason": "eligible" if not blockers else "; ".join(blockers),
         "market": market,
+        "target": target,
         "forecast": forecast,
         "technical": technical,
         "strategy": strategy,
         "timeframe": timeframe,
         "probability_yes": probability,
+        "raw_probability_yes": raw_probability,
         "market_probability": market_probability,
         "uncertainty": uncertainty,
         "raw_edge_cents": raw_edge,
         "best": best,
+        "calibration_rank_ev_cents": (
+            max(ranking_options) if ranking_options else float(best["ev_cents"])
+        ),
         "policy": {
             "min_ev_cents": min_ev,
             "max_uncertainty": max_uncertainty,
@@ -1053,6 +1839,12 @@ def _candidate(
             "technical_blend": blend,
             "genome": asdict(genome) if strategy == "recursive" else None,
             "exploratory_paper_only": strategy == "exploratory",
+            "hourly_calibrated_paper_only": strategy == HOURLY_CALIBRATED_STRATEGY,
+            "hourly_calibration": (
+                hourly_calibration.to_dict()
+                if strategy == HOURLY_CALIBRATED_STRATEGY and hourly_calibration is not None
+                else None
+            ),
         },
     }
 
@@ -1065,8 +1857,14 @@ def decision_explanation(candidate: dict[str, Any], asset: str) -> str:
         f"{vertical} {asset} {candidate.get('timeframe')} {candidate.get('strategy')}"
     )
     if candidate.get("best") is None:
+        ladder = candidate.get("target_ladder") or {}
+        inventory_text = (
+            f" Reviewed {int(ladder.get('listed_targets_seen') or 0)} listed target(s); "
+            f"{int(ladder.get('targets_evaluated') or 0)} had a complete scoring path."
+        )
         return (
-            f"{prefix} ABSTAIN. {candidate.get('reason', 'no candidate')}. "
+            f"{prefix} ABSTAIN. {candidate.get('reason', 'no candidate')}."
+            f"{inventory_text} "
             "No paper order and no broker contact."
         )
     best = candidate["best"]
@@ -1076,8 +1874,17 @@ def decision_explanation(candidate: dict[str, Any], asset: str) -> str:
         f" timeframe model={technical.probability_yes:.1%}"
         if technical is not None else " timeframe model unavailable"
     )
+    target = candidate.get("target") or {}
+    ladder = candidate.get("target_ladder") or {}
+    target_text = str(target.get("label") or "unclassified target")
+    ladder_text = (
+        f" Selected from {int(ladder.get('targets_evaluated') or 0)} listed "
+        f"nearest-expiry target(s), {int(ladder.get('eligible_targets') or 0)} eligible,"
+        " using fee- and uncertainty-adjusted conservative EV;"
+    )
     return (
-        f"{prefix} {action} on {ticker}. Model YES={candidate['probability_yes']:.1%}, "
+        f"{prefix} {action} on {ticker} ({target_text}).{ladder_text} "
+        f"Model YES={candidate['probability_yes']:.1%}, "
         f"market={candidate['market_probability']:.1%}, uncertainty={candidate['uncertainty']:.1%}, "
         f"absolute edge={candidate['raw_edge_cents']:.2f}c;{technical_text}. "
         f"Best side={best['side'].upper()} at the live top ask {best['price_cents']}c, "
@@ -1099,6 +1906,165 @@ def _percentile(values: Sequence[float], fraction: float) -> float | None:
         return ordered[lower]
     weight = index - lower
     return ordered[lower] * (1.0 - weight) + ordered[upper] * weight
+
+
+def _fit_hourly_model_share(rows: Sequence[dict[str, Any]]) -> float:
+    """Least-squares incremental model weight over the market, bounded safely."""
+    numerator = 0.0
+    denominator = 0.0
+    for row in rows:
+        raw = float(row["raw_probability"])
+        market = float(row["market_probability"])
+        outcome = float(row["result_yes"])
+        residual = raw - market
+        numerator += residual * (outcome - market)
+        denominator += residual * residual
+    if denominator <= 1e-12:
+        return 0.0
+    # Even a successful challenger must retain at least a 50% market anchor.
+    return min(0.50, max(0.0, numerator / denominator))
+
+
+def _cluster_bootstrap_mean_ci95(
+    values: dict[str, list[float]], *, seed: int = 20260710,
+) -> dict[str, Any] | None:
+    clusters = [statistics.fmean(group) for group in values.values() if group]
+    if not clusters:
+        return None
+    observed = statistics.fmean(clusters)
+    if len(clusters) < 2:
+        return {
+            "lower": None,
+            "mean": round(observed, 8),
+            "upper": None,
+            "event_clusters": len(clusters),
+            "resamples": 0,
+            "method": "event_cluster_bootstrap_mean_brier_advantage",
+        }
+    rng = random.Random(seed)
+    samples = [
+        statistics.fmean(rng.choice(clusters) for _ in clusters)
+        for _ in range(1000)
+    ]
+    return {
+        "lower": round(float(_percentile(samples, 0.025) or 0.0), 8),
+        "mean": round(observed, 8),
+        "upper": round(float(_percentile(samples, 0.975) or 0.0), 8),
+        "event_clusters": len(clusters),
+        "resamples": 1000,
+        "method": "event_cluster_bootstrap_mean_brier_advantage",
+    }
+
+
+def fit_hourly_calibration_profile(
+    rows: Sequence[dict[str, Any]],
+) -> HourlyCalibrationProfile:
+    """Fit only from previously settled, earliest-forward hourly forecasts.
+
+    Activation is governed by an expanding-window walk-forward test.  The
+    final weight may be fitted on all prior rows, but it remains zero until the
+    strictly later validation predictions beat the market with a positive
+    event-cluster lower bound.
+    """
+    settled = sorted(
+        (dict(row) for row in rows if row.get("result_yes") is not None),
+        key=lambda row: (str(row.get("observed_at") or ""), str(row.get("forecast_id") or "")),
+    )
+    clusters = {str(row["event_cluster"]) for row in settled}
+    fitted_share = _fit_hourly_model_share(settled)
+    forward_advantages: dict[str, list[float]] = {}
+    forward_predictions: list[tuple[float, float]] = []
+    for index in range(HOURLY_CALIBRATION_MIN_TRAIN, len(settled)):
+        training = settled[:index]
+        test = settled[index]
+        share = _fit_hourly_model_share(training)
+        raw = float(test["raw_probability"])
+        market = float(test["market_probability"])
+        outcome = float(test["result_yes"])
+        calibrated = min(0.995, max(0.005, market + share * (raw - market)))
+        advantage = (market - outcome) ** 2 - (calibrated - outcome) ** 2
+        cluster = str(test["event_cluster"])
+        forward_advantages.setdefault(cluster, []).append(advantage)
+        forward_predictions.append((calibrated, outcome))
+    interval = _cluster_bootstrap_mean_ci95(forward_advantages)
+    forward_n = len(forward_predictions)
+    forward_clusters = len(forward_advantages)
+    lower = None if interval is None else interval.get("lower")
+    enough = (
+        len(settled) >= HOURLY_CALIBRATION_MIN_SETTLED
+        and len(clusters) >= HOURLY_CALIBRATION_MIN_CLUSTERS
+        and forward_n >= HOURLY_CALIBRATION_MIN_FORWARD
+        and forward_clusters >= HOURLY_CALIBRATION_MIN_CLUSTERS
+    )
+    active = bool(
+        enough and fitted_share > 0 and lower is not None and float(lower) > 0
+    )
+    if active:
+        status = "ACTIVE_FORWARD_CALIBRATION"
+    elif enough:
+        status = "MARKET_ANCHORED_HOLD"
+    else:
+        status = "COLLECTING_FORWARD_EVIDENCE"
+    if forward_predictions:
+        rmse = math.sqrt(statistics.fmean(
+            (probability - outcome) ** 2 for probability, outcome in forward_predictions
+        ))
+        uncertainty_floor = min(0.35, max(0.10, 0.50 * rmse))
+    else:
+        uncertainty_floor = 0.20
+    return HourlyCalibrationProfile(
+        version=HOURLY_CALIBRATION_VERSION,
+        status=status,
+        model_share=round(fitted_share if active else 0.0, 8),
+        fitted_model_share=round(fitted_share, 8),
+        uncertainty_floor=round(uncertainty_floor, 8),
+        settled_forecasts=len(settled),
+        event_clusters=len(clusters),
+        walk_forward_forecasts=forward_n,
+        walk_forward_clusters=forward_clusters,
+        walk_forward_brier_advantage=(
+            round(statistics.fmean(
+                value for group in forward_advantages.values() for value in group
+            ), 8)
+            if forward_advantages else None
+        ),
+        walk_forward_advantage_ci95=interval,
+        fitted_through=(str(settled[-1].get("settled_at")) if settled else None),
+    )
+
+
+def hourly_selected_bootstrap_diagnostic(
+    rows: Sequence[dict[str, Any]],
+) -> dict[str, Any]:
+    """Expose why the new lane starts held; never count selected rows as proof."""
+    normalized = [
+        {
+            "raw_probability": float(row["probability_yes"]),
+            "market_probability": float(row["market_probability"]),
+            "result_yes": int(row["result_yes"]),
+        }
+        for row in rows if row.get("result_yes") is not None
+    ]
+    share = _fit_hourly_model_share(normalized)
+    model_brier = (
+        statistics.fmean(
+            (row["raw_probability"] - row["result_yes"]) ** 2 for row in normalized
+        ) if normalized else None
+    )
+    market_brier = (
+        statistics.fmean(
+            (row["market_probability"] - row["result_yes"]) ** 2 for row in normalized
+        ) if normalized else None
+    )
+    return {
+        "selection_biased": True,
+        "counts_toward_activation": False,
+        "source": "previously_selected_exploratory_hourly_trades",
+        "settled_trades": len(normalized),
+        "brier_optimal_model_share": round(share, 8),
+        "model_brier": round(model_brier, 8) if model_brier is not None else None,
+        "market_brier": round(market_brier, 8) if market_brier is not None else None,
+    }
 
 
 def compounding_proposal(
@@ -1366,17 +2332,33 @@ class CryptoPaperTwin:
         nearest = min(close for close, _market in candidates)
         return [market for close, market in candidates if close == nearest]
 
-    def _reconcile_settlements(self, now: datetime, errors: list[str]) -> int:
-        updated = 0
-        for ticker in self.ledger.open_tickers():
+    def _reconcile_settlements(
+        self, now: datetime, errors: list[str],
+    ) -> tuple[int, int, int]:
+        trade_updates = 0
+        calibration_updates = 0
+        target_candidate_updates = 0
+        tickers = sorted(set(self.ledger.open_tickers()) | set(
+            self.ledger.unsettled_hourly_calibration_tickers()
+        ) | set(self.ledger.unsettled_target_candidate_tickers(now)))
+        for ticker in tickers:
             try:
                 market = self.fetch_result(ticker)
                 result = str(market.get("result") or "").lower()
                 if result in {"yes", "no"}:
-                    updated += self.ledger.settle_ticker(ticker, result == "yes", now)
+                    resolved_yes = result == "yes"
+                    trade_updates += self.ledger.settle_ticker(ticker, resolved_yes, now)
+                    calibration_updates += self.ledger.settle_hourly_calibration_ticker(
+                        ticker, resolved_yes, now,
+                    )
+                    target_candidate_updates += (
+                        self.ledger.settle_target_candidate_ticker(
+                            ticker, resolved_yes, now,
+                        )
+                    )
             except Exception as exc:
                 errors.append(f"settlement:{ticker}:{type(exc).__name__}")
-        return updated
+        return trade_updates, calibration_updates, target_candidate_updates
 
     def _reconcile_makers(self, now: datetime, errors: list[str]) -> int:
         updated = 0
@@ -1404,11 +2386,19 @@ class CryptoPaperTwin:
         now = self.now_fn().astimezone(timezone.utc)
         cycle_id = self.ledger.start_cycle(now)
         errors: list[str] = []
-        observations_written = trades_opened = 0
+        observations_written = trades_opened = calibration_forecasts_recorded = 0
+        target_candidate_forecasts_recorded = 0
         try:
             self.hub.clear()
             maker_updates = self._reconcile_makers(now, errors)
-            settlements = self._reconcile_settlements(now, errors)
+            (
+                settlements,
+                hourly_calibration_settlements,
+                target_candidate_settlements,
+            ) = self._reconcile_settlements(now, errors)
+            hourly_calibration = fit_hourly_calibration_profile(
+                self.ledger.hourly_calibration_rows()
+            )
             markets = self.scanner.scan()
             states: dict[str, dict[str, Any]] = {}
             for asset in ASSETS:
@@ -1421,23 +2411,45 @@ class CryptoPaperTwin:
                 proposed, now=now, proposed_id=proposed_id,
             )
             active_genome = ResearchGenome.from_mapping(epoch.get("genome")) or proposed
-            eligible_markets = [
+            listed_compatible_markets = [
                 market for market in markets
                 if cohort_for_market(market) is not None
-                and None not in (market.yes_bid, market.yes_ask, market.no_bid, market.no_ask)
+            ]
+            eligible_markets = [
+                market for market in listed_compatible_markets
+                if None not in (
+                    market.yes_bid, market.yes_ask, market.no_bid, market.no_ask,
+                )
             ]
             forecasts, source_features = self._base_forecasts(eligible_markets, states)
             for cohort in COHORTS:
                 vertical = cohort.vertical
                 timeframe = cohort.timeframe
                 asset = cohort.asset
-                lane_markets = self._markets_for_asset(
-                    eligible_markets, asset, timeframe, now, vertical,
+                listed_lane_markets = self._markets_for_asset(
+                    listed_compatible_markets, asset, timeframe, now, vertical,
+                )
+                lane_markets = [
+                    market for market in listed_lane_markets
+                    if market.ticker in forecasts
+                ]
+                target_inventory = price_target_inventory(
+                    listed_lane_markets, timeframe,
                 )
                 cluster = event_cluster(
-                    vertical, timeframe, asset, lane_markets[0].close_time,
-                ) if lane_markets else None
-                for strategy in STRATEGIES:
+                    vertical, timeframe, asset, listed_lane_markets[0].close_time,
+                ) if listed_lane_markets else None
+                for strategy in strategies_for(vertical, timeframe):
+                        strategy_cluster = (
+                            hourly_calibration_event_cluster(
+                                listed_lane_markets[0].close_time,
+                            )
+                            if (
+                                strategy == HOURLY_CALIBRATED_STRATEGY
+                                and listed_lane_markets
+                            )
+                            else cluster
+                        )
                         candidates: list[dict[str, Any]] = []
                         for market in lane_markets:
                             forecast = forecasts.get(market.ticker)
@@ -1447,12 +2459,15 @@ class CryptoPaperTwin:
                             candidates.append(_candidate(
                                 market, forecast, technical, strategy=strategy,
                                 timeframe=timeframe, genome=active_genome,
+                                hourly_calibration=(
+                                    hourly_calibration
+                                    if strategy == HOURLY_CALIBRATED_STRATEGY else None
+                                ),
                             ))
                             candidates[-1]["vertical"] = vertical.value
                         if candidates:
-                            best_candidate = max(
-                                candidates,
-                                key=lambda row: float((row.get("best") or {}).get("ev_cents") or -1e9),
+                            best_candidate, target_ladder = select_price_target(
+                                candidates, strategy,
                             )
                         else:
                             reason = (
@@ -1467,6 +2482,87 @@ class CryptoPaperTwin:
                                 "timeframe": timeframe,
                                 "vertical": vertical.value,
                             }
+                            target_ladder = {
+                                "selection_version": "nearest-expiry-target-ladder-v1",
+                                "selection_objective": (
+                                    "highest fee-and-uncertainty-adjusted conservative EV "
+                                    "among policy-eligible targets"
+                                ),
+                                "targets_evaluated": 0,
+                                "valid_targets": 0,
+                                "eligible_targets": 0,
+                                "target_type_counts": {},
+                                "boundary_range": {"minimum": None, "maximum": None},
+                                "selected_ticker": None,
+                                "selected_target": None,
+                                "ranked_candidates": [],
+                                "ranked_candidates_persisted": 0,
+                                "ranked_candidates_truncated": 0,
+                                "one_position_per_asset_expiry": True,
+                                "optimizes_raw_win_rate": False,
+                            }
+                        target_ladder.update(target_inventory)
+                        target_ladder["listed_targets_excluded_from_scoring"] = max(
+                            0,
+                            int(target_inventory["listed_targets_seen"])
+                            - int(target_ladder["targets_evaluated"]),
+                        )
+                        target_ladder["scoring_exclusion_rule"] = (
+                            "missing complete two-sided probability anchor, complete forecast, "
+                            "or valid strike; never invent a tradable quote"
+                        )
+                        best_candidate["target_ladder"] = target_ladder
+                        if strategy_cluster is not None:
+                            candidate_forecasts: list[dict[str, Any]] = []
+                            for candidate in candidates:
+                                candidate_market = candidate.get("market")
+                                candidate_best = candidate.get("best")
+                                if (
+                                    not isinstance(candidate_market, MarketView)
+                                    or not isinstance(candidate_best, dict)
+                                    or candidate.get("probability_yes") is None
+                                    or candidate.get("market_probability") is None
+                                    or candidate.get("uncertainty") is None
+                                ):
+                                    continue
+                                candidate_forecasts.append({
+                                    "candidate_id": f"tcand-{uuid.uuid4().hex[:16]}",
+                                    "cycle_id": cycle_id,
+                                    "strategy": strategy,
+                                    "vertical": vertical,
+                                    "timeframe": timeframe,
+                                    "asset": asset,
+                                    "event_cluster": strategy_cluster,
+                                    "ticker": candidate_market.ticker,
+                                    "observed_at": now.isoformat(),
+                                    "close_time": candidate_market.close_time,
+                                    "target": candidate.get("target") or {},
+                                    "side": str(candidate_best["side"]),
+                                    "rank_selected": candidate is best_candidate,
+                                    "eligible": bool(candidate.get("eligible")),
+                                    "reason": str(candidate.get("reason") or "unknown"),
+                                    "probability_yes": round(
+                                        float(candidate["probability_yes"]), 10,
+                                    ),
+                                    "market_probability": round(
+                                        float(candidate["market_probability"]), 10,
+                                    ),
+                                    "uncertainty": round(
+                                        float(candidate["uncertainty"]), 10,
+                                    ),
+                                    "conservative_ev_cents": round(
+                                        float(candidate_best["ev_cents"]), 6,
+                                    ),
+                                    "entry_price_cents": int(
+                                        candidate_best["price_cents"]
+                                    ),
+                                    "fee_cents": int(candidate_best["fee_cents"]),
+                                })
+                            target_candidate_forecasts_recorded += (
+                                self.ledger.record_target_candidate_forecasts(
+                                    candidate_forecasts,
+                                )
+                            )
                         explanation = decision_explanation(best_candidate, asset)
                         action = (
                             f"BUY_{str(best_candidate['best']['side']).upper()}"
@@ -1485,7 +2581,7 @@ class CryptoPaperTwin:
                             "timeframe": timeframe,
                             "bucket_start": bucket_start(now, timeframe),
                             "asset": asset,
-                            "event_cluster": cluster,
+                            "event_cluster": strategy_cluster,
                             "ticker": market.ticker if isinstance(market, MarketView) else None,
                             "action": action,
                             "explanation": explanation,
@@ -1493,6 +2589,7 @@ class CryptoPaperTwin:
                                 "reason": best_candidate.get("reason"),
                                 "candidate_markets": len(candidates),
                                 "nearest_expiry_markets": len(lane_markets),
+                                "listed_nearest_expiry_markets": len(listed_lane_markets),
                                 "eligible_candidates": sum(bool(row.get("eligible")) for row in candidates),
                                 "contract_family": (
                                     "15m_direction" if timeframe == "15m"
@@ -1500,16 +2597,49 @@ class CryptoPaperTwin:
                                 ),
                                 "listed_series": list(cohort.series),
                                 "listing_duration_hours": listing_duration_hours,
+                                "price_target_selection": target_ladder,
                                 "paper_only": True,
                             },
                             "created_at": now.isoformat(),
                         })
                         observations_written += 1
+                        if (
+                            strategy == HOURLY_CALIBRATED_STRATEGY
+                            and isinstance(market, MarketView)
+                            and strategy_cluster is not None
+                            and best_candidate.get("raw_probability_yes") is not None
+                        ):
+                            calibration_forecasts_recorded += int(
+                                self.ledger.record_hourly_calibration_forecast({
+                                    "forecast_id": f"hcal-{uuid.uuid4().hex[:16]}",
+                                    "cycle_id": cycle_id,
+                                    "asset": asset,
+                                    "event_cluster": strategy_cluster,
+                                    "ticker": market.ticker,
+                                    "observed_at": now.isoformat(),
+                                    "close_time": market.close_time,
+                                    "raw_probability": round(
+                                        float(best_candidate["raw_probability_yes"]), 10,
+                                    ),
+                                    "market_probability": round(
+                                        float(best_candidate["market_probability"]), 10,
+                                    ),
+                                    "calibrated_probability": round(
+                                        float(best_candidate["probability_yes"]), 10,
+                                    ),
+                                    "uncertainty": round(
+                                        float(best_candidate["uncertainty"]), 10,
+                                    ),
+                                    "model_share": hourly_calibration.model_share,
+                                    "calibration_version": hourly_calibration.version,
+                                    "profile": hourly_calibration.to_dict(),
+                                })
+                            )
                         if not best_candidate.get("eligible") or not isinstance(market, MarketView):
                             continue
-                        assert cluster is not None
+                        assert strategy_cluster is not None
                         if self.ledger.has_lane_trade(
-                            strategy, timeframe, asset, cluster, vertical,
+                            strategy, timeframe, asset, strategy_cluster, vertical,
                         ):
                             continue
                         best = best_candidate["best"]
@@ -1535,6 +2665,18 @@ class CryptoPaperTwin:
                             "technical": technical.features if technical is not None else None,
                             "source_features": source_features.get(market.ticker, {}),
                             "listing_duration_hours": listing_duration_hours,
+                            "price_target": best_candidate.get("target"),
+                            "target_selection": {
+                                key: target_ladder.get(key)
+                                for key in (
+                                    "selection_version", "selection_objective",
+                                    "targets_evaluated", "valid_targets",
+                                    "eligible_targets", "target_type_counts",
+                                    "selected_ticker", "selected_target",
+                                    "one_position_per_asset_expiry",
+                                    "optimizes_raw_win_rate",
+                                )
+                            },
                             "queue_snapshot_error": queue_error,
                             "spot_state": {
                                 key: states.get(asset, {}).get(key)
@@ -1554,7 +2696,7 @@ class CryptoPaperTwin:
                             "vertical": vertical,
                             "timeframe": timeframe,
                             "asset": asset,
-                            "event_cluster": cluster,
+                            "event_cluster": strategy_cluster,
                             "ticker": market.ticker,
                             "side": side,
                             "created_at": now.isoformat(),
@@ -1579,6 +2721,7 @@ class CryptoPaperTwin:
                                 "no_bid": market.no_bid,
                                 "no_ask": market.no_ask,
                                 "volume": market.volume,
+                                "price_target": best_candidate.get("target"),
                                 "raw": market.raw,
                             },
                             "policy": best_candidate["policy"],
@@ -1602,6 +2745,12 @@ class CryptoPaperTwin:
                 trades_opened=trades_opened,
                 settlements_recorded=settlements,
                 maker_updates=maker_updates,
+                hourly_calibration_settlements=hourly_calibration_settlements,
+                calibration_forecasts_recorded=calibration_forecasts_recorded,
+                target_candidate_settlements=target_candidate_settlements,
+                target_candidate_forecasts_recorded=(
+                    target_candidate_forecasts_recorded
+                ),
                 errors=errors,
             )
         except Exception as exc:
@@ -1614,6 +2763,12 @@ class CryptoPaperTwin:
                 trades_opened=trades_opened,
                 settlements_recorded=0,
                 maker_updates=0,
+                hourly_calibration_settlements=0,
+                calibration_forecasts_recorded=calibration_forecasts_recorded,
+                target_candidate_settlements=0,
+                target_candidate_forecasts_recorded=(
+                    target_candidate_forecasts_recorded
+                ),
                 errors=errors,
                 failed=True,
             )
@@ -1630,6 +2785,10 @@ class CryptoPaperTwin:
         trades_opened: int,
         settlements_recorded: int,
         maker_updates: int,
+        hourly_calibration_settlements: int,
+        calibration_forecasts_recorded: int,
+        target_candidate_settlements: int,
+        target_candidate_forecasts_recorded: int,
         errors: list[str],
         failed: bool = False,
     ) -> dict[str, Any]:
@@ -1637,6 +2796,13 @@ class CryptoPaperTwin:
             Vertical.CRYPTO: ("15m", "1h", "1d", "1w"),
             Vertical.COMMODITIES: ("1d", "1w"),
         }
+        hourly_profile = fit_hourly_calibration_profile(
+            self.ledger.hourly_calibration_rows()
+        )
+        hourly_bootstrap = hourly_selected_bootstrap_diagnostic(
+            self.ledger.selected_hourly_bootstrap_rows()
+        )
+        hourly_counts = self.ledger.hourly_calibration_counts()
         cohort_lanes: dict[str, dict[str, dict[str, Any]]] = {}
         cohort_compounding: dict[str, dict[str, dict[str, Any]]] = {}
         cohort_gates: dict[str, dict[str, dict[str, Any]]] = {}
@@ -1653,7 +2819,7 @@ class CryptoPaperTwin:
                 cohort_compounding[vertical_name][timeframe] = {}
                 cohort_gates[vertical_name][timeframe] = {}
                 cohort_forward[vertical_name][timeframe] = {}
-                for strategy in STRATEGIES:
+                for strategy in strategies_for(vertical, timeframe):
                     summary = self.ledger.lane_summary(
                         strategy, timeframe, vertical=vertical,
                     )
@@ -1675,14 +2841,22 @@ class CryptoPaperTwin:
                                 summary,
                                 stress,
                                 advantage,
-                                promotion_allowed=strategy == "recursive",
+                                promotion_allowed=strategy in {
+                                    "recursive", HOURLY_CALIBRATED_STRATEGY,
+                                },
                             )
                         )
             comparisons[vertical_name] = {}
             for strategy in STRATEGIES:
+                applicable_timeframes = [
+                    timeframe for timeframe in timeframes
+                    if strategy in cohort_lanes[vertical_name][timeframe]
+                ]
+                if not applicable_timeframes:
+                    continue
                 summaries = {
                     timeframe: cohort_lanes[vertical_name][timeframe][strategy]
-                    for timeframe in timeframes
+                    for timeframe in applicable_timeframes
                 }
                 enough = all(
                     int(summary["settled_trades"]) >= 30
@@ -1705,6 +2879,7 @@ class CryptoPaperTwin:
                         "settled_trades": 30,
                         "event_clusters": 10,
                     },
+                    "applicable_timeframes": applicable_timeframes,
                     **summaries,
                 }
         weaknesses: list[dict[str, Any]] = []
@@ -1748,6 +2923,17 @@ class CryptoPaperTwin:
                             "reason": "maker quote blocked by more than 50 contracts ahead",
                             "blocked_orders": summary["maker_blocked_queue"],
                         })
+        if hourly_profile.status != "ACTIVE_FORWARD_CALIBRATION":
+            weaknesses.append({
+                "component": "hourly_calibration",
+                "lane": f"CRYPTO:1h:{HOURLY_CALIBRATED_STRATEGY}",
+                "reason": hourly_profile.status,
+                "settled_forward_forecasts": hourly_profile.settled_forecasts,
+                "walk_forward_brier_advantage_lower95": (
+                    (hourly_profile.walk_forward_advantage_ci95 or {}).get("lower")
+                ),
+                "active_model_share": hourly_profile.model_share,
+            })
         active = self.ledger.active_epoch()
         completed_at = self.now_fn().astimezone(timezone.utc)
         crypto_name = Vertical.CRYPTO.value
@@ -1762,6 +2948,10 @@ class CryptoPaperTwin:
             "observations_written": observations_written,
             "trades_opened": trades_opened,
             "settlements_recorded": settlements_recorded,
+            "hourly_calibration_settlements_recorded": hourly_calibration_settlements,
+            "hourly_calibration_forecasts_recorded": calibration_forecasts_recorded,
+            "target_candidate_settlements_recorded": target_candidate_settlements,
+            "target_candidate_forecasts_recorded": target_candidate_forecasts_recorded,
             "maker_updates": maker_updates,
             "errors": errors,
             "timeframes": list(vertical_timeframes[Vertical.CRYPTO]),
@@ -1797,6 +2987,45 @@ class CryptoPaperTwin:
                 "candidate_gates_by_vertical": cohort_forward,
                 "automatic_rotation": "research-only after 30 settled trades, 5 clusters, and statistically negative P&L",
             },
+            "hourly_calibration": {
+                "profile": hourly_profile.to_dict(),
+                "forward_ledger": hourly_counts,
+                "selected_trade_bootstrap_diagnostic": hourly_bootstrap,
+                "activation_rule": {
+                    "minimum_settled_forecasts": HOURLY_CALIBRATION_MIN_SETTLED,
+                    "minimum_event_clusters": HOURLY_CALIBRATION_MIN_CLUSTERS,
+                    "minimum_walk_forward_forecasts": HOURLY_CALIBRATION_MIN_FORWARD,
+                    "positive_cluster_brier_advantage_lower95": True,
+                    "maximum_model_share": 0.50,
+                },
+                "production_effect": "none",
+                "execution_authority": False,
+                "capital_authority": False,
+            },
+            "price_target_selection": {
+                "version": "nearest-expiry-target-ladder-v1",
+                "assets": list(ASSETS),
+                "terminal_price_horizons": ["1h", "1d", "1w"],
+                "native_direction_horizons": ["15m"],
+                "objective": (
+                    "maximize fee-and-uncertainty-adjusted conservative EV across every "
+                    "valid nearest-expiry listed target, preferring policy-eligible targets"
+                ),
+                "raw_win_rate_is_not_the_objective": True,
+                "invalid_or_missing_strikes": "fail_closed",
+                "one_position_per_asset_expiry": True,
+                "current_cycle": self.ledger.cycle_target_selections(cycle_id),
+                "settled_target_type_diagnostics": (
+                    self.ledger.settled_target_performance()
+                ),
+                "historical_diagnostics_influence_selection": False,
+                "activation_requirement": (
+                    "independent forward evidence before any target-type preference"
+                ),
+                "rejection_regret": self.ledger.target_candidate_regret_summary(),
+                "execution_authority": False,
+                "capital_authority": False,
+            },
             "timeframe_comparison": comparisons[crypto_name],
             "timeframe_comparison_by_vertical": comparisons,
             "phase_3_execution": {
@@ -1831,6 +3060,10 @@ class CryptoPaperTwin:
                 "simulated_taker_quote_is_witnessed_fill": False,
                 "maker_public_print_is_research_execution_evidence_only": True,
                 "exploratory_lane_is_promotion_evidence": False,
+                "hourly_calibrated_lane_requires_forward_activation": True,
+                "selected_hourly_bootstrap_counts_toward_activation": False,
+                "target_candidate_counterfactual_counts_as_fill_evidence": False,
+                "target_candidate_counterfactual_auto_tunes_gates": False,
                 "legacy_15m_hourly_rows": self.ledger.legacy_quarantine_summary(),
             },
             "authority": {

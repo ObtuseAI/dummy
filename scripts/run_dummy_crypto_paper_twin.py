@@ -44,9 +44,12 @@ def _atomic_json(path: Path, value: dict) -> None:
 
 def _summary(report: dict, report_path: Path) -> dict:
     lanes = report.get("lanes") or {}
+    target_selection = report.get("price_target_selection") or {}
+    rejection_regret = target_selection.get("rejection_regret") or {}
     return {
         "report_name": report.get("report_name"),
         "report_path": str(report_path.resolve()),
+        "paper_mode": "LIVE_PUBLIC_READ_ONLY_SIMULATION",
         "cycle_id": report.get("cycle_id"),
         "started_at": report.get("started_at"),
         "completed_at": report.get("completed_at"),
@@ -55,6 +58,12 @@ def _summary(report: dict, report_path: Path) -> dict:
         "observations_written": report.get("observations_written"),
         "trades_opened": report.get("trades_opened"),
         "settlements_recorded": report.get("settlements_recorded"),
+        "target_candidate_forecasts_recorded": report.get(
+            "target_candidate_forecasts_recorded"
+        ),
+        "target_candidate_settlements_recorded": report.get(
+            "target_candidate_settlements_recorded"
+        ),
         "maker_updates": report.get("maker_updates"),
         "lanes": lanes,
         "cohorts": report.get("cohorts"),
@@ -62,22 +71,59 @@ def _summary(report: dict, report_path: Path) -> dict:
         "assets_by_vertical": report.get("assets_by_vertical"),
         "universe_policy": report.get("universe_policy"),
         "active_recursive_epoch": report.get("active_recursive_epoch"),
-        "phase_2_forward_selection": report.get("phase_2_forward_selection"),
-        "phase_3_execution": report.get("phase_3_execution"),
-        "phase_4_canary_decision": report.get("phase_4_canary_decision"),
-        "phase_5_compounding": report.get("phase_5_compounding"),
-        "phase_5_compounding_by_vertical": report.get(
-            "phase_5_compounding_by_vertical"
-        ),
-        "timeframe_comparison_by_vertical": report.get(
-            "timeframe_comparison_by_vertical"
-        ),
-        "weaknesses": report.get("weaknesses"),
-        "recent_explanations": report.get("recent_explanations"),
+        "hourly_calibration": report.get("hourly_calibration"),
+        "target_candidate_counts": rejection_regret.get("counts"),
+        "weaknesses": list(report.get("weaknesses") or [])[:20],
         "evidence_quarantine": report.get("evidence_quarantine"),
         "authority": report.get("authority"),
         "errors": report.get("errors"),
     }
+
+
+def _console_summary(summary: dict) -> dict:
+    authority = summary.get("authority") or {}
+    return {
+        "paper_mode": summary.get("paper_mode"),
+        "cycle_id": summary.get("cycle_id"),
+        "started_at": summary.get("started_at"),
+        "completed_at": summary.get("completed_at"),
+        "status": summary.get("status"),
+        "markets_seen": summary.get("markets_seen"),
+        "observations_written": summary.get("observations_written"),
+        "trades_opened": summary.get("trades_opened"),
+        "settlements_recorded": summary.get("settlements_recorded"),
+        "target_candidate_forecasts_recorded": summary.get(
+            "target_candidate_forecasts_recorded"
+        ),
+        "target_candidate_settlements_recorded": summary.get(
+            "target_candidate_settlements_recorded"
+        ),
+        "broker_contacted": bool(authority.get("broker_contacted")),
+        "execution_authority": bool(authority.get("execution_authority")),
+        "capital_authority": bool(authority.get("capital_authority")),
+        "errors": summary.get("errors") or [],
+    }
+
+
+def _append_rotating_jsonl(
+    path: Path,
+    row: dict,
+    *,
+    max_bytes: int = 5 * 1024 * 1024,
+    backups: int = 3,
+) -> None:
+    """Append one compact scheduler record with a bounded local footprint."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    if path.exists() and path.stat().st_size >= max(1024, int(max_bytes)):
+        for index in range(max(1, int(backups)) - 1, 0, -1):
+            source = path.with_name(f"{path.name}.{index}")
+            destination = path.with_name(f"{path.name}.{index + 1}")
+            if source.exists():
+                os.replace(source, destination)
+        os.replace(path, path.with_name(f"{path.name}.1"))
+    with path.open("a", encoding="utf-8") as stream:
+        stream.write(json.dumps(row, sort_keys=True, separators=(",", ":")))
+        stream.write("\n")
 
 
 def main() -> int:
@@ -91,10 +137,15 @@ def main() -> int:
     parser.add_argument(
         "--lock", type=Path, default=Path("runtime/autonomy/crypto_paper_twin.lock"),
     )
+    parser.add_argument("--lock-stale-seconds", type=int, default=1800)
+    parser.add_argument("--log", type=Path)
     parser.add_argument("--summary", action="store_true")
     args = parser.parse_args()
 
-    descriptor = _acquire_lock(args.lock)
+    descriptor = _acquire_lock(
+        args.lock,
+        stale_seconds=max(60, int(args.lock_stale_seconds)),
+    )
     if descriptor is None:
         print(json.dumps({"status": "SKIPPED_ALREADY_RUNNING", "lock": str(args.lock)}))
         return 0
@@ -105,9 +156,12 @@ def main() -> int:
         report_path = write_paper_twin_report(report, args.out_dir)
         summary = _summary(report, report_path)
         _atomic_json(args.lock.parent / "crypto_paper_twin_latest.json", summary)
-        print(json.dumps(summary if args.summary else {
+        console = _console_summary(summary)
+        if args.log is not None:
+            _append_rotating_jsonl(args.log, console)
+        print(json.dumps(console if args.summary else {
             **report, "report_path": str(report_path.resolve()),
-        }, indent=2, sort_keys=True, default=str))
+        }, indent=None if args.summary else 2, sort_keys=True, default=str))
         return 0 if report.get("status") == "CYCLE_OK" else 1
     finally:
         twin.close()

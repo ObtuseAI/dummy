@@ -177,9 +177,12 @@ def candidate_population(
     *,
     generation: int,
     limit: int = 96,
+    archive_parents: Sequence[ResearchGenome] = (),
+    mutation_scale: float = 1.0,
 ) -> tuple[ResearchGenome, ...]:
     """Create deterministic bounded mutations plus broad lattice exploration."""
     unique: dict[str, ResearchGenome] = {}
+    scale = min(2.0, max(0.25, float(mutation_scale)))
 
     def add(genome: ResearchGenome) -> None:
         if genome.is_bounded():
@@ -188,6 +191,19 @@ def candidate_population(
     add(INCUMBENT_GENOME)
     parent = previous_active or INCUMBENT_GENOME
     add(parent)
+    for archive_parent in archive_parents:
+        add(archive_parent)
+
+    # Retained niche elites add narrow local probes before the larger parent
+    # lattice so they cannot be crowded out by generation-order truncation.
+    for archive_parent in archive_parents[:8]:
+        for direction in (-1.0, 1.0):
+            add(_bounded_genome(
+                archive_parent.shrinkage + direction * 0.08 * scale,
+                archive_parent.edge_threshold_cents + round(direction * 2 * scale),
+                archive_parent.max_uncertainty + direction * 0.03 * scale,
+                archive_parent.max_entry_price_cents + round(direction * 5 * scale),
+            ))
     for ds, de, du, dp in product(
         (-0.20, -0.08, 0.08, 0.20),
         (-3, 0, 3),
@@ -195,10 +211,10 @@ def candidate_population(
         (-15, 0, 15),
     ):
         add(_bounded_genome(
-            parent.shrinkage + ds,
-            parent.edge_threshold_cents + de,
-            parent.max_uncertainty + du,
-            parent.max_entry_price_cents + dp,
+            parent.shrinkage + ds * scale,
+            parent.edge_threshold_cents + round(de * scale),
+            parent.max_uncertainty + du * scale,
+            parent.max_entry_price_cents + round(dp * scale),
         ))
 
     lattice = [
@@ -329,6 +345,189 @@ def _rank(summary: dict[str, Any], genome: ResearchGenome) -> tuple[Any, ...]:
     )
 
 
+QUALITY_DIVERSITY_MAX_CELLS = 48
+QUALITY_DIVERSITY_POSSIBLE_CELLS = 81
+
+
+def _genome_distance(left: ResearchGenome, right: ResearchGenome) -> float:
+    return round(
+        abs(left.shrinkage - right.shrinkage) / 1.15
+        + abs(left.edge_threshold_cents - right.edge_threshold_cents) / 17.0
+        + abs(left.max_uncertainty - right.max_uncertainty) / 0.32
+        + abs(left.max_entry_price_cents - right.max_entry_price_cents) / 50.0,
+        8,
+    )
+
+
+def _niche_cell(genome: ResearchGenome, trade_count: int) -> str:
+    model = (
+        "market_anchored" if genome.shrinkage <= 0.60
+        else "balanced" if genome.shrinkage <= 1.00 else "model_forward"
+    )
+    risk = (
+        "conservative"
+        if genome.max_uncertainty <= 0.20 and genome.max_entry_price_cents <= 65
+        else "balanced"
+        if genome.max_uncertainty <= 0.30 and genome.max_entry_price_cents <= 75
+        else "aggressive"
+    )
+    edge = (
+        "broad" if genome.edge_threshold_cents <= 5
+        else "selective" if genome.edge_threshold_cents <= 11 else "extreme"
+    )
+    activity = "sparse" if trade_count < 20 else "selective" if trade_count < 60 else "active"
+    return f"model={model}|risk={risk}|edge={edge}|activity={activity}"
+
+
+def _archive_rank(entry: dict[str, Any]) -> tuple[Any, ...]:
+    fitness = entry.get("fitness") or {}
+    lower = fitness.get("mean_pnl_lower95")
+    advantage = fitness.get("paired_advantage_lower95")
+    return (
+        float(lower) if lower is not None else float("-inf"),
+        float(advantage) if advantage is not None else float("-inf"),
+        int(fitness.get("severe_net_pnl_cents") or 0),
+        int(fitness.get("net_pnl_cents") or 0),
+        -int(fitness.get("max_drawdown_cents") or 0),
+        -float(entry.get("complexity") or 0),
+        str(entry.get("genome_id") or ""),
+    )
+
+
+def _archive_entry(
+    genome: ResearchGenome,
+    baseline_trades: Sequence[dict[str, Any]],
+    incumbent_trades: Sequence[dict[str, Any]],
+    severe_trades: Sequence[dict[str, Any]],
+    *,
+    generation: int,
+    bootstrap_simulations: int,
+) -> dict[str, Any] | None:
+    if not baseline_trades:
+        return None
+    baseline = summarize_trades(baseline_trades)
+    severe = summarize_trades(severe_trades)
+    advantage = _cluster_advantage_ci(
+        baseline_trades,
+        incumbent_trades,
+        simulations=bootstrap_simulations,
+    )
+    lower = (baseline.get("mean_pnl_ci95") or {}).get("lower")
+    advantage_lower = (advantage or {}).get("lower")
+    eligible = bool(
+        baseline["trades"] >= 100
+        and baseline["event_clusters"] >= 20
+        and lower is not None and lower > 0
+        and advantage_lower is not None and advantage_lower > 0
+        and int(severe.get("net_pnl_cents") or 0) > 0
+    )
+    return {
+        "cell": _niche_cell(genome, int(baseline["trades"])),
+        "genome_id": genome.genome_id,
+        "genome": asdict(genome),
+        "generation": generation,
+        "complexity": _complexity(genome),
+        "fitness": {
+            "trades": baseline["trades"],
+            "event_clusters": baseline["event_clusters"],
+            "net_pnl_cents": baseline["net_pnl_cents"],
+            "mean_pnl_lower95": lower,
+            "paired_advantage_lower95": advantage_lower,
+            "max_drawdown_cents": baseline["max_drawdown_cents"],
+            "severe_net_pnl_cents": severe["net_pnl_cents"],
+        },
+        "paired_pnl_advantage_ci95": advantage,
+        "eligible_for_forward_challenge": eligible,
+        "evidence_source": "causal_preselected_purged_out_of_sample_folds",
+        "execution_authority": False,
+    }
+
+
+def merge_quality_diversity_archive(
+    previous_cells: Sequence[dict[str, Any]],
+    candidates: Sequence[dict[str, Any]],
+) -> tuple[list[dict[str, Any]], int]:
+    """Keep one best out-of-sample genome per behavior niche."""
+    cells: dict[str, dict[str, Any]] = {
+        str(row["cell"]): dict(row)
+        for row in previous_cells
+        if isinstance(row, dict) and row.get("cell") and row.get("genome")
+    }
+    improvements = 0
+    for candidate in candidates:
+        cell = str(candidate["cell"])
+        incumbent = cells.get(cell)
+        if incumbent is None or _archive_rank(candidate) > _archive_rank(incumbent):
+            cells[cell] = dict(candidate)
+            improvements += 1
+    ranked = sorted(cells.values(), key=_archive_rank, reverse=True)
+    return ranked[:QUALITY_DIVERSITY_MAX_CELLS], improvements
+
+
+def adaptive_mutation_pressure(
+    previous: dict[str, Any] | None,
+    *,
+    evidence_advanced: bool,
+    archive_improvements: int,
+    candidates_evaluated: int,
+) -> dict[str, Any]:
+    current = min(2.0, max(0.25, float((previous or {}).get("next_scale") or 1.0)))
+    success_rate = (
+        archive_improvements / candidates_evaluated if candidates_evaluated else 0.0
+    )
+    if not evidence_advanced or candidates_evaluated == 0:
+        next_scale = current
+        action = "hold_no_new_settled_evidence"
+    elif success_rate > 0.20:
+        next_scale = min(2.0, current * 1.25)
+        action = "expand_after_diverse_archive_success"
+    elif success_rate < 0.10:
+        next_scale = max(0.25, current * 0.70)
+        action = "contract_after_low_archive_success"
+    else:
+        next_scale = current
+        action = "hold_balanced_success_rate"
+    return {
+        "version": "settlement-ratcheted-mutation-pressure-v1",
+        "applied_scale": round(current, 6),
+        "next_scale": round(next_scale, 6),
+        "archive_improvements": archive_improvements,
+        "candidates_evaluated_out_of_sample": candidates_evaluated,
+        "archive_success_rate": round(success_rate, 8),
+        "action": action,
+        "updates_without_new_settlements": not evidence_advanced,
+        "code_mutation_authority": False,
+    }
+
+
+def candidate_lineage(
+    population: Sequence[ResearchGenome],
+    parents: Sequence[tuple[str, ResearchGenome]],
+) -> list[dict[str, Any]]:
+    records: list[dict[str, Any]] = []
+    for genome in population:
+        if not parents:
+            records.append({
+                "genome_id": genome.genome_id,
+                "parent_genome_id": None,
+                "normalized_mutation_distance": None,
+                "source": "broad_lattice",
+            })
+            continue
+        parent_source, parent = min(
+            parents,
+            key=lambda item: (_genome_distance(genome, item[1]), item[1].genome_id),
+        )
+        distance = _genome_distance(genome, parent)
+        records.append({
+            "genome_id": genome.genome_id,
+            "parent_genome_id": parent.genome_id,
+            "normalized_mutation_distance": distance,
+            "source": "retained_parent" if distance == 0 else f"mutation_from_{parent_source}",
+        })
+    return records
+
+
 def _cluster_advantage_ci(
     challenger: Sequence[dict[str, Any]],
     incumbent: Sequence[dict[str, Any]],
@@ -432,11 +631,36 @@ def run_evolution_lab(
 
     previous_active_block = previous_lab.get("active_research_candidate") or {}
     previous_active = ResearchGenome.from_mapping(previous_active_block.get("genome"))
+    previous_archive = previous_lab.get("quality_diversity_archive") or {}
+    previous_cells = (
+        previous_archive.get("cells")
+        if isinstance(previous_archive.get("cells"), list)
+        else []
+    )
+    archive_parents: list[ResearchGenome] = []
+    for cell in previous_cells:
+        genome = ResearchGenome.from_mapping(
+            cell.get("genome") if isinstance(cell, dict) else None
+        )
+        if genome is not None and genome not in archive_parents:
+            archive_parents.append(genome)
+    previous_pressure = previous_lab.get("adaptive_mutation_pressure") or {}
+    mutation_scale = min(
+        2.0,
+        max(0.25, float(previous_pressure.get("next_scale") or 1.0)),
+    )
     population = candidate_population(
         previous_active,
         generation=max(1, generation),
         limit=population_size,
+        archive_parents=archive_parents,
+        mutation_scale=mutation_scale,
     )
+    lineage_parents: list[tuple[str, ResearchGenome]] = []
+    if previous_active is not None:
+        lineage_parents.append(("active", previous_active))
+    lineage_parents.extend(("archive", genome) for genome in archive_parents[:8])
+    lineage = candidate_lineage(population, lineage_parents)
     folds = _temporal_folds(rows)
     fold_reports: list[dict[str, Any]] = []
     challenger_oos: dict[str, list[dict[str, Any]]] = {
@@ -445,6 +669,7 @@ def run_evolution_lab(
     incumbent_oos: dict[str, list[dict[str, Any]]] = {
         scenario["name"]: [] for scenario in STRESS_SCENARIOS
     }
+    archive_oos: dict[str, dict[str, Any]] = {}
     selected: list[ResearchGenome] = []
     history = list(folds[0]) if folds else []
     for fold_number, test_rows in enumerate(folds[1:], start=2):
@@ -460,6 +685,36 @@ def run_evolution_lab(
         if not candidates:
             history.extend(test_rows)
             continue
+        # A bounded contender set is chosen solely from prior settled training
+        # data, then scored on this purged future fold. That lets the archive
+        # retain diverse specialists without testing into the selection rule.
+        archive_contenders = sorted(
+            candidates,
+            key=lambda item: _rank(item[1], item[0]),
+            reverse=True,
+        )[:24]
+        archive_incumbent = genome_trades(
+            purged_test, INCUMBENT_GENOME, scenario_name="baseline",
+        )
+        for contender, _training_summary in archive_contenders:
+            contender_id = contender.genome_id
+            evidence = archive_oos.setdefault(contender_id, {
+                "genome": contender,
+                "baseline": [],
+                "incumbent": [],
+                "severe_liquidity": [],
+                "folds": [],
+            })
+            evidence["baseline"].extend(
+                genome_trades(purged_test, contender, scenario_name="baseline")
+            )
+            evidence["incumbent"].extend(archive_incumbent)
+            evidence["severe_liquidity"].extend(
+                genome_trades(
+                    purged_test, contender, scenario_name="severe_liquidity",
+                )
+            )
+            evidence["folds"].append(fold_number)
         leader, training_summary = max(
             candidates,
             key=lambda item: _rank(item[1], item[0]),
@@ -490,6 +745,28 @@ def run_evolution_lab(
             ),
         })
         history.extend(test_rows)
+
+    current_archive_entries = [
+        entry
+        for evidence in archive_oos.values()
+        if (entry := _archive_entry(
+            evidence["genome"],
+            evidence["baseline"],
+            evidence["incumbent"],
+            evidence["severe_liquidity"],
+            generation=generation,
+            bootstrap_simulations=bootstrap_simulations,
+        )) is not None
+    ]
+    archive_cells, archive_improvements = merge_quality_diversity_archive(
+        previous_cells, current_archive_entries,
+    )
+    mutation_pressure = adaptive_mutation_pressure(
+        previous_pressure,
+        evidence_advanced=evidence_advanced,
+        archive_improvements=archive_improvements,
+        candidates_evaluated=len(current_archive_entries),
+    )
 
     research_leader = selected[-1] if selected else previous_active
     baseline_summary = summarize_trades(challenger_oos["baseline"])
@@ -614,10 +891,43 @@ def run_evolution_lab(
             "candidates_generated": len(population),
             "bounded": all(genome.is_bounded() for genome in population),
             "parent_genome_id": previous_active.genome_id if previous_active else None,
+            "archive_parents_seeded": len(archive_parents),
+            "mutation_scale": mutation_pressure["applied_scale"],
             "folds_completed": len(fold_reports),
             "distinct_fold_leaders": len(leader_counts),
             "dominant_leader_share": round(dominant_share, 6)
             if dominant_share is not None else None,
+        },
+        "quality_diversity_archive": {
+            "version": "oos-research-niche-archive-v1",
+            "method": (
+                "preselect contenders on settled training data, score on purged future "
+                "folds, retain one best genome per behavior niche"
+            ),
+            "cells": archive_cells,
+            "cell_count": len(archive_cells),
+            "possible_cells": QUALITY_DIVERSITY_POSSIBLE_CELLS,
+            "occupancy": round(
+                len(archive_cells) / QUALITY_DIVERSITY_POSSIBLE_CELLS, 8,
+            ),
+            "current_generation_candidates_evaluated": len(current_archive_entries),
+            "current_generation_cell_improvements": archive_improvements,
+            "forward_challenge_eligible_cells": sum(
+                bool(cell.get("eligible_for_forward_challenge"))
+                for cell in archive_cells
+            ),
+            "archive_seeds_next_research_population": True,
+            "automatic_production_selection": False,
+            "execution_authority": False,
+            "capital_authority": False,
+        },
+        "adaptive_mutation_pressure": mutation_pressure,
+        "candidate_lineage": {
+            "version": "research-genome-lineage-v1",
+            "records": lineage,
+            "record_count": len(lineage),
+            "evidence_fingerprint": fingerprint,
+            "automatic_code_mutation": False,
         },
         "folds": fold_reports,
         "research_leader": {
@@ -657,6 +967,8 @@ def run_evolution_lab(
             "bounded_genomes_generated": len(population),
             "causal_folds_replayed": len(fold_reports),
             "stress_scenarios_replayed": len(STRESS_SCENARIOS),
+            "quality_diversity_cells_retained": len(archive_cells),
+            "adaptive_mutation_pressure_updated": evidence_advanced,
             "research_epoch_rotated": rotated,
             "production_code_changed": False,
             "weights_changed": False,
