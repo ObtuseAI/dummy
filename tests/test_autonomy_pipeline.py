@@ -94,6 +94,14 @@ def test_scanner_treats_zero_and_one_dollar_quotes_as_missing_sentinels():
     assert view.yes_ask == 76 and view.no_bid == 24
 
 
+def test_scanner_classifies_exact_added_crypto_and_commodity_series():
+    assert classify_vertical("KXSOL15M-26JUL100430-30") is Vertical.CRYPTO
+    assert classify_vertical("BTCD-26JUL10-T70000") is Vertical.CRYPTO
+    assert classify_vertical("KXNATGASW-26JUL1017-T4.899") is Vertical.COMMODITIES
+    assert classify_vertical("KXDOGE15M-26JUL100430-30") is Vertical.OTHER
+    assert classify_vertical("KXXRP15M-26JUL100430-30") is Vertical.OTHER
+
+
 def test_crypto_ticker_parse_hour_glued():
     from autonomy.signals.crypto_spot import parse_crypto_ticker
 

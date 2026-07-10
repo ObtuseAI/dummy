@@ -18,8 +18,10 @@ _VERTICAL_PREFIXES: list[tuple[str, Vertical]] = [
     ("KXBTC", Vertical.CRYPTO),
     ("KXETH", Vertical.CRYPTO),
     ("KXSOL", Vertical.CRYPTO),
-    ("KXXRP", Vertical.CRYPTO),
-    ("KXDOGE", Vertical.CRYPTO),
+    ("BTCD", Vertical.CRYPTO),
+    ("BTC", Vertical.CRYPTO),
+    ("ETHD", Vertical.CRYPTO),
+    ("ETH", Vertical.CRYPTO),
     ("KXNBA", Vertical.SPORTS),
     ("KXNFL", Vertical.SPORTS),
     ("KXMLB", Vertical.SPORTS),
@@ -31,6 +33,8 @@ _VERTICAL_PREFIXES: list[tuple[str, Vertical]] = [
     ("KXESPORTS", Vertical.SPORTS),
     ("KXOIL", Vertical.COMMODITIES),
     ("KXWTI", Vertical.COMMODITIES),
+    ("KXNATGAS", Vertical.COMMODITIES),
+    ("KXNGAS", Vertical.COMMODITIES),
     ("KXGAS", Vertical.COMMODITIES),
     ("KXGOLD", Vertical.COMMODITIES),
     ("KXCPI", Vertical.ECON),
@@ -55,12 +59,17 @@ WATCHLIST_SERIES: list[str] = [
     # Daily high temperature (Open-Meteo ensemble coverage)
     "KXHIGHNY", "KXHIGHCHI", "KXHIGHMIA", "KXHIGHAUS", "KXHIGHDEN",
     "KXHIGHPHIL", "KXHIGHLAX", "KXHIGHTSEA",
-    # Crypto strike ladders (spot + realized vol coverage)
-    "KXBTCD", "KXBTC", "KXETHD", "KXETH",
+    # Exact crypto universe: BTC/ETH/SOL at native 15m, hourly, and compatible
+    # daily terminal-price series. Weekly cohorts abstain until a directly
+    # model-compatible terminal-price series exists.
+    "KXBTC15M", "KXETH15M", "KXSOL15M",
+    "KXBTCD", "KXBTC", "KXETHD", "KXETH", "KXSOLD", "KXSOLE",
+    "BTCD", "BTC", "ETHD", "ETH",
     # Single-game sports moneylines (ESPN + Elo coverage)
     "KXMLBGAME", "KXNBAGAME", "KXNFLGAME", "KXNHLGAME", "KXWNBAGAME",
-    # Commodity price thresholds (Yahoo spot + realized vol coverage)
-    "KXWTI", "KXNATGAS", "KXGOLD",
+    # Daily/weekly commodity price thresholds (Yahoo proxy + realized vol).
+    "KXWTI", "KXNATGASD", "KXGOLDD",
+    "KXWTIW", "KXNATGASW", "KXGOLDW",
 ]
 
 

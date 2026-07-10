@@ -12,7 +12,7 @@ from __future__ import annotations
 import math
 import re
 from datetime import datetime, timezone
-from typing import Any, Callable
+from typing import Callable
 
 from autonomy.ontology import MarketView, Signal, Vertical
 
@@ -110,7 +110,7 @@ class CommoditiesSpotVolSignal:
         strike_type = str(market.raw.get("strike_type", "")).lower()
         floor = market.raw.get("floor_strike")
         cap = market.raw.get("cap_strike")
-        if strike_type == "greater" and floor is not None:
+        if strike_type in {"greater", "greater_or_equal"} and floor is not None:
             p_yes = p_above(float(floor))
         elif strike_type == "less" and cap is not None:
             p_yes = 1.0 - p_above(float(cap))
@@ -122,14 +122,32 @@ class CommoditiesSpotVolSignal:
                 return None
             p_yes = p_above(float(match.group(3)))
         p_yes = min(0.98, max(0.02, p_yes))
+        boundary_sensitivity = 4.0 * p_yes * (1.0 - p_yes)
+        probability_uncertainty = min(
+            0.5,
+            max(
+                0.10,
+                0.10
+                + 0.05 * boundary_sensitivity
+                + min(0.12, horizon_sigma * 2.0),
+            ),
+        )
         return Signal(
             source=self.name,
             market_ticker=market.ticker,
             probability_yes=p_yes,
-            uncertainty=min(0.5, horizon_sigma),
+            uncertainty=probability_uncertainty,
             rationale=(
                 f"{symbol} spot={spot:.2f} annvol={annual_vol:.0%} h={hours:.1f} "
                 f"{strike_type or 'threshold'} floor={floor} cap={cap}"
             ),
-            features={"symbol": symbol, "spot": spot, "annual_vol": annual_vol, "hours_to_close": hours},
+            features={
+                "symbol": symbol,
+                "spot": spot,
+                "annual_vol": annual_vol,
+                "hours_to_close": hours,
+                "horizon_log_return_sigma": horizon_sigma,
+                "probability_model_uncertainty": probability_uncertainty,
+                "public_proxy_feed": "Yahoo Finance continuous future",
+            },
         )

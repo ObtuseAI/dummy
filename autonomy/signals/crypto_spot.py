@@ -17,7 +17,7 @@ from autonomy.ontology import MarketView, Signal, Vertical
 
 # e.g. KXBTCD-26JUL0917-T71249.99 — date token with the closing hour glued on.
 _TICKER_RE = re.compile(
-    r"^KX(BTC|ETH|SOL)[A-Z]*-(\d{2}[A-Z]{3}\d{2})(\d{2})?-[BT]([\d.]+)$"
+    r"^(?:KX)?(BTC|ETH|SOL)[A-Z]*-(\d{2}[A-Z]{3}\d{2})(\d{2})?-[BT]([\d.]+)$"
 )
 # Native direction contracts use the opening CF Benchmarks value as the floor
 # strike in the market payload; their ticker suffix is not a price.

@@ -5,15 +5,19 @@ from dataclasses import replace
 from datetime import datetime, timedelta, timezone
 
 from autonomy.crypto_paper_twin import (
+    COHORTS,
     CryptoPaperTwin,
     PaperTwinLedger,
     ResearchGenome,
     TrustSnapshot,
+    bucket_start,
+    cohort_for_ticker,
     compounding_proposal,
     maker_fill_witness,
     timeframe_state,
 )
 from autonomy.ontology import MarketView, Vertical
+from autonomy.signals.commodities_spot import CommoditiesSpotVolSignal
 
 
 NOW = datetime(2026, 7, 10, 7, 15, tzinfo=timezone.utc)
@@ -70,6 +74,33 @@ def _state(asset: str) -> dict:
     }
 
 
+def _commodity_market(asset: str, timeframe: str) -> MarketView:
+    series = {
+        ("WTI", "1d"): "KXWTI",
+        ("NATGAS", "1d"): "KXNATGASD",
+        ("GOLD", "1d"): "KXGOLDD",
+        ("WTI", "1w"): "KXWTIW",
+        ("NATGAS", "1w"): "KXNATGASW",
+        ("GOLD", "1w"): "KXGOLDW",
+    }[(asset, timeframe)]
+    strike = {"WTI": 79.0, "NATGAS": 3.0, "GOLD": 4_500.0}[asset]
+    close = NOW + timedelta(days=2 if timeframe == "1d" else 5)
+    return MarketView(
+        ticker=f"{series}-26JUL15-T{strike:g}",
+        title=f"{asset} {timeframe} threshold",
+        vertical=Vertical.COMMODITIES,
+        status="active",
+        close_time=close.isoformat(),
+        yes_bid=40,
+        yes_ask=42,
+        no_bid=58,
+        no_ask=60,
+        volume=10_000,
+        liquidity=1_000,
+        raw={"strike_type": "greater", "floor_strike": strike},
+    )
+
+
 class FakeHub:
     def __init__(self):
         self.states = {asset: _state(asset) for asset in ("BTC", "ETH", "SOL")}
@@ -89,11 +120,17 @@ class FakeHub:
 
 class FakeScanner:
     def scan(self):
-        return [
+        crypto = [
             _market(asset, timeframe)
             for timeframe in ("15m", "1h")
             for asset in ("BTC", "ETH", "SOL")
         ]
+        commodities = [
+            _commodity_market(asset, timeframe)
+            for timeframe in ("1d", "1w")
+            for asset in ("WTI", "NATGAS", "GOLD")
+        ]
+        return crypto + commodities
 
 
 def _twin(tmp_path, *, now=NOW, results=None, trades=None):
@@ -102,6 +139,13 @@ def _twin(tmp_path, *, now=NOW, results=None, trades=None):
         ledger=ledger,
         scanner=FakeScanner(),
         hub=FakeHub(),
+        commodity_signal=CommoditiesSpotVolSignal(
+            fetch_spot_and_vol=lambda symbol: {
+                "CL=F": (80.0, 0.35),
+                "NG=F": (3.2, 0.45),
+                "GC=F": (4_600.0, 0.25),
+            }[symbol],
+        ),
         trust=TrustSnapshot({
             "market_prior@CRYPTO": 0.1,
             "crypto_spot_vol@CRYPTO": 8.0,
@@ -120,9 +164,11 @@ def test_parallel_paper_cycle_records_explanations_and_never_has_authority(tmp_p
     try:
         report = twin.run_cycle()
         assert report["status"] == "CYCLE_OK"
-        assert report["observations_written"] == 18
+        assert report["observations_written"] == 54
         assert report["trades_opened"] >= 6
-        assert set(report["lanes"]) == {"15m", "1h"}
+        assert set(report["lanes"]) == {"15m", "1h", "1d", "1w"}
+        assert set(report["cohorts"]) == {"CRYPTO", "COMMODITIES"}
+        assert set(report["cohorts"]["COMMODITIES"]) == {"1d", "1w"}
         assert report["authority"]["independent_of_shadow_or_live_session"] is True
         assert report["authority"]["continues_during_authorized_live_operation"] is True
         assert report["authority"]["execution_authority"] is False
@@ -145,12 +191,26 @@ def test_parallel_paper_cycle_records_explanations_and_never_has_authority(tmp_p
         routed = {
             (row["timeframe"], row["asset"], row["ticker"])
             for row in twin.ledger.connection.execute(
-                "SELECT timeframe,asset,ticker FROM observations WHERE ticker IS NOT NULL"
+                "SELECT timeframe,asset,ticker FROM observations "
+                "WHERE vertical='CRYPTO' AND ticker IS NOT NULL"
             )
         }
         assert {asset for _timeframe, asset, _ticker in routed} == {"BTC", "ETH", "SOL"}
         assert all("15M-" in ticker for timeframe, _asset, ticker in routed if timeframe == "15m")
         assert all("15M-" not in ticker for timeframe, _asset, ticker in routed if timeframe == "1h")
+        unavailable = twin.ledger.connection.execute(
+            "SELECT COUNT(*) FROM observations WHERE vertical='CRYPTO' "
+            "AND timeframe='1w' AND ticker IS NULL AND action='ABSTAIN'"
+        ).fetchone()[0]
+        assert unavailable == 9
+        commodity_observations = twin.ledger.connection.execute(
+            "SELECT COUNT(*) FROM observations WHERE vertical='COMMODITIES' "
+            "AND timeframe IN ('1d','1w') AND ticker IS NOT NULL"
+        ).fetchone()[0]
+        assert commodity_observations == 18
+        assert report["phase_4_canary_decision"]["gates_by_vertical"][
+            "COMMODITIES"
+        ]["1d"]["incumbent"]["live_canary_ready"] is False
     finally:
         twin.close()
 
@@ -163,7 +223,7 @@ def test_same_lane_never_pyramids_same_asset_expiry(tmp_path):
         second = twin.run_cycle()
         assert first_count > 0
         assert second["trades_opened"] == 0
-        assert second["observations_written"] == 18
+        assert second["observations_written"] == 54
     finally:
         twin.close()
 
@@ -205,6 +265,11 @@ def test_settlement_uses_simulated_taker_quote_and_keeps_paper_quarantined(tmp_p
         for timeframe in ("15m", "1h")
         for asset in ("BTC", "ETH", "SOL")
     }
+    results.update({
+        _commodity_market(asset, timeframe).ticker: {"result": "yes"}
+        for timeframe in ("1d", "1w")
+        for asset in ("WTI", "NATGAS", "GOLD")
+    })
     second = _twin(tmp_path, now=NOW + timedelta(hours=1), results=results)
     try:
         report = second.run_cycle()
@@ -311,6 +376,32 @@ def test_native_15m_keeps_final_four_minutes_while_hourly_retains_cutoff(tmp_pat
         assert twin._markets_for_asset([hourly], "BTC", "1h", NOW) == []
     finally:
         twin.close()
+
+
+def test_exact_crypto_and_commodity_horizon_allowlist():
+    crypto = {
+        (cohort.asset, cohort.timeframe)
+        for cohort in COHORTS if cohort.vertical is Vertical.CRYPTO
+    }
+    commodities = {
+        (cohort.asset, cohort.timeframe)
+        for cohort in COHORTS if cohort.vertical is Vertical.COMMODITIES
+    }
+    assert crypto == {
+        (asset, timeframe)
+        for asset in ("BTC", "ETH", "SOL")
+        for timeframe in ("15m", "1h", "1d", "1w")
+    }
+    assert commodities == {
+        (asset, timeframe)
+        for asset in ("WTI", "NATGAS", "GOLD")
+        for timeframe in ("1d", "1w")
+    }
+    assert cohort_for_ticker("KXDOGE15M-26JUL100430-30") is None
+    assert cohort_for_ticker("KXBTCMAXW-26JUL10-T80000") is None
+    assert cohort_for_ticker("KXWTIW-26JUL1014-T75.99").asset == "WTI"
+    monday = datetime(2026, 7, 6, tzinfo=timezone.utc)
+    assert bucket_start(NOW, "1w") == monday.isoformat()
 
 
 def test_compounding_and_canary_outputs_never_grant_live_authority():

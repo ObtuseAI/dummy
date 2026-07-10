@@ -64,12 +64,13 @@ default), reconciles settlements, and grades every source against reality.
   walk-forward tests; separately trains witnessed-fill execution filters and
   cluster-bootstrap compounding stress. It can propose a bounded shadow
   experiment but cannot change weights, risk, readiness, or orders.
-- **Always-on crypto paper twin**: every five minutes, BTC, ETH, and SOL native
-  15-minute and hourly ladder incumbent/recursive/exploratory lanes observe live public
-  Kalshi and crypto state, explain every decision, simulate one-contract top-
-  ask entries, and diagnose maker execution from public prints. It runs beside
-  both shadow and authorized live sessions but has no credentials, broker,
-  readiness, execution, or capital authority.
+- **Always-on market-horizon paper twin**: every five minutes, the exact crypto
+  universe (BTC/ETH/SOL at native 15m, hourly, daily, and weekly horizons) and
+  WTI/natural-gas/gold daily/weekly cohorts run isolated incumbent, recursive,
+  and exploratory lanes. Unlisted horizons abstain explicitly; listed markets
+  explain every decision, simulate one-contract top-ask entries, and diagnose
+  maker execution from public prints. It runs beside shadow and authorized live
+  sessions but has no credentials, broker, readiness, execution, or capital authority.
 - **Reflexion**: losing decisions distilled into structured lessons via the
   model router.
 

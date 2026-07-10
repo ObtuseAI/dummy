@@ -11,7 +11,7 @@ $script = Join-Path $repo "scripts\run_dummy_crypto_paper_twin.py"
 $log = Join-Path $repo "runtime\autonomy\crypto_paper_twin_stdout.log"
 
 if (-not (Test-Path -LiteralPath $script)) {
-    throw "Crypto paper twin not found: $script"
+    throw "Market-horizon paper twin not found: $script"
 }
 
 $start = (Get-Date).AddMinutes([Math]::Max(1, $StartDelayMinutes)).ToString("HH:mm")

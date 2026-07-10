@@ -1,30 +1,51 @@
-# Always-on crypto paper twin
+# Always-on crypto and commodities paper twin
 
-Dummy's crypto paper twin is a permanent, public-read-only digital twin that
+Dummy's market-horizon paper twin is a permanent, public-read-only digital twin that
 runs independently beside both normal shadow operation and any future
 authorized live session. It has no broker adapter, credentials, production
 ledger writes, execution authority, or capital authority.
 
 ## Live cohorts
 
-Every five minutes the twin scans public Kalshi BTC/ETH/SOL markets and freezes
-the current Coinbase, Kraken, Deribit, and Kalshi state.
-It operates two decision clocks in parallel:
+Every five minutes the twin scans an exact allowlist and freezes the current
+public source and Kalshi state:
 
 - `15m`: native `KXBTC15M`, `KXETH15M`, and `KXSOL15M` direction contracts
   with minute momentum, volume, and microstructure inputs;
-- `1h`: BTC, ETH, and SOL hourly price ladders with hourly-only technical state.
+- `1h`: BTC, ETH, and SOL hourly price ladders with hourly-only technical state;
+- `1d` and `1w` crypto: BTC, ETH, and SOL only, using directly compatible
+  terminal-price markets when listed;
+- `1d` and `1w` commodities: WTI, natural gas, and gold only, using the existing
+  public continuous-future spot/volatility proxy.
 
-Each timeframe has three isolated lanes:
+When no directly model-compatible market is listed, the cohort records an
+explicit abstention. It never substitutes max-price, head-to-head, or synthetic
+contracts for a requested daily/weekly terminal-price horizon.
 
-- `incumbent`: current production forecast and production crypto selection
+The allowlist is intentionally closed:
+
+| Vertical | Horizon | Assets | Compatible series |
+|---|---|---|---|
+| Crypto | 15m | BTC, ETH, SOL | `KXBTC15M`, `KXETH15M`, `KXSOL15M` |
+| Crypto | 1h | BTC, ETH, SOL | `KXBTCD`/`KXBTC`, `KXETHD`/`KXETH`, `KXSOLD`/`KXSOLE` |
+| Crypto | 1d | BTC, ETH, SOL | `BTCD`/`BTC`, `ETHD`/`ETH`; SOL abstains until a compatible listing exists |
+| Crypto | 1w | BTC, ETH, SOL | No compatible terminal-price series currently; all three abstain |
+| Commodities | 1d | WTI, natural gas, gold | `KXWTI`, `KXNATGASD`, `KXGOLDD` |
+| Commodities | 1w | WTI, natural gas, gold | `KXWTIW`, `KXNATGASW`, `KXGOLDW` |
+
+Series availability is evaluated from the public API every cycle. Other crypto
+assets and horizons are outside policy even if the exchange lists them.
+
+Each vertical and timeframe has three isolated lanes:
+
+- `incumbent`: current production forecast and production selection
   thresholds;
 - `recursive`: a frozen evolution-lab genome blended with the timeframe model;
 - `exploratory`: a permissive positive-EV paper-only lane that accumulates
   outcomes even when production correctly abstains. It can diagnose threshold
   and timing mistakes but never counts as promotion evidence.
 
-Only one paper position may be opened per strategy, timeframe, asset, and
+Only one paper position may be opened per strategy, vertical, timeframe, asset, and
 expiry. Adjacent strike ladders therefore cannot manufacture independent
 trades or pyramid one event.
 
@@ -37,7 +58,7 @@ Every lane writes a plain-language and structured explanation containing:
 - timeframe-specific model probability and signal features;
 - quoted entry, fee, conservative probability, and conservative EV;
 - exact eligibility or abstention rule;
-- frozen market, source-weight, crypto-state, and policy payloads;
+- frozen market, source-weight, public-source state, and policy payloads;
 - explicit paper-only and no-broker-contact language.
 
 Observations and trades are stored in

@@ -1,4 +1,4 @@
-"""Run Dummy's always-on BTC/ETH/SOL native-15m + hourly paper digital twin.
+"""Run Dummy's exact crypto plus daily/weekly commodities paper digital twin.
 
 This process uses public GET data only. It has no broker, credential, live
 session, production-ledger write, execution, or capital authority.
@@ -57,9 +57,21 @@ def _summary(report: dict, report_path: Path) -> dict:
         "settlements_recorded": report.get("settlements_recorded"),
         "maker_updates": report.get("maker_updates"),
         "lanes": lanes,
+        "cohorts": report.get("cohorts"),
+        "vertical_timeframes": report.get("vertical_timeframes"),
+        "assets_by_vertical": report.get("assets_by_vertical"),
+        "universe_policy": report.get("universe_policy"),
         "active_recursive_epoch": report.get("active_recursive_epoch"),
+        "phase_2_forward_selection": report.get("phase_2_forward_selection"),
+        "phase_3_execution": report.get("phase_3_execution"),
         "phase_4_canary_decision": report.get("phase_4_canary_decision"),
         "phase_5_compounding": report.get("phase_5_compounding"),
+        "phase_5_compounding_by_vertical": report.get(
+            "phase_5_compounding_by_vertical"
+        ),
+        "timeframe_comparison_by_vertical": report.get(
+            "timeframe_comparison_by_vertical"
+        ),
         "weaknesses": report.get("weaknesses"),
         "recent_explanations": report.get("recent_explanations"),
         "evidence_quarantine": report.get("evidence_quarantine"),

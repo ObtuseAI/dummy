@@ -151,7 +151,7 @@ _HTML = """<!doctype html>
  <div class="card"><h2>Statistics intake</h2><div id="statistics"></div></div>
  <div class="card"><h2>Simulation training</h2><div id="training"></div></div>
  <div class="card"><h2>Recursive evolution lab</h2><div id="evolution"></div></div>
- <div class="card"><h2>Always-on crypto paper twin</h2><div id="paper"></div></div>
+ <div class="card"><h2>Always-on market paper twin</h2><div id="paper"></div></div>
  <div class="card"><h2>Crypto execution truth</h2><div id="crypto"></div></div>
  <div class="card" style="grid-column:1/-1"><h2>Source scoreboard</h2><div id="board"></div></div>
  <div class="card" style="grid-column:1/-1"><h2>Recent cycles</h2><div id="cycles"></div></div>
@@ -245,9 +245,14 @@ async function tick(){
    +kv('weaknesses queued', iqi.length)
    +kv('top priority', (iqi[0]||{}).component||'none')
    +kv('capital authority', ((el.authority||{}).capital_authority)?'<b class="bad">YES</b>':'none');
- const pt=d.crypto_paper_twin||{}, ptl=pt.lanes||{};
+ const pt=d.crypto_paper_twin||{}, ptc=pt.cohorts||{}, ptl=ptc.CRYPTO||pt.lanes||{};
+ const ptm=ptc.COMMODITIES||{};
  const p15i=(ptl['15m']||{}).incumbent||{}, p15e=(ptl['15m']||{}).exploratory||{};
  const p1i=(ptl['1h']||{}).incumbent||{}, p1e=(ptl['1h']||{}).exploratory||{};
+ const pdi=(ptl['1d']||{}).incumbent||{}, pde=(ptl['1d']||{}).exploratory||{};
+ const pwi=(ptl['1w']||{}).incumbent||{}, pwe=(ptl['1w']||{}).exploratory||{};
+ const mdi=(ptm['1d']||{}).incumbent||{}, mde=(ptm['1d']||{}).exploratory||{};
+ const mwi=(ptm['1w']||{}).incumbent||{}, mwe=(ptm['1w']||{}).exploratory||{};
  const pta=pt.authority||{};
  document.getElementById('paper').innerHTML =
    kv('status', pt.status||'—', pt.status==='CYCLE_OK'?'ok':'warn')
@@ -256,6 +261,10 @@ async function tick(){
    +kv('15m exploratory P&L¢', p15e.net_pnl_cents??0, (p15e.net_pnl_cents||0)>0?'ok':'bad')
    +kv('1h incumbent settled', p1i.settled_trades??0)
    +kv('1h exploratory P&L¢', p1e.net_pnl_cents??0, (p1e.net_pnl_cents||0)>0?'ok':'bad')
+   +kv('crypto 1d / 1w settled', (pdi.settled_trades??0)+' / '+(pwi.settled_trades??0))
+   +kv('crypto 1d / 1w P&L¢', (pde.net_pnl_cents??0)+' / '+(pwe.net_pnl_cents??0))
+   +kv('commodity 1d / 1w settled', (mdi.settled_trades??0)+' / '+(mwi.settled_trades??0))
+   +kv('commodity 1d / 1w P&L¢', (mde.net_pnl_cents??0)+' / '+(mwe.net_pnl_cents??0))
    +kv('always beside live', pta.continues_during_authorized_live_operation?'yes':'—')
    +kv('broker contacted', pta.broker_contacted?'<b class="bad">YES</b>':'no')
    +kv('capital authority', pta.capital_authority?'<b class="bad">YES</b>':'none');

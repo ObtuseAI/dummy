@@ -35,6 +35,7 @@ def test_greater_strike_below_spot_high_prob():
     assert result is not None
     assert result.probability_yes > 0.8
     assert result.source == "commodities_spot_vol"
+    assert result.uncertainty >= 0.10
 
 
 def test_greater_strike_above_spot_low_prob():

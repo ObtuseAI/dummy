@@ -1,11 +1,12 @@
-"""Always-on, public-read-only BTC/ETH/SOL paper-trading digital twin.
+"""Always-on, public-read-only crypto and commodities paper digital twin.
 
 The twin runs independently of Dummy's SHADOW/LIVE session.  It never loads
 credentials, imports a broker adapter, or writes the production autonomy
-ledger. The 15-minute clock observes native Kalshi direction contracts while
-the hourly clock observes price ladders. Each clock runs an incumbent lane and a
-frozen recursive-challenger lane, records a plain-language explanation, books
-one quote-executable *simulated* taker contract per asset/expiry, and tracks a
+ledger. Crypto is restricted to BTC/ETH/SOL at native 15-minute, hourly,
+daily, and weekly horizons. Commodities use equivalent daily and weekly WTI,
+natural-gas, and gold cohorts. Every cohort runs an incumbent lane and a frozen
+recursive-challenger lane, records a plain-language explanation, books one
+quote-executable *simulated* taker contract per asset/expiry, and tracks a
 separate conservative maker-fill diagnostic from public prints.
 
 Paper evidence is useful for model selection but is permanently quarantined:
@@ -20,7 +21,7 @@ import random
 import sqlite3
 import statistics
 import uuid
-from dataclasses import asdict
+from dataclasses import asdict, dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Callable, Iterable, Sequence
@@ -35,6 +36,7 @@ from autonomy.reconciler import (
     default_fetch_trades,
 )
 from autonomy.scanner import MarketScanner
+from autonomy.signals.commodities_spot import CommoditiesSpotVolSignal
 from autonomy.signals.crypto_indicators import (
     CryptoDataHub,
     CryptoTechnicalCompositeSignal,
@@ -42,21 +44,63 @@ from autonomy.signals.crypto_indicators import (
 from autonomy.signals.crypto_spot import (
     CryptoEwmaTailSignal,
     CryptoSpotVolSignal,
-    parse_crypto_ticker,
 )
 from autonomy.signals.market_prior import MarketPriorSignal
 from kalshi.presubmit import default_fetch_orderbook
 
 
-TIMEFRAMES = {"15m": 15 * 60, "1h": 60 * 60}
+TIMEFRAMES = {
+    "15m": 15 * 60,
+    "1h": 60 * 60,
+    "1d": 24 * 60 * 60,
+    "1w": 7 * 24 * 60 * 60,
+}
 STRATEGIES = ("incumbent", "recursive", "exploratory")
 ASSETS = ("BTC", "ETH", "SOL")
-WATCHLIST = [
-    "KXBTC15M", "KXETH15M", "KXSOL15M",
-    "KXBTCD", "KXETHD", "KXSOLD", "KXBTC", "KXETH",
-]
-MIN_MINUTES_TO_CLOSE = {"15m": 1.0, "1h": 5.0}
-MAX_MINUTES_TO_CLOSE = 90.0
+COMMODITY_ASSETS = ("WTI", "NATGAS", "GOLD")
+
+
+@dataclass(frozen=True)
+class MarketCohort:
+    vertical: Vertical
+    asset: str
+    timeframe: str
+    series: tuple[str, ...]
+
+
+COHORTS = (
+    MarketCohort(Vertical.CRYPTO, "BTC", "15m", ("KXBTC15M",)),
+    MarketCohort(Vertical.CRYPTO, "ETH", "15m", ("KXETH15M",)),
+    MarketCohort(Vertical.CRYPTO, "SOL", "15m", ("KXSOL15M",)),
+    MarketCohort(Vertical.CRYPTO, "BTC", "1h", ("KXBTCD", "KXBTC")),
+    MarketCohort(Vertical.CRYPTO, "ETH", "1h", ("KXETHD", "KXETH")),
+    MarketCohort(Vertical.CRYPTO, "SOL", "1h", ("KXSOLD", "KXSOLE")),
+    # Direct terminal-price daily series. They are retained in the requested
+    # universe even when the exchange currently lists no open event.
+    MarketCohort(Vertical.CRYPTO, "BTC", "1d", ("BTCD", "BTC")),
+    MarketCohort(Vertical.CRYPTO, "ETH", "1d", ("ETHD", "ETH")),
+    MarketCohort(Vertical.CRYPTO, "SOL", "1d", ()),
+    # No directly model-compatible weekly terminal-price series is currently
+    # listed for BTC/ETH/SOL. Max-price and head-to-head contracts are excluded
+    # rather than mispriced with a terminal-price model.
+    MarketCohort(Vertical.CRYPTO, "BTC", "1w", ()),
+    MarketCohort(Vertical.CRYPTO, "ETH", "1w", ()),
+    MarketCohort(Vertical.CRYPTO, "SOL", "1w", ()),
+    MarketCohort(Vertical.COMMODITIES, "WTI", "1d", ("KXWTI",)),
+    MarketCohort(Vertical.COMMODITIES, "NATGAS", "1d", ("KXNATGASD",)),
+    MarketCohort(Vertical.COMMODITIES, "GOLD", "1d", ("KXGOLDD",)),
+    MarketCohort(Vertical.COMMODITIES, "WTI", "1w", ("KXWTIW",)),
+    MarketCohort(Vertical.COMMODITIES, "NATGAS", "1w", ("KXNATGASW",)),
+    MarketCohort(Vertical.COMMODITIES, "GOLD", "1w", ("KXGOLDW",)),
+)
+WATCHLIST = sorted({series for cohort in COHORTS for series in cohort.series})
+MIN_MINUTES_TO_CLOSE = {"15m": 1.0, "1h": 5.0, "1d": 60.0, "1w": 360.0}
+MAX_MINUTES_TO_CLOSE = {
+    "15m": 20.0,
+    "1h": 90.0,
+    "1d": 4 * 24 * 60.0,
+    "1w": 10 * 24 * 60.0,
+}
 INCUMBENT_MIN_EV_CENTS = 8.0
 INCUMBENT_MAX_UNCERTAINTY = 0.35
 INCUMBENT_MAX_ENTRY_CENTS = 75
@@ -101,6 +145,7 @@ CREATE TABLE IF NOT EXISTS observations(
     cycle_id TEXT NOT NULL,
     epoch_id TEXT,
     strategy TEXT NOT NULL,
+    vertical TEXT NOT NULL DEFAULT 'CRYPTO',
     timeframe TEXT NOT NULL,
     bucket_start TEXT NOT NULL,
     asset TEXT NOT NULL,
@@ -121,6 +166,7 @@ CREATE TABLE IF NOT EXISTS trades(
     observation_id TEXT NOT NULL,
     epoch_id TEXT,
     strategy TEXT NOT NULL,
+    vertical TEXT NOT NULL DEFAULT 'CRYPTO',
     timeframe TEXT NOT NULL,
     asset TEXT NOT NULL,
     event_cluster TEXT NOT NULL,
@@ -158,7 +204,7 @@ CREATE TABLE IF NOT EXISTS trades(
     counts_toward_readiness INTEGER NOT NULL DEFAULT 0,
     broker_contacted INTEGER NOT NULL DEFAULT 0,
     FOREIGN KEY(observation_id) REFERENCES observations(observation_id),
-    UNIQUE(strategy,timeframe,asset,event_cluster)
+    UNIQUE(strategy,vertical,timeframe,asset,event_cluster)
 );
 CREATE INDEX IF NOT EXISTS trade_status ON trades(status,close_time);
 CREATE INDEX IF NOT EXISTS maker_status ON trades(maker_status,maker_expires_at);
@@ -183,14 +229,31 @@ def _json(value: Any) -> str:
     return json.dumps(value, sort_keys=True, separators=(",", ":"), default=str)
 
 
+def _vertical_name(value: Vertical | str) -> str:
+    return value.value if isinstance(value, Vertical) else str(value)
+
+
+def cohort_for_ticker(ticker: str) -> MarketCohort | None:
+    upper = ticker.upper()
+    for cohort in COHORTS:
+        if any(upper.startswith(f"{series.upper()}-") for series in cohort.series):
+            return cohort
+    return None
+
+
 def bucket_start(now: datetime, timeframe: str) -> str:
+    if timeframe == "1w":
+        day = now.astimezone(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
+        return (day - timedelta(days=day.weekday())).isoformat()
     seconds = TIMEFRAMES[timeframe]
     timestamp = int(now.astimezone(timezone.utc).timestamp())
     return datetime.fromtimestamp(timestamp - timestamp % seconds, timezone.utc).isoformat()
 
 
-def event_cluster(timeframe: str, asset: str, close_time: str) -> str:
-    return f"CRYPTO_PAPER:{timeframe}:{asset}:{_utc(close_time).isoformat()}"
+def event_cluster(vertical: Vertical, timeframe: str, asset: str, close_time: str) -> str:
+    return (
+        f"PAPER:{vertical.value}:{timeframe}:{asset}:{_utc(close_time).isoformat()}"
+    )
 
 
 class TrustSnapshot:
@@ -234,8 +297,19 @@ class PaperTwinLedger:
         self.connection = sqlite3.connect(self.path, timeout=30)
         self.connection.row_factory = sqlite3.Row
         self.connection.executescript(_SCHEMA)
+        self._ensure_vertical_columns()
         self._quarantine_legacy_15m_ladders()
         self.connection.commit()
+
+    def _ensure_vertical_columns(self) -> None:
+        for table in ("observations", "trades"):
+            columns = {
+                str(row[1]) for row in self.connection.execute(f"PRAGMA table_info({table})")
+            }
+            if "vertical" not in columns:
+                self.connection.execute(
+                    f"ALTER TABLE {table} ADD COLUMN vertical TEXT NOT NULL DEFAULT 'CRYPTO'"
+                )
 
     def _quarantine_legacy_15m_ladders(self) -> None:
         """Preserve pre-native-15m rows without mixing them into clean cohorts."""
@@ -342,12 +416,13 @@ class PaperTwinLedger:
     def record_observation(self, row: dict[str, Any]) -> str:
         observation_id = str(row.get("observation_id") or f"obs-{uuid.uuid4().hex[:16]}")
         self.connection.execute(
-            "INSERT INTO observations(observation_id,cycle_id,epoch_id,strategy,timeframe,"
+            "INSERT INTO observations(observation_id,cycle_id,epoch_id,strategy,vertical,timeframe,"
             "bucket_start,asset,event_cluster,ticker,action,explanation,diagnostics_json,created_at)"
-            " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
             (
                 observation_id, row["cycle_id"], row.get("epoch_id"), row["strategy"],
-                row["timeframe"], row["bucket_start"], row["asset"],
+                _vertical_name(row.get("vertical") or Vertical.CRYPTO), row["timeframe"],
+                row["bucket_start"], row["asset"],
                 row.get("event_cluster"), row.get("ticker"), row["action"],
                 row["explanation"], _json(row.get("diagnostics") or {}), row["created_at"],
             ),
@@ -355,25 +430,34 @@ class PaperTwinLedger:
         self.connection.commit()
         return observation_id
 
-    def has_lane_trade(self, strategy: str, timeframe: str, asset: str, cluster: str) -> bool:
+    def has_lane_trade(
+        self,
+        strategy: str,
+        timeframe: str,
+        asset: str,
+        cluster: str,
+        vertical: Vertical | str = Vertical.CRYPTO,
+    ) -> bool:
         return self.connection.execute(
-            "SELECT 1 FROM trades WHERE strategy=? AND timeframe=? AND asset=? AND event_cluster=?",
-            (strategy, timeframe, asset, cluster),
+            "SELECT 1 FROM trades WHERE strategy=? AND vertical=? AND timeframe=? "
+            "AND asset=? AND event_cluster=?",
+            (strategy, _vertical_name(vertical), timeframe, asset, cluster),
         ).fetchone() is not None
 
     def record_trade(self, row: dict[str, Any]) -> bool:
         try:
             self.connection.execute(
-                "INSERT INTO trades(trade_id,observation_id,epoch_id,strategy,timeframe,asset,"
+                "INSERT INTO trades(trade_id,observation_id,epoch_id,strategy,vertical,timeframe,asset,"
                 "event_cluster,ticker,side,created_at,close_time,probability_yes,market_probability,"
                 "uncertainty,edge_cents,conservative_ev_cents,taker_price_cents,taker_fee_cents,"
                 "taker_fill_basis,status,explanation,sources_json,features_json,market_snapshot_json,"
                 "policy_json,maker_price_cents,maker_fee_cents,maker_queue_ahead,"
                 "maker_queue_snapshot,maker_status,maker_expires_at)"
-                " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                 (
                     row["trade_id"], row["observation_id"], row.get("epoch_id"), row["strategy"],
-                    row["timeframe"], row["asset"], row["event_cluster"], row["ticker"],
+                    _vertical_name(row.get("vertical") or Vertical.CRYPTO), row["timeframe"],
+                    row["asset"], row["event_cluster"], row["ticker"],
                     row["side"], row["created_at"], row["close_time"], row["probability_yes"],
                     row["market_probability"], row["uncertainty"], row["edge_cents"],
                     row["conservative_ev_cents"], row["taker_price_cents"],
@@ -450,7 +534,7 @@ class PaperTwinLedger:
     def recent_explanations(self, limit: int = 16) -> list[dict[str, Any]]:
         return [
             dict(row) for row in self.connection.execute(
-                "SELECT created_at,strategy,timeframe,asset,action,ticker,explanation"
+                "SELECT created_at,strategy,vertical,timeframe,asset,action,ticker,explanation"
                 " FROM observations ORDER BY rowid DESC LIMIT ?",
                 (max(1, int(limit)),),
             )
@@ -461,10 +545,14 @@ class PaperTwinLedger:
         strategy: str,
         timeframe: str | None,
         *,
+        vertical: Vertical | str | None = None,
         since: str | None = None,
     ) -> dict[str, Any]:
         conditions = ["strategy=?"]
         params: list[Any] = [strategy]
+        if vertical is not None:
+            conditions.append("vertical=?")
+            params.append(_vertical_name(vertical))
         if timeframe is not None:
             conditions.append("timeframe=?")
             params.append(timeframe)
@@ -504,6 +592,7 @@ class PaperTwinLedger:
         maker_settled = [row for row in settled if row["maker_pnl_cents"] is not None]
         return {
             "strategy": strategy,
+            "vertical": _vertical_name(vertical) if vertical is not None else "all",
             "timeframe": timeframe or "all",
             "trades": len(rows),
             "settled_trades": len(settled),
@@ -527,18 +616,31 @@ class PaperTwinLedger:
             "maker_net_pnl_cents": sum(int(row["maker_pnl_cents"]) for row in maker_settled),
         }
 
-    def settled_trade_rows(self, strategy: str, timeframe: str) -> list[dict[str, Any]]:
+    def settled_trade_rows(
+        self,
+        strategy: str,
+        timeframe: str,
+        vertical: Vertical | str = Vertical.CRYPTO,
+    ) -> list[dict[str, Any]]:
         return [
             dict(row) for row in self.connection.execute(
-                "SELECT * FROM trades WHERE strategy=? AND timeframe=? AND status='SETTLED'"
+                "SELECT * FROM trades WHERE strategy=? AND vertical=? AND timeframe=? "
+                "AND status='SETTLED'"
                 " ORDER BY created_at,trade_id",
-                (strategy, timeframe),
+                (strategy, _vertical_name(vertical), timeframe),
             )
         ]
 
-    def observation_reason_counts(self) -> dict[str, int]:
+    def observation_reason_counts(
+        self, vertical: Vertical | str | None = None,
+    ) -> dict[str, int]:
         counts: dict[str, int] = {}
-        for row in self.connection.execute("SELECT action,diagnostics_json FROM observations"):
+        query = "SELECT action,diagnostics_json FROM observations"
+        params: tuple[Any, ...] = ()
+        if vertical is not None:
+            query += " WHERE vertical=?"
+            params = (_vertical_name(vertical),)
+        for row in self.connection.execute(query, params):
             try:
                 reason = str((json.loads(str(row["diagnostics_json"])) or {}).get("reason") or row["action"])
             except (TypeError, json.JSONDecodeError):
@@ -551,6 +653,7 @@ class PaperTwinLedger:
         timeframe: str,
         strategy: str,
         *,
+        vertical: Vertical | str = Vertical.CRYPTO,
         baseline: str = "incumbent",
         simulations: int = 1000,
     ) -> dict[str, Any] | None:
@@ -560,9 +663,9 @@ class PaperTwinLedger:
         for lane in (strategy, baseline):
             for row in self.connection.execute(
                 "SELECT event_cluster,SUM(taker_pnl_cents) FROM trades"
-                " WHERE strategy=? AND timeframe=? AND status='SETTLED'"
+                " WHERE strategy=? AND vertical=? AND timeframe=? AND status='SETTLED'"
                 " GROUP BY event_cluster",
-                (lane, timeframe),
+                (lane, _vertical_name(vertical), timeframe),
             ):
                 aggregates[lane][str(row[0])] = int(row[1] or 0)
         clusters = sorted(set(aggregates[strategy]) | set(aggregates[baseline]))
@@ -580,6 +683,7 @@ class PaperTwinLedger:
         return {
             "strategy": strategy,
             "baseline": baseline,
+            "vertical": _vertical_name(vertical),
             "observed_pnl_advantage_cents": sum(differences),
             "lower95": round(_percentile(samples, 0.025) or 0.0, 6),
             "upper95": round(_percentile(samples, 0.975) or 0.0, 6),
@@ -587,11 +691,17 @@ class PaperTwinLedger:
             "method": "paired_event_cluster_bootstrap_total_pnl_advantage",
         }
 
-    def execution_challengers(self) -> dict[str, Any]:
+    def execution_challengers(
+        self, vertical: Vertical | str | None = None,
+    ) -> dict[str, Any]:
+        query = "SELECT * FROM trades WHERE status='SETTLED'"
+        params: tuple[Any, ...] = ()
+        if vertical is not None:
+            query += " AND vertical=?"
+            params = (_vertical_name(vertical),)
+        query += " ORDER BY created_at,trade_id"
         rows = [
-            dict(row) for row in self.connection.execute(
-                "SELECT * FROM trades WHERE status='SETTLED' ORDER BY created_at,trade_id"
-            )
+            dict(row) for row in self.connection.execute(query, params)
         ]
         candidates: list[dict[str, Any]] = []
         evaluated = 0
@@ -650,6 +760,7 @@ class PaperTwinLedger:
         )
         return {
             "method": "forward_paper_execution_policy_grid",
+            "vertical": _vertical_name(vertical) if vertical is not None else "all",
             "policies_evaluated": evaluated,
             "settled_input_trades": len(rows),
             "qualified_candidates": len(candidates),
@@ -697,11 +808,15 @@ def timeframe_state(state: dict[str, Any], timeframe: str) -> dict[str, Any]:
         frozen["minute_closes"] = list(state.get("minute_closes") or [])[-180:]
         frozen["minute_volumes"] = list(state.get("minute_volumes") or [])[-180:]
         frozen["hourly_closes"] = list(state.get("hourly_closes") or [])[-2:]
-    elif timeframe == "1h":
+    elif timeframe in {"1h", "1d", "1w"}:
         frozen["minute_closes"] = []
         frozen["minute_volumes"] = []
         frozen["book_imbalance"] = None
         frozen["microprice_basis_bps"] = None
+        if timeframe == "1d":
+            frozen["hourly_closes"] = list(state.get("hourly_closes") or [])[-168:]
+        elif timeframe == "1w":
+            frozen["hourly_closes"] = list(state.get("hourly_closes") or [])[-300:]
     else:
         raise ValueError(f"unsupported timeframe: {timeframe}")
     frozen["paper_timeframe"] = timeframe
@@ -913,7 +1028,10 @@ def _candidate(
 def decision_explanation(candidate: dict[str, Any], asset: str) -> str:
     market = candidate.get("market")
     ticker = market.ticker if isinstance(market, MarketView) else "no-market"
-    prefix = f"{asset} {candidate.get('timeframe')} {candidate.get('strategy')}"
+    vertical = str(candidate.get("vertical") or "CRYPTO")
+    prefix = (
+        f"{vertical} {asset} {candidate.get('timeframe')} {candidate.get('strategy')}"
+    )
     if candidate.get("best") is None:
         return (
             f"{prefix} ABSTAIN. {candidate.get('reason', 'no candidate')}. "
@@ -1095,6 +1213,7 @@ class CryptoPaperTwin:
         ledger: PaperTwinLedger | None = None,
         scanner: MarketScanner | None = None,
         hub: CryptoDataHub | None = None,
+        commodity_signal: CommoditiesSpotVolSignal | None = None,
         trust: TrustSnapshot | None = None,
         fetch_result: Callable[[str], dict[str, Any]] | None = None,
         fetch_orderbook: Callable[[str], dict[str, Any]] | None = None,
@@ -1106,9 +1225,11 @@ class CryptoPaperTwin:
     ) -> None:
         self.ledger = ledger or PaperTwinLedger()
         self.scanner = scanner or MarketScanner(
-            watchlist=list(WATCHLIST), verticals={Vertical.CRYPTO},
+            watchlist=list(WATCHLIST),
+            verticals={Vertical.CRYPTO, Vertical.COMMODITIES},
         )
         self.hub = hub or CryptoDataHub()
+        self.commodity_signal = commodity_signal or CommoditiesSpotVolSignal()
         self.trust = trust or TrustSnapshot.from_database("runtime/autonomy/ledger.db")
         self.fetch_result = fetch_result or default_fetch_market_result
         self.fetch_orderbook = fetch_orderbook or default_fetch_orderbook
@@ -1121,7 +1242,7 @@ class CryptoPaperTwin:
 
     def _base_forecasts(
         self, markets: Sequence[MarketView], states: dict[str, dict[str, Any]],
-    ) -> dict[str, Forecast]:
+    ) -> tuple[dict[str, Forecast], dict[str, dict[str, Any]]]:
         flat = CryptoSpotVolSignal(
             fetch_spot_and_vol=lambda asset: (
                 float(states[asset]["spot"]),
@@ -1137,9 +1258,15 @@ class CryptoPaperTwin:
         prior = MarketPriorSignal()
         forecaster = EnsembleForecaster(self.trust)  # type: ignore[arg-type]
         forecasts: dict[str, Forecast] = {}
+        source_features: dict[str, dict[str, Any]] = {}
         for market in markets:
             signals: list[Signal] = []
-            for source in (prior, flat, ewma):
+            sources = (
+                (prior, flat, ewma)
+                if market.vertical is Vertical.CRYPTO
+                else (prior, self.commodity_signal)
+            )
+            for source in sources:
                 try:
                     if source.applicable(market):
                         signal = source.generate(market)
@@ -1150,7 +1277,10 @@ class CryptoPaperTwin:
             forecast = forecaster.fuse(market, signals)
             if forecast is not None:
                 forecasts[market.ticker] = forecast
-        return forecasts
+                source_features[market.ticker] = {
+                    signal.source: signal.features for signal in signals
+                }
+        return forecasts, source_features
 
     def _technical(
         self,
@@ -1158,6 +1288,8 @@ class CryptoPaperTwin:
         timeframe: str,
         states: dict[str, dict[str, Any]],
     ) -> Signal | None:
+        if market.vertical is not Vertical.CRYPTO:
+            return None
         source = CryptoTechnicalCompositeSignal(
             fetch_state=lambda asset: timeframe_state(states[asset], timeframe),
         )
@@ -1172,23 +1304,29 @@ class CryptoPaperTwin:
         asset: str,
         timeframe: str,
         now: datetime,
+        vertical: Vertical = Vertical.CRYPTO,
     ) -> list[MarketView]:
         candidates: list[tuple[datetime, MarketView]] = []
         for market in markets:
-            parsed = parse_crypto_ticker(market.ticker)
-            if parsed is None or str(parsed["asset"]) != asset:
+            cohort = cohort_for_ticker(market.ticker)
+            if cohort is None:
                 continue
-            family = str(parsed.get("contract_family") or "ladder")
-            if timeframe == "15m" and family != "15m_direction":
-                continue
-            if timeframe == "1h" and family == "15m_direction":
+            if (
+                cohort.vertical is not vertical
+                or cohort.asset != asset
+                or cohort.timeframe != timeframe
+            ):
                 continue
             try:
                 close = _utc(market.close_time)
             except (TypeError, ValueError):
                 continue
             minutes = (close - now).total_seconds() / 60.0
-            if not (MIN_MINUTES_TO_CLOSE[timeframe] <= minutes <= MAX_MINUTES_TO_CLOSE):
+            if not (
+                MIN_MINUTES_TO_CLOSE[timeframe]
+                <= minutes
+                <= MAX_MINUTES_TO_CLOSE[timeframe]
+            ):
                 continue
             candidates.append((close, market))
         if not candidates:
@@ -1253,18 +1391,21 @@ class CryptoPaperTwin:
             active_genome = ResearchGenome.from_mapping(epoch.get("genome")) or proposed
             eligible_markets = [
                 market for market in markets
-                if parse_crypto_ticker(market.ticker) is not None
+                if cohort_for_ticker(market.ticker) is not None
                 and None not in (market.yes_bid, market.yes_ask, market.no_bid, market.no_ask)
             ]
-            forecasts = self._base_forecasts(eligible_markets, states) if states else {}
-            for timeframe in TIMEFRAMES:
-                for asset in ASSETS:
-                    lane_markets = self._markets_for_asset(
-                        eligible_markets, asset, timeframe, now,
-                    )
-                    cluster = event_cluster(timeframe, asset, lane_markets[0].close_time) \
-                        if lane_markets else None
-                    for strategy in STRATEGIES:
+            forecasts, source_features = self._base_forecasts(eligible_markets, states)
+            for cohort in COHORTS:
+                vertical = cohort.vertical
+                timeframe = cohort.timeframe
+                asset = cohort.asset
+                lane_markets = self._markets_for_asset(
+                    eligible_markets, asset, timeframe, now, vertical,
+                )
+                cluster = event_cluster(
+                    vertical, timeframe, asset, lane_markets[0].close_time,
+                ) if lane_markets else None
+                for strategy in STRATEGIES:
                         candidates: list[dict[str, Any]] = []
                         for market in lane_markets:
                             forecast = forecasts.get(market.ticker)
@@ -1275,17 +1416,24 @@ class CryptoPaperTwin:
                                 market, forecast, technical, strategy=strategy,
                                 timeframe=timeframe, genome=active_genome,
                             ))
+                            candidates[-1]["vertical"] = vertical.value
                         if candidates:
                             best_candidate = max(
                                 candidates,
                                 key=lambda row: float((row.get("best") or {}).get("ev_cents") or -1e9),
                             )
                         else:
+                            reason = (
+                                "no directly model-compatible listed market for requested cohort"
+                                if not cohort.series
+                                else "no open two-sided nearest-expiry market with a complete forecast"
+                            )
                             best_candidate = {
                                 "eligible": False,
-                                "reason": "no two-sided nearest-expiry market with a complete forecast",
+                                "reason": reason,
                                 "strategy": strategy,
                                 "timeframe": timeframe,
+                                "vertical": vertical.value,
                             }
                         explanation = decision_explanation(best_candidate, asset)
                         action = (
@@ -1293,14 +1441,11 @@ class CryptoPaperTwin:
                             if best_candidate.get("eligible") else "ABSTAIN"
                         )
                         market = best_candidate.get("market")
-                        parsed_market = (
-                            parse_crypto_ticker(market.ticker)
-                            if isinstance(market, MarketView) else None
-                        )
                         observation_id = self.ledger.record_observation({
                             "cycle_id": cycle_id,
                             "epoch_id": epoch.get("epoch_id") if strategy == "recursive" else None,
                             "strategy": strategy,
+                            "vertical": vertical,
                             "timeframe": timeframe,
                             "bucket_start": bucket_start(now, timeframe),
                             "asset": asset,
@@ -1314,9 +1459,10 @@ class CryptoPaperTwin:
                                 "nearest_expiry_markets": len(lane_markets),
                                 "eligible_candidates": sum(bool(row.get("eligible")) for row in candidates),
                                 "contract_family": (
-                                    parsed_market.get("contract_family")
-                                    if parsed_market is not None else None
+                                    "15m_direction" if timeframe == "15m"
+                                    else "terminal_price"
                                 ),
+                                "listed_series": list(cohort.series),
                                 "paper_only": True,
                             },
                             "created_at": now.isoformat(),
@@ -1325,7 +1471,9 @@ class CryptoPaperTwin:
                         if not best_candidate.get("eligible") or not isinstance(market, MarketView):
                             continue
                         assert cluster is not None
-                        if self.ledger.has_lane_trade(strategy, timeframe, asset, cluster):
+                        if self.ledger.has_lane_trade(
+                            strategy, timeframe, asset, cluster, vertical,
+                        ):
                             continue
                         best = best_candidate["best"]
                         side = str(best["side"])
@@ -1341,12 +1489,14 @@ class CryptoPaperTwin:
                             maker_status = "PENDING"
                         technical = best_candidate.get("technical")
                         features = {
+                            "vertical": vertical.value,
                             "timeframe": timeframe,
                             "contract_family": (
-                                parsed_market.get("contract_family")
-                                if parsed_market is not None else None
+                                "15m_direction" if timeframe == "15m"
+                                else "terminal_price"
                             ),
                             "technical": technical.features if technical is not None else None,
+                            "source_features": source_features.get(market.ticker, {}),
                             "queue_snapshot_error": queue_error,
                             "spot_state": {
                                 key: states.get(asset, {}).get(key)
@@ -1363,6 +1513,7 @@ class CryptoPaperTwin:
                             "observation_id": observation_id,
                             "epoch_id": epoch.get("epoch_id") if strategy == "recursive" else None,
                             "strategy": strategy,
+                            "vertical": vertical,
                             "timeframe": timeframe,
                             "asset": asset,
                             "event_cluster": cluster,
@@ -1383,6 +1534,7 @@ class CryptoPaperTwin:
                             "market_snapshot": {
                                 "ticker": market.ticker,
                                 "title": market.title,
+                                "vertical": vertical.value,
                                 "close_time": market.close_time,
                                 "yes_bid": market.yes_bid,
                                 "yes_ask": market.yes_ask,
@@ -1443,59 +1595,80 @@ class CryptoPaperTwin:
         errors: list[str],
         failed: bool = False,
     ) -> dict[str, Any]:
-        lanes: dict[str, dict[str, Any]] = {}
-        compounding: dict[str, dict[str, Any]] = {}
-        gates: dict[str, dict[str, Any]] = {}
-        forward_selection: dict[str, dict[str, Any]] = {}
-        for timeframe in TIMEFRAMES:
-            lanes[timeframe] = {}
-            compounding[timeframe] = {}
-            gates[timeframe] = {}
-            forward_selection[timeframe] = {}
-            for strategy in STRATEGIES:
-                summary = self.ledger.lane_summary(strategy, timeframe)
-                rows = self.ledger.settled_trade_rows(strategy, timeframe)
-                stress = compounding_proposal(rows)
-                lanes[timeframe][strategy] = summary
-                compounding[timeframe][strategy] = stress
-                gates[timeframe][strategy] = _paper_gate(summary, stress)
-                if strategy != "incumbent":
-                    advantage = self.ledger.paired_advantage(timeframe, strategy)
-                    forward_selection[timeframe][strategy] = _forward_selection_gate(
-                        summary,
-                        stress,
-                        advantage,
-                        promotion_allowed=strategy == "recursive",
+        vertical_timeframes = {
+            Vertical.CRYPTO: ("15m", "1h", "1d", "1w"),
+            Vertical.COMMODITIES: ("1d", "1w"),
+        }
+        cohort_lanes: dict[str, dict[str, dict[str, Any]]] = {}
+        cohort_compounding: dict[str, dict[str, dict[str, Any]]] = {}
+        cohort_gates: dict[str, dict[str, dict[str, Any]]] = {}
+        cohort_forward: dict[str, dict[str, dict[str, Any]]] = {}
+        comparisons: dict[str, dict[str, Any]] = {}
+        for vertical, timeframes in vertical_timeframes.items():
+            vertical_name = vertical.value
+            cohort_lanes[vertical_name] = {}
+            cohort_compounding[vertical_name] = {}
+            cohort_gates[vertical_name] = {}
+            cohort_forward[vertical_name] = {}
+            for timeframe in timeframes:
+                cohort_lanes[vertical_name][timeframe] = {}
+                cohort_compounding[vertical_name][timeframe] = {}
+                cohort_gates[vertical_name][timeframe] = {}
+                cohort_forward[vertical_name][timeframe] = {}
+                for strategy in STRATEGIES:
+                    summary = self.ledger.lane_summary(
+                        strategy, timeframe, vertical=vertical,
                     )
-        timeframe_comparison: dict[str, dict[str, Any]] = {}
-        for strategy in STRATEGIES:
-            fast = lanes["15m"][strategy]
-            slow = lanes["1h"][strategy]
-            enough = bool(
-                int(fast["settled_trades"]) >= 30
-                and int(slow["settled_trades"]) >= 30
-                and int(fast["event_clusters"]) >= 10
-                and int(slow["event_clusters"]) >= 10
-            )
-            winner = None
-            if enough:
-                fast_score = (
-                    float((fast.get("mean_pnl_ci95") or {}).get("lower") or -1e9),
-                    float(fast.get("brier_skill_vs_market") or -1e9),
+                    rows = self.ledger.settled_trade_rows(
+                        strategy, timeframe, vertical,
+                    )
+                    stress = compounding_proposal(rows)
+                    cohort_lanes[vertical_name][timeframe][strategy] = summary
+                    cohort_compounding[vertical_name][timeframe][strategy] = stress
+                    cohort_gates[vertical_name][timeframe][strategy] = _paper_gate(
+                        summary, stress,
+                    )
+                    if strategy != "incumbent":
+                        advantage = self.ledger.paired_advantage(
+                            timeframe, strategy, vertical=vertical,
+                        )
+                        cohort_forward[vertical_name][timeframe][strategy] = (
+                            _forward_selection_gate(
+                                summary,
+                                stress,
+                                advantage,
+                                promotion_allowed=strategy == "recursive",
+                            )
+                        )
+            comparisons[vertical_name] = {}
+            for strategy in STRATEGIES:
+                summaries = {
+                    timeframe: cohort_lanes[vertical_name][timeframe][strategy]
+                    for timeframe in timeframes
+                }
+                enough = all(
+                    int(summary["settled_trades"]) >= 30
+                    and int(summary["event_clusters"]) >= 10
+                    for summary in summaries.values()
                 )
-                slow_score = (
-                    float((slow.get("mean_pnl_ci95") or {}).get("lower") or -1e9),
-                    float(slow.get("brier_skill_vs_market") or -1e9),
-                )
-                winner = "15m" if fast_score > slow_score else "1h" if slow_score > fast_score \
-                    else "tie"
-            timeframe_comparison[strategy] = {
-                "enough_independent_evidence": enough,
-                "provisional_winner": winner,
-                "minimum_per_timeframe": {"settled_trades": 30, "event_clusters": 10},
-                "15m": fast,
-                "1h": slow,
-            }
+                winner = None
+                if enough:
+                    winner = max(
+                        summaries,
+                        key=lambda timeframe: (
+                            float((summaries[timeframe].get("mean_pnl_ci95") or {}).get("lower") or -1e9),
+                            float(summaries[timeframe].get("brier_skill_vs_market") or -1e9),
+                        ),
+                    )
+                comparisons[vertical_name][strategy] = {
+                    "enough_independent_evidence": enough,
+                    "provisional_winner": winner,
+                    "minimum_per_timeframe": {
+                        "settled_trades": 30,
+                        "event_clusters": 10,
+                    },
+                    **summaries,
+                }
         weaknesses: list[dict[str, Any]] = []
         reasons = self.ledger.observation_reason_counts()
         for reason, count in list(reasons.items())[:10]:
@@ -1505,34 +1678,44 @@ class CryptoPaperTwin:
                     "reason": reason,
                     "observations": count,
                 })
-        for timeframe, strategies in lanes.items():
-            for strategy, summary in strategies.items():
-                if int(summary["settled_trades"]) and int(summary["net_pnl_cents"]) <= 0:
-                    weaknesses.append({
-                        "component": "paper_performance",
-                        "lane": f"{timeframe}:{strategy}",
-                        "reason": "settled paper P&L is not positive",
-                        "net_pnl_cents": summary["net_pnl_cents"],
-                    })
-                if summary["maker_orders"] and summary["maker_queue_snapshots"] < summary["maker_orders"]:
-                    weaknesses.append({
-                        "component": "execution_trace",
-                        "lane": f"{timeframe}:{strategy}",
-                        "reason": "maker queue snapshot incomplete",
-                        "snapshots": summary["maker_queue_snapshots"],
-                        "orders": summary["maker_orders"],
-                    })
-                if int(summary.get("maker_blocked_queue") or 0) > 0:
-                    weaknesses.append({
-                        "component": "execution_queue",
-                        "lane": f"{timeframe}:{strategy}",
-                        "reason": "maker quote blocked by more than 50 contracts ahead",
-                        "blocked_orders": summary["maker_blocked_queue"],
-                    })
+        for vertical_name, timeframes in cohort_lanes.items():
+            for timeframe, strategies in timeframes.items():
+                for strategy, summary in strategies.items():
+                    lane_name = f"{vertical_name}:{timeframe}:{strategy}"
+                    if (
+                        int(summary["settled_trades"])
+                        and int(summary["net_pnl_cents"]) <= 0
+                    ):
+                        weaknesses.append({
+                            "component": "paper_performance",
+                            "lane": lane_name,
+                            "reason": "settled paper P&L is not positive",
+                            "net_pnl_cents": summary["net_pnl_cents"],
+                        })
+                    if (
+                        summary["maker_orders"]
+                        and summary["maker_queue_snapshots"] < summary["maker_orders"]
+                    ):
+                        weaknesses.append({
+                            "component": "execution_trace",
+                            "lane": lane_name,
+                            "reason": "maker queue snapshot incomplete",
+                            "snapshots": summary["maker_queue_snapshots"],
+                            "orders": summary["maker_orders"],
+                        })
+                    if int(summary.get("maker_blocked_queue") or 0) > 0:
+                        weaknesses.append({
+                            "component": "execution_queue",
+                            "lane": lane_name,
+                            "reason": "maker quote blocked by more than 50 contracts ahead",
+                            "blocked_orders": summary["maker_blocked_queue"],
+                        })
         active = self.ledger.active_epoch()
         completed_at = self.now_fn().astimezone(timezone.utc)
+        crypto_name = Vertical.CRYPTO.value
+        commodity_name = Vertical.COMMODITIES.value
         return {
-            "report_name": "DUMMY_CRYPTO_PAPER_TWIN",
+            "report_name": "DUMMY_MARKET_HORIZON_PAPER_TWIN",
             "cycle_id": cycle_id,
             "started_at": now.isoformat(),
             "completed_at": completed_at.isoformat(),
@@ -1543,31 +1726,67 @@ class CryptoPaperTwin:
             "settlements_recorded": settlements_recorded,
             "maker_updates": maker_updates,
             "errors": errors,
-            "timeframes": list(TIMEFRAMES),
+            "timeframes": list(vertical_timeframes[Vertical.CRYPTO]),
             "assets": list(ASSETS),
+            "vertical_timeframes": {
+                vertical.value: list(timeframes)
+                for vertical, timeframes in vertical_timeframes.items()
+            },
+            "assets_by_vertical": {
+                crypto_name: list(ASSETS),
+                commodity_name: list(COMMODITY_ASSETS),
+            },
+            "universe_policy": {
+                "crypto_assets": list(ASSETS),
+                "crypto_timeframes": list(vertical_timeframes[Vertical.CRYPTO]),
+                "other_crypto_allowed": False,
+                "commodity_assets": list(COMMODITY_ASSETS),
+                "commodity_timeframes": list(
+                    vertical_timeframes[Vertical.COMMODITIES]
+                ),
+                "unlisted_market_action": "ABSTAIN",
+                "synthetic_contract_substitution": False,
+            },
             "strategies": list(STRATEGIES),
             "active_recursive_epoch": active,
-            "lanes": lanes,
+            # Compatibility: lanes remains the crypto view. New consumers
+            # should use cohorts for vertical-separated evidence.
+            "lanes": cohort_lanes[crypto_name],
+            "cohorts": cohort_lanes,
             "phase_2_forward_selection": {
                 "frozen_epoch": active,
-                "candidate_gates": forward_selection,
+                "candidate_gates": cohort_forward[crypto_name],
+                "candidate_gates_by_vertical": cohort_forward,
                 "automatic_rotation": "research-only after 30 settled trades, 5 clusters, and statistically negative P&L",
             },
-            "timeframe_comparison": timeframe_comparison,
+            "timeframe_comparison": comparisons[crypto_name],
+            "timeframe_comparison_by_vertical": comparisons,
             "phase_3_execution": {
                 "maker_method": "one-minute public-print queue-consumption witness",
                 "taker_method": "live top-ask quote simulated for one contract",
                 "reason_counts": reasons,
-                "policy_challengers": self.ledger.execution_challengers(),
+                "reason_counts_by_vertical": {
+                    vertical.value: self.ledger.observation_reason_counts(vertical)
+                    for vertical in vertical_timeframes
+                },
+                "policy_challengers": self.ledger.execution_challengers(
+                    Vertical.CRYPTO,
+                ),
+                "policy_challengers_by_vertical": {
+                    vertical.value: self.ledger.execution_challengers(vertical)
+                    for vertical in vertical_timeframes
+                },
             },
             "phase_4_canary_decision": {
-                "gates": gates,
+                "gates": cohort_gates[crypto_name],
+                "gates_by_vertical": cohort_gates,
                 "live_canary_ready": False,
                 "authority_required": "separate explicit operator authorization after production canary gate",
             },
-            "phase_5_compounding": compounding,
+            "phase_5_compounding": cohort_compounding[crypto_name],
+            "phase_5_compounding_by_vertical": cohort_compounding,
             "weaknesses": weaknesses,
-            "recent_explanations": self.ledger.recent_explanations(),
+            "recent_explanations": self.ledger.recent_explanations(64),
             "evidence_quarantine": {
                 "counts_toward_canary": False,
                 "counts_toward_scale": False,
@@ -1597,7 +1816,7 @@ def write_paper_twin_report(
     directory = Path(out_dir)
     directory.mkdir(parents=True, exist_ok=True)
     stamp = _utc(report["completed_at"]).strftime("%Y%m%dT%H%M%S%fZ")
-    path = directory / f"CRYPTO_PAPER_TWIN_{stamp}.json"
+    path = directory / f"MARKET_HORIZON_PAPER_TWIN_{stamp}.json"
     payload = json.dumps(report, indent=2, sort_keys=True, default=str)
     temporary = path.with_suffix(".tmp")
     temporary.write_text(payload, encoding="utf-8")
