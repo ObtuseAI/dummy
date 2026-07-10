@@ -19,6 +19,31 @@ records the full lifecycle in an auditable ledger.
 Live execution remains fail-closed, evidence-gated, and subject to explicit
 operator authorization.
 
+## Current paper operation
+
+The market-horizon paper twin runs every five minutes through the Windows
+`DummyCryptoPaperTwin` scheduled task. It continuously scans public Kalshi
+markets for BTC, ETH, and SOL at native 15-minute, hourly, daily, and weekly
+horizons, plus daily and weekly WTI, natural-gas, and gold cohorts. Each cycle
+records the point-in-time market state, target selection, probability, policy
+gates, simulated fill evidence, settlement, and a plain-language decision
+explanation in the local audit ledger and report artifacts.
+
+This is live **paper** operation only: it has no credentials, broker contact,
+execution authority, or capital authority. It remains active while clean
+forward evidence accumulates. Promotion is a separate, explicit review gated
+by settled out-of-sample calibration, event-cluster robustness, witnessed-fill
+performance after fees and slippage, drawdown limits, and the canary firewall.
+Elapsed runtime, backtests, or counterfactual quote P&L cannot promote it.
+
+The local command-center dashboard at `http://127.0.0.1:8787/` tracks scheduler
+health, active and settled paper trades, decision explanations, lane-level
+calibration and P&L, target-evidence progress, weaknesses, and promotion gates.
+Its Start and Stop controls only enable or pause `DummyCryptoPaperTwin`; they
+cannot reach live execution, credentials, risk settings, or capital.
+
+![Dummy paper trading command center](docs/assets/dummy-paper-dashboard.jpg)
+
 ## The loop
 
 ```
@@ -174,6 +199,7 @@ python scripts/run_dummy_simulation_training.py --summary   # report-only, ledge
 powershell -ExecutionPolicy Bypass -File scripts/install_simulation_training_task.ps1
 python scripts/run_dummy_crypto_paper_twin.py --summary
 powershell -ExecutionPolicy Bypass -File scripts/install_crypto_paper_twin_task.ps1
+Get-ScheduledTaskInfo -TaskName DummyCryptoPaperTwin
 ```
 
 The hourly trainer also runs the quarantined recursive evolution lab. It

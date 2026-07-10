@@ -6,20 +6,31 @@ from datetime import datetime, timedelta, timezone
 
 from autonomy.crypto_paper_twin import (
     COHORTS,
+    HOURLY_CALIBRATED_STRATEGY,
     CryptoPaperTwin,
     PaperTwinLedger,
     ResearchGenome,
     TrustSnapshot,
+    _candidate,
     bucket_start,
     cohort_for_market,
     cohort_for_ticker,
     compounding_proposal,
+    fit_hourly_calibration_profile,
     market_listing_duration_hours,
     maker_fill_witness,
+    price_target_metadata,
+    select_price_target,
+    target_candidate_blockers,
     timeframe_state,
 )
-from autonomy.ontology import MarketView, Vertical
+from autonomy.ontology import Forecast, MarketView, Vertical
 from autonomy.signals.commodities_spot import CommoditiesSpotVolSignal
+from scripts.run_dummy_crypto_paper_twin import (
+    _append_rotating_jsonl,
+    _console_summary,
+    _summary,
+)
 
 
 NOW = datetime(2026, 7, 10, 7, 15, tzinfo=timezone.utc)
@@ -184,7 +195,7 @@ def test_parallel_paper_cycle_records_explanations_and_never_has_authority(tmp_p
     try:
         report = twin.run_cycle()
         assert report["status"] == "CYCLE_OK"
-        assert report["observations_written"] == 54
+        assert report["observations_written"] == 57
         assert report["trades_opened"] >= 6
         assert set(report["lanes"]) == {"15m", "1h", "1d", "1w"}
         assert set(report["cohorts"]) == {"CRYPTO", "COMMODITIES"}
@@ -194,6 +205,14 @@ def test_parallel_paper_cycle_records_explanations_and_never_has_authority(tmp_p
         assert report["authority"]["execution_authority"] is False
         assert report["authority"]["capital_authority"] is False
         assert report["evidence_quarantine"]["counts_toward_canary"] is False
+        assert report["hourly_calibration"]["profile"]["model_share"] == 0.0
+        assert report["hourly_calibration"]["profile"]["status"] == (
+            "COLLECTING_FORWARD_EVIDENCE"
+        )
+        assert report["hourly_calibration"]["forward_ledger"]["forecasts"] == 3
+        assert report["hourly_calibration"]["production_effect"] == "none"
+        assert report["hourly_calibration"]["execution_authority"] is False
+        assert report["lanes"]["1h"][HOURLY_CALIBRATED_STRATEGY]["trades"] == 0
         assert report["phase_2_forward_selection"]["candidate_gates"]["15m"]["recursive"][
             "auto_apply"
         ] is False
@@ -243,7 +262,8 @@ def test_same_lane_never_pyramids_same_asset_expiry(tmp_path):
         second = twin.run_cycle()
         assert first_count > 0
         assert second["trades_opened"] == 0
-        assert second["observations_written"] == 54
+        assert second["observations_written"] == 57
+        assert second["hourly_calibration_forecasts_recorded"] == 0
     finally:
         twin.close()
 
@@ -294,6 +314,10 @@ def test_settlement_uses_simulated_taker_quote_and_keeps_paper_quarantined(tmp_p
     try:
         report = second.run_cycle()
         assert report["settlements_recorded"] > 0
+        assert report["hourly_calibration_settlements_recorded"] == 3
+        assert report["hourly_calibration"]["forward_ledger"][
+            "settled_event_clusters"
+        ] == 1
         settled = sum(
             lane[strategy]["settled_trades"]
             for lane in report["lanes"].values()
@@ -398,6 +422,270 @@ def test_native_15m_keeps_final_four_minutes_while_hourly_retains_cutoff(tmp_pat
         twin.close()
 
 
+def test_price_target_metadata_supports_kalshi_thresholds_buckets_and_direction():
+    above = _market("BTC", "1h")
+    below = replace(
+        above,
+        raw={**above.raw, "strike_type": "less", "floor_strike": None,
+             "cap_strike": 101.0},
+    )
+    bucket = replace(
+        above,
+        raw={**above.raw, "strike_type": "between", "floor_strike": 99.0,
+             "cap_strike": 101.0},
+    )
+    direction = _market("BTC", "15m")
+    invalid_direction = replace(
+        direction,
+        raw={**direction.raw, "floor_strike": None},
+    )
+
+    assert price_target_metadata(above, "1h")["target_type"] == "above"
+    assert price_target_metadata(below, "1h")["target_type"] == "below"
+    assert price_target_metadata(bucket, "1h")["target_type"] == "bucket"
+    assert price_target_metadata(direction, "15m")["valid"] is True
+    assert price_target_metadata(invalid_direction, "15m") == {
+        "contract_family": "15m_direction",
+        "target_type": "opening_reference_direction",
+        "strike_type": "greater_or_equal",
+        "floor": None,
+        "cap": None,
+        "label": "invalid or missing opening reference",
+        "valid": False,
+        "invalid_reason": "missing_valid_15m_opening_reference",
+    }
+
+
+def test_target_selector_prefers_an_eligible_target_over_blocked_higher_ev():
+    blocked_market = _market("BTC", "1h")
+    eligible_market = replace(
+        blocked_market,
+        ticker="KXBTCD-26JUL1008-T101",
+        raw={**blocked_market.raw, "floor_strike": 101.0},
+    )
+    candidates = [
+        {
+            "eligible": False,
+            "reason": "entry 90c>75c",
+            "market": blocked_market,
+            "target": price_target_metadata(blocked_market, "1h"),
+            "probability_yes": 0.95,
+            "market_probability": 0.60,
+            "uncertainty": 0.10,
+            "best": {"side": "yes", "price_cents": 70, "ev_cents": 20.0},
+        },
+        {
+            "eligible": True,
+            "reason": "eligible",
+            "market": eligible_market,
+            "target": price_target_metadata(eligible_market, "1h"),
+            "probability_yes": 0.65,
+            "market_probability": 0.55,
+            "uncertainty": 0.10,
+            "best": {"side": "yes", "price_cents": 50, "ev_cents": 4.0},
+        },
+    ]
+
+    selected, audit = select_price_target(candidates, "incumbent")
+
+    assert selected["market"].ticker == eligible_market.ticker
+    assert audit["targets_evaluated"] == 2
+    assert audit["eligible_targets"] == 1
+    assert audit["ranked_candidates"][0]["selected"] is True
+    assert audit["optimizes_raw_win_rate"] is False
+
+
+def test_target_candidate_can_choose_no_and_invalid_strikes_fail_closed():
+    market = replace(
+        _market("BTC", "1h"),
+        yes_bid=80, yes_ask=82, no_bid=18, no_ask=20,
+    )
+    forecast = Forecast(
+        market_ticker=market.ticker,
+        probability_yes=0.10,
+        uncertainty=0.05,
+        sources_used={"fixture": 1.0},
+        market_implied_yes=0.81,
+        edge_yes=-0.71,
+        rationale="fixture",
+    )
+
+    candidate = _candidate(
+        market, forecast, None, strategy="incumbent", timeframe="1h",
+        genome=ResearchGenome(0.75, 8, 0.25, 75),
+    )
+    invalid_market = replace(
+        market,
+        raw={**market.raw, "floor_strike": None},
+    )
+    invalid = _candidate(
+        invalid_market, forecast, None, strategy="incumbent", timeframe="1h",
+        genome=ResearchGenome(0.75, 8, 0.25, 75),
+    )
+
+    assert candidate["eligible"] is True
+    assert candidate["best"]["side"] == "no"
+    assert invalid["eligible"] is False
+    assert invalid["reason"] == "missing_valid_floor_strike"
+
+
+def _hourly_target_ladder(asset: str) -> list[MarketView]:
+    base = _market(asset, "1h")
+    series = {"BTC": "KXBTCD", "ETH": "KXETHD", "SOL": "KXSOLD"}[asset]
+    center = {"BTC": 100.0, "ETH": 50.0, "SOL": 25.0}[asset]
+    return [
+        replace(
+            base,
+            ticker=f"{series}-26JUL1008-T{center * 0.98:g}",
+            yes_bid=20, yes_ask=22, no_bid=78, no_ask=80,
+            raw={**base.raw, "strike_type": "less", "floor_strike": None,
+                 "cap_strike": center * 0.98},
+        ),
+        replace(
+            base,
+            ticker=f"{series}-26JUL1008-B{center:g}",
+            yes_bid=35, yes_ask=37, no_bid=63, no_ask=65,
+            raw={**base.raw, "strike_type": "between", "floor_strike": center * 0.99,
+                 "cap_strike": center * 1.01},
+        ),
+        replace(
+            base,
+            ticker=f"{series}-26JUL1008-T{center * 1.02:g}",
+            yes_bid=25, yes_ask=27, no_bid=73, no_ask=75,
+            raw={**base.raw, "strike_type": "greater", "floor_strike": center * 1.02,
+                 "cap_strike": None},
+        ),
+        replace(
+            base,
+            ticker=f"{series}-26JUL1008-T{center * 1.04:g}",
+            yes_bid=None, yes_ask=1, no_bid=99, no_ask=None,
+            raw={**base.raw, "strike_type": "greater", "floor_strike": center * 1.04,
+                 "cap_strike": None},
+        ),
+    ]
+
+
+class TargetLadderScanner(FakeScanner):
+    def scan(self):
+        markets = super().scan()
+        markets = [
+            market for market in markets
+            if not (
+                market.vertical is Vertical.CRYPTO
+                and cohort_for_market(market).timeframe == "1h"
+            )
+        ]
+        return markets + [
+            market
+            for asset in ("BTC", "ETH", "SOL")
+            for market in _hourly_target_ladder(asset)
+        ]
+
+
+def test_cycle_audits_and_selects_full_hourly_target_ladder_for_all_crypto(tmp_path):
+    twin = _twin(tmp_path)
+    twin.scanner = TargetLadderScanner()
+    try:
+        report = twin.run_cycle()
+        rows = twin.ledger.connection.execute(
+            "SELECT asset,ticker,diagnostics_json FROM observations "
+            "WHERE cycle_id=? AND vertical='CRYPTO' AND timeframe='1h' "
+            "AND strategy='incumbent' ORDER BY asset",
+            (report["cycle_id"],),
+        ).fetchall()
+
+        assert {str(row["asset"]) for row in rows} == {"BTC", "ETH", "SOL"}
+        for row in rows:
+            audit = json.loads(str(row["diagnostics_json"]))["price_target_selection"]
+            assert audit["targets_evaluated"] == 3
+            assert audit["valid_targets"] == 3
+            assert audit["target_type_counts"] == {"above": 1, "below": 1, "bucket": 1}
+            assert audit["listed_targets_seen"] == 4
+            assert audit["listed_valid_targets"] == 4
+            assert audit["listed_complete_two_sided_quotes"] == 3
+            assert audit["listed_target_type_counts"] == {
+                "above": 2, "below": 1, "bucket": 1,
+            }
+            assert audit["listed_targets_excluded_from_scoring"] == 1
+            assert audit["selected_ticker"] == row["ticker"]
+            assert sum(item["selected"] for item in audit["ranked_candidates"]) == 1
+        current = report["price_target_selection"]["current_cycle"]
+        assert {row["asset"] for row in current if row["timeframe"] == "1h"} == {
+            "BTC", "ETH", "SOL",
+        }
+        assert report["price_target_selection"]["raw_win_rate_is_not_the_objective"] is True
+        duplicate_positions = twin.ledger.connection.execute(
+            "SELECT strategy,asset,event_cluster,COUNT(*) FROM trades "
+            "WHERE vertical='CRYPTO' AND timeframe='1h' "
+            "GROUP BY strategy,asset,event_cluster HAVING COUNT(*)>1"
+        ).fetchall()
+        assert duplicate_positions == []
+    finally:
+        twin.close()
+
+
+def test_target_candidates_freeze_and_settle_rejected_target_regret(tmp_path):
+    first = _twin(tmp_path)
+    first.scanner = TargetLadderScanner()
+    try:
+        initial = first.run_cycle()
+        rows = first.ledger.connection.execute(
+            "SELECT asset,ticker,rank_selected,eligible,reason FROM target_candidate_forecasts "
+            "WHERE vertical='CRYPTO' AND timeframe='1h' AND strategy='incumbent' "
+            "ORDER BY asset,ticker"
+        ).fetchall()
+        assert len(rows) == 9
+        assert sum(int(row["rank_selected"]) for row in rows) == 3
+        assert all(int(row["eligible"]) in {0, 1} for row in rows)
+        assert initial["target_candidate_forecasts_recorded"] >= 36
+    finally:
+        first.close()
+
+    results = {
+        market.ticker: {"result": "yes"}
+        for asset in ("BTC", "ETH", "SOL")
+        for market in _hourly_target_ladder(asset)
+    }
+    second = _twin(tmp_path, now=NOW + timedelta(hours=1), results=results)
+    second.scanner = TargetLadderScanner()
+    try:
+        report = second.run_cycle()
+        settled = second.ledger.connection.execute(
+            "SELECT COUNT(*) FROM target_candidate_forecasts "
+            "WHERE vertical='CRYPTO' AND timeframe='1h' AND result_yes IS NOT NULL"
+        ).fetchone()[0]
+        regret = report["price_target_selection"]["rejection_regret"]
+        assert report["target_candidate_settlements_recorded"] >= 36
+        assert settled >= 36
+        assert regret["counts"]["settled_forecasts"] >= 36
+        assert regret["blocker_diagnostics"]
+        assert regret["counterfactual_is_fill_evidence"] is False
+        assert regret["automatic_gate_tuning"] is False
+        assert regret["execution_authority"] is False
+        settled_rows = second.ledger.connection.execute(
+            "SELECT asset,rank_selected,eligible,reason FROM target_candidate_forecasts "
+            "WHERE vertical='CRYPTO' AND timeframe='1h' AND strategy='incumbent' "
+            "AND result_yes IS NOT NULL"
+        ).fetchall()
+        expected: dict[str, int] = {}
+        for row in settled_rows:
+            if not bool(row["rank_selected"]) or not bool(row["eligible"]):
+                for blocker in target_candidate_blockers(
+                    str(row["reason"]), eligible=bool(row["eligible"]),
+                ):
+                    key = f"CRYPTO:{row['asset']}:1h:incumbent:{blocker}"
+                    expected[key] = expected.get(key, 0) + 1
+        actual = {
+            str(item["group"]): int(item["settled_forecasts"])
+            for item in regret["blocker_diagnostics"]
+            if ":1h:incumbent:" in str(item["group"])
+        }
+        assert expected
+        assert all(actual.get(key) == count for key, count in expected.items())
+    finally:
+        second.close()
+
+
 def test_exact_crypto_and_commodity_horizon_allowlist():
     crypto = {
         (cohort.asset, cohort.timeframe)
@@ -457,3 +745,125 @@ def test_compounding_and_canary_outputs_never_grant_live_authority():
     proposal = compounding_proposal([])
     assert proposal["capital_authority"] is False
     assert proposal["live_application"] is False
+
+
+def _hourly_calibration_row(
+    index: int,
+    *,
+    raw_probability: float,
+    market_probability: float,
+    outcome: int | None,
+) -> dict:
+    return {
+        "forecast_id": f"forecast-{index}",
+        "event_cluster": f"cluster-{index}",
+        "observed_at": (NOW + timedelta(hours=index)).isoformat(),
+        "settled_at": (NOW + timedelta(hours=index + 1)).isoformat(),
+        "raw_probability": raw_probability,
+        "market_probability": market_probability,
+        "result_yes": outcome,
+    }
+
+
+def test_hourly_calibration_zero_weights_a_harmful_model():
+    rows = [
+        _hourly_calibration_row(
+            index,
+            raw_probability=0.20 if index % 2 else 0.80,
+            market_probability=0.80 if index % 2 else 0.20,
+            outcome=index % 2,
+        )
+        for index in range(30)
+    ]
+
+    profile = fit_hourly_calibration_profile(rows)
+
+    assert profile.status == "MARKET_ANCHORED_HOLD"
+    assert profile.fitted_model_share == 0.0
+    assert profile.model_share == 0.0
+    assert profile.walk_forward_forecasts == 20
+    assert profile.walk_forward_advantage_ci95["lower"] == 0.0
+
+
+def test_hourly_calibration_requires_positive_later_walk_forward_evidence():
+    rows = [
+        _hourly_calibration_row(
+            index,
+            raw_probability=0.90 if index % 2 else 0.10,
+            market_probability=0.50,
+            outcome=index % 2,
+        )
+        for index in range(30)
+    ]
+    # An unresolved future row must not influence the fitted profile.
+    rows.append(_hourly_calibration_row(
+        99, raw_probability=0.01, market_probability=0.99, outcome=None,
+    ))
+
+    profile = fit_hourly_calibration_profile(rows)
+
+    assert profile.status == "ACTIVE_FORWARD_CALIBRATION"
+    assert profile.model_share == 0.5
+    assert profile.settled_forecasts == 30
+    assert profile.event_clusters == 30
+    assert profile.walk_forward_advantage_ci95["lower"] > 0
+    assert profile.fitted_through == rows[29]["settled_at"]
+
+
+def test_scheduler_summary_preserves_dashboard_contract_without_heavy_sections(tmp_path):
+    report = {
+        "report_name": "crypto-paper-twin",
+        "cycle_id": "cycle-1",
+        "started_at": NOW.isoformat(),
+        "completed_at": (NOW + timedelta(seconds=10)).isoformat(),
+        "status": "CYCLE_OK",
+        "markets_seen": 12,
+        "observations_written": 4,
+        "trades_opened": 1,
+        "settlements_recorded": 2,
+        "target_candidate_forecasts_recorded": 7,
+        "target_candidate_settlements_recorded": 3,
+        "lanes": {"BTC_1h": {"status": "ACTIVE"}},
+        "cohorts": [{"asset": "BTC", "timeframe": "1h"}],
+        "price_target_selection": {
+            "rejection_regret": {"counts": {"candidate_forecasts": 7}}
+        },
+        "authority": {
+            "broker_contacted": False,
+            "execution_authority": False,
+            "capital_authority": False,
+        },
+        "errors": [],
+        "phase_3_execution": {"large_trace": "x" * 500_000},
+        "recent_explanations": [{"large_trace": "y" * 500_000}],
+    }
+
+    summary = _summary(report, tmp_path / "full-report.json")
+    console = _console_summary(summary)
+
+    assert summary["paper_mode"] == "LIVE_PUBLIC_READ_ONLY_SIMULATION"
+    assert summary["lanes"] == report["lanes"]
+    assert summary["cohorts"] == report["cohorts"]
+    assert summary["target_candidate_counts"] == {"candidate_forecasts": 7}
+    assert "phase_3_execution" not in summary
+    assert "recent_explanations" not in summary
+    assert len(json.dumps(summary)) < 100_000
+    assert "lanes" not in console
+    assert console["execution_authority"] is False
+    assert len(json.dumps(console)) < 4_000
+
+
+def test_scheduler_jsonl_log_rotates_and_stays_bounded(tmp_path):
+    log = tmp_path / "scheduler.jsonl"
+    log.write_text("x" * 1_024, encoding="utf-8")
+
+    _append_rotating_jsonl(log, {"cycle_id": "cycle-1"}, max_bytes=1_024, backups=2)
+
+    assert (tmp_path / "scheduler.jsonl.1").stat().st_size == 1_024
+    assert json.loads(log.read_text(encoding="utf-8"))["cycle_id"] == "cycle-1"
+
+    log.write_text("y" * 1_024, encoding="utf-8")
+    _append_rotating_jsonl(log, {"cycle_id": "cycle-2"}, max_bytes=1_024, backups=2)
+
+    assert (tmp_path / "scheduler.jsonl.2").stat().st_size == 1_024
+    assert json.loads(log.read_text(encoding="utf-8"))["cycle_id"] == "cycle-2"

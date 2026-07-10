@@ -1,10 +1,8 @@
 """Operator dashboard for the autonomy predator.
 
-A read-only view over everything the operator needs to watch an unattended
-run: liveness (heartbeat), recent cycles, source calibration (backtest),
-live-canary readiness, trust weights, bankroll curve, and alerts. The state
-assembler is pure and testable; a tiny FastAPI app serves it plus a
-self-contained HTML page that polls it.
+A query-only evidence view plus narrowly scoped local controls for the public
+paper scheduler. The control path cannot reach the broker, live executor,
+weights, risk settings, or capital authority.
 """
 from __future__ import annotations
 
@@ -12,6 +10,9 @@ import json
 import time
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlparse
+
+from starlette.requests import Request
 
 RUNTIME_DIR = Path("runtime/autonomy")
 
@@ -50,6 +51,16 @@ def assemble_dashboard_state(runtime_dir: Path | None = None) -> dict[str, Any]:
     risk_state = _load_json(rd / "risk_state.json")
     simulation_training = _load_json(rd / "simulation_training_latest.json") or {}
     crypto_paper_twin = _load_json(rd / "crypto_paper_twin_latest.json") or {}
+    from autonomy.paper_dashboard import assemble_paper_dashboard, scheduled_task_status
+
+    paper_operation = assemble_paper_dashboard(rd)
+    paper_scheduler = scheduled_task_status() if runtime_dir is None else {
+        "task_name": "DummyCryptoPaperTwin",
+        "supported": False,
+        "enabled": False,
+        "state": "ALTERNATE_RUNTIME",
+        "healthy": False,
+    }
 
     ledger_summary: dict[str, Any] = {}
     statistics_intake: dict[str, Any] = {}
@@ -108,6 +119,8 @@ def assemble_dashboard_state(runtime_dir: Path | None = None) -> dict[str, Any]:
         "statistics_intake": statistics_intake,
         "simulation_training": simulation_training,
         "crypto_paper_twin": crypto_paper_twin,
+        "paper_operation": paper_operation,
+        "paper_scheduler": paper_scheduler,
         "execution_quality": (
             (backtest.get("execution_quality_by_book") or {}).get("shadow", {})
         ),
@@ -127,19 +140,41 @@ def assemble_dashboard_state(runtime_dir: Path | None = None) -> dict[str, Any]:
 _HTML = """<!doctype html>
 <html><head><meta charset="utf-8"><title>Dummy Predator</title>
 <style>
- body{font-family:ui-monospace,Menlo,Consolas,monospace;background:#0b0e14;color:#c9d1d9;margin:0;padding:20px}
- h1{color:#58a6ff;font-size:18px;margin:0 0 4px} .sub{color:#6e7681;font-size:12px;margin-bottom:16px}
+ :root{color-scheme:dark;--bg:#080b11;--panel:#101620;--panel2:#151d29;--line:#243041;--text:#e6edf3;--muted:#8b98a8;--blue:#58a6ff;--green:#3fb950;--amber:#d29922;--red:#f85149}
+ *{box-sizing:border-box} body{font-family:Inter,ui-sans-serif,system-ui,-apple-system,Segoe UI,sans-serif;background:radial-gradient(circle at 15% -10%,#14233a 0,transparent 35%),var(--bg);color:var(--text);margin:0;padding:24px;max-width:1800px;margin-inline:auto}
+ h1{color:var(--text);font-size:22px;margin:0 0 4px;letter-spacing:-.4px} .sub{color:var(--muted);font-size:12px;margin-bottom:16px}
+ .topbar{display:flex;align-items:flex-start;justify-content:space-between;gap:18px;margin-bottom:18px}.eyebrow{font-size:10px;letter-spacing:1.4px;text-transform:uppercase;color:var(--blue);font-weight:800}.controls{display:flex;align-items:center;gap:8px;flex-wrap:wrap;justify-content:flex-end}.btn{border:1px solid var(--line);border-radius:8px;padding:9px 14px;background:#172131;color:var(--text);font-weight:750;cursor:pointer}.btn:hover{border-color:var(--blue)}.btn.start{background:#12331f;border-color:#245f38;color:#78dc91}.btn.stop{background:#35191b;border-color:#713034;color:#ff8b91}.btn:disabled{opacity:.45;cursor:wait}
+ .hero{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px;margin-bottom:14px}.metric{background:linear-gradient(145deg,var(--panel2),#0e141d);border:1px solid var(--line);border-radius:10px;padding:13px}.metric .label{text-transform:uppercase;letter-spacing:.7px;color:var(--muted);font-size:10px;font-weight:750}.metric .value{font-size:24px;font-weight:800;margin-top:5px}.metric .note{font-size:10px;color:var(--muted);margin-top:3px}
  .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:14px}
- .card{background:#11161f;border:1px solid #21262d;border-radius:8px;padding:14px}
- .card h2{font-size:12px;text-transform:uppercase;letter-spacing:.5px;color:#8b949e;margin:0 0 10px}
+ .card{background:linear-gradient(145deg,var(--panel),#0d121a);border:1px solid var(--line);border-radius:10px;padding:14px;overflow:hidden}
+ .card h2{font-size:11px;text-transform:uppercase;letter-spacing:.8px;color:var(--muted);margin:0 0 10px}
  .kv{display:flex;justify-content:space-between;font-size:13px;padding:2px 0}
  .kv b{color:#e6edf3} .ok{color:#3fb950} .warn{color:#d29922} .bad{color:#f85149}
- table{width:100%;border-collapse:collapse;font-size:12px} td,th{text-align:left;padding:3px 6px;border-bottom:1px solid #21262d}
+ table{width:100%;border-collapse:collapse;font-size:12px} td,th{text-align:left;padding:7px 8px;border-bottom:1px solid #21262d;vertical-align:top}
  th{color:#8b949e;font-weight:600} .pill{padding:1px 7px;border-radius:10px;font-size:11px}
  .live{background:#0d3b1e;color:#3fb950} .dead{background:#3b0d0d;color:#f85149}
+ .paper-grid{display:grid;grid-template-columns:1.1fr .9fr;gap:14px;margin-bottom:14px}.span{grid-column:1/-1}.table-wrap{overflow:auto;max-height:420px}.explain{max-width:520px;color:#b7c2cf;line-height:1.35}.muted{color:var(--muted)}.bar{height:7px;background:#202a37;border-radius:5px;overflow:hidden;margin:5px 0 10px}.bar>i{display:block;height:100%;background:linear-gradient(90deg,var(--blue),#7ee787);border-radius:5px}.chart{width:100%;height:170px}.control-msg{min-height:16px;color:var(--muted);font-size:11px}.section-title{font-size:14px;margin:22px 0 10px}.truth{border-left:3px solid var(--amber);padding:8px 10px;background:#211b10;color:#d7c8a0;font-size:11px;margin-top:10px}
+ @media(max-width:900px){body{padding:14px}.topbar{display:block}.controls{justify-content:flex-start;margin-top:12px}.paper-grid{grid-template-columns:1fr}}
 </style></head><body>
-<h1>DUMMY // autonomous prediction-market predator</h1>
-<div class="sub" id="ts">loading…</div>
+<div class="topbar"><div><div class="eyebrow">Evidence-gated operations</div><h1>DUMMY // paper trading command center</h1><div class="sub" id="ts">loading…</div></div>
+<div class="controls"><span id="schedulerBadge" class="pill dead">CHECKING</span><button id="startBtn" class="btn start" onclick="controlPaper('start')">Start paper twin</button><button id="stopBtn" class="btn stop" onclick="controlPaper('stop')">Stop after cycle</button><div id="controlMsg" class="control-msg"></div></div></div>
+<div class="hero">
+ <div class="metric"><div class="label">Scheduler</div><div class="value" id="mScheduler">—</div><div class="note" id="mNext">Windows task</div></div>
+ <div class="metric"><div class="label">Active paper trades</div><div class="value" id="mOpen">—</div><div class="note" id="mRisk">quote-simulated positions</div></div>
+ <div class="metric"><div class="label">Settled paper trades</div><div class="value" id="mSettled">—</div><div class="note" id="mWin">forward ledger</div></div>
+ <div class="metric"><div class="label">Quote-simulated P&amp;L</div><div class="value" id="mPnl">—</div><div class="note">not witnessed-fill P&amp;L</div></div>
+ <div class="metric"><div class="label">Target evidence</div><div class="value" id="mTargets">—</div><div class="note" id="mClusters">settled candidates</div></div>
+ <div class="metric"><div class="label">Promotion state</div><div class="value warn" id="mPromotion">HOLD</div><div class="note">explicit review required</div></div>
+</div>
+<div class="paper-grid">
+ <div class="card"><h2>Cumulative quote-simulated P&amp;L</h2><div id="pnlChart"></div><div class="truth">Unrealized P&amp;L is intentionally blank without a fresh executable mark. Quote entries and public-print maker witnesses remain research evidence, not live-fill proof.</div></div>
+ <div class="card"><h2>Forward evidence progress</h2><div id="progress"></div></div>
+ <div class="card span"><h2>Active paper trades</h2><div id="activeTrades" class="table-wrap"></div></div>
+ <div class="card span"><h2>Lane performance</h2><div id="lanePerformance" class="table-wrap"></div></div>
+ <div class="card"><h2>Recent decisions and explanations</h2><div id="paperDecisions" class="table-wrap"></div></div>
+ <div class="card"><h2>Weakness and improvement queue</h2><div id="paperWeaknesses" class="table-wrap"></div></div>
+</div>
+<div class="section-title">Autonomy evidence and risk detail</div>
 <div class="grid">
  <div class="card"><h2>Liveness</h2><div id="live"></div></div>
  <div class="card"><h2>Live canary gate</h2><div id="canary"></div></div>
@@ -160,9 +195,73 @@ _HTML = """<!doctype html>
 <script>
 const kv=(k,v,c)=>`<div class="kv"><span>${k}</span><b class="${c||''}">${v}</b></div>`;
 const pct=v=>v==null?'—':(100*Number(v)).toFixed(1)+'%';
+const esc=v=>String(v??'—').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const cents=v=>v==null?'—':`${Number(v)>=0?'+':''}$${(Number(v)/100).toFixed(2)}`;
+const dt=v=>{if(!v)return '—';const x=new Date(v);return isNaN(x)?esc(v):x.toLocaleString([], {month:'short',day:'numeric',hour:'numeric',minute:'2-digit'});};
+const bar=(label,value,target)=>{const n=Number(value||0),t=Math.max(1,Number(target||1)),w=Math.min(100,100*n/t);return `<div class="kv"><span>${esc(label)}</span><b>${n} / ${t}</b></div><div class="bar"><i style="width:${w}%"></i></div>`;};
+function pnlChart(rows){
+ if(!rows.length)return '<div class="muted">No settled paper trades yet.</div>';
+ const values=rows.map(r=>Number(r.pnl_cents||0)), min=Math.min(0,...values), max=Math.max(0,...values), span=Math.max(1,max-min), w=720,h=150,p=12;
+ const points=values.map((v,i)=>`${p+(w-2*p)*(i/Math.max(1,values.length-1))},${p+(h-2*p)*(1-(v-min)/span)}`).join(' ');
+ const zero=p+(h-2*p)*(1-(0-min)/span),last=values[values.length-1];
+ return `<svg class="chart" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none"><line x1="${p}" y1="${zero}" x2="${w-p}" y2="${zero}" stroke="#334155" stroke-dasharray="4 4"/><polyline fill="none" stroke="${last>=0?'#3fb950':'#f85149'}" stroke-width="3" points="${points}"/></svg><div class="kv"><span>range</span><b>${cents(min)} to ${cents(max)}</b></div>`;
+}
+function renderScheduler(s){
+ const enabled=!!s.enabled,healthy=!!s.healthy;
+ document.getElementById('schedulerBadge').className=`pill ${enabled&&healthy?'live':'dead'}`;
+ document.getElementById('schedulerBadge').textContent=enabled?(s.running?'RUNNING':healthy?'SCHEDULED':'DEGRADED'):'STOPPED';
+ document.getElementById('mScheduler').textContent=enabled?(s.running?'RUNNING':'ON'):'OFF';
+ document.getElementById('mScheduler').className=`value ${enabled&&healthy?'ok':'bad'}`;
+ document.getElementById('mNext').textContent=`next ${dt(s.next_run_time)} · result ${s.last_result??'—'}`;
+ document.getElementById('startBtn').disabled=!!s.running;
+ document.getElementById('stopBtn').disabled=!enabled;
+}
+function renderPaper(d){
+ const op=d.paper_operation||{},m=op.metrics||{},s=d.paper_scheduler||{},latest=op.latest_cycle||{},tc=op.target_candidate_counts||{};
+ renderScheduler(s);
+ document.getElementById('mOpen').textContent=m.open_trades??0;
+ document.getElementById('mRisk').textContent=`${cents(m.open_paper_cost_cents)} paper cost at risk`;
+ document.getElementById('mSettled').textContent=m.settled_trades??0;
+ document.getElementById('mWin').textContent=`${pct(m.win_rate)} quote-simulated win rate`;
+ document.getElementById('mPnl').textContent=cents(m.quote_simulated_net_pnl_cents);
+ document.getElementById('mPnl').className=`value ${Number(m.quote_simulated_net_pnl_cents||0)>=0?'ok':'bad'}`;
+ document.getElementById('mTargets').textContent=tc.settled_forecasts??0;
+ document.getElementById('mClusters').textContent=`${tc.settled_event_clusters??0} event clusters · ${tc.forecasts??0} captured`;
+ const hp=((op.hourly_calibration||{}).profile)||{}, auth=op.authority||{};
+ const promotion=(auth.execution_authority||auth.capital_authority)?'AUTHORITY ERROR':(hp.status==='ACTIVE_FORWARD_CALIBRATION'?'REVIEW':'HOLD');
+ document.getElementById('mPromotion').textContent=promotion;
+ document.getElementById('mPromotion').className=`value ${promotion==='REVIEW'?'ok':promotion==='AUTHORITY ERROR'?'bad':'warn'}`;
+ document.getElementById('pnlChart').innerHTML=pnlChart(op.pnl_curve||[]);
+ const rule=(op.hourly_calibration||{}).activation_rule||{};
+ document.getElementById('progress').innerHTML=
+   kv('latest cycle', latest.status||'—',latest.status==='CYCLE_OK'?'ok':'warn')+kv('freshness',op.freshness_seconds==null?'—':Math.round(op.freshness_seconds)+' sec')
+   +bar('hourly settled forecasts',hp.settled_forecasts,rule.minimum_settled_forecasts||20)
+   +bar('hourly event clusters',hp.event_clusters,rule.minimum_event_clusters||10)
+   +bar('walk-forward forecasts',hp.walk_forward_forecasts,rule.minimum_walk_forward_forecasts||10)
+   +kv('Brier advantage lower 95%',(hp.walk_forward_advantage_ci95||{}).lower??'—')
+   +kv('model share',pct(hp.model_share))+kv('authority','paper only','warn');
+ const active=op.active_trades||[];
+ document.getElementById('activeTrades').innerHTML=active.length?'<table><tr><th>closes</th><th>asset / horizon</th><th>target</th><th>side</th><th>entry</th><th>model / market</th><th>edge / EV</th><th>maker witness</th><th>decision</th></tr>'
+   +active.map(t=>`<tr><td>${dt(t.close_time)}</td><td><b>${esc(t.asset)} ${esc(t.timeframe)}</b><br><span class="muted">${esc(t.strategy)}</span></td><td>${esc((t.target||{}).label||t.ticker)}</td><td>${esc(t.side)}</td><td>${t.entry_price_cents}¢ + ${t.fee_cents}¢</td><td>${pct(t.probability_yes)} / ${pct(t.market_probability)}</td><td>${Number(t.edge_cents||0).toFixed(2)}¢ / ${Number(t.conservative_ev_cents||0).toFixed(2)}¢</td><td>${esc(t.maker_status)}</td><td class="explain">${esc(t.explanation)}</td></tr>`).join('')+'</table>':'<div class="muted">No open paper trades. The engine is scanning and may abstain when no target clears policy.</div>';
+ const lanes=(op.lanes||[]).filter(x=>Number(x.trades||0)>0||Number(x.settled_trades||0)>0);
+ document.getElementById('lanePerformance').innerHTML=lanes.length?'<table><tr><th>lane</th><th>trades</th><th>settled</th><th>wins</th><th>quote P&amp;L</th><th>Brier skill</th><th>maker fills</th><th>maker P&amp;L</th><th>drawdown</th></tr>'
+   +lanes.map(x=>`<tr><td>${esc(x.vertical)} · ${esc(x.timeframe)} · ${esc(x.strategy)}</td><td>${x.trades??0}</td><td>${x.settled_trades??0}</td><td>${x.wins??0}</td><td class="${Number(x.net_pnl_cents||0)>=0?'ok':'bad'}">${cents(x.net_pnl_cents)}</td><td>${pct(x.brier_skill_vs_market)}</td><td>${x.maker_fills??0} / ${x.maker_orders??0}</td><td>${cents(x.maker_net_pnl_cents)}</td><td>${cents(-(Number(x.max_drawdown_cents||0)))}</td></tr>`).join('')+'</table>':'<div class="muted">No lane evidence yet.</div>';
+ const decisions=op.recent_decisions||[];
+ document.getElementById('paperDecisions').innerHTML=decisions.length?decisions.slice(0,12).map(x=>`<div style="padding:8px 0;border-bottom:1px solid #243041"><div><b>${esc(x.asset)} ${esc(x.timeframe)} · ${esc(x.action)}</b> <span class="muted">${dt(x.created_at)}</span></div><div class="explain">${esc(x.explanation)}</div></div>`).join(''):'<div class="muted">No decisions recorded.</div>';
+ const weak=op.weaknesses||[];
+ document.getElementById('paperWeaknesses').innerHTML=weak.length?weak.slice(0,12).map(x=>`<div style="padding:8px 0;border-bottom:1px solid #243041"><b class="warn">${esc(x.component)}</b><div class="explain">${esc(x.reason)}</div><span class="muted">${x.observations!=null?esc(x.observations)+' observations':''}${x.net_pnl_cents!=null?' · '+cents(x.net_pnl_cents):''}</span></div>`).join(''):'<div class="muted">No current weaknesses reported.</div>';
+}
+let tickGeneration=0;
+async function controlPaper(action){
+ const msg=document.getElementById('controlMsg'),buttons=[document.getElementById('startBtn'),document.getElementById('stopBtn')];buttons.forEach(x=>x.disabled=true);msg.textContent=action==='start'?'Starting paper scheduler…':'Pausing future cycles…';
+ try{const r=await fetch('/api/paper-scheduler/'+action,{method:'POST',headers:{'X-Dummy-Paper-Control':'paper-twin-scheduler-v1'}});const v=await r.json();msg.textContent=v.message||v.detail||v.error||'Control completed';tickGeneration++;if(v.scheduler)renderScheduler(v.scheduler);tick();}catch(e){msg.textContent='Control request failed';}finally{setTimeout(()=>{msg.textContent='';},6000);}
+}
 async function tick(){
+ const generation=++tickGeneration;
  let d; try{ d=await (await fetch('/api/autonomy')).json(); }catch(e){ document.getElementById('ts').textContent='backend unreachable'; return; }
+ if(generation!==tickGeneration)return;
  document.getElementById('ts').textContent='updated '+new Date().toLocaleTimeString();
+ try{renderPaper(d);}catch(e){document.getElementById('ts').textContent+=' · paper render error: '+e.message;console.error('paper render',e);}
  const hb=d.heartbeat||{};
  document.getElementById('live').innerHTML =
    kv('status', `<span class="pill ${hb.alive?'live':'dead'}">${hb.alive?'ALIVE':'STALE'}</span>`)
@@ -296,23 +395,52 @@ tick(); setInterval(tick, 15000);
 
 
 def build_app():
-    """Construct the read-only FastAPI dashboard app."""
-    from fastapi import FastAPI
+    """Construct the evidence dashboard and paper-scheduler control surface."""
+    from fastapi import FastAPI, HTTPException
     from fastapi.responses import HTMLResponse, JSONResponse
+    from autonomy.paper_dashboard import (
+        PAPER_CONTROL_HEADER,
+        control_paper_scheduler,
+        scheduled_task_status,
+    )
 
     app = FastAPI(title="Dummy Autonomy Dashboard")
     # The report includes a 1,000-resample cluster bootstrap over a large
     # ledger. A 30-second cache keeps 15-second browser polling read-only and
     # responsive without repeatedly burning CPU between ten-minute cycles.
-    state_cache: dict[str, Any] = {"at": 0.0, "value": None}
+    state_cache: dict[str, Any] = {"at": 0.0, "value": None, "epoch": 0}
 
     @app.get("/api/autonomy")
     def api_state() -> JSONResponse:
         now = time.monotonic()
         if state_cache["value"] is None or now - float(state_cache["at"]) >= 30.0:
-            state_cache["value"] = assemble_dashboard_state()
-            state_cache["at"] = now
+            epoch = int(state_cache["epoch"])
+            assembled = assemble_dashboard_state()
+            # A control action can invalidate the cache while this expensive
+            # report is assembling. Never let that stale request overwrite
+            # the post-control scheduler state.
+            if epoch == int(state_cache["epoch"]):
+                state_cache["value"] = assembled
+                state_cache["at"] = now
+            return JSONResponse(assembled)
         return JSONResponse(state_cache["value"])
+
+    @app.post("/api/paper-scheduler/{action}")
+    def paper_scheduler_control(action: str, request: Request) -> JSONResponse:
+        if request.headers.get("x-dummy-paper-control") != PAPER_CONTROL_HEADER:
+            raise HTTPException(status_code=403, detail="paper control header required")
+        origin = request.headers.get("origin")
+        if origin and urlparse(origin).hostname not in {"127.0.0.1", "localhost", "::1"}:
+            raise HTTPException(status_code=403, detail="loopback origin required")
+        try:
+            result = control_paper_scheduler(action)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        state_cache["epoch"] = int(state_cache["epoch"]) + 1
+        state_cache["at"] = 0.0
+        state_cache["value"] = None
+        result["scheduler"] = scheduled_task_status()
+        return JSONResponse(result, status_code=200 if result.get("ok") else 503)
 
     @app.get("/")
     def index() -> HTMLResponse:

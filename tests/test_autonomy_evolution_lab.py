@@ -46,6 +46,20 @@ def test_candidate_population_is_bounded_deterministic_and_parented():
     assert all(genome.is_bounded() for genome in first)
 
 
+def test_archive_elites_seed_local_research_probes_before_population_truncation():
+    active = ResearchGenome(0.75, 8, 0.18, 65)
+    archive = ResearchGenome(0.50, 12, 0.18, 65)
+    population = candidate_population(
+        active,
+        generation=5,
+        limit=16,
+        archive_parents=(archive,),
+        mutation_scale=1.0,
+    )
+    assert archive in population
+    assert ResearchGenome(0.58, 14, 0.21, 70) in population
+
+
 def test_evolution_lab_is_causal_stressed_and_has_no_production_authority():
     report = run_evolution_lab(
         _rows(),
@@ -113,6 +127,46 @@ def test_forward_ratchet_accumulates_only_later_decisions_and_generation_is_stab
     assert unchanged["generation"] == 2
     assert unchanged["evidence"]["advanced"] is False
     assert unchanged["evidence"]["new_settled_markets"] == 0
+
+
+def test_quality_diversity_archive_compounds_only_oos_research_evidence():
+    first = run_evolution_lab(
+        _rows(),
+        as_of=datetime(2025, 3, 1, tzinfo=timezone.utc),
+        population_size=32,
+        bootstrap_simulations=200,
+    )
+    archive = first["quality_diversity_archive"]
+    assert archive["cell_count"] > 0
+    assert archive["current_generation_candidates_evaluated"] > 0
+    assert archive["archive_seeds_next_research_population"] is True
+    assert archive["automatic_production_selection"] is False
+    assert all(
+        cell["evidence_source"] == "causal_preselected_purged_out_of_sample_folds"
+        and cell["execution_authority"] is False
+        for cell in archive["cells"]
+    )
+    pressure = first["adaptive_mutation_pressure"]
+    assert 0.25 <= pressure["applied_scale"] <= 2.0
+    assert 0.25 <= pressure["next_scale"] <= 2.0
+    assert pressure["code_mutation_authority"] is False
+    assert first["candidate_lineage"]["record_count"] == first["population"][
+        "candidates_generated"
+    ]
+
+    unchanged = run_evolution_lab(
+        _rows(),
+        previous_report={"evolution_lab": first},
+        as_of=datetime(2025, 3, 1, 1, tzinfo=timezone.utc),
+        population_size=32,
+        bootstrap_simulations=200,
+    )
+    assert unchanged["evidence"]["advanced"] is False
+    assert unchanged["population"]["archive_parents_seeded"] > 0
+    assert unchanged["adaptive_mutation_pressure"]["action"] == (
+        "hold_no_new_settled_evidence"
+    )
+    assert unchanged["adaptive_mutation_pressure"]["updates_without_new_settlements"] is True
 
 
 def test_trace_replay_fingerprints_truth_and_fails_closed_on_gaps():
