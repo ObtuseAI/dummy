@@ -1,4 +1,4 @@
-"""Crypto signal: spot + realized volatility vs Kalshi BTC/ETH range markets.
+"""Crypto signal: spot + realized volatility vs Kalshi BTC/ETH/SOL markets.
 
 Kalshi crypto markets settle on index prices over short horizons. A driftless
 lognormal model over time-to-close, with sigma from recent realized vol
@@ -16,9 +16,16 @@ from typing import Any, Callable
 from autonomy.ontology import MarketView, Signal, Vertical
 
 # e.g. KXBTCD-26JUL0917-T71249.99 — date token with the closing hour glued on.
-_TICKER_RE = re.compile(r"^KX(BTC|ETH)[A-Z]*-(\d{2}[A-Z]{3}\d{2})(\d{2})?-[BT]([\d.]+)$")
+_TICKER_RE = re.compile(
+    r"^KX(BTC|ETH|SOL)[A-Z]*-(\d{2}[A-Z]{3}\d{2})(\d{2})?-[BT]([\d.]+)$"
+)
+# Native direction contracts use the opening CF Benchmarks value as the floor
+# strike in the market payload; their ticker suffix is not a price.
+_DIRECTION_15M_RE = re.compile(
+    r"^KX(BTC|ETH|SOL)15M-(\d{2}[A-Z]{3}\d{6})-(?:00|15|30|45)$"
+)
 
-_PRODUCTS = {"BTC": "BTC-USD", "ETH": "ETH-USD"}
+_PRODUCTS = {"BTC": "BTC-USD", "ETH": "ETH-USD", "SOL": "SOL-USD"}
 
 # ``Signal.uncertainty`` is epistemic probability uncertainty used by the
 # ensemble's inverse-variance weighting.  The old implementation stored the
@@ -100,10 +107,14 @@ def _normal_cdf(x: float) -> float:
 
 def parse_crypto_ticker(ticker: str) -> dict[str, Any] | None:
     match = _TICKER_RE.match(ticker)
-    if not match:
-        return None
-    asset, _date, _hour, strike = match.groups()
-    return {"asset": asset, "strike": float(strike)}
+    if match:
+        asset, _date, _hour, strike = match.groups()
+        return {"asset": asset, "strike": float(strike), "contract_family": "ladder"}
+    direction = _DIRECTION_15M_RE.match(ticker)
+    if direction:
+        asset, _date = direction.groups()
+        return {"asset": asset, "strike": 0.0, "contract_family": "15m_direction"}
+    return None
 
 
 class CryptoSpotVolSignal:
@@ -155,7 +166,7 @@ class CryptoSpotVolSignal:
         strike_type = str(market.raw.get("strike_type", "")).lower()
         floor = market.raw.get("floor_strike")
         cap = market.raw.get("cap_strike")
-        if strike_type == "greater" and floor is not None:
+        if strike_type in {"greater", "greater_or_equal"} and floor is not None:
             p_yes = p_above(float(floor))
         elif strike_type == "less" and cap is not None:
             p_yes = 1.0 - p_above(float(cap))
@@ -232,7 +243,7 @@ class CryptoEwmaTailSignal(CryptoSpotVolSignal):
         strike_type = str(market.raw.get("strike_type", "")).lower()
         floor = market.raw.get("floor_strike")
         cap = market.raw.get("cap_strike")
-        if strike_type == "greater" and floor is not None:
+        if strike_type in {"greater", "greater_or_equal"} and floor is not None:
             p_yes = p_above(float(floor))
         elif strike_type == "less" and cap is not None:
             p_yes = 1.0 - p_above(float(cap))

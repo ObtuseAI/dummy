@@ -1,4 +1,4 @@
-"""Run Dummy's always-on BTC/ETH 15m + hourly paper digital twin.
+"""Run Dummy's always-on BTC/ETH/SOL native-15m + hourly paper digital twin.
 
 This process uses public GET data only. It has no broker, credential, live
 session, production-ledger write, execution, or capital authority.

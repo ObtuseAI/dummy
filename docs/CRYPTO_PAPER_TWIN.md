@@ -7,13 +7,13 @@ ledger writes, execution authority, or capital authority.
 
 ## Live cohorts
 
-Every five minutes the twin scans the public Kalshi BTC/ETH hourly settlement
-ladders and freezes the current Coinbase, Kraken, Deribit, and Kalshi state.
+Every five minutes the twin scans public Kalshi BTC/ETH/SOL markets and freezes
+the current Coinbase, Kraken, Deribit, and Kalshi state.
 It operates two decision clocks in parallel:
 
-- `15m`: minute momentum/volume/microstructure inputs, observed in 15-minute
-  decision buckets;
-- `1h`: hourly-only technical state, observed in hourly decision buckets.
+- `15m`: native `KXBTC15M`, `KXETH15M`, and `KXSOL15M` direction contracts
+  with minute momentum, volume, and microstructure inputs;
+- `1h`: BTC, ETH, and SOL hourly price ladders with hourly-only technical state.
 
 Each timeframe has three isolated lanes:
 

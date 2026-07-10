@@ -24,7 +24,7 @@ default), reconciles settlements, and grades every source against reality.
 | Source | Edge basis |
 |---|---|
 | `weather_openmeteo` | Multi-model NWP ensemble (GFS/ECMWF/ICON) vs temperature strikes, bias/sigma calibrated per city from historical-forecast-vs-ERA5 backfill |
-| `crypto_spot_vol` | Driftless lognormal from realized vol (Coinbase candles) vs BTC/ETH strike ladders |
+| `crypto_spot_vol` | Driftless lognormal from realized vol (Coinbase candles) vs BTC/ETH/SOL direction and strike contracts |
 | `crypto_ewma_t` | Challenger model: EWMA volatility + fat-tail mixture — runs beside the champion; the contested record selects |
 | `crypto_empirical_regime` | Quarantined horizon-matched historical simulation with momentum, RSI, MACD, volatility regime, volume, microprice/order-book, and cross-venue indicator telemetry |
 | `crypto_technical_composite` | Quarantined bounded technical forecast: momentum/RSI/MACD/volume/book/microprice shift capped at 0.45 horizon sigma, with missing-data uncertainty |
@@ -64,8 +64,8 @@ default), reconciles settlements, and grades every source against reality.
   walk-forward tests; separately trains witnessed-fill execution filters and
   cluster-bootstrap compounding stress. It can propose a bounded shadow
   experiment but cannot change weights, risk, readiness, or orders.
-- **Always-on crypto paper twin**: every five minutes, BTC and ETH 15-minute
-  and hourly incumbent/recursive/exploratory lanes observe the same live public
+- **Always-on crypto paper twin**: every five minutes, BTC, ETH, and SOL native
+  15-minute and hourly ladder incumbent/recursive/exploratory lanes observe live public
   Kalshi and crypto state, explain every decision, simulate one-contract top-
   ask entries, and diagnose maker execution from public prints. It runs beside
   both shadow and authorized live sessions but has no credentials, broker,

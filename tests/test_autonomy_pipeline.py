@@ -98,7 +98,12 @@ def test_crypto_ticker_parse_hour_glued():
     from autonomy.signals.crypto_spot import parse_crypto_ticker
 
     parsed = parse_crypto_ticker("KXBTCD-26JUL0917-T71249.99")
-    assert parsed == {"asset": "BTC", "strike": 71249.99}
+    assert parsed == {
+        "asset": "BTC", "strike": 71249.99, "contract_family": "ladder",
+    }
+    assert parse_crypto_ticker("KXSOL15M-26JUL100415-15") == {
+        "asset": "SOL", "strike": 0.0, "contract_family": "15m_direction",
+    }
 
 
 # ---------------------------------------------------------------- signals

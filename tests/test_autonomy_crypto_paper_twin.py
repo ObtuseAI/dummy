@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from dataclasses import replace
 from datetime import datetime, timedelta, timezone
 
 from autonomy.crypto_paper_twin import (
@@ -18,27 +19,35 @@ from autonomy.ontology import MarketView, Vertical
 NOW = datetime(2026, 7, 10, 7, 15, tzinfo=timezone.utc)
 
 
-def _market(asset: str) -> MarketView:
-    ticker = "KXBTCD-26JUL1008-T99" if asset == "BTC" else "KXETHD-26JUL1008-T49"
-    strike = 99.0 if asset == "BTC" else 49.0
+def _market(asset: str, timeframe: str = "1h") -> MarketView:
+    strike = {"BTC": 99.0, "ETH": 49.0, "SOL": 24.0}[asset]
+    if timeframe == "15m":
+        ticker = f"KX{asset}15M-26JUL100730-00"
+        close_time = NOW + timedelta(minutes=15)
+        strike_type = "greater_or_equal"
+    else:
+        series = {"BTC": "KXBTCD", "ETH": "KXETHD", "SOL": "KXSOLD"}[asset]
+        ticker = f"{series}-26JUL1008-T{strike:g}"
+        close_time = NOW + timedelta(minutes=30)
+        strike_type = "greater"
     return MarketView(
         ticker=ticker,
-        title=f"{asset} threshold",
+        title=f"{asset} {timeframe} threshold",
         vertical=Vertical.CRYPTO,
         status="active",
-        close_time=(NOW + timedelta(minutes=30)).isoformat(),
+        close_time=close_time.isoformat(),
         yes_bid=40,
         yes_ask=42,
         no_bid=58,
         no_ask=60,
         volume=10_000,
         liquidity=1_000,
-        raw={"strike_type": "greater", "floor_strike": strike, "cap_strike": None},
+        raw={"strike_type": strike_type, "floor_strike": strike, "cap_strike": None},
     )
 
 
 def _state(asset: str) -> dict:
-    spot = 100.0 if asset == "BTC" else 50.0
+    spot = {"BTC": 100.0, "ETH": 50.0, "SOL": 25.0}[asset]
     minute = [spot * (1.0 + index / 100_000.0) for index in range(350)]
     hourly = [spot * (0.97 + index / 10_000.0) for index in range(350)]
     return {
@@ -63,7 +72,7 @@ def _state(asset: str) -> dict:
 
 class FakeHub:
     def __init__(self):
-        self.states = {asset: _state(asset) for asset in ("BTC", "ETH")}
+        self.states = {asset: _state(asset) for asset in ("BTC", "ETH", "SOL")}
 
     def clear(self):
         return None
@@ -80,7 +89,11 @@ class FakeHub:
 
 class FakeScanner:
     def scan(self):
-        return [_market("BTC"), _market("ETH")]
+        return [
+            _market(asset, timeframe)
+            for timeframe in ("15m", "1h")
+            for asset in ("BTC", "ETH", "SOL")
+        ]
 
 
 def _twin(tmp_path, *, now=NOW, results=None, trades=None):
@@ -107,8 +120,8 @@ def test_parallel_paper_cycle_records_explanations_and_never_has_authority(tmp_p
     try:
         report = twin.run_cycle()
         assert report["status"] == "CYCLE_OK"
-        assert report["observations_written"] == 12
-        assert report["trades_opened"] >= 4
+        assert report["observations_written"] == 18
+        assert report["trades_opened"] >= 6
         assert set(report["lanes"]) == {"15m", "1h"}
         assert report["authority"]["independent_of_shadow_or_live_session"] is True
         assert report["authority"]["continues_during_authorized_live_operation"] is True
@@ -129,6 +142,15 @@ def test_parallel_paper_cycle_records_explanations_and_never_has_authority(tmp_p
         assert explanations
         assert all("Paper-only" in row["explanation"] or "No paper order" in row["explanation"]
                    for row in explanations)
+        routed = {
+            (row["timeframe"], row["asset"], row["ticker"])
+            for row in twin.ledger.connection.execute(
+                "SELECT timeframe,asset,ticker FROM observations WHERE ticker IS NOT NULL"
+            )
+        }
+        assert {asset for _timeframe, asset, _ticker in routed} == {"BTC", "ETH", "SOL"}
+        assert all("15M-" in ticker for timeframe, _asset, ticker in routed if timeframe == "15m")
+        assert all("15M-" not in ticker for timeframe, _asset, ticker in routed if timeframe == "1h")
     finally:
         twin.close()
 
@@ -141,9 +163,34 @@ def test_same_lane_never_pyramids_same_asset_expiry(tmp_path):
         second = twin.run_cycle()
         assert first_count > 0
         assert second["trades_opened"] == 0
-        assert second["observations_written"] == 12
+        assert second["observations_written"] == 18
     finally:
         twin.close()
+
+
+def test_legacy_hourly_contracts_are_preserved_outside_native_15m_cohort(tmp_path):
+    twin = _twin(tmp_path)
+    try:
+        twin.run_cycle()
+        twin.ledger.connection.execute(
+            "UPDATE observations SET ticker='KXBTCD-26JUL1008-T99' "
+            "WHERE timeframe='15m' AND ticker IS NOT NULL"
+        )
+        twin.ledger.connection.execute(
+            "UPDATE trades SET ticker='KXBTCD-26JUL1008-T99' WHERE timeframe='15m'"
+        )
+        twin.ledger.connection.commit()
+    finally:
+        twin.close()
+
+    ledger = PaperTwinLedger(tmp_path / "paper.db")
+    try:
+        quarantine = ledger.legacy_quarantine_summary()
+        assert quarantine["observations"] > 0
+        assert quarantine["trades"] > 0
+        assert ledger.lane_summary("exploratory", "15m")["trades"] == 0
+    finally:
+        ledger.close()
 
 
 def test_settlement_uses_simulated_taker_quote_and_keeps_paper_quarantined(tmp_path):
@@ -154,8 +201,9 @@ def test_settlement_uses_simulated_taker_quote_and_keeps_paper_quarantined(tmp_p
     finally:
         first.close()
     results = {
-        _market("BTC").ticker: {"result": "yes"},
-        _market("ETH").ticker: {"result": "yes"},
+        _market(asset, timeframe).ticker: {"result": "yes"}
+        for timeframe in ("15m", "1h")
+        for asset in ("BTC", "ETH", "SOL")
     }
     second = _twin(tmp_path, now=NOW + timedelta(hours=1), results=results)
     try:
@@ -246,6 +294,23 @@ def test_timeframe_inputs_are_distinct_and_recursive_epoch_is_frozen(tmp_path):
         assert json.loads(second["genome_json"])["shrinkage"] == 0.75
     finally:
         ledger.close()
+
+
+def test_native_15m_keeps_final_four_minutes_while_hourly_retains_cutoff(tmp_path):
+    twin = _twin(tmp_path)
+    try:
+        native = replace(
+            _market("BTC", "15m"),
+            close_time=(NOW + timedelta(minutes=4)).isoformat(),
+        )
+        hourly = replace(
+            _market("BTC", "1h"),
+            close_time=(NOW + timedelta(minutes=4)).isoformat(),
+        )
+        assert twin._markets_for_asset([native], "BTC", "15m", NOW) == [native]
+        assert twin._markets_for_asset([hourly], "BTC", "1h", NOW) == []
+    finally:
+        twin.close()
 
 
 def test_compounding_and_canary_outputs_never_grant_live_authority():

@@ -1,9 +1,9 @@
-"""Always-on, public-read-only BTC/ETH paper-trading digital twin.
+"""Always-on, public-read-only BTC/ETH/SOL paper-trading digital twin.
 
 The twin runs independently of Dummy's SHADOW/LIVE session.  It never loads
 credentials, imports a broker adapter, or writes the production autonomy
-ledger.  Fifteen-minute and hourly decision clocks observe the same live
-Kalshi crypto ladders in parallel.  Each clock runs an incumbent lane and a
+ledger. The 15-minute clock observes native Kalshi direction contracts while
+the hourly clock observes price ladders. Each clock runs an incumbent lane and a
 frozen recursive-challenger lane, records a plain-language explanation, books
 one quote-executable *simulated* taker contract per asset/expiry, and tracks a
 separate conservative maker-fill diagnostic from public prints.
@@ -50,9 +50,12 @@ from kalshi.presubmit import default_fetch_orderbook
 
 TIMEFRAMES = {"15m": 15 * 60, "1h": 60 * 60}
 STRATEGIES = ("incumbent", "recursive", "exploratory")
-ASSETS = ("BTC", "ETH")
-WATCHLIST = ["KXBTCD", "KXETHD", "KXBTC", "KXETH"]
-MIN_MINUTES_TO_CLOSE = 5.0
+ASSETS = ("BTC", "ETH", "SOL")
+WATCHLIST = [
+    "KXBTC15M", "KXETH15M", "KXSOL15M",
+    "KXBTCD", "KXETHD", "KXSOLD", "KXBTC", "KXETH",
+]
+MIN_MINUTES_TO_CLOSE = {"15m": 1.0, "1h": 5.0}
 MAX_MINUTES_TO_CLOSE = 90.0
 INCUMBENT_MIN_EV_CENTS = 8.0
 INCUMBENT_MAX_UNCERTAINTY = 0.35
@@ -186,8 +189,8 @@ def bucket_start(now: datetime, timeframe: str) -> str:
     return datetime.fromtimestamp(timestamp - timestamp % seconds, timezone.utc).isoformat()
 
 
-def event_cluster(asset: str, close_time: str) -> str:
-    return f"CRYPTO_PAPER:{asset}:{_utc(close_time).isoformat()}"
+def event_cluster(timeframe: str, asset: str, close_time: str) -> str:
+    return f"CRYPTO_PAPER:{timeframe}:{asset}:{_utc(close_time).isoformat()}"
 
 
 class TrustSnapshot:
@@ -231,7 +234,28 @@ class PaperTwinLedger:
         self.connection = sqlite3.connect(self.path, timeout=30)
         self.connection.row_factory = sqlite3.Row
         self.connection.executescript(_SCHEMA)
+        self._quarantine_legacy_15m_ladders()
         self.connection.commit()
+
+    def _quarantine_legacy_15m_ladders(self) -> None:
+        """Preserve pre-native-15m rows without mixing them into clean cohorts."""
+        self.connection.execute(
+            "UPDATE observations SET timeframe='legacy_15m_hourly' "
+            "WHERE timeframe='15m' AND ticker IS NOT NULL AND ticker NOT LIKE 'KX%15M-%'"
+        )
+        self.connection.execute(
+            "UPDATE trades SET timeframe='legacy_15m_hourly' "
+            "WHERE timeframe='15m' AND ticker NOT LIKE 'KX%15M-%'"
+        )
+
+    def legacy_quarantine_summary(self) -> dict[str, int]:
+        observations = self.connection.execute(
+            "SELECT COUNT(*) FROM observations WHERE timeframe='legacy_15m_hourly'"
+        ).fetchone()[0]
+        trades = self.connection.execute(
+            "SELECT COUNT(*) FROM trades WHERE timeframe='legacy_15m_hourly'"
+        ).fetchone()[0]
+        return {"observations": int(observations), "trades": int(trades)}
 
     def close(self) -> None:
         self.connection.close()
@@ -1143,19 +1167,28 @@ class CryptoPaperTwin:
             return None
 
     def _markets_for_asset(
-        self, markets: Sequence[MarketView], asset: str, now: datetime,
+        self,
+        markets: Sequence[MarketView],
+        asset: str,
+        timeframe: str,
+        now: datetime,
     ) -> list[MarketView]:
         candidates: list[tuple[datetime, MarketView]] = []
         for market in markets:
             parsed = parse_crypto_ticker(market.ticker)
             if parsed is None or str(parsed["asset"]) != asset:
                 continue
+            family = str(parsed.get("contract_family") or "ladder")
+            if timeframe == "15m" and family != "15m_direction":
+                continue
+            if timeframe == "1h" and family == "15m_direction":
+                continue
             try:
                 close = _utc(market.close_time)
             except (TypeError, ValueError):
                 continue
             minutes = (close - now).total_seconds() / 60.0
-            if not (MIN_MINUTES_TO_CLOSE <= minutes <= MAX_MINUTES_TO_CLOSE):
+            if not (MIN_MINUTES_TO_CLOSE[timeframe] <= minutes <= MAX_MINUTES_TO_CLOSE):
                 continue
             candidates.append((close, market))
         if not candidates:
@@ -1226,8 +1259,10 @@ class CryptoPaperTwin:
             forecasts = self._base_forecasts(eligible_markets, states) if states else {}
             for timeframe in TIMEFRAMES:
                 for asset in ASSETS:
-                    lane_markets = self._markets_for_asset(eligible_markets, asset, now)
-                    cluster = event_cluster(asset, lane_markets[0].close_time) \
+                    lane_markets = self._markets_for_asset(
+                        eligible_markets, asset, timeframe, now,
+                    )
+                    cluster = event_cluster(timeframe, asset, lane_markets[0].close_time) \
                         if lane_markets else None
                     for strategy in STRATEGIES:
                         candidates: list[dict[str, Any]] = []
@@ -1258,6 +1293,10 @@ class CryptoPaperTwin:
                             if best_candidate.get("eligible") else "ABSTAIN"
                         )
                         market = best_candidate.get("market")
+                        parsed_market = (
+                            parse_crypto_ticker(market.ticker)
+                            if isinstance(market, MarketView) else None
+                        )
                         observation_id = self.ledger.record_observation({
                             "cycle_id": cycle_id,
                             "epoch_id": epoch.get("epoch_id") if strategy == "recursive" else None,
@@ -1274,6 +1313,10 @@ class CryptoPaperTwin:
                                 "candidate_markets": len(candidates),
                                 "nearest_expiry_markets": len(lane_markets),
                                 "eligible_candidates": sum(bool(row.get("eligible")) for row in candidates),
+                                "contract_family": (
+                                    parsed_market.get("contract_family")
+                                    if parsed_market is not None else None
+                                ),
                                 "paper_only": True,
                             },
                             "created_at": now.isoformat(),
@@ -1299,6 +1342,10 @@ class CryptoPaperTwin:
                         technical = best_candidate.get("technical")
                         features = {
                             "timeframe": timeframe,
+                            "contract_family": (
+                                parsed_market.get("contract_family")
+                                if parsed_market is not None else None
+                            ),
                             "technical": technical.features if technical is not None else None,
                             "queue_snapshot_error": queue_error,
                             "spot_state": {
@@ -1527,6 +1574,7 @@ class CryptoPaperTwin:
                 "simulated_taker_quote_is_witnessed_fill": False,
                 "maker_public_print_is_research_execution_evidence_only": True,
                 "exploratory_lane_is_promotion_evidence": False,
+                "legacy_15m_hourly_rows": self.ledger.legacy_quarantine_summary(),
             },
             "authority": {
                 "independent_of_shadow_or_live_session": True,

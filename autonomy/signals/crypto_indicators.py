@@ -21,7 +21,7 @@ from autonomy.signals.crypto_spot import (
     parse_crypto_ticker,
 )
 
-_KRAKEN_PAIRS = {"BTC": "XXBTZUSD", "ETH": "XETHZUSD"}
+_KRAKEN_PAIRS = {"BTC": "XXBTZUSD", "ETH": "XETHZUSD", "SOL": "SOLUSD"}
 
 
 def _annualized_vol(closes: list[float], periods_per_year: int) -> float | None:
@@ -300,7 +300,7 @@ def _event_probability(
     success = 0.0
     total = sum(weights)
     for price, weight in zip(terminal_prices, weights):
-        if strike_type == "greater" and floor is not None:
+        if strike_type in {"greater", "greater_or_equal"} and floor is not None:
             event = price >= float(floor)
         elif strike_type == "less" and cap is not None:
             event = price < float(cap)
@@ -537,7 +537,7 @@ class CryptoTechnicalCompositeSignal:
         strike_type = str(market.raw.get("strike_type", "")).lower()
         floor = market.raw.get("floor_strike")
         cap = market.raw.get("cap_strike")
-        if strike_type == "greater" and floor is not None:
+        if strike_type in {"greater", "greater_or_equal"} and floor is not None:
             probability = p_above(float(floor))
         elif strike_type == "less" and cap is not None:
             probability = 1.0 - p_above(float(cap))
@@ -633,7 +633,7 @@ class CryptoDvolSignal:
         strike_type = str(market.raw.get("strike_type", "")).lower()
         floor = market.raw.get("floor_strike")
         cap = market.raw.get("cap_strike")
-        if strike_type == "greater" and floor is not None:
+        if strike_type in {"greater", "greater_or_equal"} and floor is not None:
             probability = p_above(float(floor))
         elif strike_type == "less" and cap is not None:
             probability = 1.0 - p_above(float(cap))
