@@ -1,0 +1,280 @@
+"""Point-in-time MLB run-distribution challenger.
+
+The model learns only from completed public scoreboard rows.  It estimates
+team scoring, prevention, first-inning tendencies, and venue run environment,
+then layers the announced starters' season ERA on top.  It is intentionally a
+challenger: forecasts are recorded and settled before they can influence live
+allocation.
+"""
+from __future__ import annotations
+
+import json
+import math
+from dataclasses import asdict, dataclass, field
+from pathlib import Path
+from typing import Any
+
+from autonomy.sports.elo import LEAGUE_AVG_ERA
+from autonomy.sports.espn import Game
+
+MODEL_VERSION = "mlb-runs-v1"
+PRIOR_TEAM_RUNS = 4.35
+PRIOR_FIRST_SCORE = 0.30
+PRIOR_YRFI = 1.0 - (1.0 - PRIOR_FIRST_SCORE) ** 2
+EWMA_ALPHA = 0.08
+
+
+@dataclass
+class TeamRunState:
+    games: int = 0
+    runs_for_ewma: float = PRIOR_TEAM_RUNS
+    runs_against_ewma: float = PRIOR_TEAM_RUNS
+    first_score_ewma: float = PRIOR_FIRST_SCORE
+    first_allow_ewma: float = PRIOR_FIRST_SCORE
+
+
+@dataclass
+class VenueRunState:
+    games: int = 0
+    total_runs_ewma: float = 2.0 * PRIOR_TEAM_RUNS
+    yrfi_ewma: float = PRIOR_YRFI
+
+
+@dataclass(frozen=True)
+class BaseballPrediction:
+    home_win_probability: float
+    expected_home_runs: float
+    expected_away_runs: float
+    expected_total_runs: float
+    yrfi_probability: float
+    winner_uncertainty: float
+    total_uncertainty: float
+    first_inning_uncertainty: float
+    sample_games: int
+    pitchers_available: bool
+    model_version: str = MODEL_VERSION
+
+
+def _ewma(previous: float, value: float, alpha: float = EWMA_ALPHA) -> float:
+    return alpha * value + (1.0 - alpha) * previous
+
+
+def _finite(value: Any) -> float | None:
+    try:
+        parsed = float(value)
+    except (TypeError, ValueError):
+        return None
+    return parsed if math.isfinite(parsed) else None
+
+
+def poisson_cdf(k: int, mean: float) -> float:
+    """P(X <= k) for a Poisson variable, without a SciPy dependency."""
+    if k < 0:
+        return 0.0
+    mean = max(0.0, float(mean))
+    term = math.exp(-mean)
+    total = term
+    for value in range(1, k + 1):
+        term *= mean / value
+        total += term
+    return min(1.0, max(0.0, total))
+
+
+def poisson_over_probability(mean: float, threshold: float) -> float:
+    """Probability an integer count is strictly greater than a threshold."""
+    return min(0.995, max(0.005, 1.0 - poisson_cdf(math.floor(threshold), mean)))
+
+
+def poisson_win_probability(subject_mean: float, opponent_mean: float) -> float:
+    """P(subject wins), splitting the regulation tie mass evenly."""
+    limit = max(25, int(math.ceil(max(subject_mean, opponent_mean) + 8.0)))
+    subject = [math.exp(-subject_mean)]
+    opponent = [math.exp(-opponent_mean)]
+    for runs in range(1, limit + 1):
+        subject.append(subject[-1] * subject_mean / runs)
+        opponent.append(opponent[-1] * opponent_mean / runs)
+    probability = 0.0
+    opponent_less = 0.0
+    for runs, mass in enumerate(subject):
+        if runs > 0:
+            opponent_less += opponent[runs - 1]
+        probability += mass * (opponent_less + 0.5 * opponent[runs])
+    return min(0.995, max(0.005, probability))
+
+
+@dataclass
+class BaseballRunModel:
+    teams: dict[str, TeamRunState] = field(default_factory=dict)
+    venues: dict[str, VenueRunState] = field(default_factory=dict)
+    processed_game_ids: set[str] = field(default_factory=set)
+    games_seen: int = 0
+    league_total_mean: float = 2.0 * PRIOR_TEAM_RUNS
+    league_total_m2: float = 0.0
+
+    def _team(self, abbreviation: str) -> TeamRunState:
+        return self.teams.setdefault(abbreviation.upper(), TeamRunState())
+
+    def _venue(self, name: str | None) -> VenueRunState | None:
+        return self.venues.setdefault(name, VenueRunState()) if name else None
+
+    def update(self, game: Game) -> bool:
+        """Apply one fully observed final exactly once."""
+        if game.game_id in self.processed_game_ids or game.status != "post":
+            return False
+        if game.home_score is None or game.away_score is None:
+            return False
+        home_first = game.home_first_inning_runs
+        away_first = game.away_first_inning_runs
+        if home_first is None or away_first is None:
+            return False
+
+        home = self._team(game.home)
+        away = self._team(game.away)
+        home.runs_for_ewma = _ewma(home.runs_for_ewma, game.home_score)
+        home.runs_against_ewma = _ewma(home.runs_against_ewma, game.away_score)
+        away.runs_for_ewma = _ewma(away.runs_for_ewma, game.away_score)
+        away.runs_against_ewma = _ewma(away.runs_against_ewma, game.home_score)
+        home.first_score_ewma = _ewma(home.first_score_ewma, float(home_first > 0))
+        home.first_allow_ewma = _ewma(home.first_allow_ewma, float(away_first > 0))
+        away.first_score_ewma = _ewma(away.first_score_ewma, float(away_first > 0))
+        away.first_allow_ewma = _ewma(away.first_allow_ewma, float(home_first > 0))
+        home.games += 1
+        away.games += 1
+
+        total = float(game.home_score + game.away_score)
+        self.games_seen += 1
+        delta = total - self.league_total_mean
+        self.league_total_mean += delta / self.games_seen
+        self.league_total_m2 += delta * (total - self.league_total_mean)
+        venue = self._venue(game.venue)
+        if venue is not None:
+            venue.total_runs_ewma = _ewma(venue.total_runs_ewma, total)
+            venue.yrfi_ewma = _ewma(venue.yrfi_ewma, float(home_first + away_first > 0))
+            venue.games += 1
+        self.processed_game_ids.add(game.game_id)
+        return True
+
+    @staticmethod
+    def _reliability(games: int, full_weight: int = 40) -> float:
+        return min(0.85, max(0.0, games / float(full_weight)))
+
+    def _team_metric(self, state: TeamRunState, field_name: str, prior: float) -> float:
+        weight = self._reliability(state.games)
+        return (1.0 - weight) * prior + weight * float(getattr(state, field_name))
+
+    @staticmethod
+    def _pitcher_run_adjustment(era: float | None) -> float:
+        value = _finite(era)
+        if value is None or value <= 0:
+            return 0.0
+        return max(-0.9, min(0.9, 0.28 * (value - LEAGUE_AVG_ERA)))
+
+    @staticmethod
+    def _pitcher_first_adjustment(era: float | None) -> float:
+        value = _finite(era)
+        if value is None or value <= 0:
+            return 0.0
+        return max(-0.08, min(0.08, 0.025 * (value - LEAGUE_AVG_ERA)))
+
+    def predict(self, game: Game) -> BaseballPrediction:
+        home = self._team(game.home)
+        away = self._team(game.away)
+        prior_team = max(3.5, min(5.5, self.league_total_mean / 2.0))
+        home_offense = self._team_metric(home, "runs_for_ewma", prior_team)
+        home_opponent_defense = self._team_metric(away, "runs_against_ewma", prior_team)
+        away_offense = self._team_metric(away, "runs_for_ewma", prior_team)
+        away_opponent_defense = self._team_metric(home, "runs_against_ewma", prior_team)
+        expected_home = 0.5 * (home_offense + home_opponent_defense)
+        expected_away = 0.5 * (away_offense + away_opponent_defense)
+        expected_home += self._pitcher_run_adjustment(game.away_pitcher_era)
+        expected_away += self._pitcher_run_adjustment(game.home_pitcher_era)
+
+        venue = self.venues.get(game.venue or "")
+        if venue is not None and venue.games >= 8:
+            venue_weight = min(0.20, venue.games / 250.0)
+            venue_factor = max(0.80, min(1.20, venue.total_runs_ewma / 8.7))
+            factor = 1.0 + venue_weight * (venue_factor - 1.0)
+            expected_home *= factor
+            expected_away *= factor
+        if game.indoor is not True and game.weather_temperature_f is not None:
+            weather_adjustment = max(-0.35, min(0.35, (game.weather_temperature_f - 72.0) * 0.012))
+            expected_home += weather_adjustment / 2.0
+            expected_away += weather_adjustment / 2.0
+        expected_home = max(1.2, min(8.0, expected_home))
+        expected_away = max(1.2, min(8.0, expected_away))
+
+        home_first = 0.5 * (
+            self._team_metric(home, "first_score_ewma", PRIOR_FIRST_SCORE)
+            + self._team_metric(away, "first_allow_ewma", PRIOR_FIRST_SCORE)
+        ) + self._pitcher_first_adjustment(game.away_pitcher_era)
+        away_first = 0.5 * (
+            self._team_metric(away, "first_score_ewma", PRIOR_FIRST_SCORE)
+            + self._team_metric(home, "first_allow_ewma", PRIOR_FIRST_SCORE)
+        ) + self._pitcher_first_adjustment(game.home_pitcher_era)
+        home_first = max(0.06, min(0.70, home_first))
+        away_first = max(0.06, min(0.70, away_first))
+        yrfi = 1.0 - (1.0 - home_first) * (1.0 - away_first)
+        if venue is not None and venue.games >= 12:
+            venue_weight = min(0.15, venue.games / 300.0)
+            yrfi = (1.0 - venue_weight) * yrfi + venue_weight * venue.yrfi_ewma
+
+        sample = min(home.games, away.games)
+        cold = 1.0 / math.sqrt(1.0 + sample / 8.0)
+        pitchers = game.home_pitcher_era is not None and game.away_pitcher_era is not None
+        missing_pitcher_penalty = 0.04 if not pitchers else 0.0
+        return BaseballPrediction(
+            home_win_probability=poisson_win_probability(expected_home, expected_away),
+            expected_home_runs=expected_home,
+            expected_away_runs=expected_away,
+            expected_total_runs=expected_home + expected_away,
+            yrfi_probability=min(0.95, max(0.05, yrfi)),
+            winner_uncertainty=min(0.40, 0.07 + 0.18 * cold + missing_pitcher_penalty),
+            total_uncertainty=min(0.42, 0.11 + 0.18 * cold + missing_pitcher_penalty),
+            first_inning_uncertainty=min(0.42, 0.13 + 0.18 * cold + missing_pitcher_penalty),
+            sample_games=sample,
+            pitchers_available=pitchers,
+        )
+
+    def total_probability(self, prediction: BaseballPrediction, threshold: float) -> float:
+        return poisson_over_probability(prediction.expected_total_runs, threshold)
+
+    def to_dict(self) -> dict[str, Any]:
+        variance = (
+            self.league_total_m2 / (self.games_seen - 1) if self.games_seen > 1 else None
+        )
+        return {
+            "model_version": MODEL_VERSION,
+            "teams": {key: asdict(value) for key, value in self.teams.items()},
+            "venues": {key: asdict(value) for key, value in self.venues.items()},
+            "processed_game_ids": sorted(self.processed_game_ids),
+            "games_seen": self.games_seen,
+            "league_total_mean": self.league_total_mean,
+            "league_total_m2": self.league_total_m2,
+            "league_total_variance": variance,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> "BaseballRunModel":
+        return cls(
+            teams={key: TeamRunState(**value) for key, value in data.get("teams", {}).items()},
+            venues={key: VenueRunState(**value) for key, value in data.get("venues", {}).items()},
+            processed_game_ids=set(data.get("processed_game_ids", [])),
+            games_seen=int(data.get("games_seen", 0)),
+            league_total_mean=float(data.get("league_total_mean", 2.0 * PRIOR_TEAM_RUNS)),
+            league_total_m2=float(data.get("league_total_m2", 0.0)),
+        )
+
+    def save(self, path: Path) -> None:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        temporary = path.with_suffix(path.suffix + ".tmp")
+        temporary.write_text(json.dumps(self.to_dict(), indent=2, sort_keys=True), encoding="utf-8")
+        temporary.replace(path)
+
+    @classmethod
+    def load(cls, path: Path) -> "BaseballRunModel":
+        if path.exists():
+            try:
+                return cls.from_dict(json.loads(path.read_text(encoding="utf-8")))
+            except (OSError, TypeError, ValueError, json.JSONDecodeError):
+                pass
+        return cls()

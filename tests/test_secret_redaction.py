@@ -3,6 +3,7 @@ from __future__ import annotations
 import importlib
 import json
 import os
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -108,16 +109,22 @@ def test_no_raw_secrets_in_logs_and_reports(monkeypatch):
     paths_to_scan.extend((ARTIFACTS_DIR).glob("*.json"))
     paths_to_scan.extend((DUMMY_ROOT / "artifacts" / "repo_harvester").glob("*.json"))
 
-    for path in paths_to_scan:
+    def _scan_path(path: Path) -> set[str]:
         if not path.exists():
-            continue
+            return set()
         try:
             text = path.read_text(encoding="utf-8", errors="ignore")
         except Exception:
-            continue
-        for value, key in secret_by_value.items():
-            if value in text:
-                leaked_keys.add(key)
+            return set()
+        return {key for value, key in secret_by_value.items() if value in text}
+
+    # Runtime evidence is intentionally append-only and can contain tens of
+    # thousands of small reports. Preserve the exhaustive scan without making
+    # the security gate scale linearly with Windows file-open latency.
+    worker_count = min(32, max(4, (os.cpu_count() or 4) * 2))
+    with ThreadPoolExecutor(max_workers=worker_count) as pool:
+        for path_leaks in pool.map(_scan_path, paths_to_scan):
+            leaked_keys.update(path_leaks)
 
     assert not leaked_keys, f"Raw secrets leaked in logs/reports for keys: {sorted(leaked_keys)}"
 

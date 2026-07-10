@@ -14,9 +14,21 @@ LEAGUE_TO_ESPN: dict[str, tuple[str, str]] = {
     "nba": ("basketball", "nba"),
     "wnba": ("basketball", "wnba"),
     "nfl": ("football", "nfl"),
+    "ncaaf": ("football", "college-football"),
     "mlb": ("baseball", "mlb"),
     "nhl": ("hockey", "nhl"),
+    "ncaamb": ("basketball", "mens-college-basketball"),
 }
+
+MLB_TEAM_ALIASES = {
+    "AZ": "ARI",
+    "CWS": "CHW",
+}
+
+
+def canonical_team(league: str, team: str) -> str:
+    upper = team.upper()
+    return MLB_TEAM_ALIASES.get(upper, upper) if league == "mlb" else upper
 
 
 @dataclass(frozen=True)
@@ -41,6 +53,18 @@ class Game:
     home_ml_open: int | None = None
     away_ml_open: int | None = None
     odds_provider: str | None = None
+    # Final-score and first-inning facts power the isolated MLB runs model.
+    # They remain None before settlement or when the public payload is incomplete.
+    home_score: int | None = None
+    away_score: int | None = None
+    home_first_inning_runs: int | None = None
+    away_first_inning_runs: int | None = None
+    venue: str | None = None
+    indoor: bool | None = None
+    weather_temperature_f: float | None = None
+    weather_condition: str | None = None
+    home_name: str | None = None
+    away_name: str | None = None
 
 
 def _american(value: Any) -> int | None:
@@ -91,6 +115,26 @@ def _probable_era(competitor: dict[str, Any]) -> tuple[float | None, str | None]
     return None, name
 
 
+def _score(competitor: dict[str, Any]) -> int | None:
+    try:
+        value = float(competitor.get("score"))
+    except (TypeError, ValueError):
+        return None
+    return int(value) if value >= 0 and value.is_integer() else None
+
+
+def _inning_runs(competitor: dict[str, Any], inning: int = 1) -> int | None:
+    for line in competitor.get("linescores") or []:
+        try:
+            if int(line.get("period")) != inning:
+                continue
+            value = float(line.get("value"))
+        except (TypeError, ValueError):
+            continue
+        return int(value) if value >= 0 and value.is_integer() else None
+    return None
+
+
 def _espn_scoreboard_url(league: str) -> str:
     sport, esp = LEAGUE_TO_ESPN[league]
     return f"https://site.api.espn.com/apis/site/v2/sports/{sport}/{esp}/scoreboard"
@@ -103,6 +147,37 @@ def default_fetch_scoreboard(league: str, dates: str | None) -> dict[str, Any]:
     if dates:
         params["dates"] = dates  # YYYYMMDD or YYYYMMDD-YYYYMMDD
     response = httpx.get(_espn_scoreboard_url(league), params=params, timeout=20)
+    if response.is_success:
+        return response.json()
+    # Some college feeds reject date ranges while accepting each constituent
+    # date. Fall back to daily public reads and merge events rather than
+    # silently leaving a league permanently cold.
+    if dates and "-" in dates:
+        from datetime import datetime, timedelta
+
+        start_text, end_text = dates.split("-", 1)
+        start = datetime.strptime(start_text, "%Y%m%d").date()
+        end = datetime.strptime(end_text, "%Y%m%d").date()
+        if 0 <= (end - start).days <= 31:
+            merged: dict[str, Any] = {"events": []}
+            current = start
+            seen: set[str] = set()
+            while current <= end:
+                daily = httpx.get(
+                    _espn_scoreboard_url(league),
+                    params={"dates": current.strftime("%Y%m%d")},
+                    timeout=20,
+                )
+                daily.raise_for_status()
+                for event in daily.json().get("events", []):
+                    event_id = str(event.get("id") or "")
+                    if event_id and event_id in seen:
+                        continue
+                    if event_id:
+                        seen.add(event_id)
+                    merged["events"].append(event)
+                current += timedelta(days=1)
+            return merged
     response.raise_for_status()
     return response.json()
 
@@ -116,6 +191,8 @@ def parse_scoreboard(league: str, payload: dict[str, Any]) -> list[Game]:
         comp = comps[0]
         competitors = comp.get("competitors", [])
         home = away = None
+        home_name = away_name = None
+        home_competitor = away_competitor = None
         home_won = away_won = None
         home_era = away_era = None
         home_p = away_p = None
@@ -123,10 +200,14 @@ def parse_scoreboard(league: str, payload: dict[str, Any]) -> list[Game]:
             abbr = c.get("team", {}).get("abbreviation")
             if c.get("homeAway") == "home":
                 home = abbr
+                home_name = c.get("team", {}).get("displayName")
+                home_competitor = c
                 home_won = c.get("winner")
                 home_era, home_p = _probable_era(c)
             elif c.get("homeAway") == "away":
                 away = abbr
+                away_name = c.get("team", {}).get("displayName")
+                away_competitor = c
                 away_won = c.get("winner")
                 away_era, away_p = _probable_era(c)
         state = comp.get("status", {}).get("type", {}).get("state", "")
@@ -139,6 +220,12 @@ def parse_scoreboard(league: str, payload: dict[str, Any]) -> list[Game]:
             elif home_won is False or away_won is True:
                 resolved = False
         home_ml, away_ml, home_ml_open, away_ml_open, provider = _moneylines(comp)
+        venue = comp.get("venue") or {}
+        weather = comp.get("weather") or {}
+        try:
+            temperature = float(weather.get("temperature"))
+        except (TypeError, ValueError):
+            temperature = None
         games.append(Game(
             game_id=str(event.get("id", f"{away}@{home}:{event.get('date','')}")),
             league=league, home=home, away=away, status=state or "pre",
@@ -148,6 +235,20 @@ def parse_scoreboard(league: str, payload: dict[str, Any]) -> list[Game]:
             home_ml=home_ml, away_ml=away_ml,
             home_ml_open=home_ml_open, away_ml_open=away_ml_open,
             odds_provider=provider,
+            home_score=_score(home_competitor or {}) if state == "post" else None,
+            away_score=_score(away_competitor or {}) if state == "post" else None,
+            home_first_inning_runs=(
+                _inning_runs(home_competitor or {}) if state == "post" else None
+            ),
+            away_first_inning_runs=(
+                _inning_runs(away_competitor or {}) if state == "post" else None
+            ),
+            venue=venue.get("fullName"),
+            indoor=venue.get("indoor") if isinstance(venue.get("indoor"), bool) else None,
+            weather_temperature_f=temperature,
+            weather_condition=weather.get("displayValue"),
+            home_name=home_name,
+            away_name=away_name,
         ))
     return games
 
@@ -174,8 +275,26 @@ class EspnClient:
         return games
 
     def find_matchup(self, league: str, team_a: str, team_b: str, dates: str | None = None) -> Game | None:
-        teams = {team_a.upper(), team_b.upper()}
+        teams = {canonical_team(league, team_a), canonical_team(league, team_b)}
         for game in self.games(league, dates):
-            if {game.home.upper(), game.away.upper()} == teams:
+            if {
+                canonical_team(league, game.home), canonical_team(league, game.away),
+            } == teams:
+                return game
+        return None
+
+    def find_matchup_names(
+        self, league: str, team_a: str, team_b: str, dates: str | None = None,
+    ) -> Game | None:
+        def normalized(value: str | None) -> set[str]:
+            text = "".join(char.lower() if char.isalnum() else " " for char in str(value or ""))
+            return {token for token in text.split() if len(token) > 1}
+
+        requested = (normalized(team_a), normalized(team_b))
+        for game in self.games(league, dates):
+            actual = (normalized(game.home_name or game.home), normalized(game.away_name or game.away))
+            direct = requested[0] <= actual[0] and requested[1] <= actual[1]
+            reverse = requested[0] <= actual[1] and requested[1] <= actual[0]
+            if direct or reverse:
                 return game
         return None
