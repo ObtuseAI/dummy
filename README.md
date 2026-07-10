@@ -36,6 +36,14 @@ by settled out-of-sample calibration, event-cluster robustness, witnessed-fill
 performance after fees and slippage, drawdown limits, and the canary firewall.
 Elapsed runtime, backtests, or counterfactual quote P&L cannot promote it.
 
+The local command-center dashboard at `http://127.0.0.1:8787/` tracks scheduler
+health, active and settled paper trades, decision explanations, lane-level
+calibration and P&L, target-evidence progress, weaknesses, and promotion gates.
+Its Start and Stop controls only enable or pause `DummyCryptoPaperTwin`; they
+cannot reach live execution, credentials, risk settings, or capital.
+
+![Dummy paper trading command center](docs/assets/dummy-paper-dashboard.jpg)
+
 ## The loop
 
 ```

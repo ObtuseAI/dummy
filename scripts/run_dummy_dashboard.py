@@ -1,8 +1,11 @@
-"""Launch the read-only autonomy operator dashboard.
+"""Launch the autonomy evidence and paper-scheduler operator dashboard.
 
 Usage:
     python scripts/run_dummy_dashboard.py [--port 8787]
 Then open http://127.0.0.1:8787/ in a browser.
+
+The only mutation surface starts or pauses the public-read-only paper scheduled
+task. It has no route to broker submission, production weights, risk, or capital.
 """
 from __future__ import annotations
 
@@ -14,7 +17,7 @@ ROOT = Path(__file__).resolve().parent.parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from autonomy.dashboard import build_app
+from autonomy.dashboard import build_app  # noqa: E402
 
 
 def main() -> int:

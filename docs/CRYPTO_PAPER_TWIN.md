@@ -186,6 +186,7 @@ The report always sets `recommended_live_fraction=null`,
 python scripts/run_dummy_crypto_paper_twin.py --summary
 powershell -ExecutionPolicy Bypass -File scripts/install_crypto_paper_twin_task.ps1
 Get-ScheduledTask -TaskName DummyCryptoPaperTwin
+python scripts/run_dummy_dashboard.py --port 8787
 ```
 
 The scheduled task runs every five minutes, does not inspect the autonomy
@@ -195,3 +196,7 @@ audit artifact separately, keeps a compact dashboard summary, and appends one
 bounded JSONL health record per cycle to a rotating log. Overlapping runs are
 ignored, missed starts are recovered, and a cycle that exceeds the four-minute
 execution ceiling cannot strand the scheduler behind a thirty-minute lock.
+The loopback dashboard exposes scheduler health, open and settled paper trades,
+separately labeled quote-simulated and maker-witness P&L, evidence progress,
+decision explanations, and weaknesses. Its Start and Stop buttons only control
+this paper task; they cannot grant live execution or capital authority.
