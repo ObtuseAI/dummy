@@ -64,6 +64,12 @@ default), reconciles settlements, and grades every source against reality.
   walk-forward tests; separately trains witnessed-fill execution filters and
   cluster-bootstrap compounding stress. It can propose a bounded shadow
   experiment but cannot change weights, risk, readiness, or orders.
+- **Always-on crypto paper twin**: every five minutes, BTC and ETH 15-minute
+  and hourly incumbent/recursive/exploratory lanes observe the same live public
+  Kalshi and crypto state, explain every decision, simulate one-contract top-
+  ask entries, and diagnose maker execution from public prints. It runs beside
+  both shadow and authorized live sessions but has no credentials, broker,
+  readiness, execution, or capital authority.
 - **Reflexion**: losing decisions distilled into structured lessons via the
   model router.
 
@@ -163,6 +169,8 @@ python scripts/export_dummy_research_snapshot.py       # SQLite mode=ro -> Parqu
 python scripts/run_dummy_portfolio_challenger.py --budget-cents 500 --max-positions 8 --max-group-cost-cents 150
 python scripts/run_dummy_simulation_training.py --summary   # report-only, ledger mode=ro
 powershell -ExecutionPolicy Bypass -File scripts/install_simulation_training_task.ps1
+python scripts/run_dummy_crypto_paper_twin.py --summary
+powershell -ExecutionPolicy Bypass -File scripts/install_crypto_paper_twin_task.ps1
 ```
 
 The hourly trainer also runs the quarantined recursive evolution lab. It
@@ -173,3 +181,4 @@ code, weights, risk, orders, or capital. See `docs/EVOLUTION_LAB.md`.
 Details: [docs/AUTONOMY.md](docs/AUTONOMY.md).
 Training protocol: [docs/SIMULATION_TRAINING_REGIMEN.md](docs/SIMULATION_TRAINING_REGIMEN.md).
 Crypto audit: [docs/CRYPTO_PERFORMANCE_AUDIT.md](docs/CRYPTO_PERFORMANCE_AUDIT.md).
+Crypto paper twin: [docs/CRYPTO_PAPER_TWIN.md](docs/CRYPTO_PAPER_TWIN.md).

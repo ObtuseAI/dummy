@@ -49,6 +49,7 @@ def assemble_dashboard_state(runtime_dir: Path | None = None) -> dict[str, Any]:
     alerts = _tail_jsonl(rd / "alerts.jsonl", 20)
     risk_state = _load_json(rd / "risk_state.json")
     simulation_training = _load_json(rd / "simulation_training_latest.json") or {}
+    crypto_paper_twin = _load_json(rd / "crypto_paper_twin_latest.json") or {}
 
     ledger_summary: dict[str, Any] = {}
     statistics_intake: dict[str, Any] = {}
@@ -106,6 +107,7 @@ def assemble_dashboard_state(runtime_dir: Path | None = None) -> dict[str, Any]:
         "signal_data_quality": backtest.get("signal_data_quality", {}),
         "statistics_intake": statistics_intake,
         "simulation_training": simulation_training,
+        "crypto_paper_twin": crypto_paper_twin,
         "execution_quality": (
             (backtest.get("execution_quality_by_book") or {}).get("shadow", {})
         ),
@@ -149,6 +151,7 @@ _HTML = """<!doctype html>
  <div class="card"><h2>Statistics intake</h2><div id="statistics"></div></div>
  <div class="card"><h2>Simulation training</h2><div id="training"></div></div>
  <div class="card"><h2>Recursive evolution lab</h2><div id="evolution"></div></div>
+ <div class="card"><h2>Always-on crypto paper twin</h2><div id="paper"></div></div>
  <div class="card"><h2>Crypto execution truth</h2><div id="crypto"></div></div>
  <div class="card" style="grid-column:1/-1"><h2>Source scoreboard</h2><div id="board"></div></div>
  <div class="card" style="grid-column:1/-1"><h2>Recent cycles</h2><div id="cycles"></div></div>
@@ -242,6 +245,20 @@ async function tick(){
    +kv('weaknesses queued', iqi.length)
    +kv('top priority', (iqi[0]||{}).component||'none')
    +kv('capital authority', ((el.authority||{}).capital_authority)?'<b class="bad">YES</b>':'none');
+ const pt=d.crypto_paper_twin||{}, ptl=pt.lanes||{};
+ const p15i=(ptl['15m']||{}).incumbent||{}, p15e=(ptl['15m']||{}).exploratory||{};
+ const p1i=(ptl['1h']||{}).incumbent||{}, p1e=(ptl['1h']||{}).exploratory||{};
+ const pta=pt.authority||{};
+ document.getElementById('paper').innerHTML =
+   kv('status', pt.status||'—', pt.status==='CYCLE_OK'?'ok':'warn')
+   +kv('last cycle', pt.completed_at||'—')+kv('markets observed', pt.markets_seen??0)
+   +kv('15m incumbent settled', p15i.settled_trades??0)
+   +kv('15m exploratory P&L¢', p15e.net_pnl_cents??0, (p15e.net_pnl_cents||0)>0?'ok':'bad')
+   +kv('1h incumbent settled', p1i.settled_trades??0)
+   +kv('1h exploratory P&L¢', p1e.net_pnl_cents??0, (p1e.net_pnl_cents||0)>0?'ok':'bad')
+   +kv('always beside live', pta.continues_during_authorized_live_operation?'yes':'—')
+   +kv('broker contacted', pta.broker_contacted?'<b class="bad">YES</b>':'no')
+   +kv('capital authority', pta.capital_authority?'<b class="bad">YES</b>':'none');
  const cx=d.crypto_diagnostics||{}, cg=cx.guard_counterfactual||{}, cf=cx.source_family_overlap||{};
   const cgs=d.crypto_challenger_gates||{};
  document.getElementById('crypto').innerHTML =
