@@ -7,8 +7,21 @@ learning".
 """
 from __future__ import annotations
 
+import math
+
 from autonomy.ledger import AutonomyLedger
-from autonomy.ontology import Forecast, MarketView, Signal
+from autonomy.ontology import Forecast, MarketView, Signal, Vertical
+
+MARKET_PRIOR_MIN_SHARE = 0.05
+CRYPTO_MARKET_PRIOR_MIN_SHARE = 0.25
+
+# Sources in one family are alternative transforms of the same underlying
+# evidence. Their family precision is the strongest member, not the sum; this
+# prevents duplicate models from manufacturing certainty.
+SOURCE_FAMILIES = {
+    "crypto_spot_vol": "crypto_coinbase_distribution",
+    "crypto_ewma_t": "crypto_coinbase_distribution",
+}
 
 
 class EnsembleForecaster:
@@ -16,12 +29,14 @@ class EnsembleForecaster:
         self.ledger = ledger
 
     def fuse(self, market: MarketView, signals: list[Signal]) -> Forecast | None:
-        if not signals:
+        active_signals = [
+            signal for signal in signals
+            if not bool((signal.features or {}).get("challenger_only"))
+        ]
+        if not active_signals:
             return None
         weighted: dict[str, float] = {}
-        numerator = 0.0
-        denominator = 0.0
-        for signal in signals:
+        for signal in active_signals:
             # Vertical-scoped trust when the ledger has earned one; a source's
             # authority is domain-specific, not global. Duck-typed fallback
             # keeps minimal ledger stand-ins working.
@@ -33,24 +48,63 @@ class EnsembleForecaster:
             variance = max(1e-4, signal.uncertainty**2)
             weight = trust / variance
             weighted[signal.source] = weight
-            numerator += weight * signal.probability_yes
-            denominator += weight
+        families: dict[str, list[Signal]] = {}
+        for signal in active_signals:
+            families.setdefault(SOURCE_FAMILIES.get(signal.source, signal.source), []).append(signal)
+        family_weights: dict[str, float] = {}
+        within_family: dict[str, dict[str, float]] = {}
+        for family, members in families.items():
+            member_total = sum(weighted[signal.source] for signal in members)
+            if member_total <= 0:
+                continue
+            within_family[family] = {
+                signal.source: weighted[signal.source] / member_total for signal in members
+            }
+            family_weights[family] = max(weighted[signal.source] for signal in members)
+        denominator = sum(family_weights.values())
         if denominator <= 0:
             return None
-        probability = min(0.995, max(0.005, numerator / denominator))
-        # Fused uncertainty: inverse of total precision, floored so a single
-        # confident source can never claim certainty.
-        fused_sigma = max(0.02, (1.0 / denominator) ** 0.5)
+        normalized_raw: dict[str, float] = {}
+        for family, family_weight in family_weights.items():
+            family_share = family_weight / denominator
+            for source, member_share in within_family[family].items():
+                normalized_raw[source] = family_share * member_share
+        probabilities = {signal.source: signal.probability_yes for signal in active_signals}
+        normalized = dict(normalized_raw)
+        prior_share = normalized.get("market_prior", 0.0)
+        prior_floor = (
+            CRYPTO_MARKET_PRIOR_MIN_SHARE
+            if market.vertical is Vertical.CRYPTO
+            else MARKET_PRIOR_MIN_SHARE
+        )
+        if 0.0 < prior_share < prior_floor and len(normalized) > 1:
+            other_total = 1.0 - prior_share
+            for source in normalized:
+                if source != "market_prior":
+                    normalized[source] = (
+                        normalized[source] / other_total * (1.0 - prior_floor)
+                    )
+            normalized["market_prior"] = prior_floor
+        probability = min(0.995, max(0.005, sum(
+            normalized[source] * probabilities[source] for source in normalized
+        )))
+        # Effective-family precision handles duplicate data; model disagreement
+        # prevents a polarized ensemble from claiming tiny uncertainty.
+        inverse_precision = (1.0 / denominator) ** 0.5
+        disagreement = math.sqrt(sum(
+            normalized[source] * (probabilities[source] - probability) ** 2
+            for source in normalized
+        ))
+        fused_sigma = min(0.5, max(0.02, inverse_precision, disagreement))
 
         implied = None
         if market.yes_bid is not None and market.yes_ask is not None and market.yes_ask > 0:
             implied = ((market.yes_bid + market.yes_ask) / 2.0) / 100.0
         edge = probability - implied if implied is not None else 0.0
 
-        total = sum(weighted.values())
-        normalized = {source: round(w / total, 4) for source, w in weighted.items()} if total else {}
+        normalized = {source: round(share, 4) for source, share in normalized.items()}
         rationale = "; ".join(
-            f"{s.source}:{s.probability_yes:.2f}±{s.uncertainty:.2f}" for s in signals
+            f"{s.source}:{s.probability_yes:.2f}±{s.uncertainty:.2f}" for s in active_signals
         )
         return Forecast(
             market_ticker=market.ticker,

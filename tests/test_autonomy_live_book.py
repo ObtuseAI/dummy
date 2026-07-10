@@ -92,12 +92,24 @@ def test_live_book_consumes_mock_socket_frames():
     quote = book.quote("A")
     assert quote["yes_bid"] == 40
     assert quote["yes_ask"] == 100 - 58  # best no bid moved to 58
+    assert quote["yes_bid_size"] == 100
 
 
 def test_fresh_best_quote_from_rest():
     quote = fresh_best_quote("T", fetch_orderbook=lambda t: {"yes": [[30, 100]], "no": [[62, 50]]})
     assert quote["yes_bid"] == 30
     assert quote["yes_ask"] == 38
+
+
+def test_fresh_best_quote_supports_fixed_point_dollar_schema():
+    quote = fresh_best_quote("T", fetch_orderbook=lambda _ticker: {
+        "yes_dollars": [["0.3000", "0.01"], ["0.4100", "12.50"]],
+        "no_dollars": [["0.5700", "8.25"]],
+    })
+    assert quote == {
+        "yes_bid": 41, "yes_ask": 43, "no_bid": 57, "no_ask": 59,
+        "yes_bid_size": 12.5, "no_bid_size": 8.25,
+    }
 
 
 def test_fresh_best_quote_swallows_error():
@@ -115,7 +127,7 @@ def test_executor_skips_crossed_maker_quote(tmp_path):
     from datetime import datetime, timedelta, timezone
 
     from autonomy.allocator import Allocator
-    from autonomy.executor import AUTONOMY_ACK, Executor
+    from autonomy.executor import AUTONOMY_ACK, SESSION_ACCOUNTING_VERSION, Executor
     from autonomy.ontology import Forecast, MarketView, OutcomeKind, SessionMode, Vertical
     from autonomy.risk_brain import RiskBrain
 
@@ -123,6 +135,7 @@ def test_executor_skips_crossed_maker_quote(tmp_path):
     session.write_text(_json.dumps({
         "mode": "LIVE", "ack": AUTONOMY_ACK,
         "expires_at": (datetime.now(timezone.utc) + timedelta(hours=1)).isoformat(),
+        "accounting_version": SESSION_ACCOUNTING_VERSION,
     }), encoding="utf-8")
 
     brain = RiskBrain(state_path=tmp_path / "risk.json")
@@ -136,7 +149,9 @@ def test_executor_skips_crossed_maker_quote(tmp_path):
     assert decision.side == "yes"
 
     # Book moved: yes_ask now at/below our resting price -> we'd cross.
-    crossed = lambda t: {"yes_bid": decision.price_cents, "yes_ask": decision.price_cents}
+    def crossed(_ticker):
+        return {"yes_bid": decision.price_cents, "yes_ask": decision.price_cents}
+
     executor = Executor(SessionMode.LIVE, session_path=session, kill_path=tmp_path / "KILL", quote_fn=crossed)
     outcome = asyncio.run(executor.execute(decision))
     assert outcome.kind is OutcomeKind.BLOCKED_LOCAL

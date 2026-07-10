@@ -62,21 +62,21 @@ class BookState:
 
     def __init__(self, ticker: str) -> None:
         self.ticker = ticker
-        self.yes: dict[int, int] = {}
-        self.no: dict[int, int] = {}
+        self.yes: dict[int, float] = {}
+        self.no: dict[int, float] = {}
         self.seq: int | None = None
         self.updated_at: str | None = None
 
     def apply_snapshot(self, msg: dict[str, Any]) -> None:
-        self.yes = {int(p): int(c) for p, c in msg.get("yes", []) if int(c) > 0}
-        self.no = {int(p): int(c) for p, c in msg.get("no", []) if int(c) > 0}
+        self.yes = {int(p): float(c) for p, c in msg.get("yes", []) if float(c) > 0}
+        self.no = {int(p): float(c) for p, c in msg.get("no", []) if float(c) > 0}
         self.seq = msg.get("seq")
         self._stamp()
 
     def apply_delta(self, msg: dict[str, Any]) -> None:
         side = msg.get("side")
         price = int(msg.get("price"))
-        delta = int(msg.get("delta", 0))
+        delta = float(msg.get("delta", 0))
         book = self.yes if side == "yes" else self.no if side == "no" else None
         if book is None:
             return
@@ -102,12 +102,16 @@ class BookState:
     def best_no_ask(self) -> int | None:
         return (100 - max(self.yes)) if self.yes else None
 
-    def quote(self) -> dict[str, int | None]:
+    def quote(self) -> dict[str, int | float | None]:
+        yes_bid = self.best_yes_bid()
+        no_bid = self.best_no_bid()
         return {
-            "yes_bid": self.best_yes_bid(),
+            "yes_bid": yes_bid,
             "yes_ask": self.best_yes_ask(),
-            "no_bid": self.best_no_bid(),
+            "no_bid": no_bid,
             "no_ask": self.best_no_ask(),
+            "yes_bid_size": self.yes.get(yes_bid) if yes_bid is not None else None,
+            "no_bid_size": self.no.get(no_bid) if no_bid is not None else None,
         }
 
 
@@ -123,6 +127,29 @@ def apply_frame(books: dict[str, BookState], frame: dict[str, Any]) -> None:
         book.apply_snapshot(msg)
     elif ftype == "orderbook_delta":
         book.apply_delta(msg)
+
+
+def normalize_orderbook_levels(
+    orderbook: dict[str, Any], side: str,
+) -> list[tuple[int, float]]:
+    """Normalize legacy integer-cent and current fixed-point dollar levels."""
+    raw = orderbook.get(side)
+    dollars = False
+    if raw is None:
+        raw = orderbook.get(f"{side}_dollars")
+        dollars = True
+    levels: list[tuple[int, float]] = []
+    for level in raw or []:
+        if not isinstance(level, (list, tuple)) or len(level) < 2:
+            continue
+        try:
+            price = int(round(float(level[0]) * 100)) if dollars else int(level[0])
+            count = float(level[1])
+        except (TypeError, ValueError):
+            continue
+        if 1 <= price <= 99 and count > 0:
+            levels.append((price, count))
+    return levels
 
 
 class KalshiLiveBook:
@@ -158,12 +185,14 @@ class KalshiLiveBook:
     def stop(self) -> None:
         self._running = False
 
-    def quote(self, ticker: str) -> dict[str, int | None] | None:
+    def quote(self, ticker: str) -> dict[str, int | float | None] | None:
         book = self.books.get(ticker)
         return book.quote() if book else None
 
 
-def fresh_best_quote(ticker: str, fetch_orderbook: Callable[[str], dict[str, Any]] | None = None) -> dict[str, int | None] | None:
+def fresh_best_quote(
+    ticker: str, fetch_orderbook: Callable[[str], dict[str, Any]] | None = None,
+) -> dict[str, int | float | None] | None:
     """Synchronous REST book read → best quote, for pre-submit re-pricing."""
     if fetch_orderbook is None:
         from kalshi.presubmit import default_fetch_orderbook
@@ -174,8 +203,8 @@ def fresh_best_quote(ticker: str, fetch_orderbook: Callable[[str], dict[str, Any
     except Exception:
         return None
     book = BookState(ticker)
-    yes = ob.get("yes") or []
-    no = ob.get("no") or []
+    yes = normalize_orderbook_levels(ob, "yes")
+    no = normalize_orderbook_levels(ob, "no")
     # REST orderbook uses [price, count] pairs like the WS snapshot.
     book.apply_snapshot({"yes": yes, "no": no})
     return book.quote()

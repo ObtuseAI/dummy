@@ -47,7 +47,9 @@ class Learner:
         rewarded for beating the market, not merely for being right when the
         market was righter.
         """
-        signals = self.ledger.signals_for_market(market_ticker)
+        calibration_signals = getattr(self.ledger, "calibration_signals_for_market", None)
+        signals = (calibration_signals(market_ticker) if callable(calibration_signals)
+                   else self.ledger.signals_for_market(market_ticker))
         if not signals:
             return {}
         from autonomy.scanner import classify_vertical

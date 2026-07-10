@@ -10,12 +10,15 @@ and an evidence-gated stage ladder so size is always earned, never assumed.
 from __future__ import annotations
 
 import json
-import math
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from autonomy.fees import (
+    kalshi_maker_fee_cents as kalshi_maker_fee_cents,
+    kalshi_taker_fee_cents as kalshi_taker_fee_cents,
+)
 from autonomy.ontology import Stage
 
 # Fraction of full Kelly actually deployed. Quarter-Kelly keeps ~95% of the
@@ -48,12 +51,10 @@ DRAWDOWN_LADDER = [
 PROMOTION_MIN_SETTLED = 20
 PROMOTION_MIN_EDGE_CENTS = 0.0  # realized P&L per contract after fees must exceed this
 DEMOTION_COOLOFF_HOURS = 24
-
-
-def kalshi_taker_fee_cents(price_cents: int, count: int) -> int:
-    """Kalshi trading fee: ceil(0.07 * C * P * (1-P)) dollars-scaled, in cents."""
-    p = price_cents / 100.0
-    return math.ceil(7.0 * count * p * (1.0 - p))
+# V2 requires a witnessed positive fill before any settlement can affect P&L
+# or promotion evidence. Older state files may contain optimistic shadow P&L
+# from pending orders and are reset at the evidence counters only.
+ACCOUNTING_VERSION = 2
 
 
 def kelly_fraction_yes(probability: float, price_cents: int) -> float:
@@ -115,15 +116,21 @@ class RiskBrain:
         if self.state_path.exists():
             try:
                 data = json.loads(self.state_path.read_text(encoding="utf-8"))
+                accounting_current = int(data.get("accounting_version", 1)) >= ACCOUNTING_VERSION
                 state = RiskState(
                     bankroll_cents=bankroll_cents,
                     equity_peak_cents=max(int(data.get("equity_peak_cents", bankroll_cents)), bankroll_cents),
                     stage=Stage(int(data.get("stage", Stage.CANARY))),
                     open_exposure_cents=int(data.get("open_exposure_cents", 0)),
                     open_markets=int(data.get("open_markets", 0)),
-                    daily_pnl_cents=int(data.get("daily_pnl_cents", 0)),
-                    settled_count_at_stage=int(data.get("settled_count_at_stage", 0)),
-                    realized_pnl_per_contract_cents=float(data.get("realized_pnl_per_contract_cents", 0.0)),
+                    daily_pnl_cents=(int(data.get("daily_pnl_cents", 0))
+                                     if accounting_current else 0),
+                    settled_count_at_stage=(int(data.get("settled_count_at_stage", 0))
+                                            if accounting_current else 0),
+                    realized_pnl_per_contract_cents=(
+                        float(data.get("realized_pnl_per_contract_cents", 0.0))
+                        if accounting_current else 0.0
+                    ),
                     last_demotion_at=data.get("last_demotion_at"),
                     hard_stopped=bool(data.get("hard_stopped", False)),
                     stop_reason=str(data.get("stop_reason", "")),
@@ -144,7 +151,11 @@ class RiskBrain:
 
     def save_state(self, state: RiskState) -> None:
         self.state_path.parent.mkdir(parents=True, exist_ok=True)
-        payload = {**state.to_dict(), "saved_at": datetime.now(timezone.utc).isoformat()}
+        payload = {
+            **state.to_dict(),
+            "accounting_version": ACCOUNTING_VERSION,
+            "saved_at": datetime.now(timezone.utc).isoformat(),
+        }
         self.state_path.write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
 
     # ------------------------------------------------------------------
@@ -221,6 +232,8 @@ class RiskBrain:
         }
         if state.hard_stopped:
             return OrderBudget(False, 0, 0.0, f"hard_stopped: {state.stop_reason}", snapshot)
+        if market_exposure_cents > 0:
+            return OrderBudget(False, 0, 0.0, "existing open position in market", snapshot)
         limits = STAGE_LIMITS[state.stage]
         if limits["order_abs_cents"] == 0:
             return OrderBudget(False, 0, 0.0, "stage is shadow-only", snapshot)

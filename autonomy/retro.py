@@ -28,7 +28,9 @@ Honesty rules (fail-closed):
     model runs), never from the archive of actuals. Note: bias/sigma
     calibration is the current artifact, whose fit window overlaps the
     replay window — disclosed in the report as weather_calibration_overlap.
-  - A market already settled in the ledger is never rewritten.
+  - A market already settled in the ledger is never rewritten. New challenger
+    source rows may be appended at the original decision timestamp so a new
+    model can be graded against the existing immutable settlement.
   - Markets are only written when BOTH the market prior and a model signal
     exist, so retro evidence never pads the settled count with markets the
     model didn't actually cover.
@@ -48,6 +50,11 @@ from autonomy.ledger import AutonomyLedger
 from autonomy.ontology import MarketView, Signal
 from autonomy.reconciler import default_fetch_settled_page
 from autonomy.scanner import to_market_view
+from autonomy.signals.crypto_indicators import (
+    CryptoDvolSignal,
+    CryptoEmpiricalRegimeSignal,
+    CryptoTechnicalCompositeSignal,
+)
 from autonomy.signals.crypto_spot import _PRODUCTS, CryptoSpotVolSignal, parse_crypto_ticker
 from autonomy.signals.market_prior import MarketPriorSignal
 from autonomy.signals.weather_openmeteo import (
@@ -195,6 +202,11 @@ class HourlyPriceSeries:
             return None
         return spot, annualized
 
+    def closes_at(self, ts: int, window_hours: int = 350) -> list[float]:
+        """Ascending closes fully available before ``ts``."""
+        closed = [c for t, c in self.closes if t + 3600 <= ts]
+        return closed[-window_hours:]
+
 
 class _RetroCryptoSignal(CryptoSpotVolSignal):
     """Live crypto signal with time frozen at the historical decision point."""
@@ -263,6 +275,7 @@ class RetroEvidenceEngine:
         fetch_settled_page: Callable[..., dict[str, Any]] | None = None,
         fetch_candles: Callable[..., list[dict[str, Any]]] | None = None,
         fetch_coinbase: Callable[..., list[list[float]]] | None = None,
+        fetch_deribit: Callable[[str, int, int], dict[str, Any]] | None = None,
         fetch_weather_history: Callable[..., dict[str, list]] | None = None,
         sleep_s: float = 0.06,
         now: datetime | None = None,
@@ -271,6 +284,11 @@ class RetroEvidenceEngine:
         self.fetch_settled_page = fetch_settled_page or default_fetch_settled_page
         self.fetch_candles = fetch_candles or default_fetch_candles
         self.fetch_coinbase = fetch_coinbase or default_fetch_coinbase_candles
+        if fetch_deribit is None:
+            from autonomy.statistics_intake import default_fetch_deribit_dvol
+
+            fetch_deribit = default_fetch_deribit_dvol
+        self.fetch_deribit = fetch_deribit
         self.fetch_weather_history = fetch_weather_history
         self.sleep_s = sleep_s
         self.now = now or datetime.now(timezone.utc)
@@ -329,10 +347,12 @@ class RetroEvidenceEngine:
         if prior is None:
             return False
         decision_iso = datetime.fromtimestamp(decision_ts, tz=timezone.utc).isoformat()
-        for signal in (prior, model_signal):
-            self.ledger.record_signal(
-                dataclasses.replace(signal, created_at=decision_iso), mode="retro",
-            )
+        replay_signals = [
+            dataclasses.replace(signal, created_at=decision_iso)
+            for signal in (prior, model_signal)
+        ]
+        if not all(self.ledger.record_signals(replay_signals, mode="retro", all_or_none=True)):
+            return False
         self.ledger.record_settlement(view.ticker, result_yes)
         mid_prob = min(0.995, max(0.005, ((view.yes_bid or 0) + (view.yes_ask or 0)) / 200.0))
         self.debias_samples.append((mid_prob, 1 if result_yes else 0))
@@ -396,6 +416,282 @@ class RetroEvidenceEngine:
                     stats["written"] += 1
         return stats
 
+    def replay_crypto_challengers(
+        self,
+        lookback_days: float = 10.0,
+        max_per_series: int = 250,
+        series_list: list[str] | None = None,
+    ) -> dict[str, Any]:
+        """Append point-in-time empirical challenger signals to settled truth."""
+        stats = {
+            "source": "crypto_empirical_regime",
+            "written": 0,
+            "listed": 0,
+            "skipped_no_settlement": 0,
+            "skipped_no_model": 0,
+            "skipped_existing_signal": 0,
+        }
+        window_start = int(self.now.timestamp() - (lookback_days + 16) * 86400)
+        window_end = int(self.now.timestamp())
+        price_series: dict[str, HourlyPriceSeries] = {}
+        frozen_hours = CRYPTO_DECISION_LEAD_S / 3600.0
+
+        for series in (series_list or CRYPTO_SERIES):
+            for raw in self.settled_markets(series, lookback_days, max_per_series):
+                stats["listed"] += 1
+                ticker = str(raw.get("ticker", ""))
+                if self.ledger.settlement_result(ticker) is None:
+                    stats["skipped_no_settlement"] += 1
+                    continue
+                parsed = parse_crypto_ticker(ticker)
+                close_ts = _close_ts(raw)
+                if parsed is None or close_ts is None:
+                    stats["skipped_no_model"] += 1
+                    continue
+                decision_ts = close_ts - CRYPTO_DECISION_LEAD_S
+                decision_iso = datetime.fromtimestamp(
+                    decision_ts, tz=timezone.utc,
+                ).isoformat()
+                exists = self.ledger._conn.execute(  # noqa: SLF001
+                    "SELECT 1 FROM signals WHERE source='crypto_empirical_regime'"
+                    " AND market_ticker=? AND mode='retro' LIMIT 1",
+                    (ticker,),
+                ).fetchone()
+                if exists:
+                    stats["skipped_existing_signal"] += 1
+                    continue
+                asset = str(parsed["asset"])
+                if asset not in price_series:
+                    price_series[asset] = HourlyPriceSeries(
+                        _PRODUCTS[asset], window_start, window_end,
+                        fetch=self.fetch_coinbase,
+                    )
+                closes = price_series[asset].closes_at(decision_ts)
+                if len(closes) < 48:
+                    stats["skipped_no_model"] += 1
+                    continue
+                state = {
+                    "asset": asset,
+                    "spot": closes[-1],
+                    "coinbase_spot": closes[-1],
+                    "kraken_spot": None,
+                    "venue_divergence_bps": None,
+                    "hourly_closes": closes,
+                    "minute_closes": [],
+                    "minute_volumes": [],
+                    "book_imbalance": None,
+                    "microprice_basis_bps": None,
+                    "dvol": None,
+                    "dvol_at_ms": None,
+                }
+                signal = CryptoEmpiricalRegimeSignal(
+                    fetch_state=lambda _asset, payload=state: payload,
+                    hours_to_close=lambda _market: frozen_hours,
+                ).generate(to_market_view(raw))
+                if signal is None:
+                    stats["skipped_no_model"] += 1
+                    continue
+                signal = dataclasses.replace(
+                    signal,
+                    created_at=decision_iso,
+                    features={**signal.features, "retro_point_in_time": True},
+                )
+                if self.ledger.record_signal(signal, mode="retro"):
+                    stats["written"] += 1
+                else:
+                    stats["skipped_existing_signal"] += 1
+        return stats
+
+    def replay_crypto_dvol_challenger(
+        self,
+        lookback_days: float = 10.0,
+        max_per_series: int = 250,
+        series_list: list[str] | None = None,
+    ) -> dict[str, Any]:
+        """Append point-in-time Deribit DVOL challenger signals."""
+        stats = {
+            "source": "crypto_dvol_implied",
+            "written": 0,
+            "listed": 0,
+            "skipped_no_settlement": 0,
+            "skipped_no_model": 0,
+            "skipped_existing_signal": 0,
+        }
+        window_start = int(self.now.timestamp() - (lookback_days + 16) * 86400)
+        window_end = int(self.now.timestamp())
+        frozen_hours = CRYPTO_DECISION_LEAD_S / 3600.0
+        price_series: dict[str, HourlyPriceSeries] = {}
+        dvol_series: dict[str, list[tuple[int, float]]] = {}
+
+        for series in (series_list or CRYPTO_SERIES):
+            for raw in self.settled_markets(series, lookback_days, max_per_series):
+                stats["listed"] += 1
+                ticker = str(raw.get("ticker", ""))
+                if self.ledger.settlement_result(ticker) is None:
+                    stats["skipped_no_settlement"] += 1
+                    continue
+                parsed = parse_crypto_ticker(ticker)
+                close_ts = _close_ts(raw)
+                if parsed is None or close_ts is None:
+                    stats["skipped_no_model"] += 1
+                    continue
+                exists = self.ledger._conn.execute(  # noqa: SLF001
+                    "SELECT 1 FROM signals WHERE source='crypto_dvol_implied'"
+                    " AND market_ticker=? AND mode='retro' LIMIT 1",
+                    (ticker,),
+                ).fetchone()
+                if exists:
+                    stats["skipped_existing_signal"] += 1
+                    continue
+                decision_ts = close_ts - CRYPTO_DECISION_LEAD_S
+                decision_iso = datetime.fromtimestamp(
+                    decision_ts, tz=timezone.utc,
+                ).isoformat()
+                asset = str(parsed["asset"])
+                if asset not in price_series:
+                    price_series[asset] = HourlyPriceSeries(
+                        _PRODUCTS[asset], window_start, window_end,
+                        fetch=self.fetch_coinbase,
+                    )
+                if asset not in dvol_series:
+                    try:
+                        payload = self.fetch_deribit(
+                            asset, window_start * 1000, window_end * 1000,
+                        )
+                        dvol_series[asset] = sorted([
+                            (int(row[0] // 1000), float(row[4]))
+                            for row in ((payload.get("result") or {}).get("data") or [])
+                            if isinstance(row, list) and len(row) >= 5
+                        ])
+                    except Exception:
+                        dvol_series[asset] = []
+                closes = price_series[asset].closes_at(decision_ts)
+                # A one-hour DVOL candle is knowable only after its period.
+                eligible_dvol = [
+                    value for timestamp, value in dvol_series[asset]
+                    if timestamp + 3600 <= decision_ts
+                ]
+                if len(closes) < 48 or not eligible_dvol:
+                    stats["skipped_no_model"] += 1
+                    continue
+                state = {
+                    "asset": asset,
+                    "spot": closes[-1],
+                    "coinbase_spot": closes[-1],
+                    "kraken_spot": None,
+                    "venue_divergence_bps": None,
+                    "hourly_closes": closes,
+                    "minute_closes": [],
+                    "minute_volumes": [],
+                    "book_imbalance": None,
+                    "microprice_basis_bps": None,
+                    "dvol": eligible_dvol[-1],
+                    "dvol_at_ms": None,
+                }
+                signal = CryptoDvolSignal(
+                    fetch_state=lambda _asset, payload=state: payload,
+                    hours_to_close=lambda _market: frozen_hours,
+                ).generate(to_market_view(raw))
+                if signal is None:
+                    stats["skipped_no_model"] += 1
+                    continue
+                signal = dataclasses.replace(
+                    signal,
+                    created_at=decision_iso,
+                    features={**signal.features, "retro_point_in_time": True},
+                )
+                if self.ledger.record_signal(signal, mode="retro"):
+                    stats["written"] += 1
+                else:
+                    stats["skipped_existing_signal"] += 1
+        return stats
+
+    def replay_crypto_technical_challenger(
+        self,
+        lookback_days: float = 10.0,
+        max_per_series: int = 250,
+        series_list: list[str] | None = None,
+    ) -> dict[str, Any]:
+        """Append point-in-time hourly technical-composite signals."""
+        stats = {
+            "source": "crypto_technical_composite",
+            "written": 0,
+            "listed": 0,
+            "skipped_no_settlement": 0,
+            "skipped_no_model": 0,
+            "skipped_existing_signal": 0,
+        }
+        window_start = int(self.now.timestamp() - (lookback_days + 16) * 86400)
+        window_end = int(self.now.timestamp())
+        frozen_hours = CRYPTO_DECISION_LEAD_S / 3600.0
+        price_series: dict[str, HourlyPriceSeries] = {}
+
+        for series in (series_list or CRYPTO_SERIES):
+            for raw in self.settled_markets(series, lookback_days, max_per_series):
+                stats["listed"] += 1
+                ticker = str(raw.get("ticker", ""))
+                if self.ledger.settlement_result(ticker) is None:
+                    stats["skipped_no_settlement"] += 1
+                    continue
+                parsed = parse_crypto_ticker(ticker)
+                close_ts = _close_ts(raw)
+                if parsed is None or close_ts is None:
+                    stats["skipped_no_model"] += 1
+                    continue
+                exists = self.ledger._conn.execute(  # noqa: SLF001
+                    "SELECT 1 FROM signals WHERE source='crypto_technical_composite'"
+                    " AND market_ticker=? AND mode='retro' LIMIT 1",
+                    (ticker,),
+                ).fetchone()
+                if exists:
+                    stats["skipped_existing_signal"] += 1
+                    continue
+                decision_ts = close_ts - CRYPTO_DECISION_LEAD_S
+                decision_iso = datetime.fromtimestamp(
+                    decision_ts, tz=timezone.utc,
+                ).isoformat()
+                asset = str(parsed["asset"])
+                if asset not in price_series:
+                    price_series[asset] = HourlyPriceSeries(
+                        _PRODUCTS[asset], window_start, window_end,
+                        fetch=self.fetch_coinbase,
+                    )
+                closes = price_series[asset].closes_at(decision_ts)
+                if len(closes) < 48:
+                    stats["skipped_no_model"] += 1
+                    continue
+                state = {
+                    "asset": asset,
+                    "spot": closes[-1],
+                    "coinbase_spot": closes[-1],
+                    "kraken_spot": None,
+                    "venue_divergence_bps": None,
+                    "hourly_closes": closes,
+                    "minute_closes": [],
+                    "minute_volumes": [],
+                    "book_imbalance": None,
+                    "microprice_basis_bps": None,
+                    "dvol": None,
+                    "dvol_at_ms": None,
+                }
+                signal = CryptoTechnicalCompositeSignal(
+                    fetch_state=lambda _asset, payload=state: payload,
+                    hours_to_close=lambda _market: frozen_hours,
+                ).generate(to_market_view(raw))
+                if signal is None:
+                    stats["skipped_no_model"] += 1
+                    continue
+                signal = dataclasses.replace(
+                    signal,
+                    created_at=decision_iso,
+                    features={**signal.features, "retro_point_in_time": True},
+                )
+                if self.ledger.record_signal(signal, mode="retro"):
+                    stats["written"] += 1
+                else:
+                    stats["skipped_existing_signal"] += 1
+        return stats
+
     def replay_weather(self, lookback_days: float = 30.0, max_per_series: int = 60,
                        series_list: list[str] | None = None) -> dict[str, Any]:
         stats = {"written": 0, "skipped_no_quote": 0, "skipped_no_model": 0,
@@ -446,6 +742,15 @@ class RetroEvidenceEngine:
             crypto_max_per_series: int = 250, weather_max_per_series: int = 60,
             curve_path: Path | None = None) -> dict[str, Any]:
         crypto = self.replay_crypto(crypto_days, crypto_max_per_series)
+        crypto_challengers = self.replay_crypto_challengers(
+            crypto_days, crypto_max_per_series,
+        )
+        crypto_dvol_challenger = self.replay_crypto_dvol_challenger(
+            crypto_days, crypto_max_per_series,
+        )
+        crypto_technical_challenger = self.replay_crypto_technical_challenger(
+            crypto_days, crypto_max_per_series,
+        )
         weather = self.replay_weather(weather_days, weather_max_per_series)
 
         from autonomy.signals.market_debias import fit_curve, ledger_samples, write_curve
@@ -459,8 +764,15 @@ class RetroEvidenceEngine:
         report = {
             "report_name": "RETRO_EVIDENCE_BACKFILL",
             "crypto": crypto,
+            "crypto_challengers": crypto_challengers,
+            "crypto_dvol_challenger": crypto_dvol_challenger,
+            "crypto_technical_challenger": crypto_technical_challenger,
             "weather": weather,
-            "written_total": crypto["written"] + weather["written"],
+            "written_total": (
+                crypto["written"] + crypto_challengers["written"]
+                + crypto_dvol_challenger["written"]
+                + crypto_technical_challenger["written"] + weather["written"]
+            ),
             "debias_samples": len(combined),
             "debias_samples_from_candles": len(self.debias_samples),
             "debias_curve_path": str(curve_path),

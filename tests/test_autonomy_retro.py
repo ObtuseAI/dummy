@@ -278,6 +278,124 @@ def test_retro_never_rewrites_existing_settlement(tmp_path):
     ledger.close()
 
 
+def test_retro_appends_empirical_challenger_to_existing_settlement(tmp_path):
+    ledger = _ledger(tmp_path)
+    close_dt = NOW - timedelta(hours=5)
+    ticker = "KXBTCD-26JUL0907-T62000"
+    ledger.record_settlement(ticker, False)
+    raw = _crypto_settled_raw(ticker, close_dt.isoformat(), 62000.0, "yes")
+    base = int((NOW - timedelta(days=19)).timestamp())
+    rows = [[base + i * 3600, 0, 0, 0, 60_000 * (1.0002**i), 1.0]
+            for i in range(19 * 24)]
+    engine = RetroEvidenceEngine(
+        ledger,
+        fetch_settled_page=lambda s, m, c=None: {"markets": [raw], "cursor": None},
+        fetch_candles=lambda *a, **k: [],
+        fetch_coinbase=lambda *a, **k: rows,
+        sleep_s=0.0,
+        now=NOW,
+    )
+    first = engine.replay_crypto_challengers(
+        lookback_days=2.0, series_list=["KXBTCD"],
+    )
+    second = engine.replay_crypto_challengers(
+        lookback_days=2.0, series_list=["KXBTCD"],
+    )
+    assert first["written"] == 1
+    assert second["written"] == 0 and second["skipped_existing_signal"] == 1
+    stored = ledger._conn.execute(
+        "SELECT mode,features FROM signals WHERE source='crypto_empirical_regime'"
+    ).fetchone()
+    assert stored is not None and stored[0] == "retro"
+    assert '"retro_point_in_time":true' in stored[1]
+    # Existing immutable settlement wins over the contradictory listing fixture.
+    assert ledger.settlement_result(ticker) is False
+    ledger.close()
+
+
+def test_retro_appends_dvol_challenger_without_lookahead(tmp_path):
+    ledger = _ledger(tmp_path)
+    close_dt = NOW - timedelta(hours=5)
+    ticker = "KXBTCD-26JUL0907-T62000"
+    ledger.record_settlement(ticker, False)
+    raw = _crypto_settled_raw(ticker, close_dt.isoformat(), 62000.0, "yes")
+    decision_ts = int(close_dt.timestamp()) - 45 * 60
+    base = int((NOW - timedelta(days=19)).timestamp())
+    coinbase_rows = [
+        [base + i * 3600, 0, 0, 0, 60_000 * (1.0002**i), 1.0]
+        for i in range(19 * 24)
+    ]
+    # Row 1 is fully closed before the decision; row 2 is still in progress
+    # and must not leak its much larger value into the retro signal.
+    dvol_rows = [
+        [(decision_ts - 7200) * 1000, 0, 0, 0, 42.0],
+        [(decision_ts - 1800) * 1000, 0, 0, 0, 99.0],
+    ]
+    engine = RetroEvidenceEngine(
+        ledger,
+        fetch_settled_page=lambda s, m, c=None: {"markets": [raw], "cursor": None},
+        fetch_candles=lambda *a, **k: [],
+        fetch_coinbase=lambda *a, **k: coinbase_rows,
+        fetch_deribit=lambda *a, **k: {"result": {"data": dvol_rows}},
+        sleep_s=0.0,
+        now=NOW,
+    )
+    first = engine.replay_crypto_dvol_challenger(
+        lookback_days=2.0, series_list=["KXBTCD"],
+    )
+    second = engine.replay_crypto_dvol_challenger(
+        lookback_days=2.0, series_list=["KXBTCD"],
+    )
+    assert first["written"] == 1
+    assert second["written"] == 0 and second["skipped_existing_signal"] == 1
+    stored = ledger._conn.execute(
+        "SELECT mode,features FROM signals WHERE source='crypto_dvol_implied'"
+    ).fetchone()
+    assert stored is not None and stored[0] == "retro"
+    assert '"retro_point_in_time":true' in stored[1]
+    assert '"deribit_dvol":42.0' in stored[1]
+    assert '"deribit_dvol":99.0' not in stored[1]
+    assert ledger.settlement_result(ticker) is False
+    ledger.close()
+
+
+def test_retro_appends_hourly_technical_challenger(tmp_path):
+    ledger = _ledger(tmp_path)
+    close_dt = NOW - timedelta(hours=5)
+    ticker = "KXBTCD-26JUL0907-T62000"
+    ledger.record_settlement(ticker, False)
+    raw = _crypto_settled_raw(ticker, close_dt.isoformat(), 62000.0, "yes")
+    base = int((NOW - timedelta(days=19)).timestamp())
+    rows = [
+        [base + i * 3600, 0, 0, 0, 60_000 * (1.0002**i), 1.0]
+        for i in range(19 * 24)
+    ]
+    engine = RetroEvidenceEngine(
+        ledger,
+        fetch_settled_page=lambda s, m, c=None: {"markets": [raw], "cursor": None},
+        fetch_candles=lambda *a, **k: [],
+        fetch_coinbase=lambda *a, **k: rows,
+        sleep_s=0.0,
+        now=NOW,
+    )
+    first = engine.replay_crypto_technical_challenger(
+        lookback_days=2.0, series_list=["KXBTCD"],
+    )
+    second = engine.replay_crypto_technical_challenger(
+        lookback_days=2.0, series_list=["KXBTCD"],
+    )
+    assert first["written"] == 1
+    assert second["written"] == 0 and second["skipped_existing_signal"] == 1
+    stored = ledger._conn.execute(
+        "SELECT mode,features FROM signals WHERE source='crypto_technical_composite'"
+    ).fetchone()
+    assert stored is not None and stored[0] == "retro"
+    assert '"retro_point_in_time":true' in stored[1]
+    assert '"minute_resolution":0.0' in stored[1]
+    assert ledger.settlement_result(ticker) is False
+    ledger.close()
+
+
 def test_retro_weather_replay_uses_historical_forecast(tmp_path):
     ledger = _ledger(tmp_path)
     event_date = (NOW - timedelta(days=3)).strftime("%Y-%m-%d")

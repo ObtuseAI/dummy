@@ -8,8 +8,8 @@ from autonomy.ontology import MarketView, Vertical
 from autonomy.signals.cross_venue import CrossVenueSignal, index_polymarket
 
 
-def _pm_market(slug, outcomes, prices, bid=None, ask=None, liq=5000):
-    return {
+def _pm_market(slug, outcomes, prices, bid=None, ask=None, liq=5000, tokens=None):
+    market = {
         "slug": slug,
         "outcomes": str(outcomes),
         "outcomePrices": str(prices).replace("'", '"'),
@@ -17,6 +17,9 @@ def _pm_market(slug, outcomes, prices, bid=None, ask=None, liq=5000):
         "bestAsk": ask,
         "liquidityNum": liq,
     }
+    if tokens is not None:
+        market["clobTokenIds"] = str(tokens).replace("'", '"')
+    return market
 
 
 def _market(ticker="KXMLBGAME-26JUL081810KCNYM-KC"):
@@ -88,3 +91,68 @@ def test_index_failure_is_swallowed():
     signal = CrossVenueSignal(fetch_markets=boom)
     signal.on_cycle_start()
     assert signal.generate(_market()) is None  # empty index, no crash
+
+
+def test_live_clob_book_replaces_gamma_price_and_adds_depth_provenance():
+    fetch = lambda: [_pm_market(
+        "mlb-kc-nym-2026-07-08", ["KC", "NYM"], ["0.20", "0.80"],
+        0.19, 0.21, liq=50_000, tokens=["kc-token", "nym-token"],
+    )]
+    calls = []
+
+    def book(token_id):
+        calls.append(token_id)
+        return {
+            "asset_id": token_id,
+            "bids": [{"price": "0.34", "size": "700"}],
+            "asks": [{"price": "0.38", "size": "600"}],
+        }
+
+    source = CrossVenueSignal(fetch_markets=fetch, fetch_orderbook=book)
+    result = source.generate(_market("KXMLBGAME-26JUL081810KCNYM-KC"))
+    assert result is not None
+    assert result.probability_yes == 0.36
+    assert result.features["polymarket_price_source"] == "clob_orderbook_midpoint"
+    assert result.features["polymarket_gamma_probability"] == 0.20
+    assert result.features["polymarket_best_bid_size"] == 700.0
+    # Per-cycle cache avoids hitting the same public book for repeated scans.
+    source.generate(_market("KXMLBGAME-26JUL081810KCNYM-KC"))
+    assert calls == ["kc-token"]
+
+
+def test_clob_book_failure_falls_back_to_gamma_without_dropping_signal():
+    fetch = lambda: [_pm_market(
+        "mlb-kc-nym-2026-07-08", ["KC", "NYM"], ["0.35", "0.65"],
+        0.34, 0.36, tokens=["kc-token", "nym-token"],
+    )]
+
+    def unavailable(_token_id):
+        raise RuntimeError("public book unavailable")
+
+    result = CrossVenueSignal(fetch, unavailable).generate(_market())
+    assert result is not None
+    assert result.probability_yes == 0.35
+    assert result.features["polymarket_price_source"] == "gamma_outcome_price"
+
+
+def test_default_shape_can_batch_books_once_per_cycle():
+    fetch = lambda: [_pm_market(
+        "mlb-kc-nym-2026-07-08", ["KC", "NYM"], ["0.20", "0.80"],
+        tokens=["kc-token", "nym-token"],
+    )]
+    calls = []
+
+    def books(token_ids):
+        calls.append(token_ids)
+        return {
+            "kc-token": {
+                "asset_id": "kc-token",
+                "bids": [{"price": "0.40", "size": "1000"}],
+                "asks": [{"price": "0.42", "size": "1000"}],
+            }
+        }
+
+    source = CrossVenueSignal(fetch_markets=fetch, fetch_orderbooks=books)
+    result = source.generate(_market())
+    assert result is not None and abs(result.probability_yes - 0.41) < 1e-9
+    assert calls == [["kc-token", "nym-token"]]

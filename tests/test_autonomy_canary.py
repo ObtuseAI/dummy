@@ -20,6 +20,23 @@ def _seed_beating_history(ledger, n, correct=True):
         ledger.record_settlement(ticker, result)
 
 
+def _seed_shadow_fills(ledger, n=5):
+    from autonomy.ontology import OutcomeKind, TradeOutcome
+
+    for i in range(n):
+        decision_id = f"shadow-fill-{i}"
+        ledger.record_outcome(TradeOutcome(
+            decision_id=decision_id, market_ticker=f"FILL-{i}", kind=OutcomeKind.SHADOW,
+            order_id=f"shadow-{decision_id}", fill_count=0, fill_price_cents=40,
+            pnl_cents=None, broker_contacted=False,
+        ))
+        ledger.record_outcome(TradeOutcome(
+            decision_id=decision_id, market_ticker=f"FILL-{i}", kind=OutcomeKind.FILLED,
+            order_id=f"shadow-{decision_id}", fill_count=1, fill_price_cents=40,
+            pnl_cents=None, broker_contacted=False,
+        ))
+
+
 def test_blocks_with_no_history(tmp_path):
     ledger = AutonomyLedger(db_path=tmp_path / "l.db")
     try:
@@ -59,11 +76,68 @@ def test_ready_when_all_conditions_met(tmp_path):
     ledger = AutonomyLedger(db_path=tmp_path / "l.db")
     try:
         _seed_beating_history(ledger, 25)
+        _seed_shadow_fills(ledger)
         run_backtest(ledger, bootstrap_weights=True)  # writes weights
-        r = evaluate_canary_readiness(ledger, min_settled=20, balance_cents=5000)
+        # This fixture isolates the source/fill/balance gates; decision-policy
+        # evidence has its own dedicated coverage.
+        r = evaluate_canary_readiness(
+            ledger, min_settled=20, min_policy_settled=0, min_canary_graded=0,
+            balance_cents=5000,
+        )
         assert r.ready is True, r.blockers
         assert r.evidence["settled_markets"] == 25
         assert "sharp" in r.evidence["market_beating_sources"]
+    finally:
+        ledger.close()
+
+
+def test_default_gate_blocks_negative_fill_conditioned_operating_record(tmp_path):
+    ledger = AutonomyLedger(db_path=tmp_path / "l.db")
+    try:
+        report = {
+            "settled_markets": 0,
+            "sources": {},
+            "execution_quality_by_book": {"shadow": {"orders_with_confirmed_fill": 5}},
+            "realized_trade_statistics": {"trades": 5, "net_pnl_cents": -100},
+            "fill_conditioned_decision_policy": {
+                "n": 5, "brier_skill_vs_market": -0.2,
+            },
+        }
+        result = evaluate_canary_readiness(
+            ledger, min_settled=0, min_policy_settled=0, backtest_report=report,
+        )
+        assert result.ready is False
+        assert any("shadow PnL" in blocker for blocker in result.blockers)
+        assert any("fill-conditioned" in blocker for blocker in result.blockers)
+    finally:
+        ledger.close()
+
+
+def test_blocks_without_observed_shadow_fills(tmp_path):
+    from autonomy.backtest import run_backtest
+
+    ledger = AutonomyLedger(db_path=tmp_path / "l.db")
+    try:
+        _seed_beating_history(ledger, 25)
+        run_backtest(ledger, bootstrap_weights=True)
+        r = evaluate_canary_readiness(ledger, min_settled=20, balance_cents=5000)
+        assert r.ready is False
+        assert any("shadow fills" in blocker for blocker in r.blockers)
+    finally:
+        ledger.close()
+
+
+def test_default_gate_requires_settled_decision_policy_evidence(tmp_path):
+    from autonomy.backtest import run_backtest
+
+    ledger = AutonomyLedger(db_path=tmp_path / "l.db")
+    try:
+        _seed_beating_history(ledger, 25)
+        _seed_shadow_fills(ledger)
+        run_backtest(ledger, bootstrap_weights=True)
+        result = evaluate_canary_readiness(ledger, min_settled=20, balance_cents=5000)
+        assert result.ready is False
+        assert any("decision-policy snapshots" in blocker for blocker in result.blockers)
     finally:
         ledger.close()
 
@@ -74,6 +148,7 @@ def test_blocks_on_low_balance(tmp_path):
     ledger = AutonomyLedger(db_path=tmp_path / "l.db")
     try:
         _seed_beating_history(ledger, 25)
+        _seed_shadow_fills(ledger)
         run_backtest(ledger, bootstrap_weights=True)
         r = evaluate_canary_readiness(ledger, min_settled=20, balance_cents=10)
         assert r.ready is False

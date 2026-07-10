@@ -22,7 +22,9 @@ SEVERITY = {
     "SELF_STOP": "critical",
     "DRAWDOWN_LADDER": "warning",
     "GATE_GREEN": "info",
+    "GATE_REGRESSION": "warning",
     "CYCLE_ERROR_STREAK": "warning",
+    "SIGNAL_QUALITY_REJECTION": "warning",
 }
 
 
@@ -86,9 +88,16 @@ def evaluate_alerts(cycle_record: dict[str, Any], risk_state: dict[str, Any] | N
                                     {"drawdown": round(dd, 4), "rung": rung}, now_iso))
         state["drawdown_rung"] = rung
 
-    # Evidence gate flips green: fire once on the rising edge.
+    # Evidence gate edges: green is actionable; regression after green is a
+    # warning because new operating evidence invalidated prior readiness.
     if gate_ready and not state.get("gate_green"):
         fired.append(emit_alert("GATE_GREEN", "live canary evidence gate is READY", {}, now_iso))
+    elif not gate_ready and state.get("gate_green"):
+        fired.append(emit_alert(
+            "GATE_REGRESSION",
+            "live canary evidence gate returned to BLOCKED after new evidence",
+            {}, now_iso,
+        ))
     state["gate_green"] = bool(gate_ready)
 
     # Cycle-error streak.
@@ -101,6 +110,18 @@ def evaluate_alerts(cycle_record: dict[str, Any], risk_state: dict[str, Any] | N
             state["last_error_alert_streak"] = streak
     else:
         state["error_streak"] = 0
+
+    # Malformed model statistics are quarantined by the ledger. Alert on the
+    # start of an episode so silent source/schema drift is still operator-visible.
+    rejected = int(cycle_record.get("signals_rejected") or 0)
+    if rejected > 0 and not state.get("signal_rejection_active"):
+        fired.append(emit_alert(
+            "SIGNAL_QUALITY_REJECTION",
+            f"{rejected} signal observations failed intake validation",
+            {"signals_rejected": rejected},
+            now_iso,
+        ))
+    state["signal_rejection_active"] = rejected > 0
 
     _save_state(state)
     return fired

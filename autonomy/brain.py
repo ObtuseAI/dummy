@@ -20,7 +20,8 @@ from autonomy.scanner import MarketScanner
 from autonomy.signals.base import SourceRegistry
 
 SHADOW_BANKROLL_CENTS = 10_000
-MAX_DECISIONS_PER_CYCLE = 10
+MAX_CANDIDATES_EVALUATED = 100
+MAX_ORDERS_PER_CYCLE = 10
 # Only the top-K markets by |edge| get the expensive LLM panel each cycle.
 DEBATE_TOP_K = 5
 
@@ -44,11 +45,14 @@ class CycleReport:
     bankroll_cents: int
     markets_scanned: int = 0
     signals_generated: int = 0
+    signals_rejected: int = 0
     decisions_made: int = 0
     orders_placed: int = 0
     abstained: int = 0
     settlements: int = 0
     phantom_settlements: int = 0
+    shadow_fills: int = 0
+    shadow_expirations: int = 0
     trading_halted: bool = False
     weight_updates: dict[str, float] = field(default_factory=dict)
     notes: list[str] = field(default_factory=list)
@@ -108,7 +112,12 @@ class PredatorBrain:
                 except Exception:
                     last = 0
                 return max(0, last)
-        return SHADOW_BANKROLL_CENTS
+        # Shadow drawdown must be driven by the same verified settled-fill P&L
+        # used by readiness. A fixed paper bankroll hid losses and prevented
+        # the drawdown ladder from doing its job.
+        realized = getattr(self.ledger, "realized_pnl_cents", None)
+        pnl = int(realized("shadow")) if callable(realized) else 0
+        return max(0, SHADOW_BANKROLL_CENTS + pnl)
 
     def _open_positions(self) -> list[dict[str, Any]]:
         """This brain's own book only (duck-typed for minimal ledger fakes)."""
@@ -121,7 +130,9 @@ class PredatorBrain:
         exposure = 0
         for open_decision in self._open_positions():
             if open_decision["market_ticker"] == ticker:
-                exposure += int(open_decision["price_cents"]) * int(open_decision["count"])
+                exposure += int(open_decision["price_cents"]) * int(
+                    open_decision.get("reserved_count", open_decision["count"])
+                )
         return exposure
 
     def _group_exposure(self, ticker: str) -> tuple[int, int]:
@@ -133,16 +144,35 @@ class PredatorBrain:
         count = 0
         for open_decision in self._open_positions():
             if group_key(open_decision["market_ticker"]) == target:
-                exposure += int(open_decision["price_cents"]) * int(open_decision["count"])
+                exposure += int(open_decision["price_cents"]) * int(
+                    open_decision.get("reserved_count", open_decision["count"])
+                )
                 count += 1
         return exposure, count
 
     def _close_position(self, state: RiskState, open_decision: dict[str, Any],
                         result_yes: bool) -> None:
         """Write the settlement outcome for one open position + risk evidence."""
+        filled_count = int(open_decision.get("filled_count", open_decision["count"]) or 0)
+        if filled_count <= 0:
+            # The order reserved risk but never produced a witnessed fill.
+            # Settlement releases it without inventing a position or P&L.
+            self.ledger.record_outcome(TradeOutcome(
+                decision_id=str(open_decision["decision_id"]),
+                market_ticker=str(open_decision["market_ticker"]),
+                kind=OutcomeKind.EXPIRED,
+                order_id=open_decision.get("order_id"),
+                fill_count=0,
+                fill_price_cents=None,
+                pnl_cents=None,
+                broker_contacted=False,
+                detail={"reason": "market_settled_before_any_witnessed_fill"},
+            ))
+            return
         pnl = settlement_pnl_cents(
             str(open_decision["side"]), int(open_decision["price_cents"]),
-            int(open_decision["count"]), result_yes,
+            filled_count, result_yes,
+            market_ticker=str(open_decision["market_ticker"]), liquidity_role="maker",
         )
         won = pnl > 0
         self.ledger.record_outcome(
@@ -151,7 +181,7 @@ class PredatorBrain:
                 market_ticker=str(open_decision["market_ticker"]),
                 kind=OutcomeKind.SETTLED_WIN if won else OutcomeKind.SETTLED_LOSS,
                 order_id=open_decision.get("order_id"),
-                fill_count=int(open_decision["count"]),
+                fill_count=filled_count,
                 fill_price_cents=int(open_decision["price_cents"]),
                 pnl_cents=pnl,
                 broker_contacted=self.mode is SessionMode.LIVE,
@@ -160,7 +190,7 @@ class PredatorBrain:
         )
         state.daily_pnl_cents += pnl
         state.settled_count_at_stage += 1
-        count = max(1, int(open_decision["count"]))
+        count = max(1, filled_count)
         # Exponential moving realized edge per contract.
         state.realized_pnl_per_contract_cents = (
             0.8 * state.realized_pnl_per_contract_cents + 0.2 * (pnl / count)
@@ -170,6 +200,9 @@ class PredatorBrain:
         for ticker, result_yes in self.reconciler.reconcile_settlements():
             report.settlements += 1
             report.weight_updates.update(self.learner.apply_settlement(ticker, result_yes))
+        self._close_settled_positions(state)
+
+    def _close_settled_positions(self, state: RiskState) -> None:
         # Close EVERY open position whose market has a settlement on record —
         # including positions from earlier sessions whose settlement landed
         # through another path (phantom sweep, retro). A settled market must
@@ -224,7 +257,9 @@ class PredatorBrain:
             if result is None:
                 continue
             debate_signal = result.to_signal(market.ticker)
-            self.ledger.record_signal(debate_signal)
+            if not self.ledger.record_signal(debate_signal):
+                report.signals_rejected += 1
+                continue
             report.signals_generated += 1
             refused = forecaster.fuse(market, list(signals) + [debate_signal])
             if refused is not None:
@@ -268,18 +303,13 @@ class PredatorBrain:
                 report.trading_halted = True
                 report.notes.append("trading_halted_orders_skipped")
 
+        # Refresh order fills before settlement accounting; a last-cycle fill
+        # must be seen before deciding whether the order ever became a position.
+        self.reconciler.reconcile_open_orders()
         self._apply_settlements(state, report)
         self._apply_phantom_settlements(report)
-        self.reconciler.reconcile_open_orders()
-        # Open exposure is a fact of the ledger, not a counter: recompute from
-        # this brain's own book so settled markets RELEASE their slots. (A
-        # persisted increment-only counter deadlocks at max_open_markets.)
-        open_positions = self._open_positions()
-        state.open_markets = len({p["market_ticker"] for p in open_positions})
-        state.open_exposure_cents = sum(
-            int(p["price_cents"]) * int(p["count"]) for p in open_positions)
-        state = self.risk_brain.maybe_promote(state)
-        report.stage = int(state.stage)
+        # Phantom settlement discovery can also close a traded ticker.
+        self._close_settled_positions(state)
 
         # Per-cycle source hooks (ESPN cache reset + incremental Elo retrain).
         self.registry.on_cycle_start()
@@ -292,19 +322,42 @@ class PredatorBrain:
             return report
         report.markets_scanned = len(markets)
 
+        if self.mode is SessionMode.SHADOW:
+            shadow_updates = self.reconciler.reconcile_shadow_orders(markets)
+            report.shadow_fills = sum(1 for o in shadow_updates if o.kind is OutcomeKind.FILLED)
+            report.shadow_expirations = sum(
+                1 for o in shadow_updates if o.kind is OutcomeKind.EXPIRED
+            )
+
+        # Open exposure is a ledger fact, including active-order reservations
+        # but only witnessed fill quantities after an order becomes terminal.
+        open_positions = self._open_positions()
+        state.open_markets = len({p["market_ticker"] for p in open_positions})
+        state.open_exposure_cents = sum(
+            int(p["price_cents"]) * int(p.get("reserved_count", p["count"]))
+            for p in open_positions
+        )
+        state = self.risk_brain.maybe_promote(state)
+        report.stage = int(state.stage)
+
         forecaster = EnsembleForecaster(self.ledger)
         scored: list[tuple[MarketView, Any, list[Any]]] = []
         for market in markets:
             signals = list(self.registry.signals_for(market))
             if not signals:
                 continue
-            for signal in signals:
-                self.ledger.record_signal(signal)
-            report.signals_generated += len(signals)
-            forecast = forecaster.fuse(market, signals)
+            accepted_mask = self.ledger.record_signals(signals)
+            accepted_signals = [
+                signal for signal, accepted in zip(signals, accepted_mask) if accepted
+            ]
+            report.signals_generated += len(accepted_signals)
+            report.signals_rejected += len(signals) - len(accepted_signals)
+            if not accepted_signals:
+                continue
+            forecast = forecaster.fuse(market, accepted_signals)
             if forecast is None:
                 continue
-            scored.append((market, forecast, signals))
+            scored.append((market, forecast, accepted_signals))
 
         # Capital velocity: rank by edge per unit of settlement time, not raw
         # edge. A 3c edge that settles in an hour compounds faster than a 5c
@@ -323,8 +376,10 @@ class PredatorBrain:
         # cluster see each other, not just prior-cycle open positions.
         cycle_group_cents: dict[str, int] = {}
         cycle_group_count: dict[str, int] = {}
-        decision_slice = scored[:MAX_DECISIONS_PER_CYCLE] if trading_active else []
+        decision_slice = scored[:MAX_CANDIDATES_EVALUATED] if trading_active else []
         for market, forecast, _signals in decision_slice:
+            if report.orders_placed >= MAX_ORDERS_PER_CYCLE:
+                break
             gkey = group_key(market.ticker)
             base_cents, base_count = self._group_exposure(market.ticker)
             group_cents = base_cents + cycle_group_cents.get(gkey, 0)
@@ -339,6 +394,9 @@ class PredatorBrain:
             report.decisions_made += 1
             if decision.action is DecisionAction.ABSTAIN:
                 report.abstained += 1
+                if decision.abstain_reason == "risk brain: max open markets for stage":
+                    report.notes.append("candidate_search_stopped_at_stage_position_cap")
+                    break
                 continue
             outcome = await self.executor.execute(decision)
             self.ledger.record_outcome(outcome)

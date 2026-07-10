@@ -20,6 +20,28 @@ _TICKER_RE = re.compile(r"^KX(BTC|ETH)[A-Z]*-(\d{2}[A-Z]{3}\d{2})(\d{2})?-[BT]([
 
 _PRODUCTS = {"BTC": "BTC-USD", "ETH": "ETH-USD"}
 
+# ``Signal.uncertainty`` is epistemic probability uncertainty used by the
+# ensemble's inverse-variance weighting.  The old implementation stored the
+# horizon log-return sigma here (often 0.002-0.004 for one-hour contracts),
+# which is an aleatoric distribution width in different units.  That made two
+# related crypto models look hundreds of times more certain than the market.
+CRYPTO_PROBABILITY_UNCERTAINTY_FLOOR = 0.08
+
+
+def crypto_probability_uncertainty(probability: float, horizon_sigma: float) -> float:
+    """Conservative probability-model uncertainty, not return volatility."""
+    boundary_sensitivity = 4.0 * probability * (1.0 - probability)
+    horizon_penalty = min(0.08, max(0.0, horizon_sigma) * 1.5)
+    return min(
+        0.35,
+        max(
+            CRYPTO_PROBABILITY_UNCERTAINTY_FLOOR,
+            CRYPTO_PROBABILITY_UNCERTAINTY_FLOOR
+            + 0.04 * boundary_sensitivity
+            + horizon_penalty,
+        ),
+    )
+
 
 def _fetch_hourly_closes(asset: str) -> list[float]:
     """Most-recent-first hourly closes from public Coinbase Exchange candles."""
@@ -91,6 +113,14 @@ class CryptoSpotVolSignal:
         self.fetch_spot_and_vol = fetch_spot_and_vol or default_fetch_spot_and_vol
         self._cache: dict[str, tuple[float, float]] = {}
 
+    def on_cycle_start(self) -> None:
+        """A continuous daemon must never reuse a previous cycle's spot."""
+        self._cache.clear()
+        owner = getattr(self.fetch_spot_and_vol, "__self__", None)
+        reset = getattr(owner, "clear", None)
+        if callable(reset):
+            reset()
+
     def applicable(self, market: MarketView) -> bool:
         return market.vertical is Vertical.CRYPTO and parse_crypto_ticker(market.ticker) is not None
 
@@ -134,16 +164,23 @@ class CryptoSpotVolSignal:
         else:
             p_yes = p_above(parsed["strike"])
         p_yes = min(0.995, max(0.005, p_yes))
+        probability_uncertainty = crypto_probability_uncertainty(p_yes, horizon_sigma)
         return Signal(
             source=self.name,
             market_ticker=market.ticker,
             probability_yes=p_yes,
-            uncertainty=min(0.5, horizon_sigma),
+            uncertainty=probability_uncertainty,
             rationale=(
                 f"{asset} spot={spot:.0f} annvol={annual_vol:.0%} h={hours:.1f} "
                 f"{strike_type or 'threshold'} floor={floor} cap={cap}"
             ),
-            features={"spot": spot, "annual_vol": annual_vol, "hours_to_close": hours},
+            features={
+                "spot": spot,
+                "annual_vol": annual_vol,
+                "hours_to_close": hours,
+                "horizon_log_return_sigma": horizon_sigma,
+                "probability_model_uncertainty": probability_uncertainty,
+            },
         )
 
 
@@ -204,15 +241,22 @@ class CryptoEwmaTailSignal(CryptoSpotVolSignal):
         else:
             p_yes = p_above(parsed["strike"])
         p_yes = min(0.995, max(0.005, p_yes))
+        probability_uncertainty = crypto_probability_uncertainty(p_yes, horizon_sigma)
         return Signal(
             source=self.name,
             market_ticker=market.ticker,
             probability_yes=p_yes,
-            uncertainty=min(0.5, horizon_sigma),
+            uncertainty=probability_uncertainty,
             rationale=(
                 f"{asset} spot={spot:.0f} ewma_vol={annual_vol:.0%} h={hours:.1f} fat-tail mix "
                 f"{strike_type or 'threshold'} floor={floor} cap={cap}"
             ),
-            features={"spot": spot, "ewma_annual_vol": annual_vol, "hours_to_close": hours,
-                      "mixture": [MIX_CALM_WEIGHT, MIX_CALM_SCALE, MIX_STRESS_SCALE]},
+            features={
+                "spot": spot,
+                "ewma_annual_vol": annual_vol,
+                "hours_to_close": hours,
+                "horizon_log_return_sigma": horizon_sigma,
+                "probability_model_uncertainty": probability_uncertainty,
+                "mixture": [MIX_CALM_WEIGHT, MIX_CALM_SCALE, MIX_STRESS_SCALE],
+            },
         )

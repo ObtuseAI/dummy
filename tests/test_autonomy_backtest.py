@@ -15,17 +15,17 @@ def test_tracker_scores_and_weights():
     t = SourceScoreTracker("s")
     # Perfectly confident and correct on 3 markets.
     for _ in range(3):
-        t.observe(0.9, 1, market_brier=0.25)
+        t.observe(0.9, 1, market_brier=0.25, market_p=0.5)
     s = t.summary()
     assert s["n"] == 3
     assert s["mean_brier"] < 0.02
-    assert t.derived_weight() > 1.5  # beats no-skill strongly
+    assert t.derived_weight() > 1.1  # positive but shrunk: three wins cannot crown it
 
 
 def test_tracker_penalizes_wrong_confident():
     t = SourceScoreTracker("bad")
     for _ in range(3):
-        t.observe(0.95, 0, market_brier=0.25)  # confidently wrong
+        t.observe(0.95, 0, market_brier=0.25, market_p=0.5)  # confidently wrong
     assert t.derived_weight() < 0.5
 
 
@@ -67,6 +67,11 @@ def test_run_backtest_reports_realized_pnl(tmp_path):
         ledger.record_signal(_signal("market_prior", "A", 0.5))
         ledger.record_settlement("A", True)
         ledger.record_outcome(TradeOutcome(
+            decision_id="d1", market_ticker="A", kind=OutcomeKind.FILLED,
+            order_id="o1", fill_count=1, fill_price_cents=40, pnl_cents=None,
+            broker_contacted=True,
+        ))
+        ledger.record_outcome(TradeOutcome(
             decision_id="d1", market_ticker="A", kind=OutcomeKind.SETTLED_WIN,
             order_id="o1", fill_count=1, fill_price_cents=40, pnl_cents=58,
             broker_contacted=True,
@@ -74,5 +79,6 @@ def test_run_backtest_reports_realized_pnl(tmp_path):
         report = run_backtest(ledger)
         assert report["realized_decision_pnl_cents"] == 58
         assert report["graded_decisions"] == 1
+        assert report["unverified_settlement_outcomes"] == 0
     finally:
         ledger.close()

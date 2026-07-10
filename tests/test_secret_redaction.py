@@ -62,7 +62,7 @@ def test_redact_text_masks_secret_value(monkeypatch):
 
 
 def test_logger_redacts_secrets(monkeypatch, tmp_path):
-    guard = _reload_secret_guard_with_dummy_secrets(monkeypatch)
+    _reload_secret_guard_with_dummy_secrets(monkeypatch)
     # Point logging at a temporary jsonl file so we can inspect a fresh line.
     import core.logger as logger_module
     from core.logger import JsonlHandler
@@ -85,6 +85,7 @@ def test_logger_redacts_secrets(monkeypatch, tmp_path):
         logger_module.LOG_FILE = original_log_file
 
 
+@pytest.mark.timeout(120)
 def test_no_raw_secrets_in_logs_and_reports(monkeypatch):
     """Scan existing logs and reports for any currently loaded secret values."""
     guard = _reload_secret_guard_with_dummy_secrets(monkeypatch)

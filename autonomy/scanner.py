@@ -101,6 +101,29 @@ def _price_field(raw: dict[str, Any], cent_key: str) -> int | None:
     return _dollars_to_cents(raw.get(f"{cent_key}_dollars"))
 
 
+def _normalize_binary_quotes(raw: dict[str, Any]) -> tuple[
+    int | None, int | None, int | None, int | None,
+]:
+    """Treat 0/100 book sentinels as absent and restore complements."""
+    yes_bid = _price_field(raw, "yes_bid")
+    yes_ask = _price_field(raw, "yes_ask")
+    no_bid = _price_field(raw, "no_bid")
+    no_ask = _price_field(raw, "no_ask")
+    yes_bid = yes_bid if yes_bid is not None and 0 < yes_bid < 100 else None
+    yes_ask = yes_ask if yes_ask is not None and 0 < yes_ask < 100 else None
+    no_bid = no_bid if no_bid is not None and 0 < no_bid < 100 else None
+    no_ask = no_ask if no_ask is not None and 0 < no_ask < 100 else None
+    if yes_ask is None and no_bid is not None:
+        yes_ask = 100 - no_bid
+    if no_bid is None and yes_ask is not None:
+        no_bid = 100 - yes_ask
+    if yes_bid is None and no_ask is not None:
+        yes_bid = 100 - no_ask
+    if no_ask is None and yes_bid is not None:
+        no_ask = 100 - yes_bid
+    return yes_bid, yes_ask, no_bid, no_ask
+
+
 def to_market_view(raw: dict[str, Any]) -> MarketView:
     ticker = str(raw.get("ticker", ""))
     volume = raw.get("volume")
@@ -112,16 +135,17 @@ def to_market_view(raw: dict[str, Any]) -> MarketView:
     liquidity = raw.get("liquidity")
     if liquidity is None:
         liquidity = _dollars_to_cents(raw.get("liquidity_dollars")) or 0
+    yes_bid, yes_ask, no_bid, no_ask = _normalize_binary_quotes(raw)
     return MarketView(
         ticker=ticker,
         title=str(raw.get("title", "")),
         vertical=classify_vertical(ticker),
         status=str(raw.get("status", "")),
         close_time=str(raw.get("close_time", "")),
-        yes_bid=_price_field(raw, "yes_bid"),
-        yes_ask=_price_field(raw, "yes_ask"),
-        no_bid=_price_field(raw, "no_bid"),
-        no_ask=_price_field(raw, "no_ask"),
+        yes_bid=yes_bid,
+        yes_ask=yes_ask,
+        no_bid=no_bid,
+        no_ask=no_ask,
         volume=int(volume or 0),
         liquidity=int(liquidity or 0),
         tick_size=int(raw.get("tick_size") or 1),

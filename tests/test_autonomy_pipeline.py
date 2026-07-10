@@ -9,7 +9,7 @@ from datetime import datetime, timedelta, timezone
 import pytest
 
 from autonomy.allocator import Allocator
-from autonomy.executor import AUTONOMY_ACK, Executor
+from autonomy.executor import AUTONOMY_ACK, SESSION_ACCOUNTING_VERSION, Executor
 from autonomy.forecaster import EnsembleForecaster
 from autonomy.learner import Learner
 from autonomy.ledger import AutonomyLedger
@@ -23,7 +23,7 @@ from autonomy.ontology import (
 )
 from autonomy.reconciler import Reconciler, settlement_pnl_cents
 from autonomy.risk_brain import RiskBrain
-from autonomy.scanner import MarketScanner, classify_vertical
+from autonomy.scanner import MarketScanner, classify_vertical, to_market_view
 from autonomy.signals.base import SourceRegistry
 from autonomy.signals.crypto_spot import CryptoSpotVolSignal
 from autonomy.signals.market_prior import MarketPriorSignal
@@ -82,6 +82,16 @@ def test_scanner_walks_watchlist_and_filters():
     eth = views[1]
     assert eth.yes_bid == 30 and eth.yes_ask == 40  # dollars-string schema normalized
     assert eth.volume == 12
+
+
+def test_scanner_treats_zero_and_one_dollar_quotes_as_missing_sentinels():
+    view = to_market_view({
+        "ticker": "KXBTC-26JUL10-B65000", "status": "active",
+        "yes_bid_dollars": "0.0000", "yes_ask_dollars": "0.7600",
+        "no_bid_dollars": "0.2400", "no_ask_dollars": "1.0000",
+    })
+    assert view.yes_bid is None and view.no_ask is None
+    assert view.yes_ask == 76 and view.no_bid == 24
 
 
 def test_crypto_ticker_parse_hour_glued():
@@ -188,14 +198,28 @@ def test_forecaster_weights_by_trust_and_uncertainty(tmp_path):
         ledger.close()
 
 
+def test_forecaster_keeps_minimum_market_anchor_against_overconfident_model(tmp_path):
+    ledger = AutonomyLedger(db_path=tmp_path / "ledger.db")
+    try:
+        ledger.update_weight("model", 8.0)
+        ledger.update_weight("market_prior", 3.0)
+        market = _market(yes_bid=39, yes_ask=41, volume=1)
+        forecast = EnsembleForecaster(ledger).fuse(market, [
+            Signal("market_prior", market.ticker, 0.40, 0.50, ""),
+            Signal("model", market.ticker, 0.90, 0.01, ""),
+        ])
+        assert forecast.sources_used["market_prior"] == 0.05
+        assert forecast.probability_yes == pytest.approx(0.875)
+    finally:
+        ledger.close()
+
+
 # ---------------------------------------------------------------- allocator
 
 
 def _forecast(market, probability, uncertainty=0.08):
     ledger_signals = [Signal(source="s", market_ticker=market.ticker,
                              probability_yes=probability, uncertainty=uncertainty, rationale="")]
-    import sqlite3
-
     class _FakeLedger:
         def get_weight(self, source, default=1.0):
             return 1.0
@@ -239,6 +263,41 @@ def test_allocator_abstains_on_high_uncertainty(tmp_path):
     assert "uncertainty" in decision.abstain_reason
 
 
+def test_allocator_rejects_wide_or_one_sided_books(tmp_path):
+    brain = RiskBrain(state_path=tmp_path / "risk.json")
+    state = brain.load_state(100_000)
+    wide = _market(yes_bid=1, yes_ask=80)
+    decision = Allocator(brain).decide(wide, _forecast(wide, 0.95), state)
+    assert decision.action is DecisionAction.ABSTAIN
+    assert "spread" in decision.abstain_reason
+    one_sided = _market(yes_bid=None, yes_ask=80, no_bid=20, no_ask=None)
+    decision = Allocator(brain).decide(one_sided, _forecast(one_sided, 0.95), state)
+    assert decision.action is DecisionAction.ABSTAIN
+    assert "two-sided" in decision.abstain_reason
+
+
+def test_allocator_never_forces_one_contract_above_remaining_budget(tmp_path):
+    brain = RiskBrain(state_path=tmp_path / "risk.json")
+    state = brain.load_state(10_000)
+    market = _market(yes_bid=80, yes_ask=90)
+    decision = Allocator(brain).decide(
+        market, _forecast(market, 0.99), state,
+        market_exposure_cents=0, group_exposure_cents=0,
+        group_open_count=0,
+    )
+    assert decision.action is DecisionAction.ABSTAIN
+    assert "below one contract" in decision.abstain_reason
+
+
+def test_allocator_fails_closed_on_missing_close_time_at_canary(tmp_path):
+    brain = RiskBrain(state_path=tmp_path / "risk.json")
+    state = brain.load_state(100_000)
+    market = _market(yes_bid=30, yes_ask=40, close_time="")
+    decision = Allocator(brain).decide(market, _forecast(market, 0.80), state)
+    assert decision.action is DecisionAction.ABSTAIN
+    assert "invalid close time" in decision.abstain_reason
+
+
 # ---------------------------------------------------------------- executor
 
 
@@ -251,6 +310,40 @@ def test_executor_shadow_never_contacts_broker(tmp_path):
     outcome = asyncio.run(executor.execute(decision))
     assert outcome.kind is OutcomeKind.SHADOW
     assert outcome.broker_contacted is False
+
+
+def test_executor_shadow_captures_fixed_point_queue_ahead(tmp_path):
+    decision = _forecast(_market(yes_bid=30, yes_ask=50), 0.70)
+    brain = RiskBrain(state_path=tmp_path / "risk.json")
+    allocated = Allocator(brain).decide(_market(yes_bid=30, yes_ask=50), decision,
+                                        brain.load_state(100_000))
+    executor = Executor(
+        SessionMode.SHADOW,
+        shadow_book_fn=lambda _ticker: {
+            "yes_dollars": [[f"{allocated.price_cents / 100:.4f}", "7.25"]],
+            "no_dollars": [],
+        },
+    )
+    outcome = asyncio.run(executor.execute(allocated))
+    assert outcome.detail["queue_snapshot_available"] is True
+    assert outcome.detail["queue_ahead_contracts"] == 7.25
+
+
+def test_executor_shadow_blocks_unexecutable_queue(tmp_path):
+    market = _market(yes_bid=30, yes_ask=50)
+    brain = RiskBrain(state_path=tmp_path / "risk.json")
+    allocated = Allocator(brain).decide(
+        market, _forecast(market, 0.70), brain.load_state(100_000),
+    )
+    outcome = asyncio.run(Executor(
+        SessionMode.SHADOW,
+        shadow_book_fn=lambda _ticker: {
+            "yes_dollars": [[f"{allocated.price_cents / 100:.4f}", "500.00"]],
+            "no_dollars": [],
+        },
+    ).execute(allocated))
+    assert outcome.kind is OutcomeKind.BLOCKED_LOCAL
+    assert outcome.detail["reason"] == "queue_ahead_exceeds_execution_cap"
 
 
 def test_executor_live_blocked_without_session(tmp_path):
@@ -269,6 +362,7 @@ def _write_live_session(path, ack=AUTONOMY_ACK, hours=1.0):
         "mode": "LIVE",
         "ack": ack,
         "expires_at": (datetime.now(timezone.utc) + timedelta(hours=hours)).isoformat(),
+        "accounting_version": SESSION_ACCOUNTING_VERSION,
     }
     path.write_text(json.dumps(payload), encoding="utf-8")
 

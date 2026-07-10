@@ -17,7 +17,10 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["ruff", "mypy"]
+dev = ["ruff", "mypy", "hypothesis>=6.156,<7"]
+analytics = ["river>=0.25,<0.26"]
+optimizer = ["ortools>=9.15,<10"]
+research = ["polars>=1.42,<2"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

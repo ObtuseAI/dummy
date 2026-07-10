@@ -7,7 +7,14 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
-from autonomy.executor import AUTONOMY_ACK, KILL_PATH, SESSION_PATH, Executor, load_session
+from autonomy.executor import (
+    AUTONOMY_ACK,
+    KILL_PATH,
+    SESSION_ACCOUNTING_VERSION,
+    SESSION_PATH,
+    Executor,
+    load_session,
+)
 from autonomy.learner import Learner
 from autonomy.ledger import AutonomyLedger
 from autonomy.ontology import SessionMode
@@ -74,6 +81,7 @@ def start_session(mode: SessionMode, ack: str = "", hours: float = 24.0,
         "ack": ack if mode is SessionMode.LIVE else "",
         "limit_orders_only": True,
         "market_orders_allowed": False,
+        "accounting_version": SESSION_ACCOUNTING_VERSION,
     }
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
@@ -106,12 +114,26 @@ def session_status(ledger: AutonomyLedger | None = None) -> dict[str, Any]:
     finally:
         if own_ledger:
             ledger.close()
-    risk_path = Path("runtime/autonomy/risk_state.json")
-    if risk_path.exists():
+    def normalized_risk(path: Path) -> dict[str, Any] | None:
+        if not path.exists():
+            return None
         try:
-            status["risk_state"] = json.loads(risk_path.read_text(encoding="utf-8"))
+            raw = json.loads(path.read_text(encoding="utf-8"))
+            bankroll = int(raw.get("bankroll_cents", 0))
+            state = RiskBrain(path).load_state(bankroll)
+            result = state.to_dict()
+            result["accounting_version"] = 2
+            if int(raw.get("accounting_version", 1)) < 2:
+                result["evidence_reset_pending_save"] = True
+            return result
         except Exception:
-            status["risk_state"] = {"error": "unreadable"}
+            return {"error": "unreadable"}
+
+    shadow_risk = normalized_risk(Path("runtime/autonomy/risk_state.json"))
+    live_risk = normalized_risk(Path("runtime/autonomy/risk_state_live.json"))
+    status["risk_states"] = {"shadow": shadow_risk, "live": live_risk}
+    active_scope = "live" if session.get("mode") == SessionMode.LIVE.value else "shadow"
+    status["risk_state"] = status["risk_states"].get(active_scope)
     return status
 
 
@@ -185,6 +207,12 @@ def build_brain(mode: SessionMode):
     """Assemble the full predator stack for the given mode."""
     from autonomy.brain import PredatorBrain
 
+    from autonomy.signals.crypto_indicators import (
+        CryptoDataHub,
+        CryptoDvolSignal,
+        CryptoEmpiricalRegimeSignal,
+        CryptoTechnicalCompositeSignal,
+    )
     from autonomy.signals.crypto_spot import CryptoEwmaTailSignal
     from autonomy.signals.sportsbook import SportsbookConsensusSignal
 
@@ -192,10 +220,17 @@ def build_brain(mode: SessionMode):
     registry = SourceRegistry(health_path=Path("runtime/autonomy/source_health.json"))
     registry.register(MarketPriorSignal())
     registry.register(OpenMeteoWeatherSignal.from_calibration())
-    registry.register(CryptoSpotVolSignal())
+    crypto_hub = CryptoDataHub()
+    registry.register(CryptoSpotVolSignal(fetch_spot_and_vol=crypto_hub.flat_spot_and_vol))
     # Challenger crypto model (EWMA vol + fat tails) runs beside the champion
     # under its own name; the contested record decides which earns weight.
-    registry.register(CryptoEwmaTailSignal())
+    registry.register(CryptoEwmaTailSignal(fetch_spot_and_vol=crypto_hub.ewma_spot_and_vol))
+    # Empirical regimes, a bounded technical composite, and Deribit implied vol
+    # are logged as challenger-only evidence. The forecaster excludes them until
+    # an explicit point-in-time promotion review; breadth cannot silently alter risk.
+    registry.register(CryptoEmpiricalRegimeSignal(fetch_state=crypto_hub.state))
+    registry.register(CryptoTechnicalCompositeSignal(fetch_state=crypto_hub.state))
+    registry.register(CryptoDvolSignal(fetch_state=crypto_hub.state))
     registry.register(CommoditiesSpotVolSignal())
     registry.register(SportsEloSignal())
     # De-vigged sportsbook moneyline + open->close steam: the sharpest public
@@ -218,10 +253,23 @@ def build_brain(mode: SessionMode):
     # cancel calls; stale maker quotes die via order-level expiration_ts.
     from autonomy.reconciler import default_fetch_settled_page
 
+    shadow_candle_fetcher = None
+    shadow_trade_fetcher = None
+    shadow_book_fetcher = None
+    if not live:
+        from autonomy.retro import default_fetch_candles
+        from autonomy.reconciler import default_fetch_trades
+        from kalshi.presubmit import default_fetch_orderbook
+
+        shadow_candle_fetcher = default_fetch_candles
+        shadow_trade_fetcher = default_fetch_trades
+        shadow_book_fetcher = default_fetch_orderbook
     reconciler = Reconciler(
         ledger,
         order_status_fn=_order_status_fn if live else None,
         fetch_settled_page=default_fetch_settled_page,
+        fetch_shadow_candles=shadow_candle_fetcher,
+        fetch_shadow_trades=shadow_trade_fetcher,
     )
     quote_fn = None
     if live:
@@ -255,7 +303,7 @@ def build_brain(mode: SessionMode):
         registry=registry,
         scanner=MarketScanner(),
         risk_brain=RiskBrain(state_path=risk_state_path),
-        executor=Executor(mode, quote_fn=quote_fn),
+        executor=Executor(mode, quote_fn=quote_fn, shadow_book_fn=shadow_book_fetcher),
         reconciler=reconciler,
         learner=Learner(ledger, router=router),
         balance_fn=_live_balance_cents if live else None,

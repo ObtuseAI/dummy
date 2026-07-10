@@ -1,9 +1,10 @@
 # Dummy
 
-Autonomous, recursively self-improving prediction-market trading agent for
-Kalshi. Operator surface is **start / stop** — everything between is decided
-by the system inside its own survival constraints, and every decision traces
-back to graded evidence in a ledger.
+Autonomous, recursively improving prediction-market research and shadow-
+execution engine for Kalshi. It collects point-in-time public evidence,
+calibrates competing forecasters, simulates and stress-tests challengers, and
+records every decision in an auditable ledger. Live execution remains
+fail-closed, evidence-gated, and subject to explicit operator authorization.
 
 ## The loop
 
@@ -15,8 +16,8 @@ Every cycle (10-minute cadence via a scheduled task) the predator sweeps the
 watchlist series, prices every market with every applicable source, fuses
 opinions by earned trust, ranks opportunities by capital velocity
 (edge per √hour-to-settlement), sizes with quarter-Kelly under a stage
-ladder, places maker-first LIMIT orders, reconciles settlements, and grades
-every source against reality.
+ladder, places maker-first LIMIT orders in the active book (shadow by
+default), reconciles settlements, and grades every source against reality.
 
 ## Signal sources (all fail-closed)
 
@@ -25,9 +26,12 @@ every source against reality.
 | `weather_openmeteo` | Multi-model NWP ensemble (GFS/ECMWF/ICON) vs temperature strikes, bias/sigma calibrated per city from historical-forecast-vs-ERA5 backfill |
 | `crypto_spot_vol` | Driftless lognormal from realized vol (Coinbase candles) vs BTC/ETH strike ladders |
 | `crypto_ewma_t` | Challenger model: EWMA volatility + fat-tail mixture — runs beside the champion; the contested record selects |
+| `crypto_empirical_regime` | Quarantined horizon-matched historical simulation with momentum, RSI, MACD, volatility regime, volume, microprice/order-book, and cross-venue indicator telemetry |
+| `crypto_technical_composite` | Quarantined bounded technical forecast: momentum/RSI/MACD/volume/book/microprice shift capped at 0.45 horizon sigma, with missing-data uncertainty |
+| `crypto_dvol_implied` | Quarantined Deribit implied-volatility distribution challenger |
 | `sports_elo` | Per-league Elo from ESPN results, pitcher-aware for MLB (probable starters' ERA shifts effective rating) |
 | `sportsbook_consensus` | De-vigged book moneyline (both sides) + steam: open→current line movement in probability space |
-| `cross_venue` | Polymarket implied probability as an independent voice |
+| `cross_venue` | Polymarket public CLOB midpoint, spread, and top depth for an exactly matched outcome token; Gamma price is fail-closed fallback |
 | `commodities_spot_vol` | WTI/gold/natgas spot + realized vol vs price thresholds |
 | `market_debias` | The exchange's own measured miscalibration: empirical price→outcome curve from thousands of graded settlements |
 | `market_prior` | The book's mid as a Bayesian anchor, weight decaying with thinness |
@@ -52,8 +56,62 @@ every source against reality.
   bootstrap and refits the debias curve. No operator in the loop.
 - **Model evolution**: challengers run beside champions under their own
   source names and earn their way in or starve.
+- **Crypto correlation control**: Coinbase flat-vol and EWMA-tail models are
+  one evidence family, not two independent votes; crypto retains a 25% market
+  anchor and challengers remain excluded until explicit promotion review.
+- **Simulation training**: an hourly read-only curriculum searches
+  shrinkage/edge/uncertainty policies with settlement-lagged, event-purged
+  walk-forward tests; separately trains witnessed-fill execution filters and
+  cluster-bootstrap compounding stress. It can propose a bounded shadow
+  experiment but cannot change weights, risk, readiness, or orders.
 - **Reflexion**: losing decisions distilled into structured lessons via the
   model router.
+
+## Success measurement and execution truth
+
+- Source trust is graded at the **earliest decision timestamp** for traded
+  markets, or the earliest recorded opinion for phantom-only markets. Later
+  near-settlement quotes cannot rewrite the evidence that produced a trade.
+- A shadow maker order is pending until a public standard-book trade consumes
+  its captured queue, prints strictly through its limit, or a later quote/
+  one-minute candle proves a cross. Uncrossed orders expire on the same
+  1-minute crypto / 45-minute other-market TTL as live orders and never create
+  positions or P&L. Fixed-point dollar books are normalized explicitly.
+- Accepted live orders reserve risk, but settlement P&L uses only the broker's
+  witnessed cumulative `fill_count`. Partial fills survive cancellation as
+  real positions; unfilled orders settle with zero P&L.
+- Allocation uses the current series-aware maker-fee schedule plus a
+  half-sigma probability haircut. If the embedded fee schedule is older than
+  31 days, maker estimates fail closed to the higher taker fee.
+- `run_dummy_backtest.py` reports verified realized P&L, fill quality, final
+  ensemble Brier/log loss versus the contemporaneous market, and one-snapshot-
+  per-market edge-threshold diagnostics. Counterfactual midpoint results are
+  explicitly separated from fill-adjusted realized performance.
+- Backtest uncertainty is event-cluster aware: adjacent strikes for the same
+  expiry are resampled together instead of pretending every contract is an
+  independent observation. Reports include 95% Brier/log-loss advantage
+  intervals, ECE/MCE calibration, strict chronological stability folds, and
+  point-in-time walk-forward threshold selection that only trains on outcomes
+  settled before the next test window.
+- Signal intake persists the exact feature payload and receipt timestamp.
+  Non-finite/range-invalid probabilities, malformed feature JSON, future
+  timestamps, and duplicate signal grains are quarantined and surfaced in the
+  dashboard instead of entering calibration.
+- Allocation requires a two-sided book with a spread no wider than 20¢ and
+  refuses an order when remaining budget cannot buy one contract or more than
+  50 contracts are already queued at its price. Shadow and live share these
+  execution filters. Shadow equity and drawdown use verified settled-fill P&L,
+  not a fixed paper balance.
+- Raw public statistics are kept in a separate deduplicated observation table
+  with series, observation/publish/receipt times, units, and feature payloads.
+  BLS macro releases, Deribit BTC/ETH DVOL, and official NWS station readings
+  cannot influence forecasts until a settlement-backed transformation exists.
+- River ADWIN monitors chronological Brier excess for statistically unusual
+  degradation. It is diagnostic only; confirmed negative drift blocks scale
+  readiness rather than silently changing weights.
+- OR-Tools produces a report-only discrete portfolio challenger, and Polars
+  exports hash-manifested Parquet research snapshots through a query-only
+  SQLite connection. Neither path has execution authority.
 
 ## Self-managed risk
 
@@ -64,14 +122,21 @@ every source against reality.
   collapse into one cluster with its own caps.
 - Stage close-horizon: early stages only hold near-dated markets so
   position slots recycle.
-- Exchange-enforced order TTL (20min crypto / 45min elsewhere) instead of
+- Exchange-enforced order TTL (1min crypto / 45min elsewhere) instead of
   cancel loops.
 
 ## Safety invariants
 
-- **Evidence gate**: a LIVE session refuses to start until ≥20 settled
-  markets, bootstrapped weights, and a source with a contested
-  market-beating record exist. Overridable only by explicit operator intent.
+- **Evidence gate**: a LIVE canary refuses to start until ≥20 settled markets,
+  ≥100 settled decision snapshots across ≥20 event clusters, a positive
+  cluster-robust Brier advantage, ≤8% calibration error, ≥100 profitable
+  point-in-time walk-forward trades, bootstrapped weights, one statistically
+  positive contested source, five witnessed shadow fills, five settled fills
+  with positive verified P&L, and positive fill-conditioned Brier skill exist.
+- **Canary is not scale**: scale readiness is reported separately and remains
+  blocked until at least 20 witnessed fills have settled with positive verified
+  net P&L. Counterfactual performance can authorize a tiny experiment, never a
+  capital ramp.
 - Live orders go through a hardened firewall adapter: LIMIT only,
   per-order validation, transport-witnessed truth (broker contact is
   claimed only on HTTP evidence).
@@ -83,6 +148,9 @@ every source against reality.
 
 ## Operator surface
 
+The evaluated open-source expansion backlog and licensing boundaries are in
+[`docs/OPEN_SOURCE_OPPORTUNITY_AUDIT.md`](docs/OPEN_SOURCE_OPPORTUNITY_AUDIT.md).
+
 ```bash
 python scripts/run_dummy_autonomous.py start          # shadow session
 python scripts/run_dummy_autonomous.py canary --live  # evidence gate + balance
@@ -90,6 +158,18 @@ python scripts/run_dummy_autonomous.py start --live --ack "<exact ack>"
 python scripts/run_dummy_autonomous.py stop           # instant, unconditional
 python scripts/run_dummy_dashboard.py --port 8787     # read-only dashboard
 python scripts/run_dummy_retro_backfill.py --bootstrap
+python scripts/ingest_dummy_public_statistics.py       # public facts, local ledger only
+python scripts/export_dummy_research_snapshot.py       # SQLite mode=ro -> Parquet
+python scripts/run_dummy_portfolio_challenger.py --budget-cents 500 --max-positions 8 --max-group-cost-cents 150
+python scripts/run_dummy_simulation_training.py --summary   # report-only, ledger mode=ro
+powershell -ExecutionPolicy Bypass -File scripts/install_simulation_training_task.ps1
 ```
 
+The hourly trainer also runs the quarantined recursive evolution lab. It
+mutates bounded research genomes, replays them causally, stress-tests degraded
+execution, and accumulates later forward evidence without changing production
+code, weights, risk, orders, or capital. See `docs/EVOLUTION_LAB.md`.
+
 Details: [docs/AUTONOMY.md](docs/AUTONOMY.md).
+Training protocol: [docs/SIMULATION_TRAINING_REGIMEN.md](docs/SIMULATION_TRAINING_REGIMEN.md).
+Crypto audit: [docs/CRYPTO_PERFORMANCE_AUDIT.md](docs/CRYPTO_PERFORMANCE_AUDIT.md).

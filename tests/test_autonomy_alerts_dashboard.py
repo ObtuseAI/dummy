@@ -35,9 +35,22 @@ def test_gate_green_rising_edge(monkeypatch, tmp_path):
     assert c == []  # only on the rising edge
 
 
+def test_gate_regression_fires_on_falling_edge(monkeypatch, tmp_path):
+    _wire_alert_paths(monkeypatch, tmp_path)
+    alerts.evaluate_alerts({"status": "CYCLE_OK"}, None, gate_ready=True, now_iso="t1")
+    fired = alerts.evaluate_alerts(
+        {"status": "CYCLE_OK"}, None, gate_ready=False, now_iso="t2",
+    )
+    assert [item["kind"] for item in fired] == ["GATE_REGRESSION"]
+    assert fired[0]["severity"] == "warning"
+
+
 def test_drawdown_ladder_deepening(monkeypatch, tmp_path):
     _wire_alert_paths(monkeypatch, tmp_path)
-    rs = lambda dd: {"equity_peak_cents": 100000, "bankroll_cents": int(100000 * (1 - dd))}
+    def rs(dd):
+        return {"equity_peak_cents": 100000,
+                "bankroll_cents": int(100000 * (1 - dd))}
+
     a = alerts.evaluate_alerts({"status": "CYCLE_OK"}, rs(0.05), False, now_iso="t1")
     b = alerts.evaluate_alerts({"status": "CYCLE_OK"}, rs(0.12), False, now_iso="t2")
     c = alerts.evaluate_alerts({"status": "CYCLE_OK"}, rs(0.12), False, now_iso="t3")
@@ -58,6 +71,25 @@ def test_error_streak_alert(monkeypatch, tmp_path):
     alerts.evaluate_alerts({"status": "CYCLE_OK"}, None, False, now_iso="t4")
     state = json.loads((tmp_path / "alert_state.json").read_text())
     assert state["error_streak"] == 0
+
+
+def test_signal_quality_rejection_alert_is_episode_deduplicated(monkeypatch, tmp_path):
+    _wire_alert_paths(monkeypatch, tmp_path)
+    first = alerts.evaluate_alerts(
+        {"status": "CYCLE_OK", "signals_rejected": 2}, None, False, now_iso="t1",
+    )
+    repeated = alerts.evaluate_alerts(
+        {"status": "CYCLE_OK", "signals_rejected": 1}, None, False, now_iso="t2",
+    )
+    alerts.evaluate_alerts(
+        {"status": "CYCLE_OK", "signals_rejected": 0}, None, False, now_iso="t3",
+    )
+    next_episode = alerts.evaluate_alerts(
+        {"status": "CYCLE_OK", "signals_rejected": 1}, None, False, now_iso="t4",
+    )
+    assert [item["kind"] for item in first] == ["SIGNAL_QUALITY_REJECTION"]
+    assert repeated == []
+    assert [item["kind"] for item in next_episode] == ["SIGNAL_QUALITY_REJECTION"]
 
 
 def test_recent_alerts_reads_log(monkeypatch, tmp_path):
@@ -84,6 +116,10 @@ def test_dashboard_state_assembles_from_artifacts(tmp_path):
         json.dumps({"at": "2026-07-09T01:00:00Z", "status": "CYCLE_OK", "bankroll_cents": 10000, "stage": 1}) + "\n",
         encoding="utf-8",
     )
+    (tmp_path / "simulation_training_latest.json").write_text(
+        json.dumps({"forecast_status": "HOLD", "execution_authority": False}),
+        encoding="utf-8",
+    )
     # A real ledger so the backtest/canary branch runs.
     from autonomy.ledger import AutonomyLedger
 
@@ -94,6 +130,7 @@ def test_dashboard_state_assembles_from_artifacts(tmp_path):
     assert state["heartbeat"]["alive"] is True
     assert len(state["bankroll_curve"]) == 1
     assert "ready" in state["canary"]
+    assert state["simulation_training"]["forecast_status"] == "HOLD"
 
 
 def test_dashboard_app_serves(tmp_path, monkeypatch):
