@@ -61,6 +61,18 @@ Contract: a `MlbGameContext` dataclass with every field nullable and a
 validation harness can attribute misses to missing inputs. The existing ESPN
 feed remains the fallback when StatsAPI is unavailable.
 
+**Two-snapshot lineup-delta edge (the timing novelty).** Confirmed lineups
+finalize ~1-2h before first pitch, and that is when the market reprices. The
+data foundation captures two point-in-time snapshots per game: an early
+**projected** context (probable pitcher + projected lineup) and a locked
+**confirmed** context the moment real lineups post. The delta between the two
+forecasts — a scratched star, a platoon-heavy lineup against a same-handed
+starter — is itself a tradeable signal captured before the market fully
+adjusts. Cadence: poll each game's lineup status roughly every 10 minutes
+inside a 3-hour pre-game window; lock the confirmed snapshot on finalize. Both
+snapshots are graded independently by the validation harness so the timing edge
+is measured, not assumed.
+
 ### Layer B — Three model heads (each a graded source)
 
 Each head registers under its own source name and earns trust independently.
@@ -73,13 +85,17 @@ contested-Brier trust, so a head rises or starves on its own merit.
    fatigue rule. A single simulation yields win / total (any threshold) /
    YRFI-NRFI / first-5-innings / run-line probabilities coherently. Reuses the
    existing `SportsMonteCarloSimulator` scaffold. Deterministic with a seed.
-2. **`mlb_gbm` — gradient-boosted feature model (challenger).** Engineered
-   features (lineup wOBA, pitcher rates, park, weather, bullpen) into a boosted
-   model calibrated to outcomes. Uses an existing optional extra if one fits;
-   no new heavy runtime dependency without justification.
-3. **`mlb_bayes` — hierarchical team+player model (challenger).** Shrinkage
-   priors over team and player rates, updated as the season progresses.
-   Principled uncertainty; slowest to iterate, lands last.
+2. **`mlb_gbm` — online gradient-boosted trees (challenger).** Engineered
+   features (lineup wOBA, pitcher rates, park, weather, bullpen) into an
+   **online** boosted model that updates game-by-game via `river` (existing
+   `analytics` extra — no new runtime dependency). An online learner is the
+   state-of-the-art fit here: it streams with the season, never refits from
+   scratch, and cannot overfit a short season the way a deep batch tree does.
+3. **`mlb_bayes` — conjugate hierarchical model (challenger).** Pure-Python
+   Gamma-Poisson priors over team/player run rates and Beta-Binomial over event
+   rates, with team-to-league shrinkage, updated as the season progresses. No
+   PyMC/Stan: deterministic, fully explainable for the ledger. Principled
+   uncertainty; lands last.
 
 ### Layer C — Validation harness (`autonomy/sports/mlb_validation.py`)
 
@@ -145,9 +161,12 @@ validator — build against the live slate, never blind.
 - Not a rewrite of the current `baseball.py` — it remains the fallback and the
   parity baseline until a head beats it on Head 1.
 
-## Open questions for spec review
+## Resolved design decisions
 
-- Preferred GBM/Bayesian libraries given the "no heavy runtime dep" rule — reuse
-  an existing extra, or keep both challengers in a `sports` optional extra?
-- StatsAPI polling cadence for confirmed lineups (they finalize ~1-2h pre-game;
-  affects the timing edge).
+- **GBM library:** `river` online gradient-boosted trees (existing `analytics`
+  extra). No new runtime dependency; online learning is the correct SOTA fit
+  for a streaming season.
+- **Bayesian library:** none — pure-Python conjugate hierarchical model
+  (Gamma-Poisson / Beta-Binomial). Deterministic and ledger-explainable.
+- **Lineup timing:** two-snapshot (projected + confirmed) design, ~10-minute
+  polling inside a 3-hour pre-game window, both snapshots graded independently.
