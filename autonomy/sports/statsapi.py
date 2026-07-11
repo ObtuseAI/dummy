@@ -135,3 +135,47 @@ def parse_schedule(
                 temperature_f=_float(weather.get("temp")),
             ))
     return contexts
+
+
+from dataclasses import replace
+
+
+def _team_lineup(team_box: dict[str, Any]) -> tuple[LineupSlot, ...]:
+    order = team_box.get("battingOrder") or []
+    players = team_box.get("players", {}) or {}
+    slots: list[LineupSlot] = []
+    for index, player_id in enumerate(order, start=1):
+        person = (players.get(f"ID{player_id}", {}) or {}).get("person", {}) or {}
+        slots.append(LineupSlot(
+            batting_order=index,
+            player_id=int(player_id),
+            name=person.get("fullName"),
+            bats=((person.get("batSide", {}) or {}).get("code")),
+        ))
+    return tuple(slots)
+
+
+def parse_boxscore_lineups(
+    boxscore: dict[str, Any], roster_bats: dict[int, str] | None = None,
+) -> tuple[tuple[LineupSlot, ...], tuple[LineupSlot, ...]]:
+    teams = boxscore.get("teams", {}) or {}
+    home = _team_lineup(teams.get("home", {}) or {})
+    away = _team_lineup(teams.get("away", {}) or {})
+    return home, away
+
+
+def apply_confirmed_lineups(
+    ctx: MlbGameContext,
+    home_lineup: tuple[LineupSlot, ...],
+    away_lineup: tuple[LineupSlot, ...],
+    *,
+    captured_at: str,
+) -> MlbGameContext:
+    """Return a confirmed-snapshot copy carrying the real lineups."""
+    return replace(
+        ctx,
+        snapshot="confirmed",
+        captured_at=captured_at,
+        home_lineup=home_lineup,
+        away_lineup=away_lineup,
+    )

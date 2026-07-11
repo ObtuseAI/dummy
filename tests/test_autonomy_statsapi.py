@@ -1,6 +1,11 @@
 from __future__ import annotations
 
-from autonomy.sports.statsapi import MlbGameContext, parse_schedule
+from dataclasses import replace as _replace
+
+from autonomy.sports.statsapi import (
+    MlbGameContext, LineupSlot, apply_confirmed_lineups, parse_boxscore_lineups,
+    parse_schedule,
+)
 
 
 def test_context_provenance_marks_present_and_missing_fields():
@@ -86,3 +91,45 @@ def test_parse_schedule_tolerates_missing_blocks():
     assert nyy.venue is None
     assert nyy.temperature_f is None
     assert nyy.field_provenance()["temperature_f"] is False
+
+
+_BOX_FIXTURE = {
+    "teams": {
+        "home": {
+            "battingOrder": [605141, 518692],
+            "players": {
+                "ID605141": {"person": {"fullName": "M. Betts", "batSide": {"code": "R"}}},
+                "ID518692": {"person": {"fullName": "F. Freeman", "batSide": {"code": "L"}}},
+            },
+        },
+        "away": {
+            "battingOrder": [592885],
+            "players": {
+                "ID592885": {"person": {"fullName": "T. Estrada", "batSide": {"code": "R"}}},
+            },
+        },
+    }
+}
+
+
+def test_parse_boxscore_lineups_orders_and_reads_handedness():
+    home, away = parse_boxscore_lineups(_BOX_FIXTURE)
+    assert [s.player_id for s in home] == [605141, 518692]
+    assert home[0].batting_order == 1 and home[0].bats == "R"
+    assert home[1].name == "F. Freeman" and home[1].bats == "L"
+    assert [s.player_id for s in away] == [592885]
+
+
+def test_apply_confirmed_lineups_promotes_snapshot():
+    base = MlbGameContext(
+        game_pk=1, snapshot="projected", captured_at="2026-07-11T18:00:00+00:00",
+        home="LAD", away="SF",
+    )
+    home, away = parse_boxscore_lineups(_BOX_FIXTURE)
+    confirmed = apply_confirmed_lineups(
+        base, home, away, captured_at="2026-07-11T22:40:00+00:00",
+    )
+    assert confirmed.snapshot == "confirmed"
+    assert confirmed.captured_at == "2026-07-11T22:40:00+00:00"
+    assert len(confirmed.home_lineup) == 2
+    assert base.home_lineup == ()  # original untouched (frozen dataclass)
