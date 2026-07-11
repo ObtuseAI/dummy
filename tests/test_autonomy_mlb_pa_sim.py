@@ -428,6 +428,73 @@ def test_extreme_platoon_split_batter_uses_real_rates():
     assert vs_rhp > vs_lhp * 1.3   # real split >> flat 7% platoon swing
 
 
+def test_team_bullpen_rates_omitted_is_byte_identical_to_league_average():
+    from autonomy.sports.mlb_pa_sim import _bullpen_distributions
+    lineup = tuple(LineupSlot(i + 1, 100 + i, bats="R") for i in range(9))
+    rates = {100 + i: BatterRates(player_id=100 + i, bats="R", k_pct=0.20,
+                                  bb_pct=0.09, obp=0.340, slg=0.450, iso=0.15)
+             for i in range(9)}
+    # Positional call matching the pre-Task-4 signature (no team_bullpen arg at all).
+    legacy = _bullpen_distributions(lineup, rates, {}, 1.0)
+    explicit_none = _bullpen_distributions(lineup, rates, {}, 1.0, team_bullpen=None)
+    assert legacy == explicit_none  # byte-identical: today's league-average path
+
+
+def test_team_bullpen_rates_none_is_byte_identical_across_calibration_lock():
+    # The full calibration-lock context never sets home/away_bullpen_rates, so this
+    # is already covered by test_neutral_matchup_is_calibrated_to_real_mlb staying
+    # green unchanged; this test pins the same guarantee directly against the
+    # simulate_game_markets entry point for a second, explicit signal.
+    ctx = _context(home_batter_iso=0.15, away_batter_iso=0.15)
+    assert ctx.home_bullpen_rates is None and ctx.away_bullpen_rates is None
+    markets = simulate_game_markets(ctx, seed=2026, sims=3000)
+    assert 8.0 <= markets["expected_total_runs"] <= 9.2
+    assert 0.51 <= markets["home_win"] <= 0.575
+
+
+def test_strong_team_bullpen_suppresses_runs_vs_weak_bullpen():
+    from autonomy.sports.mlb_pa_sim import _bullpen_distributions
+    lineup = tuple(LineupSlot(i + 1, 100 + i, bats="R") for i in range(9))
+    rates = {100 + i: BatterRates(player_id=100 + i, bats="R", k_pct=0.20,
+                                  bb_pct=0.09, obp=0.340, slg=0.450, iso=0.15)
+             for i in range(9)}
+    strong_pen = PitcherRates(player_id=-1, k_pct=0.32, bb_pct=0.06, hr9=0.6)
+    weak_pen = PitcherRates(player_id=-1, k_pct=0.16, bb_pct=0.13, hr9=2.2)
+    strong_dists = _bullpen_distributions(lineup, rates, {}, 1.0, team_bullpen=strong_pen)
+    weak_dists = _bullpen_distributions(lineup, rates, {}, 1.0, team_bullpen=weak_pen)
+    assert sum(d["hr"] for d in strong_dists) < sum(d["hr"] for d in weak_dists)
+    assert sum(d["k"] for d in strong_dists) > sum(d["k"] for d in weak_dists)
+    # Bullpen fatigue scaling still applies on top of the team-specific baseline.
+    tired = _bullpen_distributions(lineup, rates, {1: 1.0, 2: 1.0}, 1.0, team_bullpen=strong_pen)
+    assert sum(d["hr"] for d in tired) > sum(d["hr"] for d in strong_dists)
+
+
+def test_away_bullpen_rates_suppress_home_lineup_scoring_across_seeds():
+    # Home lineup faces the AWAY pitcher/bullpen -> away_bullpen_rates governs it.
+    from dataclasses import replace as _replace
+    ctx = _context(home_batter_iso=0.15, away_batter_iso=0.15)
+    strong_pen = PitcherRates(player_id=-1, k_pct=0.34, bb_pct=0.05, hr9=0.5)
+    weak_pen = PitcherRates(player_id=-1, k_pct=0.15, bb_pct=0.14, hr9=2.3)
+    strong_ctx = _replace(ctx, away_bullpen_rates=strong_pen)
+    weak_ctx = _replace(ctx, away_bullpen_rates=weak_pen)
+    strong_total = sum(simulate_one_game(strong_ctx, _random.Random(s)).home_runs for s in range(80))
+    weak_total = sum(simulate_one_game(weak_ctx, _random.Random(s)).home_runs for s in range(80))
+    assert strong_total < weak_total
+
+
+def test_home_bullpen_rates_suppress_away_lineup_scoring_across_seeds():
+    # Away lineup faces the HOME pitcher/bullpen -> home_bullpen_rates governs it.
+    from dataclasses import replace as _replace
+    ctx = _context(home_batter_iso=0.15, away_batter_iso=0.15)
+    strong_pen = PitcherRates(player_id=-1, k_pct=0.34, bb_pct=0.05, hr9=0.5)
+    weak_pen = PitcherRates(player_id=-1, k_pct=0.15, bb_pct=0.14, hr9=2.3)
+    strong_ctx = _replace(ctx, home_bullpen_rates=strong_pen)
+    weak_ctx = _replace(ctx, home_bullpen_rates=weak_pen)
+    strong_total = sum(simulate_one_game(strong_ctx, _random.Random(s)).away_runs for s in range(80))
+    weak_total = sum(simulate_one_game(weak_ctx, _random.Random(s)).away_runs for s in range(80))
+    assert strong_total < weak_total
+
+
 def test_pitcher_only_split_is_used_when_batter_has_no_split():
     from autonomy.sports.statsapi import BatterRates, LineupSlot, MlbGameContext, PitcherRates
     # Pitcher dominates RHB but is weak vs LHB. The home lineup is all RIGHT-handed

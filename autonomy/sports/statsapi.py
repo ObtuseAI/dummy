@@ -92,6 +92,8 @@ class MlbGameContext:
     away_lineup: tuple[LineupSlot, ...] = ()
     home_bullpen_fatigue: dict[int, float] = field(default_factory=dict)
     away_bullpen_fatigue: dict[int, float] = field(default_factory=dict)
+    home_bullpen_rates: PitcherRates | None = None
+    away_bullpen_rates: PitcherRates | None = None
     batter_rates: dict[int, BatterRates] = field(default_factory=dict)
     park_run_factor: float | None = None
     park_hr_factor: float | None = None
@@ -369,6 +371,34 @@ def parse_batter_splits(
         return None, None
 
 
+def parse_team_bullpen(payload: dict[str, Any]) -> PitcherRates | None:
+    """Parse a team relief-pitching stats payload into an aggregate PitcherRates.
+
+    Reads stats[0].splits[0].stat (era, k_pct=strikeOuts/battersFaced,
+    bb_pct=baseOnBalls/battersFaced, hr9=homeRunsPer9), reusing `_rate`/
+    `_float`. Uses player_id=-1 -- this is a team bullpen aggregate, not an
+    individual person. Missing/empty stats or splits resolve to None; this
+    never raises.
+    """
+    try:
+        stats = payload.get("stats") or []
+        if not stats:
+            return None
+        splits = (stats[0] or {}).get("splits") or []
+        if not splits:
+            return None
+        stat = (splits[0] or {}).get("stat") or {}
+        return PitcherRates(
+            player_id=-1,
+            era=_float(stat.get("era")),
+            k_pct=_rate(stat.get("strikeOuts"), stat.get("battersFaced")),
+            bb_pct=_rate(stat.get("baseOnBalls"), stat.get("battersFaced")),
+            hr9=_float(stat.get("homeRunsPer9")),
+        )
+    except Exception:
+        return None
+
+
 # Seed table from public league-average park indices; neutral = 1.0. The
 # feature-discovery loop (S5) refines these from residuals later.
 PARK_FACTORS: dict[str, tuple[float, float]] = {
@@ -477,6 +507,21 @@ def default_fetch_pitcher_splits(player_id: int) -> dict[str, Any]:
     response = httpx.get(
         f"{_BASE}/people/{player_id}",
         params={"hydrate": "stats(group=[pitching],type=[statSplits],sitCodes=[vl,vr])"},
+        timeout=20,
+    )
+    response.raise_for_status()
+    return response.json()
+
+
+def default_fetch_team_bullpen(team_id: int) -> dict[str, Any]:
+    import httpx
+    response = httpx.get(
+        f"{_BASE}/teams/{team_id}/stats",
+        params={
+            "stats": "statSplits", "group": "pitching",
+            "sitCodes": "rp",  # relief pitching
+            "gameType": "R",
+        },
         timeout=20,
     )
     response.raise_for_status()

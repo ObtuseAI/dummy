@@ -613,3 +613,76 @@ def test_client_swallows_pitcher_splits_fetch_failure_leaves_vs_none():
     assert rates is not None
     assert rates.era == 3.25  # overall rates intact -> split failure didn't crash hydration
     assert rates.vs_lhb is None and rates.vs_rhb is None  # splits failure swallowed
+
+
+# --- Task 4: per-team bullpen quality ---------------------------------------
+
+from autonomy.sports.statsapi import parse_team_bullpen
+
+
+def test_context_gains_bullpen_rates_fields_defaulting_to_none():
+    ctx = MlbGameContext(
+        game_pk=1, snapshot="projected", captured_at="2026-07-11T18:00:00+00:00",
+        home="LAD", away="SF",
+    )
+    assert ctx.home_bullpen_rates is None
+    assert ctx.away_bullpen_rates is None
+    prov = ctx.field_provenance()
+    assert prov["home_bullpen_rates"] is False
+    assert prov["away_bullpen_rates"] is False
+
+
+def test_context_bullpen_rates_present_reports_true_in_provenance():
+    from autonomy.sports.statsapi import PitcherRates
+    pen = PitcherRates(player_id=-1, era=3.60, k_pct=0.26, bb_pct=0.09, hr9=1.05)
+    ctx = MlbGameContext(
+        game_pk=1, snapshot="projected", captured_at="2026-07-11T18:00:00+00:00",
+        home="LAD", away="SF", home_bullpen_rates=pen,
+    )
+    assert ctx.field_provenance()["home_bullpen_rates"] is True
+    assert ctx.field_provenance()["away_bullpen_rates"] is False
+
+
+_TEAM_BULLPEN_FIXTURE = {
+    "stats": [
+        {"splits": [{"stat": {
+            "era": "3.60",
+            "strikeOuts": 520,
+            "baseOnBalls": 180,
+            "battersFaced": 2000,
+            "homeRunsPer9": "1.05",
+        }}]}
+    ]
+}
+
+
+def test_parse_team_bullpen_computes_rates_from_relief_split():
+    rates = parse_team_bullpen(_TEAM_BULLPEN_FIXTURE)
+    assert rates.player_id == -1  # team aggregate, not a person
+    assert rates.era == 3.60
+    assert rates.k_pct == round(520 / 2000, 4)
+    assert rates.bb_pct == round(180 / 2000, 4)
+    assert rates.hr9 == 1.05
+
+
+def test_parse_team_bullpen_none_on_missing_or_empty_payload():
+    assert parse_team_bullpen({}) is None
+    assert parse_team_bullpen({"stats": []}) is None
+    assert parse_team_bullpen({"stats": [{"splits": []}]}) is None
+    assert parse_team_bullpen({"stats": [{}]}) is None
+
+
+def test_parse_team_bullpen_never_raises_on_malformed_payload():
+    assert parse_team_bullpen({"stats": "not-a-list"}) is None
+    assert parse_team_bullpen({"stats": [None]}) is None
+    assert parse_team_bullpen({"stats": [{"splits": [None]}]}) is not None
+    assert parse_team_bullpen(None) is None  # never raises, even on a non-dict payload
+
+
+def test_parse_team_bullpen_zero_denominator_yields_none_rates_not_crash():
+    payload = {"stats": [{"splits": [{"stat": {
+        "era": "4.10", "strikeOuts": 5, "baseOnBalls": 2, "battersFaced": 0,
+    }}]}]}
+    rates = parse_team_bullpen(payload)
+    assert rates.era == 4.10
+    assert rates.k_pct is None and rates.bb_pct is None  # no divide-by-zero

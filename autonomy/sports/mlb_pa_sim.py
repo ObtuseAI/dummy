@@ -304,15 +304,26 @@ def _bullpen_distributions(
     park_hr_factor: float,
     offense_mult: float = 1.0,
     weather_hr_factor: float = 1.0,
+    team_bullpen: PitcherRates | None = None,
 ) -> list[dict[str, float]]:
     # Realistic single-inning reliever (a modest edge over league, not a
-    # cartoonish super-bullpen), degraded by aggregate bullpen fatigue.
+    # cartoonish super-bullpen), degraded by aggregate bullpen fatigue. When a
+    # real team bullpen aggregate is available (Task 4), its rates replace the
+    # league-average RELIEVER_* baseline field-by-field -- any individual field
+    # still missing on the team bullpen falls back to league average -- so a
+    # shutdown pen suppresses runs and a bad pen leaks them. The fatigue
+    # scaling still applies on top either way. team_bullpen=None (the default,
+    # and every context until hydrated) reproduces today's league-average path
+    # byte-for-byte.
+    base_k = _rate(getattr(team_bullpen, "k_pct", None), RELIEVER_K_PCT)
+    base_bb = _rate(getattr(team_bullpen, "bb_pct", None), RELIEVER_BB_PCT)
+    base_hr9 = _rate(getattr(team_bullpen, "hr9", None), RELIEVER_HR9)
     avg_fatigue = (sum(fatigue.values()) / len(fatigue)) if fatigue else 0.0
     reliever = PitcherRates(
         player_id=-1, throws=None,
-        k_pct=RELIEVER_K_PCT * (1.0 - 0.15 * avg_fatigue),
-        bb_pct=RELIEVER_BB_PCT * (1.0 + 0.20 * avg_fatigue),
-        hr9=RELIEVER_HR9 * (1.0 + 0.20 * avg_fatigue),
+        k_pct=base_k * (1.0 - 0.15 * avg_fatigue),
+        bb_pct=base_bb * (1.0 + 0.20 * avg_fatigue),
+        hr9=base_hr9 * (1.0 + 0.20 * avg_fatigue),
     )
     return _side_distributions(
         lineup, batter_rates, reliever, park_hr_factor, offense_mult, weather_hr_factor)
@@ -363,13 +374,15 @@ def simulate_one_game(
         HOME_FIELD_BOOST * run_factor, weather_hr_factor=hr_factor)
     home_pen = _bullpen_distributions(
         context.home_lineup, context.batter_rates, context.away_bullpen_fatigue, park_hr,
-        HOME_FIELD_BOOST * run_factor, weather_hr_factor=hr_factor)
+        HOME_FIELD_BOOST * run_factor, weather_hr_factor=hr_factor,
+        team_bullpen=context.away_bullpen_rates)
     away_starter = _starter_distributions_by_tto(
         context.away_lineup, context.batter_rates, context.home_pitcher, park_hr,
         run_factor, weather_hr_factor=hr_factor)
     away_pen = _bullpen_distributions(
         context.away_lineup, context.batter_rates, context.home_bullpen_fatigue, park_hr,
-        run_factor, weather_hr_factor=hr_factor)
+        run_factor, weather_hr_factor=hr_factor,
+        team_bullpen=context.home_bullpen_rates)
     h_total, h_first, h_five = _simulate_side(home_starter, home_pen, rng, innings)
     a_total, a_first, a_five = _simulate_side(away_starter, away_pen, rng, innings)
     return GameResult(
