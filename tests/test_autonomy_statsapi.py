@@ -188,3 +188,22 @@ def test_parse_pitcher_rates_computes_k_and_bb_pct():
 
 def test_parse_pitcher_rates_returns_none_on_empty():
     assert parse_pitcher_rates({"people": []}) is None
+
+
+def test_parse_pitcher_rates_zero_denominator_yields_none():
+    payload = {"people": [{"id": 5, "stats": [{"splits": [{"stat": {
+        "era": "2.00", "strikeOuts": 10, "baseOnBalls": 3, "battersFaced": 0,
+    }}]}]}]}
+    rates = parse_pitcher_rates(payload)
+    assert rates.era == 2.0
+    assert rates.k_pct is None and rates.bb_pct is None  # no divide-by-zero
+
+
+def test_parse_pitcher_rates_missing_stats_yields_none_rates():
+    rates = parse_pitcher_rates({"people": [{"id": 7, "fullName": "X"}]})
+    assert rates.player_id == 7
+    assert rates.era is None and rates.k_pct is None and rates.hr9 is None
+
+
+def test_parse_pitcher_rates_absent_id_returns_none():
+    assert parse_pitcher_rates({"people": [{"fullName": "No Id"}]}) is None
