@@ -374,11 +374,11 @@ def parse_batter_splits(
 def parse_team_bullpen(payload: dict[str, Any]) -> PitcherRates | None:
     """Parse a team relief-pitching stats payload into an aggregate PitcherRates.
 
-    Reads stats[0].splits[0].stat (era, k_pct=strikeOuts/battersFaced,
-    bb_pct=baseOnBalls/battersFaced, hr9=homeRunsPer9), reusing `_rate`/
-    `_float`. Uses player_id=-1 -- this is a team bullpen aggregate, not an
-    individual person. Missing/empty stats or splits resolve to None; this
-    never raises.
+    Reads stats[0].splits[0].stat and delegates to `_pitcher_rates_from_stat`
+    (era, k_pct=strikeOuts/battersFaced, bb_pct=baseOnBalls/battersFaced,
+    hr9=homeRunsPer9). Uses player_id=-1 -- this is a team bullpen aggregate,
+    not an individual person. Missing/empty stats or splits resolve to None;
+    this never raises.
     """
     try:
         stats = payload.get("stats") or []
@@ -388,13 +388,10 @@ def parse_team_bullpen(payload: dict[str, Any]) -> PitcherRates | None:
         if not splits:
             return None
         stat = (splits[0] or {}).get("stat") or {}
-        return PitcherRates(
-            player_id=-1,
-            era=_float(stat.get("era")),
-            k_pct=_rate(stat.get("strikeOuts"), stat.get("battersFaced")),
-            bb_pct=_rate(stat.get("baseOnBalls"), stat.get("battersFaced")),
-            hr9=_float(stat.get("homeRunsPer9")),
-        )
+        # Reuse the shared stat->PitcherRates extraction (one place to maintain
+        # if a stat key ever changes). player_id=-1 marks a team bullpen
+        # aggregate; the empty person dict yields name=None, throws=None.
+        return _pitcher_rates_from_stat(-1, {}, stat)
     except Exception:
         return None
 

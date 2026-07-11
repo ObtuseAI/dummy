@@ -686,3 +686,4 @@ def test_parse_team_bullpen_zero_denominator_yields_none_rates_not_crash():
     rates = parse_team_bullpen(payload)
     assert rates.era == 4.10
     assert rates.k_pct is None and rates.bb_pct is None  # no divide-by-zero
+    assert rates.hr9 is None  # homeRunsPer9 absent -> None, not invented
