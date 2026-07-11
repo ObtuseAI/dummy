@@ -291,6 +291,14 @@ def test_realistic_reliever_is_not_cartoonish():
     assert 0.22 <= RELIEVER_K_PCT <= 0.28
 
 
+def test_home_field_advantage_favors_the_home_side():
+    from autonomy.sports.mlb_pa_sim import HOME_FIELD_BOOST
+    assert HOME_FIELD_BOOST > 1.0
+    ctx = _context(home_batter_iso=0.15, away_batter_iso=0.15)  # identical teams
+    markets = simulate_game_markets(ctx, seed=99, sims=1500)
+    assert markets["home_win"] > 0.51  # equal teams, but the home side is favored
+
+
 def test_neutral_matchup_is_calibrated_to_real_mlb():
     """Task 6 calibration lock: a neutral (average vs. average) matchup must land
     in real-MLB run-environment bands, not just "plausible" ones. Real MLB is

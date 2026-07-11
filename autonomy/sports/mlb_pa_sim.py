@@ -36,6 +36,8 @@ HR_ISO_MULT = 0.20  # batter HR prob = iso * HR_ISO_MULT, clamped to [0.004, 0.0
 HIT_SHARE_BASE = 0.40  # baseline share of a non-KBBHBPHR PA that becomes a hit
 HIT_SHARE_CAP = 0.55  # upper clamp so elite sluggers keep differentiating past 0.44
 
+HOME_FIELD_BOOST = 1.03  # home lineups score slightly more (finalized in calibration)
+
 
 def log5(batter: float, pitcher: float, league: float) -> float:
     """Bill James odds-ratio combination of a batter and pitcher rate.
@@ -301,9 +303,11 @@ def simulate_one_game(
 ) -> GameResult:
     park_hr = context.park_hr_factor if context.park_hr_factor is not None else 1.0
     home_starter = _starter_distributions_by_tto(
-        context.home_lineup, context.batter_rates, context.away_pitcher, park_hr, 1.0)
+        context.home_lineup, context.batter_rates, context.away_pitcher, park_hr,
+        HOME_FIELD_BOOST)
     home_pen = _bullpen_distributions(
-        context.home_lineup, context.batter_rates, context.away_bullpen_fatigue, park_hr)
+        context.home_lineup, context.batter_rates, context.away_bullpen_fatigue, park_hr,
+        HOME_FIELD_BOOST)
     away_starter = _starter_distributions_by_tto(
         context.away_lineup, context.batter_rates, context.home_pitcher, park_hr, 1.0)
     away_pen = _bullpen_distributions(
