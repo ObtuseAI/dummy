@@ -15,6 +15,17 @@ from autonomy.ontology import Forecast, MarketView, Signal, Vertical
 MARKET_PRIOR_MIN_SHARE = 0.05
 CRYPTO_MARKET_PRIOR_MIN_SHARE = 0.25
 
+# Inverse-variance fusion scaled by trust can drive the fused uncertainty to a
+# tiny floor even when every input honors its own uncertainty floor: a
+# high-trust source contributes an enormous precision weight, and correlated
+# members of the same evidence family agree, so the disagreement term cannot
+# arrest the collapse. Crypto short-horizon direction is where this bit hardest
+# (witnessed maker fills settled net negative at a claimed ~2% uncertainty), so
+# the fused crypto uncertainty is floored at the same 8% the per-signal crypto
+# models use. Other verticals keep the original 2% floor.
+GLOBAL_FUSED_UNCERTAINTY_FLOOR = 0.02
+CRYPTO_FUSED_UNCERTAINTY_FLOOR = 0.08
+
 # Sources in one family are alternative transforms of the same underlying
 # evidence. Their family precision is the strongest member, not the sum; this
 # prevents duplicate models from manufacturing certainty.
@@ -95,7 +106,12 @@ class EnsembleForecaster:
             normalized[source] * (probabilities[source] - probability) ** 2
             for source in normalized
         ))
-        fused_sigma = min(0.5, max(0.02, inverse_precision, disagreement))
+        sigma_floor = (
+            CRYPTO_FUSED_UNCERTAINTY_FLOOR
+            if market.vertical is Vertical.CRYPTO
+            else GLOBAL_FUSED_UNCERTAINTY_FLOOR
+        )
+        fused_sigma = min(0.5, max(sigma_floor, inverse_precision, disagreement))
 
         implied = None
         if market.yes_bid is not None and market.yes_ask is not None and market.yes_ask > 0:
