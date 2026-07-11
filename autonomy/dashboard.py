@@ -18,6 +18,7 @@ from starlette.requests import Request
 RUNTIME_DIR = Path("runtime/autonomy")
 SHADOW_TASK_NAME = "DummyShadowPredator"
 TRAINER_TASK_NAME = "DummySimulationTrainer"
+DASHBOARD_TASK_NAME = "DummyDashboard"
 
 
 def _load_json(path: Path) -> Any:
@@ -121,6 +122,7 @@ def assemble_dashboard_state(runtime_dir: Path | None = None) -> dict[str, Any]:
         {"role": "crypto paper twin", **paper_scheduler},
         {"role": "sports paper twin", **sports_scheduler},
         {"role": "simulation trainer", **_task_status(TRAINER_TASK_NAME)},
+        {"role": "dashboard", **_task_status(DASHBOARD_TASK_NAME)},
     ]
     session = session_authorization_state(rd)
 
