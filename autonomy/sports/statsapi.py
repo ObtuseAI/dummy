@@ -266,7 +266,10 @@ def default_fetch_schedule(date_iso: str) -> dict[str, Any]:
         f"{_BASE}/schedule",
         params={
             "sportId": 1, "date": date_iso,
-            "hydrate": "probablePitcher,weather,venue",
+            # "team" is required to hydrate team.abbreviation — without it the
+            # schedule payload only carries team.id/name/link and parse_schedule
+            # (which reads team.abbreviation) drops every game as unidentified.
+            "hydrate": "team,probablePitcher,weather,venue",
         },
         timeout=20,
     )
