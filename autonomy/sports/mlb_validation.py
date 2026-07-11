@@ -13,7 +13,7 @@ reads settled decisions, computes scores, writes nothing.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
 from typing import Any
 
 from autonomy.backtest import (
@@ -174,3 +174,16 @@ def score_engine(
         calibration=calibration_head(decisions),
         paper_pnl=paper_pnl_head(decisions),
     )
+
+
+def scorecard_to_dict(card: MlbEngineScorecard) -> dict[str, Any]:
+    """JSON-safe scorecard for reports and the dashboard."""
+    return {
+        "source": card.source,
+        "settled": card.settled,
+        "is_champion_ready": card.is_champion_ready,
+        "heads": {
+            head.name: asdict(head)
+            for head in (card.beat_close, card.calibration, card.paper_pnl)
+        },
+    }

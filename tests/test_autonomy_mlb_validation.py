@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass as _dc
 
-from autonomy.sports.mlb_validation import HeadVerdict, MlbEngineScorecard, SettledDecision, settled_decisions_for, beat_close_head, calibration_head, paper_pnl_head
+from autonomy.sports.mlb_validation import HeadVerdict, MlbEngineScorecard, SettledDecision, settled_decisions_for, beat_close_head, calibration_head, paper_pnl_head, score_engine
 
 
 def test_scorecard_champion_ready_tracks_primary_head_only():
@@ -159,3 +159,20 @@ def test_score_engine_no_decisions_is_unproven():
     assert card.settled == 0
     assert card.is_champion_ready is False
     assert card.beat_close.n == 0
+
+
+from autonomy.sports.mlb_validation import scorecard_to_dict
+
+
+def test_scorecard_to_dict_is_json_safe():
+    import json
+    card = score_engine(
+        [_Row("a", "s", "winner", "g1", 0.6, 0.52, True)], {"a": 10}, "s",
+    )
+    payload = scorecard_to_dict(card)
+    # Round-trips through JSON without error and preserves the primary verdict.
+    text = json.dumps(payload)
+    back = json.loads(text)
+    assert back["source"] == "s"
+    assert back["is_champion_ready"] == card.is_champion_ready
+    assert back["heads"]["beat_close"]["name"] == "beat_close"
