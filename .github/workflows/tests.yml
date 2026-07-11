@@ -1,0 +1,29 @@
+name: tests
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+concurrency:
+  group: tests-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  pytest:
+    # The paper twin and scheduler surfaces are Windows-native (schtasks,
+    # PowerShell); CI runs the suite on the platform it ships on.
+    runs-on: windows-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install
+        run: pip install -e ".[dev]"
+      - name: Run suite
+        # The suite is offline-hermetic: no credentials, no broker contact,
+        # no live market I/O.
+        run: python -m pytest -q --timeout=120
