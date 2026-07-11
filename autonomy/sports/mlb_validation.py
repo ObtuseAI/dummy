@@ -38,3 +38,35 @@ class MlbEngineScorecard:
     def is_champion_ready(self) -> bool:
         """Only the primary head (beat the close) gates promotion."""
         return self.beat_close.passed
+
+
+@dataclass(frozen=True)
+class SettledDecision:
+    source: str
+    market_type: str
+    event_cluster: str
+    model_probability: float
+    market_probability: float
+    result_yes: bool
+    pnl_cents: int | None = None
+
+
+def settled_decisions_for(
+    rows: Any, pnl_by_id: dict[str, int], source: str,
+) -> list[SettledDecision]:
+    """Settled decisions for one source, with realized P&L attached."""
+    out: list[SettledDecision] = []
+    for row in rows:
+        if row.source != source or row.result_yes is None:
+            continue
+        pnl = pnl_by_id.get(row.observation_id)
+        out.append(SettledDecision(
+            source=row.source,
+            market_type=row.market_type,
+            event_cluster=row.event_cluster,
+            model_probability=float(row.model_probability),
+            market_probability=float(row.market_probability),
+            result_yes=bool(row.result_yes),
+            pnl_cents=None if pnl is None else int(pnl),
+        ))
+    return out
