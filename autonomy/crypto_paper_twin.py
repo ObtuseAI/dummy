@@ -563,6 +563,92 @@ def target_candidate_blockers(reason: str, *, eligible: bool) -> tuple[str, ...]
     return tuple(blockers or ("other_policy_gate",))
 
 
+# Throughput classes explain *why* a cohort produced no trade this cycle.
+# Only the actionable classes point at a fixable pipeline gap; a market that
+# Kalshi simply did not list is correct, expected abstention, not a weakness.
+THROUGHPUT_TRADED = "traded"
+THROUGHPUT_POLICY_REJECTED = "policy_rejected"
+THROUGHPUT_NO_LISTED_MARKET = "no_listed_market"
+THROUGHPUT_NO_TWO_SIDED_BOOK = "no_two_sided_book"
+THROUGHPUT_FORECAST_INCOMPLETE = "forecast_incomplete"
+# Classes where the market was genuinely unavailable to trade — expected, not a
+# defect.
+EXPECTED_ABSTENTION_CLASSES = frozenset({THROUGHPUT_NO_LISTED_MARKET})
+# The only classes that point at a fixable data-pipeline gap. A policy rejection
+# means a forecast completed and the engine deliberately declined on edge/EV/
+# uncertainty — that is the tunable selectivity lever, not a pipeline weakness.
+ACTIONABLE_THROUGHPUT_CLASSES = frozenset({
+    THROUGHPUT_NO_TWO_SIDED_BOOK,
+    THROUGHPUT_FORECAST_INCOMPLETE,
+})
+
+
+def is_actionable_throughput(throughput_class: str) -> bool:
+    """True when the class is a fixable pipeline gap, not selectivity or absence."""
+    return throughput_class in ACTIONABLE_THROUGHPUT_CLASSES
+
+
+_THROUGHPUT_REASONS = {
+    THROUGHPUT_NO_LISTED_MARKET: (
+        "no nearest-expiry market listed for this cohort (expected when Kalshi "
+        "has not opened the horizon)"
+    ),
+    THROUGHPUT_NO_TWO_SIDED_BOOK: (
+        "market listed but never two-sided this cycle; no executable both-way "
+        "quote to price against"
+    ),
+    THROUGHPUT_FORECAST_INCOMPLETE: (
+        "two-sided market listed but no forecast completed; missing model, spot, "
+        "or volatility input"
+    ),
+    THROUGHPUT_POLICY_REJECTED: (
+        "forecast completed but no target cleared edge/EV/uncertainty policy"
+    ),
+}
+
+
+def market_is_two_sided(market: MarketView) -> bool:
+    """A market with all four top-of-book quotes present (tradable both ways)."""
+    return None not in (
+        market.yes_bid, market.yes_ask, market.no_bid, market.no_ask,
+    )
+
+
+def classify_throughput(
+    *,
+    action: str,
+    listed_markets: int,
+    two_sided_markets: int,
+    forecasted_markets: int,
+    candidates: int,
+    eligible_candidates: int,
+) -> str:
+    """Explain a cohort's cycle outcome as one throughput class.
+
+    Distinguishes the three causes that the legacy single reason string
+    collapsed together: the market was never listed, it was listed but never
+    two-sided, or it was two-sided but no forecast completed. A traded or
+    policy-rejected cohort is reported as such so the actionable slice is not
+    diluted by expected market absence.
+    """
+    if str(action).upper().startswith("BUY"):
+        return THROUGHPUT_TRADED
+    if candidates > 0:
+        # A forecast completed for at least one target; the abstain is a
+        # deliberate policy decision, not a pipeline gap.
+        return THROUGHPUT_POLICY_REJECTED
+    if listed_markets <= 0:
+        return THROUGHPUT_NO_LISTED_MARKET
+    if two_sided_markets <= 0:
+        return THROUGHPUT_NO_TWO_SIDED_BOOK
+    return THROUGHPUT_FORECAST_INCOMPLETE
+
+
+def is_expected_abstention(throughput_class: str) -> bool:
+    """True when the class reflects genuine market absence, not a fixable gap."""
+    return throughput_class in EXPECTED_ABSTENTION_CLASSES
+
+
 def select_price_target(
     candidates: Sequence[dict[str, Any]], strategy: str,
 ) -> tuple[dict[str, Any], dict[str, Any]]:
@@ -1539,6 +1625,43 @@ class PaperTwinLedger:
             except (TypeError, json.JSONDecodeError):
                 reason = str(row["action"])
             counts[reason] = counts.get(reason, 0) + 1
+        return dict(sorted(counts.items(), key=lambda item: (-item[1], item[0])))
+
+    def throughput_class_counts(
+        self, vertical: Vertical | str | None = None,
+    ) -> dict[str, int]:
+        """Count observations by throughput class.
+
+        Rows written before the class was recorded fall back to a derivation
+        from their preserved market/candidate counts, so historical evidence
+        is classified consistently with fresh cycles.
+        """
+        counts: dict[str, int] = {}
+        query = "SELECT action,diagnostics_json FROM observations"
+        params: tuple[Any, ...] = ()
+        if vertical is not None:
+            query += " WHERE vertical=?"
+            params = (_vertical_name(vertical),)
+        for row in self.connection.execute(query, params):
+            try:
+                diag = json.loads(str(row["diagnostics_json"])) or {}
+            except (TypeError, json.JSONDecodeError):
+                diag = {}
+            cls = diag.get("throughput_class")
+            if not cls:
+                cls = classify_throughput(
+                    action=str(row["action"]),
+                    listed_markets=int(diag.get("listed_nearest_expiry_markets") or 0),
+                    two_sided_markets=int(
+                        diag.get("two_sided_markets")
+                        if diag.get("two_sided_markets") is not None
+                        else diag.get("nearest_expiry_markets") or 0
+                    ),
+                    forecasted_markets=int(diag.get("nearest_expiry_markets") or 0),
+                    candidates=int(diag.get("candidate_markets") or 0),
+                    eligible_candidates=int(diag.get("eligible_candidates") or 0),
+                )
+            counts[cls] = counts.get(cls, 0) + 1
         return dict(sorted(counts.items(), key=lambda item: (-item[1], item[0])))
 
     def paired_advantage(
@@ -2842,6 +2965,21 @@ class CryptoPaperTwin:
                                 "candidate_markets": len(candidates),
                                 "nearest_expiry_markets": len(lane_markets),
                                 "listed_nearest_expiry_markets": len(listed_lane_markets),
+                                "two_sided_markets": sum(
+                                    market_is_two_sided(m) for m in listed_lane_markets
+                                ),
+                                "throughput_class": classify_throughput(
+                                    action=action,
+                                    listed_markets=len(listed_lane_markets),
+                                    two_sided_markets=sum(
+                                        market_is_two_sided(m) for m in listed_lane_markets
+                                    ),
+                                    forecasted_markets=len(lane_markets),
+                                    candidates=len(candidates),
+                                    eligible_candidates=sum(
+                                        bool(row.get("eligible")) for row in candidates
+                                    ),
+                                ),
                                 "eligible_candidates": sum(bool(row.get("eligible")) for row in candidates),
                                 "contract_family": (
                                     "15m_direction" if timeframe == "15m"
@@ -3147,14 +3285,29 @@ class CryptoPaperTwin:
                     **summaries,
                 }
         weaknesses: list[dict[str, Any]] = []
+        # Report the actual throughput constraint, not the legacy collapsed
+        # reason string. Only actionable classes are weaknesses; a market Kalshi
+        # never listed is expected, correct abstention and is reported apart.
+        throughput_counts = self.ledger.throughput_class_counts()
+        throughput_actionable = {
+            cls: count for cls, count in throughput_counts.items()
+            if is_actionable_throughput(cls)
+        }
+        throughput_expected = {
+            cls: count for cls, count in throughput_counts.items()
+            if is_expected_abstention(cls)
+        }
+        for cls, count in sorted(
+            throughput_actionable.items(), key=lambda item: (-item[1], item[0]),
+        )[:10]:
+            weaknesses.append({
+                "component": "throughput",
+                "throughput_class": cls,
+                "reason": _THROUGHPUT_REASONS.get(cls, cls),
+                "observations": count,
+                "actionable": True,
+            })
         reasons = self.ledger.observation_reason_counts()
-        for reason, count in list(reasons.items())[:10]:
-            if reason != "eligible":
-                weaknesses.append({
-                    "component": "decision_selectivity",
-                    "reason": reason,
-                    "observations": count,
-                })
         for vertical_name, timeframes in cohort_lanes.items():
             for timeframe, strategies in timeframes.items():
                 for strategy, summary in strategies.items():
@@ -3381,6 +3534,10 @@ class CryptoPaperTwin:
                     vertical.value: self.ledger.observation_reason_counts(vertical)
                     for vertical in vertical_timeframes
                 },
+                "throughput_classes": throughput_counts,
+                "throughput_actionable": throughput_actionable,
+                "throughput_expected": throughput_expected,
+                "throughput_legend": _THROUGHPUT_REASONS,
                 "policy_challengers": self.ledger.execution_challengers(
                     Vertical.CRYPTO,
                 ),

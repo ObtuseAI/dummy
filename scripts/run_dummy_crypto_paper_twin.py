@@ -80,6 +80,10 @@ def _summary(report: dict, report_path: Path) -> dict:
         "hourly_calibration": report.get("hourly_calibration"),
         "target_candidate_counts": rejection_regret.get("counts"),
         "forced_crypto_coverage": report.get("forced_crypto_coverage"),
+        "throughput": {
+            key: (report.get("phase_3_execution") or {}).get(f"throughput_{key}")
+            for key in ("classes", "actionable", "expected", "legend")
+        },
         "weaknesses": list(report.get("weaknesses") or [])[:20],
         "evidence_quarantine": report.get("evidence_quarantine"),
         "authority": report.get("authority"),

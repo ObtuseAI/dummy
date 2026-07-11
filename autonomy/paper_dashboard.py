@@ -257,6 +257,7 @@ def assemble_paper_dashboard(runtime_dir: Path) -> dict[str, Any]:
         "target_candidate_counts": summary.get("target_candidate_counts") or {},
         "hourly_calibration": summary.get("hourly_calibration") or {},
         "forced_crypto_coverage": summary.get("forced_crypto_coverage") or {},
+        "throughput": summary.get("throughput") or {},
         "lanes": _flatten_lanes(summary),
         "weaknesses": list(summary.get("weaknesses") or [])[:20],
         "active_trades": [],

@@ -246,6 +246,14 @@ def test_parallel_paper_cycle_records_explanations_and_never_has_authority(tmp_p
             ]["blockers"]
         )
         assert report["phase_3_execution"]["policy_challengers"]["execution_authority"] is False
+        throughput = report["phase_3_execution"]["throughput_classes"]
+        assert throughput, "cycle report must classify throughput"
+        assert sum(throughput.values()) == report["observations_written"]
+        # No observation should carry the legacy unclassified reason as its class.
+        assert set(throughput) <= {
+            "traded", "policy_rejected", "no_listed_market",
+            "no_two_sided_book", "forecast_incomplete",
+        }
         explanations = report["recent_explanations"]
         assert explanations
         assert all("Paper-only" in row["explanation"] or "No paper order" in row["explanation"]
@@ -941,3 +949,92 @@ def test_scheduler_jsonl_log_rotates_and_stays_bounded(tmp_path):
 
     assert (tmp_path / "scheduler.jsonl.2").stat().st_size == 1_024
     assert json.loads(log.read_text(encoding="utf-8"))["cycle_id"] == "cycle-2"
+
+
+def _obs_row(strategy, action, diagnostics, cycle_id="c1"):
+    return {
+        "cycle_id": cycle_id,
+        "strategy": strategy,
+        "vertical": Vertical.CRYPTO,
+        "timeframe": "1h",
+        "bucket_start": "2026-07-10T00:00:00+00:00",
+        "asset": "BTC",
+        "action": action,
+        "explanation": "x",
+        "diagnostics": diagnostics,
+        "created_at": "2026-07-10T00:00:00+00:00",
+    }
+
+
+def test_classify_throughput_covers_every_cause():
+    from autonomy.crypto_paper_twin import (
+        classify_throughput, is_actionable_throughput, is_expected_abstention,
+    )
+
+    common = dict(forecasted_markets=0)
+    assert classify_throughput(
+        action="ABSTAIN", listed_markets=0, two_sided_markets=0,
+        candidates=0, eligible_candidates=0, **common,
+    ) == "no_listed_market"
+    assert classify_throughput(
+        action="ABSTAIN", listed_markets=1, two_sided_markets=0,
+        candidates=0, eligible_candidates=0, **common,
+    ) == "no_two_sided_book"
+    assert classify_throughput(
+        action="ABSTAIN", listed_markets=1, two_sided_markets=1,
+        candidates=0, eligible_candidates=0, **common,
+    ) == "forecast_incomplete"
+    assert classify_throughput(
+        action="ABSTAIN", listed_markets=2, two_sided_markets=2,
+        candidates=2, eligible_candidates=0, forecasted_markets=2,
+    ) == "policy_rejected"
+    assert classify_throughput(
+        action="BUY_YES", listed_markets=1, two_sided_markets=1,
+        candidates=1, eligible_candidates=1, forecasted_markets=1,
+    ) == "traded"
+    # Only genuine pipeline gaps are actionable; selectivity and absence are not.
+    assert is_actionable_throughput("no_two_sided_book")
+    assert is_actionable_throughput("forecast_incomplete")
+    assert not is_actionable_throughput("policy_rejected")
+    assert not is_actionable_throughput("no_listed_market")
+    assert is_expected_abstention("no_listed_market")
+    assert not is_expected_abstention("policy_rejected")
+
+
+def test_throughput_class_counts_uses_recorded_class(tmp_path):
+    ledger = PaperTwinLedger(tmp_path / "paper.db")
+    cycle = ledger.start_cycle(datetime(2026, 7, 10, tzinfo=timezone.utc))
+    ledger.record_observation(_obs_row("exploratory", "ABSTAIN", {
+        "throughput_class": "no_listed_market", "listed_nearest_expiry_markets": 0,
+    }, cycle_id=cycle))
+    ledger.record_observation(_obs_row("exploratory", "ABSTAIN", {
+        "throughput_class": "no_two_sided_book", "listed_nearest_expiry_markets": 1,
+    }, cycle_id=cycle))
+    ledger.record_observation(_obs_row("exploratory", "BUY_YES", {
+        "throughput_class": "traded",
+    }, cycle_id=cycle))
+    counts = ledger.throughput_class_counts()
+    ledger.close()
+    assert counts == {"no_listed_market": 1, "no_two_sided_book": 1, "traded": 1}
+
+
+def test_throughput_class_counts_derives_for_legacy_rows(tmp_path):
+    """Rows written before the class field derive it from preserved counts."""
+    ledger = PaperTwinLedger(tmp_path / "paper.db")
+    cycle = ledger.start_cycle(datetime(2026, 7, 10, tzinfo=timezone.utc))
+    # Legacy abstain with no throughput_class: listed but one-sided book.
+    ledger.record_observation(_obs_row("exploratory", "ABSTAIN", {
+        "listed_nearest_expiry_markets": 1,
+        "two_sided_markets": 0,
+        "nearest_expiry_markets": 0,
+        "candidate_markets": 0,
+        "eligible_candidates": 0,
+    }, cycle_id=cycle))
+    # Legacy abstain, market never listed.
+    ledger.record_observation(_obs_row("exploratory", "ABSTAIN", {
+        "listed_nearest_expiry_markets": 0,
+        "candidate_markets": 0,
+    }, cycle_id=cycle))
+    counts = ledger.throughput_class_counts()
+    ledger.close()
+    assert counts == {"no_listed_market": 1, "no_two_sided_book": 1}
