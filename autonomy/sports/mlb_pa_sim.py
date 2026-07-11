@@ -25,16 +25,43 @@ LEAGUE: dict[str, float] = {
     "out": 0.457,  # in-play outs; the eight fields sum to 1.0
 }
 
-# Calibration constants (Task 6): tuned so a neutral matchup (average batters vs
-# average pitchers, `_context(home_batter_iso=0.15, away_batter_iso=0.15)`) lands
-# in real-MLB run-environment bands -- expected_total_runs in [8.0, 9.5] (real
-# MLB ~8.5), yrfi in [0.48, 0.62] (real MLB ~0.55), home_win in [0.47, 0.58].
-# LEAGUE itself needed no change (its k/bb/hbp/hr entries were already close to
-# real 2020s rates); the run environment was too low because on-contact hit
-# share and HR-from-ISO were set conservatively. See mlb_pa_sim_demo.py.
-HR_ISO_MULT = 0.20  # batter HR prob = iso * HR_ISO_MULT, clamped to [0.004, 0.09]
-HIT_SHARE_BASE = 0.40  # baseline share of a non-KBBHBPHR PA that becomes a hit
+# Calibration constants (Task 3 re-calibration for realistic run COMPOSITION): an
+# earlier re-tune hit the aggregate bands (~8.5 runs / ~0.55 yrfi / ~0.54 home_win) but
+# through a distorted, HR-heavy run PROCESS -- HR/PA ~0.085 (real ~0.033), ~24% of hits
+# were HRs (real ~15%), power hitters saturated at the old 0.09 HR cap, and the late
+# innings were over-suppressed by a 0.60 reliever HR9. Root cause: two hard-coded
+# constraints in plate_appearance_distribution forced it -- a 0.20 hit-share floor (so
+# HIT_SHARE_BASE could not act as a live lever for NON-HR offense) and a 0.09 HR-prob
+# cap (so power hitters could not differentiate, pushing the model to lean on the HR
+# term for run environment). Both are now relaxed (floor 0.20 -> 0.10, cap 0.09 -> 0.14)
+# so HIT_SHARE_BASE is again the primary lever for the run environment. HR_ISO_MULT is
+# set to a realistic 0.23 (a 0.15-ISO average batter -> ~0.033 HR/PA after the log5
+# pitcher combination, matching real; HR is ~0.13 of hits, near real ~0.15). The neutral
+# matchup (`_context(home_batter_iso=0.15, away_batter_iso=0.15)`, seed=2026, sims=3000)
+# now lands: expected_total_runs ~8.72 (band [8.0, 9.2], real ~8.5), home_win ~0.53
+# (band [0.51, 0.575], home edge ~0.54), with REALISTIC composition -- HR/PA <= 0.045
+# and HR share of hits <= 0.22 (guard-tested).
+#
+# YRFI CAVEAT (important): with composition held realistic, yrfi lands ~0.41, BELOW real
+# MLB's ~0.55 and below the review's requested [0.50, 0.62] / fallback [0.46, 0.62]
+# bands. This is a genuine, structural limitation, not a tuning miss: an exhaustive
+# search (HIT_SHARE_BASE x HR_ISO_MULT x hit-mix x TTO x HFA) found the max in-band yrfi
+# achievable with realistic composition is ~0.44 -- and only by pushing HR to the cap
+# (1.35x real) and doubles to 1.25x real, i.e. re-committing the very distortion this
+# task removes. The real cause is the station-to-station single advancement in _advance
+# (a documented deferred S4/S5 limitation): a single moves each runner exactly one base,
+# so runners pile up and are stranded unless a cluster or extra-base hit arrives. That
+# depresses the FRACTION of innings that score >=1 run (yrfi) relative to the mean run
+# rate. Per the review's stated priority -- "realistic composition is the priority ...
+# rather than re-distorting composition" -- yrfi is left at its honest realistic-
+# composition value and its calibration-lock band is loosened accordingly (see the test).
+# The proper fix for yrfi is the deferred _advance improvement, out of scope for a
+# constants-only calibration. See mlb_pa_sim_demo.py and the composition-guard tests.
+HR_ISO_MULT = 0.23  # batter HR prob = iso * HR_ISO_MULT, clamped to [0.004, 0.14]
+HIT_SHARE_BASE = 0.28  # baseline share of a non-KBBHBPHR PA that becomes a hit
 HIT_SHARE_CAP = 0.55  # upper clamp so elite sluggers keep differentiating past 0.44
+
+HOME_FIELD_BOOST = 1.045  # home lineups score slightly more (finalized in calibration)
 
 
 def log5(batter: float, pitcher: float, league: float) -> float:
@@ -77,7 +104,7 @@ def plate_appearance_distribution(
     b_bb = _rate(getattr(batter, "bb_pct", None), LEAGUE["bb"])
     p_bb = _rate(getattr(pitcher, "bb_pct", None), LEAGUE["bb"])
     iso = getattr(batter, "iso", None)
-    b_hr = min(0.09, max(0.004, iso * HR_ISO_MULT)) if iso is not None else LEAGUE["hr"]
+    b_hr = min(0.14, max(0.004, iso * HR_ISO_MULT)) if iso is not None else LEAGUE["hr"]
     hr9 = getattr(pitcher, "hr9", None)
     p_hr = (hr9 / 38.0) if hr9 is not None else LEAGUE["hr"]
 
@@ -92,12 +119,18 @@ def plate_appearance_distribution(
     obp = _rate(getattr(batter, "obp", None), 0.320)
     slg = _rate(getattr(batter, "slg", None), 0.400)
     # On-contact hit share rises with both on-base skill (obp) and power (slg).
-    hit_share = min(HIT_SHARE_CAP, max(0.20, HIT_SHARE_BASE + (obp - 0.320) * 1.2 + (slg - 0.400) * 0.35))
+    hit_share = min(HIT_SHARE_CAP, max(0.10, HIT_SHARE_BASE + (obp - 0.320) * 1.2 + (slg - 0.400) * 0.35))
     hits = remaining * hit_share * platoon
     out = max(0.0, remaining - hits)
     # Split non-HR hits into single/double/triple, tilting toward doubles with ISO.
+    # Base weights target real MLB's non-HR hit mix (~0.735 singles / ~0.235 doubles /
+    # ~0.03 triples): the previous 0.78/0.19 under-represented doubles (0.19 share vs
+    # real ~0.235), an off-theme inaccuracy for a "realistic run composition" model and
+    # one that also worsened run-scoring efficiency (doubles clear the bases far better
+    # than the station-to-station single advance in _advance, so too few doubles depress
+    # the fraction of innings that score at least one run).
     iso_tilt = 1.0 + (0.0 if iso is None else min(1.0, max(-0.5, (iso - 0.150) * 2.0)))
-    s_w, d_w, t_w = 0.78, 0.19 * iso_tilt, 0.03
+    s_w, d_w, t_w = 0.735, 0.235 * iso_tilt, 0.03
     wsum = s_w + d_w + t_w
     single = hits * s_w / wsum
     double = hits * d_w / wsum
@@ -178,9 +211,17 @@ def simulate_half_inning(
     return runs, cursor
 
 
-STARTER_BATTERS_FACED = 20  # ~4-5 innings before the bullpen takes over (Task 6 calibration)
-BULLPEN_K_BOOST = 1.7  # fresh reliever strikes out more than LEAGUE["k"] alone implies
-BULLPEN_BASE_HR9 = 0.20  # fresh reliever allows far fewer HR/9 than a tiring starter
+STARTER_BATTERS_FACED = 24  # a full modern start before the bullpen takes over
+TTO_PENALTY_PER_TIME = 0.04  # each time through the order lifts the batter's offense
+TTO_MAX_TIMES = 3            # penalty saturates by the third time through
+# Reliever rates: a realistic single-inning reliever is a modest edge over league,
+# not a HR sink. The earlier re-tune had pushed RELIEVER_HR9 down to 0.60 (roughly
+# half league average) to buy ~1 run of suppression; with the hit-share floor and HR
+# cap now unbound, that crutch is no longer needed and the reliever is restored to a
+# realistic RELIEVER_HR9=1.15 / RELIEVER_K_PCT=0.245 (a modest strikeout edge).
+RELIEVER_K_PCT = 0.245  # relievers strike out modestly more than league
+RELIEVER_BB_PCT = 0.090
+RELIEVER_HR9 = 1.15
 
 
 @dataclass(frozen=True)
@@ -200,11 +241,16 @@ def _platoon(batter_bats: str | None, pitcher_throws: str | None) -> float:
     return 0.93 if batter_bats == pitcher_throws else 1.07
 
 
+def _tto_mult(level: int) -> float:
+    return 1.0 + TTO_PENALTY_PER_TIME * min(level, TTO_MAX_TIMES)
+
+
 def _side_distributions(
     lineup: tuple[Any, ...],
     batter_rates: dict[int, Any],
     pitcher: Any,
     park_hr_factor: float,
+    offense_mult: float = 1.0,
 ) -> list[dict[str, float]]:
     dists: list[dict[str, float]] = []
     throws = getattr(pitcher, "throws", None)
@@ -213,9 +259,26 @@ def _side_distributions(
         dists.append(plate_appearance_distribution(
             batter, pitcher,
             park_hr_factor=park_hr_factor,
-            platoon=_platoon(getattr(slot, "bats", None), throws),
+            platoon=_platoon(getattr(slot, "bats", None), throws) * offense_mult,
         ))
     return dists
+
+
+def _starter_distributions_by_tto(
+    lineup: tuple[Any, ...],
+    batter_rates: dict[int, Any],
+    pitcher: Any,
+    park_hr_factor: float,
+    offense_mult: float,
+) -> list[list[dict[str, float]]]:
+    """Per-slot distributions for each times-through-the-order level (0..MAX)."""
+    return [
+        _side_distributions(
+            lineup, batter_rates, pitcher, park_hr_factor,
+            offense_mult=offense_mult * _tto_mult(level),
+        )
+        for level in range(TTO_MAX_TIMES + 1)
+    ]
 
 
 def _bullpen_distributions(
@@ -223,21 +286,22 @@ def _bullpen_distributions(
     batter_rates: dict[int, Any],
     fatigue: dict[int, float],
     park_hr_factor: float,
+    offense_mult: float = 1.0,
 ) -> list[dict[str, float]]:
-    # Fresh, high-leverage single-inning reliever (real bullpens run measurably
-    # cooler than a tiring/pacing starter), degraded by aggregate bullpen fatigue.
+    # Realistic single-inning reliever (a modest edge over league, not a
+    # cartoonish super-bullpen), degraded by aggregate bullpen fatigue.
     avg_fatigue = (sum(fatigue.values()) / len(fatigue)) if fatigue else 0.0
     reliever = PitcherRates(
         player_id=-1, throws=None,
-        k_pct=LEAGUE["k"] * BULLPEN_K_BOOST * (1.0 - 0.15 * avg_fatigue),
-        bb_pct=LEAGUE["bb"] * (1.0 + 0.20 * avg_fatigue),
-        hr9=BULLPEN_BASE_HR9 * (1.0 + 0.20 * avg_fatigue),
+        k_pct=RELIEVER_K_PCT * (1.0 - 0.15 * avg_fatigue),
+        bb_pct=RELIEVER_BB_PCT * (1.0 + 0.20 * avg_fatigue),
+        hr9=RELIEVER_HR9 * (1.0 + 0.20 * avg_fatigue),
     )
-    return _side_distributions(lineup, batter_rates, reliever, park_hr_factor)
+    return _side_distributions(lineup, batter_rates, reliever, park_hr_factor, offense_mult)
 
 
 def _simulate_side(
-    starter_dists: list[dict[str, float]],
+    starter_by_tto: list[list[dict[str, float]]],
     bullpen_dists: list[dict[str, float]],
     rng: random.Random,
     innings: int,
@@ -245,13 +309,23 @@ def _simulate_side(
     """Return (total_runs, first_inning_runs, runs_through_5) for one team."""
     total = first = through5 = 0
     cursor = 0
-    faced = 0
+    pitcher_faced = 0   # batters the CURRENT pitcher has faced (resets on a switch)
+    total_faced = 0     # batters the starter faced (triggers the bullpen)
+    on_bullpen = False
     for inning in range(1, innings + 1):
-        use_bullpen = faced >= STARTER_BATTERS_FACED
-        dists = bullpen_dists if use_bullpen else starter_dists
+        if not on_bullpen and total_faced >= STARTER_BATTERS_FACED:
+            on_bullpen = True
+            pitcher_faced = 0  # fresh reliever -> a fresh look at the order
+        if on_bullpen:
+            dists = bullpen_dists
+        else:
+            dists = starter_by_tto[min(TTO_MAX_TIMES, pitcher_faced // 9)]
         start = cursor
         runs, cursor = simulate_half_inning(cursor, lambda i: dists[i], rng)
-        faced += cursor - start
+        batters = cursor - start
+        pitcher_faced += batters
+        if not on_bullpen:
+            total_faced += batters
         total += runs
         if inning == 1:
             first = runs
@@ -264,12 +338,14 @@ def simulate_one_game(
     context: MlbGameContext, rng: random.Random, *, innings: int = 9,
 ) -> GameResult:
     park_hr = context.park_hr_factor if context.park_hr_factor is not None else 1.0
-    home_starter = _side_distributions(
-        context.home_lineup, context.batter_rates, context.away_pitcher, park_hr)
+    home_starter = _starter_distributions_by_tto(
+        context.home_lineup, context.batter_rates, context.away_pitcher, park_hr,
+        HOME_FIELD_BOOST)
     home_pen = _bullpen_distributions(
-        context.home_lineup, context.batter_rates, context.away_bullpen_fatigue, park_hr)
-    away_starter = _side_distributions(
-        context.away_lineup, context.batter_rates, context.home_pitcher, park_hr)
+        context.home_lineup, context.batter_rates, context.away_bullpen_fatigue, park_hr,
+        HOME_FIELD_BOOST)
+    away_starter = _starter_distributions_by_tto(
+        context.away_lineup, context.batter_rates, context.home_pitcher, park_hr, 1.0)
     away_pen = _bullpen_distributions(
         context.away_lineup, context.batter_rates, context.home_bullpen_fatigue, park_hr)
     h_total, h_first, h_five = _simulate_side(home_starter, home_pen, rng, innings)
