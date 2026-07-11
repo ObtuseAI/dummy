@@ -426,3 +426,33 @@ def test_extreme_platoon_split_batter_uses_real_rates():
     vs_rhp = sum(simulate_one_game(ctx("R"), _random.Random(s)).home_runs for s in range(60))
     vs_lhp = sum(simulate_one_game(ctx("L"), _random.Random(s)).home_runs for s in range(60))
     assert vs_rhp > vs_lhp * 1.3   # real split >> flat 7% platoon swing
+
+
+def test_pitcher_only_split_is_used_when_batter_has_no_split():
+    from autonomy.sports.statsapi import BatterRates, LineupSlot, MlbGameContext, PitcherRates
+    # Pitcher dominates RHB but is weak vs LHB. The home lineup is all RIGHT-handed
+    # batters WITH NO splits -> they should score much LESS vs this pitcher's real
+    # vs-RHB split than vs a neutral pitcher, proving the pitcher split is applied.
+    tough_vs_r = PitcherRates(player_id=8, throws="R", k_pct=0.34, bb_pct=0.05, hr9=0.6)
+    weak_vs_l = PitcherRates(player_id=8, throws="R", k_pct=0.15, bb_pct=0.12, hr9=2.0)
+    split_pitcher = PitcherRates(player_id=8, throws="R", k_pct=0.22, bb_pct=0.08, hr9=1.2,
+                                 vs_lhb=weak_vs_l, vs_rhb=tough_vs_r)
+    neutral_pitcher = PitcherRates(player_id=8, throws="R", k_pct=0.22, bb_pct=0.08, hr9=1.2)
+    def ctx(away_pitcher):
+        rates = {100 + i: BatterRates(player_id=100 + i, bats="R", k_pct=0.20,
+                                      bb_pct=0.09, obp=0.340, slg=0.450, iso=0.16)
+                 for i in range(9)}  # RIGHT-handed batters, NO splits
+        home = tuple(LineupSlot(i + 1, 100 + i, bats="R") for i in range(9))
+        away = tuple(LineupSlot(i + 1, 200 + i, bats="R") for i in range(9))
+        for i in range(9):
+            rates[200 + i] = BatterRates(player_id=200 + i, bats="R", k_pct=0.22,
+                                         bb_pct=0.08, obp=0.320, slg=0.400, iso=0.14)
+        return MlbGameContext(
+            game_pk=1, snapshot="confirmed", captured_at="x", home="H", away="A",
+            home_lineup=home, away_lineup=away,
+            home_pitcher=PitcherRates(player_id=9, throws="R", k_pct=0.22, bb_pct=0.08, hr9=1.2),
+            away_pitcher=away_pitcher, batter_rates=rates,
+            park_run_factor=1.0, park_hr_factor=1.0)
+    tough = sum(simulate_one_game(ctx(split_pitcher), _random.Random(s)).home_runs for s in range(60))
+    neutral = sum(simulate_one_game(ctx(neutral_pitcher), _random.Random(s)).home_runs for s in range(60))
+    assert tough < neutral  # the pitcher's tough vs-RHB split suppresses the R lineup
