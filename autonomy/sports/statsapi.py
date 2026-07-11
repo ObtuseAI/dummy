@@ -337,6 +337,17 @@ def default_fetch_people(player_id: int) -> dict[str, Any]:
     return response.json()
 
 
+def default_fetch_batter_people(player_id: int) -> dict[str, Any]:
+    import httpx
+    response = httpx.get(
+        f"{_BASE}/people/{player_id}",
+        params={"hydrate": "stats(group=[hitting],type=[season])"},
+        timeout=20,
+    )
+    response.raise_for_status()
+    return response.json()
+
+
 class StatsApiClient:
     """Assembles point-in-time MlbGameContexts from injectable StatsAPI fetchers."""
 
@@ -345,15 +356,19 @@ class StatsApiClient:
         fetch_schedule: Callable[[str], dict[str, Any]] | None = None,
         fetch_boxscore: Callable[[int], dict[str, Any]] | None = None,
         fetch_people: Callable[[int], dict[str, Any]] | None = None,
+        fetch_batter_people: Callable[[int], dict[str, Any]] | None = None,
     ) -> None:
         self.fetch_schedule = fetch_schedule or default_fetch_schedule
         self.fetch_boxscore = fetch_boxscore or default_fetch_boxscore
         self.fetch_people = fetch_people or default_fetch_people
+        self.fetch_batter_people = fetch_batter_people or default_fetch_batter_people
         self._pitcher_cache: dict[int, PitcherRates | None] = {}
+        self._batter_cache: dict[int, BatterRates | None] = {}
 
     def clear_cache(self) -> None:
         """Drop cached pitcher lookups so a reused client refetches season rates."""
         self._pitcher_cache.clear()
+        self._batter_cache.clear()
 
     def _pitcher(self, player_id: int | None) -> PitcherRates | None:
         if player_id is None:
@@ -366,6 +381,16 @@ class StatsApiClient:
             except Exception:
                 self._pitcher_cache[player_id] = None
         return self._pitcher_cache[player_id]
+
+    def _batter(self, player_id: int) -> BatterRates | None:
+        if player_id not in self._batter_cache:
+            try:
+                self._batter_cache[player_id] = parse_batter_rates(
+                    self.fetch_batter_people(player_id)
+                )
+            except Exception:
+                self._batter_cache[player_id] = None
+        return self._batter_cache[player_id]
 
     def projected_contexts(
         self, date_iso: str, *, captured_at: str,
@@ -390,3 +415,12 @@ class StatsApiClient:
     ) -> MlbGameContext:
         home, away = parse_boxscore_lineups(self.fetch_boxscore(ctx.game_pk))
         return apply_confirmed_lineups(ctx, home, away, captured_at=captured_at)
+
+    def hydrate_batter_rates(self, ctx: MlbGameContext) -> MlbGameContext:
+        """Attach season offensive rates for every batter in both lineups."""
+        rates: dict[int, BatterRates] = {}
+        for slot in (*ctx.home_lineup, *ctx.away_lineup):
+            batter = self._batter(slot.player_id)
+            if batter is not None:
+                rates[slot.player_id] = batter
+        return replace(ctx, batter_rates=rates)

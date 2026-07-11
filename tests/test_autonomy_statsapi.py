@@ -390,3 +390,28 @@ def test_parse_batter_rates_none_on_empty_and_missing_denominator():
     assert rates.player_id == 7
     assert rates.k_pct is None and rates.bb_pct is None  # no divide-by-zero
     assert rates.iso is None  # no avg -> ISO unknown
+
+
+def test_client_hydrate_batter_rates_fills_lineup_and_swallows_failures():
+    from autonomy.sports.statsapi import StatsApiClient, MlbGameContext, LineupSlot
+
+    def fake_batter(player_id):
+        if player_id == 999:
+            raise RuntimeError("statsapi down")
+        return {"people": [{"id": player_id, "fullName": f"P{player_id}",
+                            "batSide": {"code": "L"}, "stats": [{"splits": [{"stat": {
+                                "plateAppearances": 500, "strikeOuts": 100,
+                                "baseOnBalls": 50, "obp": "0.340", "slg": "0.450",
+                                "avg": "0.270"}}]}]}]}
+
+    client = StatsApiClient(fetch_batter_people=fake_batter)
+    ctx = MlbGameContext(
+        game_pk=1, snapshot="confirmed", captured_at="2026-07-11T22:40:00+00:00",
+        home="LAD", away="SF",
+        home_lineup=(LineupSlot(1, 605141), LineupSlot(2, 999)),
+        away_lineup=(LineupSlot(1, 592885),),
+    )
+    hydrated = client.hydrate_batter_rates(ctx)
+    assert set(hydrated.batter_rates) == {605141, 592885}  # 999 failed -> absent
+    assert hydrated.batter_rates[605141].k_pct == round(100 / 500, 4)
+    assert ctx.batter_rates == {}  # original untouched (frozen)
