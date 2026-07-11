@@ -23,6 +23,10 @@ from autonomy.backtest import (
     _cluster_bootstrap_mean_ci,
 )
 
+# A positive mean edge concentrated in too few event clusters is not robust;
+# require cluster diversity so a single busy game cannot pass the primary head.
+MIN_CONTESTED_CLUSTERS = 10
+
 
 @dataclass(frozen=True)
 class HeadVerdict:
@@ -91,16 +95,18 @@ def beat_close_head(decisions: list[SettledDecision]) -> HeadVerdict:
         edges.append(edge)
         edges_by_cluster.setdefault(d.event_cluster, []).append(edge)
     contested_n = len(edges)
+    event_clusters = len(edges_by_cluster)
     # _cluster_bootstrap_mean_ci requires a fixed string seed for deterministic
     # resampling (the codebase forbids unseeded randomness).
     ci = (
         _cluster_bootstrap_mean_ci(edges_by_cluster, seed="mlb-beat-close-v1")
         if edges else None
     )
-    mean_edge = (sum(edges) / contested_n) if contested_n else None
+    mean_edge = (ci or {}).get("mean")
     lower = (ci or {}).get("lower")
     passed = (
         contested_n >= MIN_CONTESTED_N
+        and event_clusters >= MIN_CONTESTED_CLUSTERS
         and lower is not None
         and lower > 0.0
     )
@@ -113,7 +119,8 @@ def beat_close_head(decisions: list[SettledDecision]) -> HeadVerdict:
             "contested_n": contested_n,
             "contested_disagreement": CONTESTED_DISAGREEMENT,
             "min_contested_n": MIN_CONTESTED_N,
+            "min_contested_clusters": MIN_CONTESTED_CLUSTERS,
             "cluster_bootstrap_ci95": ci,
-            "event_clusters": len(edges_by_cluster),
+            "event_clusters": event_clusters,
         },
     )

@@ -86,3 +86,13 @@ def test_beat_close_head_ignores_uncontested():
     verdict = beat_close_head(decisions)
     assert verdict.detail["contested_n"] == 0
     assert verdict.passed is False
+
+
+def test_beat_close_head_rejects_single_cluster_even_above_min_n():
+    # 40 contested decisions all in ONE event cluster: the bootstrap CI collapses,
+    # so a positive mean must NOT pass without cluster diversity.
+    decisions = [_dec("only_game", 0.85, 0.55, True) for _ in range(40)]
+    verdict = beat_close_head(decisions)
+    assert verdict.detail["contested_n"] == 40
+    assert verdict.detail["event_clusters"] == 1
+    assert verdict.passed is False
