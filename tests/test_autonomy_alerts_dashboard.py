@@ -151,9 +151,10 @@ def test_session_authorization_absent(tmp_path):
     assert state["session"]["present"] is False
     assert state["session"]["status"] == "NO_SESSION_FILE"
     fleet = state["scheduler_fleet"]
-    assert len(fleet) == 4
+    assert len(fleet) == 5
     assert {t["role"] for t in fleet} == {
-        "shadow predator", "crypto paper twin", "sports paper twin", "simulation trainer",
+        "shadow predator", "crypto paper twin", "sports paper twin",
+        "simulation trainer", "dashboard",
     }
     # Alternate runtimes never touch the Windows scheduler.
     assert all(t["state"] == "ALTERNATE_RUNTIME" for t in fleet)
