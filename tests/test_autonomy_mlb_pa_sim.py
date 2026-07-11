@@ -397,3 +397,32 @@ def test_weather_none_is_unchanged():
     a = simulate_game_markets(ctx, seed=5, sims=500)
     b = simulate_game_markets(ctx, seed=5, sims=500, weather=None)
     assert a == b  # weather=None is a no-op, preserving all S3b calibration
+
+
+def test_extreme_platoon_split_batter_uses_real_rates():
+    # A batter who crushes RHP but is weak vs LHP should score much more vs a RHP
+    # starter than the flat 7% platoon bump would ever produce.
+    from autonomy.sports.statsapi import BatterRates, LineupSlot, MlbGameContext, PitcherRates
+    strong_vs_r = BatterRates(player_id=1, bats="L", k_pct=0.12, bb_pct=0.14,
+                              obp=0.420, slg=0.620, iso=0.30)
+    weak_vs_l = BatterRates(player_id=1, bats="L", k_pct=0.30, bb_pct=0.05,
+                            obp=0.280, slg=0.330, iso=0.09)
+    split_batter = BatterRates(player_id=1, bats="L", k_pct=0.20, bb_pct=0.10,
+                               obp=0.350, slg=0.470, iso=0.20,
+                               vs_lhp=weak_vs_l, vs_rhp=strong_vs_r)
+    def ctx(pitcher_throws):
+        rates = {100 + i: split_batter for i in range(9)}
+        home = tuple(LineupSlot(i + 1, 100 + i, bats="L") for i in range(9))
+        away = tuple(LineupSlot(i + 1, 200 + i, bats="R") for i in range(9))
+        for i in range(9):
+            rates[200 + i] = BatterRates(player_id=200 + i, bats="R", k_pct=0.22,
+                                         bb_pct=0.08, obp=0.320, slg=0.400, iso=0.14)
+        return MlbGameContext(
+            game_pk=1, snapshot="confirmed", captured_at="x", home="H", away="A",
+            home_lineup=home, away_lineup=away,
+            home_pitcher=PitcherRates(player_id=9, throws="R", k_pct=0.22, bb_pct=0.08, hr9=1.2),
+            away_pitcher=PitcherRates(player_id=8, throws=pitcher_throws, k_pct=0.22, bb_pct=0.08, hr9=1.2),
+            batter_rates=rates, park_run_factor=1.0, park_hr_factor=1.0)
+    vs_rhp = sum(simulate_one_game(ctx("R"), _random.Random(s)).home_runs for s in range(60))
+    vs_lhp = sum(simulate_one_game(ctx("L"), _random.Random(s)).home_runs for s in range(60))
+    assert vs_rhp > vs_lhp * 1.3   # real split >> flat 7% platoon swing

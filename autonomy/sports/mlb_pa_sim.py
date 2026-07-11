@@ -82,7 +82,9 @@ def log5(batter: float, pitcher: float, league: float) -> float:
     return min(1.0, max(0.0, numerator / denominator))
 
 
-from autonomy.sports.statsapi import BatterRates, MlbGameContext, PitcherRates
+from autonomy.sports.statsapi import (
+    BatterRates, MlbGameContext, PitcherRates, batter_rates_vs, pitcher_rates_vs,
+)
 
 PA_OUTCOMES = ("k", "bb", "hbp", "single", "double", "triple", "hr", "out")
 
@@ -258,12 +260,28 @@ def _side_distributions(
     throws = getattr(pitcher, "throws", None)
     for slot in lineup:
         batter = batter_rates.get(slot.player_id)
-        dists.append(plate_appearance_distribution(
-            batter, pitcher,
-            park_hr_factor=park_hr_factor,
-            weather_hr_factor=weather_hr_factor,
-            platoon=_platoon(getattr(slot, "bats", None), throws) * offense_mult,
-        ))
+        batter_bats = getattr(slot, "bats", None)
+        eff_batter = batter_rates_vs(batter, throws)
+        if eff_batter is not batter:
+            # A real vs-hand split exists for this batter: it already encodes the
+            # platoon effect, so the flat multiplier collapses to 1.0 (offense_mult
+            # -- HFA/weather/TTO -- still applies). Resolve the pitcher's real
+            # split too, since the batter's real hand is now known.
+            eff_pitcher = pitcher_rates_vs(pitcher, batter_bats)
+            dists.append(plate_appearance_distribution(
+                eff_batter, eff_pitcher,
+                park_hr_factor=park_hr_factor,
+                weather_hr_factor=weather_hr_factor,
+                platoon=offense_mult,
+            ))
+        else:
+            # No split data for this batter: today's flat-platoon behavior, byte-identical.
+            dists.append(plate_appearance_distribution(
+                batter, pitcher,
+                park_hr_factor=park_hr_factor,
+                weather_hr_factor=weather_hr_factor,
+                platoon=_platoon(batter_bats, throws) * offense_mult,
+            ))
     return dists
 
 
