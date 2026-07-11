@@ -265,3 +265,43 @@ def simulate_one_game(
         home_first_inning_runs=h_first, away_first_inning_runs=a_first,
         home_runs_through_5=h_five, away_runs_through_5=a_five,
     )
+
+
+def simulate_game_markets(
+    context: MlbGameContext,
+    *,
+    seed: int = 20260711,
+    sims: int = 5000,
+    total_line: float = 8.5,
+) -> dict[str, Any]:
+    """Run N deterministic games; return coherent market probabilities."""
+    runs = max(1, int(sims))
+    rng = random.Random(seed)
+    home_wins = 0.0
+    total_over = 0
+    yrfi = 0
+    home_f5 = 0
+    total_runs_sum = 0
+    for _ in range(runs):
+        game = simulate_one_game(context, rng)
+        if game.home_runs > game.away_runs:
+            home_wins += 1.0
+        elif game.home_runs == game.away_runs:
+            home_wins += 0.5
+        combined = game.home_runs + game.away_runs
+        total_runs_sum += combined
+        if combined > total_line:
+            total_over += 1
+        if game.home_first_inning_runs + game.away_first_inning_runs >= 1:
+            yrfi += 1
+        if game.home_runs_through_5 > game.away_runs_through_5:
+            home_f5 += 1
+    return {
+        "home_win": home_wins / runs,
+        "total_over": total_over / runs,
+        "total_line": total_line,
+        "yrfi": yrfi / runs,
+        "home_f5_lead": home_f5 / runs,
+        "expected_total_runs": total_runs_sum / runs,
+        "sims": runs,
+    }

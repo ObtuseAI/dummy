@@ -240,3 +240,28 @@ def test_bullpen_fatigue_degrades_run_prevention():
     # A fatigued bullpen allows more offense: more HR, fewer strikeouts.
     assert sum(d["hr"] for d in tired) > sum(d["hr"] for d in fresh)
     assert sum(d["k"] for d in tired) < sum(d["k"] for d in fresh)
+
+
+from autonomy.sports.mlb_pa_sim import simulate_game_markets
+
+
+def test_market_probabilities_are_bounded_and_keyed():
+    ctx = _context(home_batter_iso=0.16, away_batter_iso=0.16)
+    markets = simulate_game_markets(ctx, seed=1, sims=400)
+    for key in ("home_win", "total_over", "yrfi", "home_f5_lead"):
+        assert 0.0 <= markets[key] <= 1.0
+    assert markets["sims"] == 400
+    assert markets["expected_total_runs"] > 0.0
+
+
+def test_market_simulation_is_deterministic():
+    ctx = _context(home_batter_iso=0.16, away_batter_iso=0.16)
+    a = simulate_game_markets(ctx, seed=42, sims=300)
+    b = simulate_game_markets(ctx, seed=42, sims=300)
+    assert a == b
+
+
+def test_much_stronger_home_lineup_favored_to_win():
+    ctx = _context(home_batter_iso=0.30, away_batter_iso=0.08)
+    markets = simulate_game_markets(ctx, seed=7, sims=800)
+    assert markets["home_win"] > 0.60  # a far stronger lineup wins more often
