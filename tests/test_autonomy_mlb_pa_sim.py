@@ -265,3 +265,18 @@ def test_much_stronger_home_lineup_favored_to_win():
     ctx = _context(home_batter_iso=0.30, away_batter_iso=0.08)
     markets = simulate_game_markets(ctx, seed=7, sims=800)
     assert markets["home_win"] > 0.60  # a far stronger lineup wins more often
+
+
+def test_neutral_matchup_is_calibrated_to_real_mlb():
+    """Task 6 calibration lock: a neutral (average vs. average) matchup must land
+    in real-MLB run-environment bands, not just "plausible" ones. Real MLB is
+    roughly ~8.5 expected total runs, ~0.55 YRFI, and a near coin-flip home_win
+    for equal teams. Bands here are tighter than the original spec draft
+    ([6,12] total runs / [0.30,0.75] YRFI) precisely because this test's job is
+    to lock aggregate realism, not just sanity.
+    """
+    ctx = _context(home_batter_iso=0.15, away_batter_iso=0.15)
+    markets = simulate_game_markets(ctx, seed=2026, sims=3000)
+    assert 8.0 <= markets["expected_total_runs"] <= 9.5    # real MLB ~8.5
+    assert 0.48 <= markets["yrfi"] <= 0.62                 # real MLB ~0.55
+    assert 0.47 <= markets["home_win"] <= 0.58             # near coin-flip for equal teams

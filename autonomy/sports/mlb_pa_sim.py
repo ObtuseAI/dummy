@@ -25,6 +25,17 @@ LEAGUE: dict[str, float] = {
     "out": 0.457,  # in-play outs; the eight fields sum to 1.0
 }
 
+# Calibration constants (Task 6): tuned so a neutral matchup (average batters vs
+# average pitchers, `_context(home_batter_iso=0.15, away_batter_iso=0.15)`) lands
+# in real-MLB run-environment bands -- expected_total_runs in [8.0, 9.5] (real
+# MLB ~8.5), yrfi in [0.48, 0.62] (real MLB ~0.55), home_win in [0.47, 0.58].
+# LEAGUE itself needed no change (its k/bb/hbp/hr entries were already close to
+# real 2020s rates); the run environment was too low because on-contact hit
+# share and HR-from-ISO were set conservatively. See mlb_pa_sim_demo.py.
+HR_ISO_MULT = 0.20  # batter HR prob = iso * HR_ISO_MULT, clamped to [0.004, 0.09]
+HIT_SHARE_BASE = 0.40  # baseline share of a non-KBBHBPHR PA that becomes a hit
+HIT_SHARE_CAP = 0.55  # upper clamp so elite sluggers keep differentiating past 0.44
+
 
 def log5(batter: float, pitcher: float, league: float) -> float:
     """Bill James odds-ratio combination of a batter and pitcher rate.
@@ -66,7 +77,7 @@ def plate_appearance_distribution(
     b_bb = _rate(getattr(batter, "bb_pct", None), LEAGUE["bb"])
     p_bb = _rate(getattr(pitcher, "bb_pct", None), LEAGUE["bb"])
     iso = getattr(batter, "iso", None)
-    b_hr = min(0.09, max(0.004, iso * 0.13)) if iso is not None else LEAGUE["hr"]
+    b_hr = min(0.09, max(0.004, iso * HR_ISO_MULT)) if iso is not None else LEAGUE["hr"]
     hr9 = getattr(pitcher, "hr9", None)
     p_hr = (hr9 / 38.0) if hr9 is not None else LEAGUE["hr"]
 
@@ -81,7 +92,7 @@ def plate_appearance_distribution(
     obp = _rate(getattr(batter, "obp", None), 0.320)
     slg = _rate(getattr(batter, "slg", None), 0.400)
     # On-contact hit share rises with both on-base skill (obp) and power (slg).
-    hit_share = min(0.44, max(0.20, 0.28 + (obp - 0.320) * 1.2 + (slg - 0.400) * 0.35))
+    hit_share = min(HIT_SHARE_CAP, max(0.20, HIT_SHARE_BASE + (obp - 0.320) * 1.2 + (slg - 0.400) * 0.35))
     hits = remaining * hit_share * platoon
     out = max(0.0, remaining - hits)
     # Split non-HR hits into single/double/triple, tilting toward doubles with ISO.
@@ -167,7 +178,9 @@ def simulate_half_inning(
     return runs, cursor
 
 
-STARTER_BATTERS_FACED = 26  # ~6 innings before the bullpen takes over
+STARTER_BATTERS_FACED = 20  # ~4-5 innings before the bullpen takes over (Task 6 calibration)
+BULLPEN_K_BOOST = 1.7  # fresh reliever strikes out more than LEAGUE["k"] alone implies
+BULLPEN_BASE_HR9 = 0.20  # fresh reliever allows far fewer HR/9 than a tiring starter
 
 
 @dataclass(frozen=True)
@@ -211,13 +224,14 @@ def _bullpen_distributions(
     fatigue: dict[int, float],
     park_hr_factor: float,
 ) -> list[dict[str, float]]:
-    # League-average reliever, degraded slightly by aggregate bullpen fatigue.
+    # Fresh, high-leverage single-inning reliever (real bullpens run measurably
+    # cooler than a tiring/pacing starter), degraded by aggregate bullpen fatigue.
     avg_fatigue = (sum(fatigue.values()) / len(fatigue)) if fatigue else 0.0
     reliever = PitcherRates(
         player_id=-1, throws=None,
-        k_pct=LEAGUE["k"] * (1.0 - 0.15 * avg_fatigue),
+        k_pct=LEAGUE["k"] * BULLPEN_K_BOOST * (1.0 - 0.15 * avg_fatigue),
         bb_pct=LEAGUE["bb"] * (1.0 + 0.20 * avg_fatigue),
-        hr9=1.25 * (1.0 + 0.20 * avg_fatigue),
+        hr9=BULLPEN_BASE_HR9 * (1.0 + 0.20 * avg_fatigue),
     )
     return _side_distributions(lineup, batter_rates, reliever, park_hr_factor)
 
