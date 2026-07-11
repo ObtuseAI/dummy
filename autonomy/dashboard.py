@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import time
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
@@ -15,6 +16,8 @@ from urllib.parse import urlparse
 from starlette.requests import Request
 
 RUNTIME_DIR = Path("runtime/autonomy")
+SHADOW_TASK_NAME = "DummyShadowPredator"
+TRAINER_TASK_NAME = "DummySimulationTrainer"
 
 
 def _load_json(path: Path) -> Any:
@@ -42,6 +45,49 @@ def _tail_jsonl(path: Path, limit: int) -> list[dict[str, Any]]:
     return out
 
 
+def session_authorization_state(runtime_dir: Path) -> dict[str, Any]:
+    """Summarize the operator session authorization with explicit expiry truth.
+
+    A LIVE session file whose ``expires_at`` has passed is the daemon's cue to
+    fall back to SHADOW; surface that state loudly instead of leaving the
+    operator to infer it from the heartbeat mode.
+    """
+    session = _load_json(runtime_dir / "session.json")
+    if not isinstance(session, dict) or not session:
+        return {"present": False, "mode": None, "status": "NO_SESSION_FILE"}
+    expires_raw = session.get("expires_at")
+    expired: bool | None = None
+    seconds_remaining: float | None = None
+    try:
+        expires = datetime.fromisoformat(str(expires_raw).replace("Z", "+00:00"))
+        if expires.tzinfo is not None:
+            remaining = (expires - datetime.now(timezone.utc)).total_seconds()
+            seconds_remaining = round(remaining, 1)
+            expired = remaining <= 0
+    except (TypeError, ValueError):
+        pass
+    mode = str(session.get("mode") or "").upper() or None
+    if mode == "LIVE" and expired:
+        status = "LIVE_AUTHORIZATION_EXPIRED"
+    elif mode == "LIVE" and expired is False:
+        status = "LIVE_AUTHORIZED"
+    elif mode:
+        status = mode
+    else:
+        status = "UNKNOWN"
+    return {
+        "present": True,
+        "mode": mode,
+        "operator": session.get("operator"),
+        "started_at": session.get("started_at"),
+        "expires_at": expires_raw,
+        "expired": expired,
+        "seconds_remaining": seconds_remaining,
+        "limit_orders_only": bool(session.get("limit_orders_only")),
+        "status": status,
+    }
+
+
 def assemble_dashboard_state(runtime_dir: Path | None = None) -> dict[str, Any]:
     """Assemble the full read-only dashboard state (pure)."""
     rd = runtime_dir or RUNTIME_DIR
@@ -56,20 +102,27 @@ def assemble_dashboard_state(runtime_dir: Path | None = None) -> dict[str, Any]:
 
     paper_operation = assemble_paper_dashboard(rd)
     sports_operation = assemble_sports_dashboard(rd)
-    paper_scheduler = scheduled_task_status() if runtime_dir is None else {
-        "task_name": "DummyCryptoPaperTwin",
-        "supported": False,
-        "enabled": False,
-        "state": "ALTERNATE_RUNTIME",
-        "healthy": False,
-    }
-    sports_scheduler = scheduled_task_status(SPORTS_TASK_NAME) if runtime_dir is None else {
-        "task_name": SPORTS_TASK_NAME,
-        "supported": False,
-        "enabled": False,
-        "state": "ALTERNATE_RUNTIME",
-        "healthy": False,
-    }
+
+    def _task_status(task_name: str) -> dict[str, Any]:
+        if runtime_dir is None:
+            return scheduled_task_status(task_name)
+        return {
+            "task_name": task_name,
+            "supported": False,
+            "enabled": False,
+            "state": "ALTERNATE_RUNTIME",
+            "healthy": False,
+        }
+
+    paper_scheduler = _task_status("DummyCryptoPaperTwin")
+    sports_scheduler = _task_status(SPORTS_TASK_NAME)
+    scheduler_fleet = [
+        {"role": "shadow predator", **_task_status(SHADOW_TASK_NAME)},
+        {"role": "crypto paper twin", **paper_scheduler},
+        {"role": "sports paper twin", **sports_scheduler},
+        {"role": "simulation trainer", **_task_status(TRAINER_TASK_NAME)},
+    ]
+    session = session_authorization_state(rd)
 
     ledger_summary: dict[str, Any] = {}
     statistics_intake: dict[str, Any] = {}
@@ -113,6 +166,8 @@ def assemble_dashboard_state(runtime_dir: Path | None = None) -> dict[str, Any]:
 
     return {
         "heartbeat": heartbeat,
+        "session": session,
+        "scheduler_fleet": scheduler_fleet,
         "risk_state": risk_state,
         "ledger": ledger_summary,
         "canary": canary,
@@ -165,10 +220,13 @@ _HTML = """<!doctype html>
  th{color:#8b949e;font-weight:600} .pill{padding:1px 7px;border-radius:10px;font-size:11px}
  .live{background:#0d3b1e;color:#3fb950} .dead{background:#3b0d0d;color:#f85149}
  .paper-grid{display:grid;grid-template-columns:1.1fr .9fr;gap:14px;margin-bottom:14px}.span{grid-column:1/-1}.table-wrap{overflow:auto;max-height:420px}.explain{max-width:520px;color:#b7c2cf;line-height:1.35}.muted{color:var(--muted)}.bar{height:7px;background:#202a37;border-radius:5px;overflow:hidden;margin:5px 0 10px}.bar>i{display:block;height:100%;background:linear-gradient(90deg,var(--blue),#7ee787);border-radius:5px}.chart{width:100%;height:170px}.control-msg{min-height:16px;color:var(--muted);font-size:11px}.section-title{font-size:14px;margin:22px 0 10px}.truth{border-left:3px solid var(--amber);padding:8px 10px;background:#211b10;color:#d7c8a0;font-size:11px;margin-top:10px}
+ .banner{display:none;border-radius:10px;padding:11px 14px;margin-bottom:14px;font-size:13px;font-weight:700;border:1px solid var(--line)}
+ .banner.show{display:block}.banner.bad{background:#2d1113;border-color:#713034;color:#ff9ba0}.banner.warn{background:#2a2109;border-color:#6b5518;color:#e8c76c}.banner.ok{background:#0e2a18;border-color:#245f38;color:#7ee787}.banner.muted{background:#141b26;color:var(--muted)}
  @media(max-width:900px){body{padding:14px}.topbar{display:block}.controls{justify-content:flex-start;margin-top:12px}.paper-grid{grid-template-columns:1fr}}
 </style></head><body>
 <div class="topbar"><div><div class="eyebrow">Evidence-gated operations</div><h1>DUMMY // paper trading command center</h1><div class="sub" id="ts">loading…</div></div>
 <div class="controls"><span id="schedulerBadge" class="pill dead">CHECKING</span><button id="startBtn" class="btn start" onclick="controlPaper('start')">Start paper twin</button><button id="stopBtn" class="btn stop" onclick="controlPaper('stop')">Stop after cycle</button><div id="controlMsg" class="control-msg"></div></div></div>
+<div id="authBanner" class="banner"></div>
 <div class="hero">
  <div class="metric"><div class="label">Scheduler</div><div class="value" id="mScheduler">—</div><div class="note" id="mNext">Windows task</div></div>
  <div class="metric"><div class="label">Active paper trades</div><div class="value" id="mOpen">—</div><div class="note" id="mRisk">quote-simulated positions</div></div>
@@ -208,6 +266,8 @@ _HTML = """<!doctype html>
 </div>
 <div class="section-title">Autonomy evidence and risk detail</div>
 <div class="grid">
+ <div class="card"><h2>Session authorization</h2><div id="session"></div></div>
+ <div class="card"><h2>Scheduler fleet</h2><div id="fleet"></div></div>
  <div class="card"><h2>Liveness</h2><div id="live"></div></div>
  <div class="card"><h2>Live canary gate</h2><div id="canary"></div></div>
  <div class="card"><h2>Risk</h2><div id="risk"></div></div>
@@ -280,9 +340,12 @@ function renderPaper(d){
  const active=op.active_trades||[];
  document.getElementById('activeTrades').innerHTML=active.length?'<table><tr><th>closes</th><th>asset / horizon</th><th>target</th><th>side</th><th>entry</th><th>model / market</th><th>edge / EV</th><th>maker witness</th><th>decision</th></tr>'
    +active.map(t=>`<tr><td>${dt(t.close_time)}</td><td><b>${esc(t.asset)} ${esc(t.timeframe)}</b><br><span class="muted">${esc(t.strategy)}</span></td><td>${esc((t.target||{}).label||t.ticker)}</td><td>${esc(t.side)}</td><td>${t.entry_price_cents}¢ + ${t.fee_cents}¢</td><td>${pct(t.probability_yes)} / ${pct(t.market_probability)}</td><td>${Number(t.edge_cents||0).toFixed(2)}¢ / ${Number(t.conservative_ev_cents||0).toFixed(2)}¢</td><td>${esc(t.maker_status)}</td><td class="explain">${esc(t.explanation)}</td></tr>`).join('')+'</table>':'<div class="muted">No open paper trades. The engine is scanning and may abstain when no target clears policy.</div>';
- const lanes=(op.lanes||[]).filter(x=>Number(x.trades||0)>0||Number(x.settled_trades||0)>0);
- document.getElementById('lanePerformance').innerHTML=lanes.length?'<table><tr><th>lane</th><th>trades</th><th>settled</th><th>wins</th><th>quote P&amp;L</th><th>Brier skill</th><th>maker fills</th><th>maker P&amp;L</th><th>drawdown</th></tr>'
-   +lanes.map(x=>`<tr><td>${esc(x.vertical)} · ${esc(x.timeframe)} · ${esc(x.strategy)}</td><td>${x.trades??0}</td><td>${x.settled_trades??0}</td><td>${x.wins??0}</td><td class="${Number(x.net_pnl_cents||0)>=0?'ok':'bad'}">${cents(x.net_pnl_cents)}</td><td>${pct(x.brier_skill_vs_market)}</td><td>${x.maker_fills??0} / ${x.maker_orders??0}</td><td>${cents(x.maker_net_pnl_cents)}</td><td>${cents(-(Number(x.max_drawdown_cents||0)))}</td></tr>`).join('')+'</table>':'<div class="muted">No lane evidence yet.</div>';
+ const allLanes=op.lanes||[];
+ const lanes=allLanes.filter(x=>Number(x.trades||0)>0||Number(x.settled_trades||0)>0);
+ const silent=allLanes.filter(x=>!(Number(x.trades||0)>0||Number(x.settled_trades||0)>0)).map(x=>`${x.vertical}·${x.timeframe}·${x.strategy}`);
+ const silentNote=silent.length?`<div class="muted" style="margin-top:8px">never traded (abstain-only so far): ${silent.map(esc).join(', ')}</div>`:'';
+ document.getElementById('lanePerformance').innerHTML=(lanes.length?'<table><tr><th>lane</th><th>trades</th><th>settled</th><th>wins</th><th>quote P&amp;L</th><th>Brier skill</th><th>maker fills</th><th>maker P&amp;L</th><th>drawdown</th></tr>'
+   +lanes.map(x=>`<tr><td>${esc(x.vertical)} · ${esc(x.timeframe)} · ${esc(x.strategy)}</td><td>${x.trades??0}</td><td>${x.settled_trades??0}</td><td>${x.wins??0}</td><td class="${Number(x.net_pnl_cents||0)>=0?'ok':'bad'}">${cents(x.net_pnl_cents)}</td><td>${pct(x.brier_skill_vs_market)}</td><td>${x.maker_fills??0} / ${x.maker_orders??0}</td><td>${cents(x.maker_net_pnl_cents)}</td><td>${cents(-(Number(x.max_drawdown_cents||0)))}</td></tr>`).join('')+'</table>':'<div class="muted">No lane evidence yet.</div>')+silentNote;
  const coverageMatrix=forced.matrix||[];
  document.getElementById('cryptoCoverage').innerHTML=coverageMatrix.length?'<table><tr><th>asset</th><th>horizon</th><th>status</th><th>targets now</th><th>new forced</th><th>open</th><th>settled</th><th>P&amp;L</th><th>explanation</th></tr>'
    +coverageMatrix.map(x=>`<tr><td><b>${esc(x.asset)}</b></td><td>${esc(x.timeframe)}</td><td class="${x.is_coverage_gap?'warn':'ok'}">${esc(x.status)}</td><td>${x.targets_observed_this_cycle??0}</td><td>${x.forced_trades_recorded_this_cycle??0}</td><td>${x.open_decisions??0}</td><td>${x.settled_decisions??0}</td><td>${cents(x.net_pnl_cents)}</td><td class="explain">${esc(x.explanation)}</td></tr>`).join('')+'</table>':'<div class="muted">Waiting for the first forced crypto coverage cycle.</div>';
@@ -326,6 +389,31 @@ function renderSports(d){
  const explanations=[...(op.active_trades||[]),...(op.recent_settlements||[])];
  document.getElementById('sportsExplanations').innerHTML=explanations.length?explanations.slice(0,12).map(x=>`<div style="padding:8px 0;border-bottom:1px solid #243041"><div><b>${esc(String(x.sport||'').toUpperCase())} ${esc(x.market_type)} · ${esc(x.lane)}</b> <span class="muted">${dt(x.observed_at)}</span></div><div class="explain">${esc(x.explanation)}</div></div>`).join(''):'<div class="muted">Waiting for explained sports paper decisions.</div>';
 }
+const remain=s=>{if(s==null)return '—';const v=Math.abs(Number(s)),h=Math.floor(v/3600),m=Math.floor((v%3600)/60);return (Number(s)<0?'-':'')+(h?h+'h ':'')+m+'m';};
+function renderSession(s,hb){
+ const banner=document.getElementById('authBanner');
+ let cls='muted',text='';
+ if(s.status==='LIVE_AUTHORIZATION_EXPIRED'){cls='bad';text=`LIVE authorization EXPIRED ${dt(s.expires_at)} (${remain(s.seconds_remaining)} ago). Daemon fail-closed to SHADOW. Re-run start --live --ack to re-authorize.`;}
+ else if(s.status==='LIVE_AUTHORIZED'){const warn=Number(s.seconds_remaining||0)<7200;cls=warn?'warn':'ok';text=`LIVE authorized by ${esc(s.operator||'operator')} · expires ${dt(s.expires_at)} (${remain(s.seconds_remaining)} left)${s.limit_orders_only?' · LIMIT only':''}${warn?' · EXPIRING SOON':''}`;}
+ else if(s.present){cls='muted';text=`Session mode ${esc(s.mode||s.status)} · no live authorization active.`;}
+ else{cls='muted';text='No session file. Daemon runs SHADOW only until an operator authorizes live.';}
+ banner.className='banner show '+cls; banner.textContent=text;
+ const modeMismatch=s.status==='LIVE_AUTHORIZED'&&hb.mode&&hb.mode!=='LIVE';
+ document.getElementById('session').innerHTML=
+   kv('status',esc(s.status||'—'),s.status==='LIVE_AUTHORIZED'?'ok':s.status==='LIVE_AUTHORIZATION_EXPIRED'?'bad':'warn')
+   +kv('operator',esc(s.operator||'—'))+kv('started',dt(s.started_at))+kv('expires',dt(s.expires_at))
+   +kv('remaining',s.expired?'expired '+remain(s.seconds_remaining)+' ago':remain(s.seconds_remaining),s.expired?'bad':'ok')
+   +kv('limit orders only',s.limit_orders_only?'yes':'—')
+   +kv('daemon mode',esc(hb.mode||'—'),modeMismatch?'warn':'')
+   +(modeMismatch?'<div class="kv"><span class="warn">!</span><span>daemon has not picked up the live session yet</span></div>':'');
+}
+function renderFleet(fleet){
+ document.getElementById('fleet').innerHTML=fleet.length?fleet.map(t=>{
+  const enabled=!!t.enabled,healthy=!!t.healthy;
+  const badge=t.state==='ALTERNATE_RUNTIME'?'—':enabled?(t.running?'RUNNING':healthy?'READY':'DEGRADED'):'STOPPED';
+  return `<div class="kv"><span>${esc(t.role)}</span><b><span class="pill ${enabled&&healthy?'live':'dead'}">${badge}</span> <span class="muted">${dt(t.next_run_time)}</span></b></div>`;
+ }).join(''):'<div class="muted">No scheduler telemetry.</div>';
+}
 let tickGeneration=0;
 async function controlPaper(action){
  const msg=document.getElementById('controlMsg'),buttons=[document.getElementById('startBtn'),document.getElementById('stopBtn')];buttons.forEach(x=>x.disabled=true);msg.textContent=action==='start'?'Starting paper scheduler…':'Pausing future cycles…';
@@ -341,6 +429,8 @@ async function tick(){
  if(generation!==tickGeneration)return;
  document.getElementById('ts').textContent='updated '+new Date().toLocaleTimeString();
  try{renderPaper(d);renderSports(d);}catch(e){document.getElementById('ts').textContent+=' · paper render error: '+e.message;console.error('paper render',e);}
+ renderSession(d.session||{},d.heartbeat||{});
+ renderFleet(d.scheduler_fleet||[]);
  const hb=d.heartbeat||{};
  document.getElementById('live').innerHTML =
    kv('status', `<span class="pill ${hb.alive?'live':'dead'}">${hb.alive?'ALIVE':'STALE'}</span>`)

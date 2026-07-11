@@ -144,3 +144,59 @@ def test_dashboard_app_serves(tmp_path, monkeypatch):
     r = client.get("/api/autonomy")
     assert r.status_code == 200
     assert "heartbeat" in r.json()
+
+
+def test_session_authorization_absent(tmp_path):
+    state = assemble_dashboard_state(runtime_dir=tmp_path)
+    assert state["session"]["present"] is False
+    assert state["session"]["status"] == "NO_SESSION_FILE"
+    fleet = state["scheduler_fleet"]
+    assert len(fleet) == 4
+    assert {t["role"] for t in fleet} == {
+        "shadow predator", "crypto paper twin", "sports paper twin", "simulation trainer",
+    }
+    # Alternate runtimes never touch the Windows scheduler.
+    assert all(t["state"] == "ALTERNATE_RUNTIME" for t in fleet)
+
+
+def test_session_authorization_expired_is_loud(tmp_path):
+    (tmp_path / "session.json").write_text(
+        json.dumps({
+            "mode": "LIVE",
+            "operator": "chris",
+            "started_at": "2026-07-09T08:49:31+00:00",
+            "expires_at": "2026-07-10T08:49:31+00:00",
+            "limit_orders_only": True,
+        }),
+        encoding="utf-8",
+    )
+    state = assemble_dashboard_state(runtime_dir=tmp_path)
+    session = state["session"]
+    assert session["status"] == "LIVE_AUTHORIZATION_EXPIRED"
+    assert session["expired"] is True
+    assert session["seconds_remaining"] < 0
+    assert session["limit_orders_only"] is True
+
+
+def test_session_authorization_active_live(tmp_path):
+    from datetime import datetime, timedelta, timezone
+
+    expires = (datetime.now(timezone.utc) + timedelta(hours=6)).isoformat()
+    (tmp_path / "session.json").write_text(
+        json.dumps({"mode": "LIVE", "operator": "chris", "expires_at": expires}),
+        encoding="utf-8",
+    )
+    state = assemble_dashboard_state(runtime_dir=tmp_path)
+    session = state["session"]
+    assert session["status"] == "LIVE_AUTHORIZED"
+    assert session["expired"] is False
+    assert session["seconds_remaining"] > 0
+
+
+def test_session_shadow_mode_is_not_live(tmp_path):
+    (tmp_path / "session.json").write_text(
+        json.dumps({"mode": "SHADOW", "operator": "chris"}), encoding="utf-8",
+    )
+    state = assemble_dashboard_state(runtime_dir=tmp_path)
+    assert state["session"]["status"] == "SHADOW"
+    assert state["session"]["mode"] == "SHADOW"
