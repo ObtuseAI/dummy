@@ -2,7 +2,7 @@ from pathlib import Path
 
 
 def test_dummy_path_integrity():
-    from scripts.generate_v6_reports import generate_dummy_path_integrity_report_v1
+    from archive.report_scripts.generate_v6_reports import generate_dummy_path_integrity_report_v1
     report = generate_dummy_path_integrity_report_v1()
     assert report["active_root"] == "C:\\src\\engine\\dummy"
     assert report["old_root_absent"] is True

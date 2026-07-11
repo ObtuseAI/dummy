@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from scripts.generate_v8_1_reports import generate_direct_order_bypass_report_v8_1
+from archive.report_scripts.generate_v8_1_reports import generate_direct_order_bypass_report_v8_1
 
 
 def test_direct_order_bypass_report_passes_for_v8_1_files():
@@ -18,8 +18,8 @@ def test_v8_1_modules_do_not_contain_order_calls():
     files = [
         root / "model_router" / "resolver.py",
         root / "model_router" / "smoke.py",
-        root / "scripts" / "generate_v8_1_reports.py",
-        root / "dashboard" / "backend" / "v8_routes.py",
+        root / "archive" / "report_scripts" / "generate_v8_1_reports.py",
+        root / "archive" / "routes" / "v8_routes.py",
     ]
     disallowed = [
         "create_order(",

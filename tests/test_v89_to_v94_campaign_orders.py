@@ -1,12 +1,12 @@
 from __future__ import annotations
 
 from predator_mesh import staged_gate_common as sgc
-from scripts.generate_v89_reports import generate_all_v89_reports_for_tests
-from scripts.generate_v90_reports import generate_all_v90_reports_for_tests
-from scripts.generate_v91_reports import generate_all_v91_reports_for_tests
-from scripts.generate_v92_reports import generate_all_v92_reports_for_tests
-from scripts.generate_v93_reports import generate_all_v93_reports_for_tests
-from scripts.generate_v94_reports import generate_all_v94_reports_for_tests
+from archive.report_scripts.generate_v89_reports import generate_all_v89_reports_for_tests
+from archive.report_scripts.generate_v90_reports import generate_all_v90_reports_for_tests
+from archive.report_scripts.generate_v91_reports import generate_all_v91_reports_for_tests
+from archive.report_scripts.generate_v92_reports import generate_all_v92_reports_for_tests
+from archive.report_scripts.generate_v93_reports import generate_all_v93_reports_for_tests
+from archive.report_scripts.generate_v94_reports import generate_all_v94_reports_for_tests
 from tests.staged_gate_test_helpers import assert_staged_safe
 
 CAMPAIGN = {"exact_phrase": sgc.MICRO_CAMPAIGN_PHRASE, "operator": "op", "timestamp": "t", "reason": "r", "scope": sgc.MICRO_CAMPAIGN_SCOPE, "expiration": "e"}

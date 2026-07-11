@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from scripts.generate_v8_1_reports import generate_no_live_submit_still_disabled_report_v8_1
+from archive.report_scripts.generate_v8_1_reports import generate_no_live_submit_still_disabled_report_v8_1
 
 
 def test_live_submit_report_passes_when_disabled(tmp_path, monkeypatch):
@@ -14,7 +14,7 @@ def test_live_submit_report_passes_when_disabled(tmp_path, monkeypatch):
     live_submit = configs / "live_submit.json"
     live_submit.write_text(json.dumps({"enabled": False}))
     monkeypatch.setattr(
-        "scripts.generate_v8_1_reports.ROOT", tmp_path
+        "archive.report_scripts.generate_v8_1_reports.ROOT", tmp_path
     )
 
     report = generate_no_live_submit_still_disabled_report_v8_1()
@@ -28,7 +28,7 @@ def test_live_submit_report_fails_when_enabled(tmp_path, monkeypatch):
     live_submit = configs / "live_submit.json"
     live_submit.write_text(json.dumps({"enabled": True}))
     monkeypatch.setattr(
-        "scripts.generate_v8_1_reports.ROOT", tmp_path
+        "archive.report_scripts.generate_v8_1_reports.ROOT", tmp_path
     )
 
     report = generate_no_live_submit_still_disabled_report_v8_1()

@@ -4,7 +4,7 @@ from unittest.mock import patch
 
 import pytest
 
-from scripts.generate_v8_2_reports import generate_model_id_validation_report_v1
+from archive.report_scripts.generate_v8_2_reports import generate_model_id_validation_report_v1
 
 
 @pytest.mark.asyncio

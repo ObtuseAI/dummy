@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from scripts.generate_v10_reports import generate_no_live_submit_still_disabled_report_v10
+from archive.report_scripts.generate_v10_reports import generate_no_live_submit_still_disabled_report_v10
 
 
 def test_live_submit_still_disabled_v10() -> None:

@@ -7,7 +7,7 @@ from predator_mesh.v12.orderbook_snapshot import (
     OrderbookSnapshotRequest,
     RealKalshiOrderbookSnapshotAdapter,
 )
-from scripts.generate_v12_reports import generate_orderbook_snapshot_mode_report_v1
+from archive.report_scripts.generate_v12_reports import generate_orderbook_snapshot_mode_report_v1
 
 
 class FailingReadOnlyClient:

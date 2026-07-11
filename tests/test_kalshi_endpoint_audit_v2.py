@@ -7,7 +7,7 @@ import pytest
 
 @pytest.mark.asyncio
 async def test_kalshi_endpoint_audit_report_v2():
-    from scripts.generate_v8_kalshi_reports import generate_kalshi_endpoint_audit_report_v2
+    from archive.report_scripts.generate_v8_kalshi_reports import generate_kalshi_endpoint_audit_report_v2
 
     report = await generate_kalshi_endpoint_audit_report_v2()
     assert report["verdict"] in ("PASS", "SKIP")
@@ -25,7 +25,7 @@ async def test_kalshi_endpoint_audit_report_v2():
 
 @pytest.mark.asyncio
 async def test_kalshi_endpoint_audit_no_write_methods_when_credentials_absent():
-    from scripts.generate_v8_kalshi_reports import generate_kalshi_endpoint_audit_report_v2
+    from archive.report_scripts.generate_v8_kalshi_reports import generate_kalshi_endpoint_audit_report_v2
 
     report = await generate_kalshi_endpoint_audit_report_v2()
     if not os.environ.get("KALSHI_API_KEY_ID"):

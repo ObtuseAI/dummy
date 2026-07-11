@@ -5,7 +5,7 @@ from __future__ import annotations
 import pytest
 
 from predator_mesh.v298.reports import full_authority_arm
-from scripts.generate_v298_reports import generate_all_v298_reports_for_tests
+from archive.report_scripts.generate_v298_reports import generate_all_v298_reports_for_tests
 
 
 def _patch_live_mode(monkeypatch):

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from scripts.generate_v14_reports import generate_dummy_canonical_identity_report_v14
+from archive.report_scripts.generate_v14_reports import generate_dummy_canonical_identity_report_v14
 
 
 def test_dummy_canonical_identity_v14_report_passes() -> None:

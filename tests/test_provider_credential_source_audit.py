@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from scripts.generate_v8_2_reports import generate_provider_credential_source_audit_report_v1
+from archive.report_scripts.generate_v8_2_reports import generate_provider_credential_source_audit_report_v1
 
 
 def test_credential_source_audit_has_project_env_path():

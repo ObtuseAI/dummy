@@ -7,7 +7,7 @@ import pytest
 
 @pytest.mark.asyncio
 async def test_real_kalshi_read_only_report_v4():
-    from scripts.generate_v8_kalshi_reports import generate_real_kalshi_read_only_report_v4
+    from archive.report_scripts.generate_v8_kalshi_reports import generate_real_kalshi_read_only_report_v4
 
     report = await generate_real_kalshi_read_only_report_v4()
     assert report["verdict"] in ("PASS", "SKIP")
@@ -25,7 +25,7 @@ async def test_real_kalshi_read_only_report_v4():
 
 @pytest.mark.asyncio
 async def test_real_kalshi_read_only_report_no_secrets():
-    from scripts.generate_v8_kalshi_reports import generate_real_kalshi_read_only_report_v4
+    from archive.report_scripts.generate_v8_kalshi_reports import generate_real_kalshi_read_only_report_v4
 
     report = await generate_real_kalshi_read_only_report_v4()
     text = str(report)

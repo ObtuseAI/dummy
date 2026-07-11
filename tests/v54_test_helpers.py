@@ -37,7 +37,7 @@ def approval_input(phrase: str = VALID_PHRASE) -> dict[str, str]:
 
 
 def v54_reports(**kwargs: Any) -> dict[str, dict[str, Any]]:
-    from scripts.generate_v54_reports import generate_all_v54_reports_for_tests
+    from archive.report_scripts.generate_v54_reports import generate_all_v54_reports_for_tests
 
     return generate_all_v54_reports_for_tests(**kwargs)
 

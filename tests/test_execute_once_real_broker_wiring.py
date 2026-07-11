@@ -9,7 +9,7 @@ import pytest
 
 from predator_mesh import staged_gate_common as sgc
 from predator_mesh.v298.reports import full_authority_arm
-from scripts.generate_v298_reports import generate_all_v298_reports_for_tests
+from archive.report_scripts.generate_v298_reports import generate_all_v298_reports_for_tests
 
 
 def _patch_live_mode(monkeypatch, live_submit_enabled: bool = True, credentials_ready: bool = True):

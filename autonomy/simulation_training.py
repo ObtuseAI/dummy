@@ -26,6 +26,7 @@ from typing import Any, Iterable, Sequence
 
 from autonomy.correlation import group_key
 from autonomy.fees import kalshi_taker_fee_cents
+from autonomy.stats import mean_ci95 as _mean_ci95
 
 
 @dataclass(frozen=True)
@@ -74,20 +75,6 @@ def _percentile(values: Sequence[float], fraction: float) -> float | None:
     weight = index - lower
     return ordered[lower] * (1.0 - weight) + ordered[upper] * weight
 
-
-def _mean_ci95(values: Sequence[float]) -> dict[str, Any] | None:
-    if not values:
-        return None
-    numbers = [float(value) for value in values]
-    mean = sum(numbers) / len(numbers)
-    if len(numbers) < 2:
-        return {"mean": round(mean, 6), "lower": None, "upper": None,
-                "n": len(numbers), "method": "normal_mean_95"}
-    variance = sum((value - mean) ** 2 for value in numbers) / (len(numbers) - 1)
-    half = 1.96 * math.sqrt(variance / len(numbers))
-    return {"mean": round(mean, 6), "lower": round(mean - half, 6),
-            "upper": round(mean + half, 6), "n": len(numbers),
-            "method": "normal_mean_95"}
 
 
 def _wilson(successes: int, total: int) -> dict[str, Any] | None:

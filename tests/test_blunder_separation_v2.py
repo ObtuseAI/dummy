@@ -8,7 +8,7 @@ BLUNDER_ROOT = Path("C:/src/engine/obtuse/blunder")
 
 def test_dumby_does_not_import_blunder():
     """No Dummy Python file imports the canonical Blunder package."""
-    excluded = {".git", "__pycache__", ".pytest_cache", ".venv", "venv", "node_modules", "tests", "scripts"}
+    excluded = {"archive", ".git", "__pycache__", ".pytest_cache", ".venv", "venv", "node_modules", "tests", "scripts"}
     for py in Path(".").rglob("*.py"):
         if any(part in excluded for part in py.parts):
             continue

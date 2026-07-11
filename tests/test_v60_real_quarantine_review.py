@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from predator_mesh.v59.reports import _build_quarantine_instances, _write_quarantine_instances
 from predator_mesh.v55.reports import _approval_hash
-from scripts.generate_v60_reports import generate_all_v60_reports_for_tests
+from archive.report_scripts.generate_v60_reports import generate_all_v60_reports_for_tests
 from tests.staged_gate_test_helpers import assert_staged_safe
 from tests.v59_test_helpers import approval_input
 

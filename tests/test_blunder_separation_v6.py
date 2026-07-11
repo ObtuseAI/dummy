@@ -1,5 +1,5 @@
 def test_blunder_separation_recheck_v6():
-    from scripts.generate_v8_identity_reports import generate_blunder_separation_recheck_v6
+    from archive.report_scripts.generate_v8_identity_reports import generate_blunder_separation_recheck_v6
 
     report = generate_blunder_separation_recheck_v6()
     assert report["verdict"] == "PASS"

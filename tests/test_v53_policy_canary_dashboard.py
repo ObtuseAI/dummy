@@ -3,7 +3,7 @@ from __future__ import annotations
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from dashboard.backend.v53_routes import router
+from archive.routes.v53_routes import router
 from predator_mesh.v53.reports import ALLOWED_REHEARSAL_ARTIFACT_TYPES, DENIED_REHEARSAL_ARTIFACT_TYPES, SAFETY_REPORT_NAMES
 from tests.v53_test_helpers import ApprovalIntakeReadOnlyTransport, approval_input, assert_v53_report_named, v53_reports
 

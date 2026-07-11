@@ -4,7 +4,7 @@ from typing import Any
 
 
 def v38_reports(**kwargs: Any) -> dict[str, dict[str, Any]]:
-    from scripts.generate_v38_reports import generate_all_v38_reports_for_tests
+    from archive.report_scripts.generate_v38_reports import generate_all_v38_reports_for_tests
 
     kwargs.setdefault("env", {})
     return generate_all_v38_reports_for_tests(**kwargs)

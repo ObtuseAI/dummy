@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from predator_mesh.v67.reports import BROKER_READONLY_PHRASE
-from scripts.generate_v67_reports import generate_all_v67_reports_for_tests
+from archive.report_scripts.generate_v67_reports import generate_all_v67_reports_for_tests
 from tests.staged_gate_test_helpers import assert_staged_safe
 
 

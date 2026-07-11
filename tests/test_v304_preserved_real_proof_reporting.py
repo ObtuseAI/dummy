@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from scripts.generate_v304_reports import generate_all_v304_reports_for_tests
+from archive.report_scripts.generate_v304_reports import generate_all_v304_reports_for_tests
 from tests._real_proof_test_helpers import BACKUP_DIR_NAME, INDEX_NAME, make_evidence_bundle, patch_artifact_paths
 
 

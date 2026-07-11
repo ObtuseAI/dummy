@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from predator_mesh import staged_gate_common as sgc
 from predator_mesh.v65.reports import LIVE_CANARY_SCOPE
-from scripts.generate_v65_reports import generate_all_v65_reports_for_tests
+from archive.report_scripts.generate_v65_reports import generate_all_v65_reports_for_tests
 from tests.staged_gate_test_helpers import assert_staged_safe
 
 

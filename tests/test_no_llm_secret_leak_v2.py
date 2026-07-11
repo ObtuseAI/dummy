@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 
-from scripts.generate_v8_firewall_reports import generate_firewall_reports
+from archive.report_scripts.generate_v8_firewall_reports import generate_firewall_reports
 
 
 def test_no_llm_secret_leak_report_generated(tmp_path, monkeypatch):

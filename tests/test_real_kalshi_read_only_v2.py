@@ -19,7 +19,7 @@ def test_real_kalshi_read_only_no_order_endpoints():
 
 @pytest.mark.asyncio
 async def test_read_only_report_status():
-    from scripts.generate_v5_reports import generate_real_kalshi_read_only_report_v2
+    from archive.report_scripts.generate_v5_reports import generate_real_kalshi_read_only_report_v2
     report = await generate_real_kalshi_read_only_report_v2()
     assert report["verdict"] in ("PASS", "SKIP")
     if os.environ.get("KALSHI_API_KEY_ID"):

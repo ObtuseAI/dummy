@@ -3,7 +3,7 @@ import asyncio
 
 
 def test_strategy_scan_produces_proposals_or_no_trade_reasons():
-    from scripts.generate_v5_reports import generate_strategy_scan_report_v2
+    from archive.report_scripts.generate_v5_reports import generate_strategy_scan_report_v2
     report = asyncio.run(generate_strategy_scan_report_v2())
     results = report.get("results", [])
     assert len(results) > 0
@@ -13,7 +13,7 @@ def test_strategy_scan_produces_proposals_or_no_trade_reasons():
 
 
 def test_strategy_candidate_quality_report():
-    from scripts.generate_v5_reports import generate_strategy_candidate_quality_report
+    from archive.report_scripts.generate_v5_reports import generate_strategy_candidate_quality_report
     report = generate_strategy_candidate_quality_report()
     assert report["verdict"] == "PASS"
     required = report["required_fields"]

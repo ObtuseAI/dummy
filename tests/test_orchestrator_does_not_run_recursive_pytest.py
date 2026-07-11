@@ -4,14 +4,14 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from scripts.generate_v8_reports import main as orchestrator_main
+from archive.report_scripts.generate_v8_reports import main as orchestrator_main
 
 
 @pytest.mark.asyncio
 async def test_orchestrator_unit_test_does_not_invoke_subprocess_pytest(tmp_path, monkeypatch):
     """The orchestrator unit test must never run a recursive pytest subprocess."""
     import subprocess
-    import scripts.generate_v8_reports as orchestrator
+    import archive.report_scripts.generate_v8_reports as orchestrator
 
     artifacts = tmp_path / "dummy"
     artifacts.mkdir(parents=True, exist_ok=True)
@@ -40,7 +40,7 @@ async def test_orchestrator_unit_test_does_not_invoke_subprocess_pytest(tmp_path
 async def test_orchestrator_run_pytest_summary_uses_subprocess_when_enabled(tmp_path, monkeypatch):
     """``run_pytest_summary`` is allowed to invoke pytest only when explicitly enabled."""
     import subprocess
-    import scripts.generate_v8_reports as orchestrator
+    import archive.report_scripts.generate_v8_reports as orchestrator
 
     class _FakeProc:
         returncode = 0

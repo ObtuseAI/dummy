@@ -3,7 +3,7 @@ import pytest
 
 
 def test_kalshi_credential_readiness_v2():
-    from scripts.generate_v6_reports import generate_kalshi_credential_readiness_report_v2
+    from archive.report_scripts.generate_v6_reports import generate_kalshi_credential_readiness_report_v2
     report = generate_kalshi_credential_readiness_report_v2()
     assert report["credentials_present"] in (True, False)
     assert report["verdict"] in ("PASS", "PARTIAL", "SKIP")
@@ -12,7 +12,7 @@ def test_kalshi_credential_readiness_v2():
 
 
 def test_credential_helper_v2_does_not_expose_secrets():
-    from scripts.generate_v6_reports import generate_kalshi_credential_readiness_report_v2
+    from archive.report_scripts.generate_v6_reports import generate_kalshi_credential_readiness_report_v2
     report = generate_kalshi_credential_readiness_report_v2()
     report_str = str(report)
     key_id = os.environ.get("KALSHI_API_KEY_ID", "")

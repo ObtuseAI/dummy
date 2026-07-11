@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from predator_mesh.v68.reports import FORBIDDEN_CANDIDATE_FIELDS, validate_candidate
-from scripts.generate_v68_reports import generate_all_v68_reports_for_tests
+from archive.report_scripts.generate_v68_reports import generate_all_v68_reports_for_tests
 from tests.staged_gate_test_helpers import assert_staged_safe
 
 

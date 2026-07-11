@@ -14,9 +14,9 @@ ROOT = Path(__file__).resolve().parent.parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from scripts.generate_v225_reports import main as gen_v225
-from scripts.generate_v226_reports import main as gen_v226
-from scripts.generate_v227_reports import main as gen_v227
+from archive.report_scripts.generate_v225_reports import main as gen_v225
+from archive.report_scripts.generate_v226_reports import main as gen_v226
+from archive.report_scripts.generate_v227_reports import main as gen_v227
 
 
 def main() -> dict:

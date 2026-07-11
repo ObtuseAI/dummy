@@ -3,7 +3,7 @@ from __future__ import annotations
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from dashboard.backend.v45_routes import router
+from archive.routes.v45_routes import router
 from tests.v45_test_helpers import assert_current_test_report
 
 

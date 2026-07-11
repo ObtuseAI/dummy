@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from scripts.generate_v8_1_reports import generate_model_provider_config_audit_report_v1
+from archive.report_scripts.generate_v8_1_reports import generate_model_provider_config_audit_report_v1
 
 
 def test_config_audit_report_has_no_secret_values(monkeypatch):

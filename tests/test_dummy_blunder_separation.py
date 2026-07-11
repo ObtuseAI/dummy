@@ -14,7 +14,7 @@ def test_dummy_does_not_import_canonical_blunder():
     offenders = []
     for py in ROOT.rglob("*.py"):
         rel = py.relative_to(ROOT)
-        if any(p in {".git", "__pycache__", ".pytest_cache", "tests", "scripts"} for p in rel.parts):
+        if any(p in {"archive", ".git", "__pycache__", ".pytest_cache", "tests", "scripts"} for p in rel.parts):
             continue
         text = py.read_text(encoding="utf-8", errors="ignore")
         if "obtuse.blunder" in text or str(BLUNDER_ROOT) in text:

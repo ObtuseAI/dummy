@@ -17,7 +17,7 @@ def test_dummy_mission_state_v6_summarizes_v20_source_universe_without_execution
 
 
 def test_generate_v20_reports_promotes_final_report_json(tmp_path, monkeypatch) -> None:
-    from scripts import generate_v20_reports as generator
+    from archive.report_scripts import generate_v20_reports as generator
 
     monkeypatch.setattr(generator, "ARTIFACTS", tmp_path)
     (tmp_path / "final_report.json").write_text(

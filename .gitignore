@@ -26,3 +26,8 @@ runtime/
 logs/
 data/*.db
 *.bak
+
+# test run artifacts
+full_test_suite.log
+*.log
+!docs/**/*.log

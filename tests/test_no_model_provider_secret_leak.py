@@ -4,7 +4,7 @@ import json
 
 import pytest
 
-from scripts.generate_v8_model_provider_reports import (
+from archive.report_scripts.generate_v8_model_provider_reports import (
     generate_credential_reports,
     generate_model_provider_credential_readiness_report_v1,
     generate_no_model_provider_secret_leak_report_v1,
@@ -54,7 +54,7 @@ class TestNoModelProviderSecretLeak:
         assert report["verdict"] == "PASS"
 
     def test_generated_report_files_contain_no_secrets(self, monkeypatch, secret_values, tmp_path):
-        import scripts.generate_v8_model_provider_reports as reports_module
+        import archive.report_scripts.generate_v8_model_provider_reports as reports_module
 
         for key, value in secret_values.items():
             monkeypatch.setenv(key, value)

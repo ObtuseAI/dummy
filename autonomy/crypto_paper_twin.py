@@ -47,6 +47,7 @@ from autonomy.signals.crypto_spot import (
     CryptoSpotVolSignal,
 )
 from autonomy.signals.market_prior import MarketPriorSignal
+from autonomy.stats import mean_ci95 as _mean_ci95
 from kalshi.presubmit import default_fetch_orderbook
 
 
@@ -1662,22 +1663,6 @@ class PaperTwinLedger:
             "execution_authority": False,
         }
 
-
-def _mean_ci95(values: Sequence[float]) -> dict[str, Any] | None:
-    if not values:
-        return None
-    numbers = [float(value) for value in values]
-    mean = statistics.fmean(numbers)
-    if len(numbers) < 2:
-        return {"mean": round(mean, 6), "lower": None, "upper": None, "n": len(numbers)}
-    half = 1.96 * statistics.stdev(numbers) / math.sqrt(len(numbers))
-    return {
-        "mean": round(mean, 6),
-        "lower": round(mean - half, 6),
-        "upper": round(mean + half, 6),
-        "n": len(numbers),
-        "method": "normal_mean_95",
-    }
 
 
 def load_proposed_genome(

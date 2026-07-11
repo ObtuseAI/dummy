@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-from scripts.generate_v71_reports import generate_all_v71_reports_for_tests
-from scripts.generate_v72_reports import generate_all_v72_reports_for_tests
-from scripts.generate_v73_reports import generate_all_v73_reports_for_tests
+from archive.report_scripts.generate_v71_reports import generate_all_v71_reports_for_tests
+from archive.report_scripts.generate_v72_reports import generate_all_v72_reports_for_tests
+from archive.report_scripts.generate_v73_reports import generate_all_v73_reports_for_tests
 from tests.staged_gate_test_helpers import assert_staged_safe
 
 SUBMITTED_V70_FINAL = {"live_canary_controller_status": "PASS_LIVE_CANARY_SUBMITTED", "simulated_canary_submits_count": 1, "verdict": "PASS"}

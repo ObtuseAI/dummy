@@ -19,7 +19,7 @@ def test_normalizer_rejects_stale_orderbook():
 
 
 def test_normalizer_report_exists():
-    from scripts.generate_v5_reports import generate_normalization_report_v2
+    from archive.report_scripts.generate_v5_reports import generate_normalization_report_v2
     import asyncio
     report = asyncio.run(generate_normalization_report_v2())
     assert report["verdict"] in ("PASS", "SKIP")
