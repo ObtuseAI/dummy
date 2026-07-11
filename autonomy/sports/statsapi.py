@@ -179,3 +179,35 @@ def apply_confirmed_lineups(
         home_lineup=home_lineup,
         away_lineup=away_lineup,
     )
+
+
+def _rate(numerator: Any, denominator: Any) -> float | None:
+    n, d = _float(numerator), _float(denominator)
+    if n is None or not d:
+        return None
+    return round(n / d, 4)
+
+
+def parse_pitcher_rates(people_payload: dict[str, Any]) -> PitcherRates | None:
+    people = people_payload.get("people") or []
+    if not people:
+        return None
+    person = people[0] or {}
+    pid = person.get("id")
+    if pid is None:
+        return None
+    stat: dict[str, Any] = {}
+    stats = person.get("stats") or []
+    if stats:
+        splits = (stats[0] or {}).get("splits") or []
+        if splits:
+            stat = (splits[0] or {}).get("stat", {}) or {}
+    return PitcherRates(
+        player_id=int(pid),
+        name=person.get("fullName"),
+        throws=((person.get("pitchHand", {}) or {}).get("code")),
+        era=_float(stat.get("era")),
+        k_pct=_rate(stat.get("strikeOuts"), stat.get("battersFaced")),
+        bb_pct=_rate(stat.get("baseOnBalls"), stat.get("battersFaced")),
+        hr9=_float(stat.get("homeRunsPer9")),
+    )

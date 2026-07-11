@@ -152,3 +152,39 @@ def test_parse_boxscore_lineups_missing_players_keeps_ids_without_enrichment():
 def test_parse_boxscore_lineups_empty_dict_does_not_raise():
     home, away = parse_boxscore_lineups({})
     assert home == () and away == ()
+
+
+from autonomy.sports.statsapi import parse_pitcher_rates
+
+_PEOPLE_FIXTURE = {
+    "people": [
+        {
+            "id": 592789,
+            "fullName": "L. Webb",
+            "pitchHand": {"code": "R"},
+            "stats": [
+                {"splits": [{"stat": {
+                    "era": "3.25",
+                    "strikeOuts": 150,
+                    "baseOnBalls": 40,
+                    "battersFaced": 750,
+                    "homeRunsPer9": "0.85",
+                }}]}
+            ],
+        }
+    ]
+}
+
+
+def test_parse_pitcher_rates_computes_k_and_bb_pct():
+    rates = parse_pitcher_rates(_PEOPLE_FIXTURE)
+    assert rates.player_id == 592789
+    assert rates.throws == "R"
+    assert rates.era == 3.25
+    assert rates.k_pct == round(150 / 750, 4)
+    assert rates.bb_pct == round(40 / 750, 4)
+    assert rates.hr9 == 0.85
+
+
+def test_parse_pitcher_rates_returns_none_on_empty():
+    assert parse_pitcher_rates({"people": []}) is None
