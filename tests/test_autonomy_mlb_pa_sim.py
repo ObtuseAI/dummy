@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from autonomy.sports.mlb_pa_sim import LEAGUE, log5
+from autonomy.sports.mlb_pa_sim import LEAGUE, log5, PA_OUTCOMES, plate_appearance_distribution
+from autonomy.sports.statsapi import BatterRates, PitcherRates
 
 
 def test_league_baseline_sums_to_one():
@@ -22,3 +23,44 @@ def test_log5_monotonic_and_bounded():
     # Always within [0, 1].
     assert 0.0 <= log5(0.99, 0.99, 0.22) <= 1.0
     assert 0.0 <= log5(0.01, 0.01, 0.22) <= 1.0
+
+
+def _batter(k, bb, obp, slg, iso):
+    return BatterRates(player_id=1, k_pct=k, bb_pct=bb, obp=obp, slg=slg, iso=iso)
+
+
+def _pitcher(k, bb, hr9):
+    return PitcherRates(player_id=2, k_pct=k, bb_pct=bb, hr9=hr9)
+
+
+def test_distribution_sums_to_one_and_covers_all_outcomes():
+    dist = plate_appearance_distribution(
+        _batter(0.20, 0.09, 0.34, 0.45, 0.18),
+        _pitcher(0.24, 0.07, 1.1),
+    )
+    assert set(dist) == set(PA_OUTCOMES)
+    assert abs(sum(dist.values()) - 1.0) < 1e-9
+    assert all(0.0 <= p <= 1.0 for p in dist.values())
+
+
+def test_none_rates_fall_back_to_league_average():
+    dist = plate_appearance_distribution(None, None)
+    # With no player data the distribution should be close to LEAGUE.
+    assert abs(dist["k"] - LEAGUE["k"]) < 0.03
+    assert abs(sum(dist.values()) - 1.0) < 1e-9
+
+
+def test_high_strikeout_pitcher_raises_k_share():
+    weak_k = plate_appearance_distribution(_batter(0.22, 0.08, 0.32, 0.40, 0.15),
+                                           _pitcher(0.18, 0.08, 1.2))
+    high_k = plate_appearance_distribution(_batter(0.22, 0.08, 0.32, 0.40, 0.15),
+                                           _pitcher(0.33, 0.08, 1.2))
+    assert high_k["k"] > weak_k["k"]
+
+
+def test_park_hr_factor_increases_home_run_share():
+    neutral = plate_appearance_distribution(_batter(0.20, 0.09, 0.34, 0.50, 0.22),
+                                            _pitcher(0.22, 0.08, 1.3), park_hr_factor=1.0)
+    hitter = plate_appearance_distribution(_batter(0.20, 0.09, 0.34, 0.50, 0.22),
+                                           _pitcher(0.22, 0.08, 1.3), park_hr_factor=1.3)
+    assert hitter["hr"] > neutral["hr"]
