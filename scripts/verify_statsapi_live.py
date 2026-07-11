@@ -39,6 +39,13 @@ def main() -> int:
         f"confirm_lineups({sample.game_pk}): "
         f"home {len(confirmed.home_lineup)} / away {len(confirmed.away_lineup)} batters"
     )
+    total_batters = len(confirmed.home_lineup) + len(confirmed.away_lineup)
+    if total_batters:
+        with_rates = client.hydrate_batter_rates(confirmed)
+        got = len(with_rates.batter_rates)
+        print(f"hydrate_batter_rates: {got}/{total_batters} lineup batters have rates")
+    else:
+        print("no lineups posted yet (pre-game) - batter-rate probe skipped")
     return 0
 
 

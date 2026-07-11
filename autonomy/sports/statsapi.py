@@ -35,6 +35,19 @@ class PitcherRates:
 
 
 @dataclass(frozen=True)
+class BatterRates:
+    player_id: int
+    name: str | None = None
+    bats: str | None = None  # "L" | "R" | "S"
+    plate_appearances: int | None = None
+    k_pct: float | None = None
+    bb_pct: float | None = None
+    obp: float | None = None
+    slg: float | None = None
+    iso: float | None = None
+
+
+@dataclass(frozen=True)
 class MlbGameContext:
     game_pk: int
     snapshot: SnapshotKind
@@ -50,6 +63,7 @@ class MlbGameContext:
     away_lineup: tuple[LineupSlot, ...] = ()
     home_bullpen_fatigue: dict[int, float] = field(default_factory=dict)
     away_bullpen_fatigue: dict[int, float] = field(default_factory=dict)
+    batter_rates: dict[int, BatterRates] = field(default_factory=dict)
     park_run_factor: float | None = None
     park_hr_factor: float | None = None
     wind_speed_mph: float | None = None
@@ -211,6 +225,37 @@ def parse_pitcher_rates(people_payload: dict[str, Any]) -> PitcherRates | None:
     )
 
 
+def parse_batter_rates(people_payload: dict[str, Any]) -> BatterRates | None:
+    people = people_payload.get("people") or []
+    if not people:
+        return None
+    person = people[0] or {}
+    pid = person.get("id")
+    if pid is None:
+        return None
+    stat: dict[str, Any] = {}
+    stats = person.get("stats") or []
+    if stats:
+        splits = (stats[0] or {}).get("splits") or []
+        if splits:
+            stat = (splits[0] or {}).get("stat", {}) or {}
+    pa = stat.get("plateAppearances")
+    slg = _float(stat.get("slg"))
+    avg = _float(stat.get("avg"))
+    iso = round(slg - avg, 4) if slg is not None and avg is not None else None
+    return BatterRates(
+        player_id=int(pid),
+        name=person.get("fullName"),
+        bats=((person.get("batSide", {}) or {}).get("code")),
+        plate_appearances=int(pa) if pa is not None else None,
+        k_pct=_rate(stat.get("strikeOuts"), pa),
+        bb_pct=_rate(stat.get("baseOnBalls"), pa),
+        obp=_float(stat.get("obp")),
+        slg=slg,
+        iso=iso,
+    )
+
+
 # Seed table from public league-average park indices; neutral = 1.0. The
 # feature-discovery loop (S5) refines these from residuals later.
 PARK_FACTORS: dict[str, tuple[float, float]] = {
@@ -292,6 +337,17 @@ def default_fetch_people(player_id: int) -> dict[str, Any]:
     return response.json()
 
 
+def default_fetch_batter_people(player_id: int) -> dict[str, Any]:
+    import httpx
+    response = httpx.get(
+        f"{_BASE}/people/{player_id}",
+        params={"hydrate": "stats(group=[hitting],type=[season])"},
+        timeout=20,
+    )
+    response.raise_for_status()
+    return response.json()
+
+
 class StatsApiClient:
     """Assembles point-in-time MlbGameContexts from injectable StatsAPI fetchers."""
 
@@ -300,15 +356,19 @@ class StatsApiClient:
         fetch_schedule: Callable[[str], dict[str, Any]] | None = None,
         fetch_boxscore: Callable[[int], dict[str, Any]] | None = None,
         fetch_people: Callable[[int], dict[str, Any]] | None = None,
+        fetch_batter_people: Callable[[int], dict[str, Any]] | None = None,
     ) -> None:
         self.fetch_schedule = fetch_schedule or default_fetch_schedule
         self.fetch_boxscore = fetch_boxscore or default_fetch_boxscore
         self.fetch_people = fetch_people or default_fetch_people
+        self.fetch_batter_people = fetch_batter_people or default_fetch_batter_people
         self._pitcher_cache: dict[int, PitcherRates | None] = {}
+        self._batter_cache: dict[int, BatterRates | None] = {}
 
     def clear_cache(self) -> None:
-        """Drop cached pitcher lookups so a reused client refetches season rates."""
+        """Drop cached pitcher AND batter lookups so a reused client refetches season rates."""
         self._pitcher_cache.clear()
+        self._batter_cache.clear()
 
     def _pitcher(self, player_id: int | None) -> PitcherRates | None:
         if player_id is None:
@@ -321,6 +381,16 @@ class StatsApiClient:
             except Exception:
                 self._pitcher_cache[player_id] = None
         return self._pitcher_cache[player_id]
+
+    def _batter(self, player_id: int) -> BatterRates | None:
+        if player_id not in self._batter_cache:
+            try:
+                self._batter_cache[player_id] = parse_batter_rates(
+                    self.fetch_batter_people(player_id)
+                )
+            except Exception:
+                self._batter_cache[player_id] = None
+        return self._batter_cache[player_id]
 
     def projected_contexts(
         self, date_iso: str, *, captured_at: str,
@@ -345,3 +415,12 @@ class StatsApiClient:
     ) -> MlbGameContext:
         home, away = parse_boxscore_lineups(self.fetch_boxscore(ctx.game_pk))
         return apply_confirmed_lineups(ctx, home, away, captured_at=captured_at)
+
+    def hydrate_batter_rates(self, ctx: MlbGameContext) -> MlbGameContext:
+        """Attach season offensive rates for every batter in both lineups."""
+        rates: dict[int, BatterRates] = {}
+        for slot in (*ctx.home_lineup, *ctx.away_lineup):
+            batter = self._batter(slot.player_id)
+            if batter is not None:
+                rates[slot.player_id] = batter
+        return replace(ctx, batter_rates=rates)

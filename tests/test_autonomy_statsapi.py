@@ -320,3 +320,120 @@ def test_client_clear_cache_forces_pitcher_refetch():
     client.clear_cache()
     client.projected_contexts("2026-07-11", captured_at="2026-07-11T18:00:00+00:00")
     assert len(calls) > first  # cache cleared -> refetched
+
+
+from autonomy.sports.statsapi import BatterRates
+
+
+def test_batter_rates_attaches_to_context_and_reports_provenance():
+    from autonomy.sports.statsapi import MlbGameContext
+    rates = BatterRates(
+        player_id=605141, name="M. Betts", bats="R",
+        plate_appearances=600, k_pct=0.16, bb_pct=0.10,
+        obp=0.36, slg=0.52, iso=0.24,
+    )
+    ctx = MlbGameContext(
+        game_pk=1, snapshot="confirmed", captured_at="2026-07-11T22:40:00+00:00",
+        home="LAD", away="SF", batter_rates={605141: rates},
+    )
+    assert ctx.batter_rates[605141].obp == 0.36
+    assert ctx.field_provenance()["batter_rates"] is True
+    # Absent by default (empty map) -> reported absent.
+    empty = MlbGameContext(
+        game_pk=2, snapshot="projected", captured_at="2026-07-11T18:00:00+00:00",
+        home="NYY", away="BOS",
+    )
+    assert empty.field_provenance()["batter_rates"] is False
+
+
+from autonomy.sports.statsapi import parse_batter_rates
+
+_BATTER_FIXTURE = {
+    "people": [
+        {
+            "id": 605141,
+            "fullName": "M. Betts",
+            "batSide": {"code": "R"},
+            "stats": [
+                {"splits": [{"stat": {
+                    "plateAppearances": 600,
+                    "strikeOuts": 90,
+                    "baseOnBalls": 60,
+                    "obp": "0.360",
+                    "slg": "0.520",
+                    "avg": "0.280",
+                }}]}
+            ],
+        }
+    ]
+}
+
+
+def test_parse_batter_rates_computes_rates_and_iso():
+    rates = parse_batter_rates(_BATTER_FIXTURE)
+    assert rates.player_id == 605141
+    assert rates.bats == "R"
+    assert rates.plate_appearances == 600
+    assert rates.k_pct == round(90 / 600, 4)
+    assert rates.bb_pct == round(60 / 600, 4)
+    assert rates.obp == 0.360
+    assert rates.slg == 0.520
+    assert rates.iso == round(0.520 - 0.280, 4)  # slg - avg
+
+
+def test_parse_batter_rates_none_on_empty_and_missing_denominator():
+    assert parse_batter_rates({"people": []}) is None
+    zero = {"people": [{"id": 7, "stats": [{"splits": [{"stat": {
+        "plateAppearances": 0, "strikeOuts": 3, "baseOnBalls": 1, "slg": "0.400",
+    }}]}]}]}
+    rates = parse_batter_rates(zero)
+    assert rates.player_id == 7
+    assert rates.k_pct is None and rates.bb_pct is None  # no divide-by-zero
+    assert rates.iso is None  # no avg -> ISO unknown
+
+
+def test_client_hydrate_batter_rates_fills_lineup_and_swallows_failures():
+    from autonomy.sports.statsapi import StatsApiClient, MlbGameContext, LineupSlot
+
+    def fake_batter(player_id):
+        if player_id == 999:
+            raise RuntimeError("statsapi down")
+        return {"people": [{"id": player_id, "fullName": f"P{player_id}",
+                            "batSide": {"code": "L"}, "stats": [{"splits": [{"stat": {
+                                "plateAppearances": 500, "strikeOuts": 100,
+                                "baseOnBalls": 50, "obp": "0.340", "slg": "0.450",
+                                "avg": "0.270"}}]}]}]}
+
+    client = StatsApiClient(fetch_batter_people=fake_batter)
+    ctx = MlbGameContext(
+        game_pk=1, snapshot="confirmed", captured_at="2026-07-11T22:40:00+00:00",
+        home="LAD", away="SF",
+        home_lineup=(LineupSlot(1, 605141), LineupSlot(2, 999)),
+        away_lineup=(LineupSlot(1, 592885),),
+    )
+    hydrated = client.hydrate_batter_rates(ctx)
+    assert set(hydrated.batter_rates) == {605141, 592885}  # 999 failed -> absent
+    assert hydrated.batter_rates[605141].k_pct == round(100 / 500, 4)
+    assert ctx.batter_rates == {}  # original untouched (frozen)
+
+
+def test_client_clear_cache_forces_batter_refetch():
+    calls = []
+    def counting_batter(pid):
+        calls.append(pid)
+        return {"people": [{"id": pid, "fullName": "B", "batSide": {"code": "R"},
+                            "stats": [{"splits": [{"stat": {
+                                "plateAppearances": 500, "strikeOuts": 100,
+                                "baseOnBalls": 50, "obp": "0.340", "slg": "0.450",
+                                "avg": "0.270"}}]}]}]}
+    from autonomy.sports.statsapi import StatsApiClient, MlbGameContext, LineupSlot
+    client = StatsApiClient(fetch_batter_people=counting_batter)
+    ctx = MlbGameContext(
+        game_pk=1, snapshot="confirmed", captured_at="2026-07-11T22:40:00+00:00",
+        home="LAD", away="SF", home_lineup=(LineupSlot(1, 605141),),
+    )
+    client.hydrate_batter_rates(ctx)
+    first = len(calls)
+    client.clear_cache()
+    client.hydrate_batter_rates(ctx)
+    assert len(calls) > first  # cache cleared -> refetched
