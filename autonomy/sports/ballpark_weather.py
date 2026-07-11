@@ -22,6 +22,7 @@ accurate enough for a same-city Open-Meteo hourly-forecast lookup.
 """
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 from typing import Any
 
@@ -152,3 +153,55 @@ def parse_hourly_weather(payload: dict[str, Any], hour_index: int) -> GameWeathe
         wind_speed_mph=wind_speed_mph,
         wind_direction_deg=wind_direction_deg,
     )
+
+
+def weather_factors(weather: GameWeather | None, cf_bearing_deg: float, *, is_dome: bool = False) -> tuple[float, float]:
+    """Convert weather to HR/run factors for the plate-appearance simulator.
+
+    Returns (hr_factor, run_factor). Neutral (≈70°F, calm) ⇒ (1.0, 1.0).
+    A dome ⇒ (1.0, 1.0). Warmer air raises both modestly; wind projected onto
+    the home-plate→CF axis raises HR when blowing out and lowers it when
+    blowing in.
+
+    Args:
+        weather: GameWeather instance or None. None → (1.0, 1.0).
+        cf_bearing_deg: Compass bearing (0=N, 90=E, 180=S, 270=W) from home
+                        plate toward center field.
+        is_dome: If True, ignore weather and return (1.0, 1.0).
+
+    Returns:
+        (hr_factor, run_factor) both clamped to [0.85, 1.20].
+    """
+    # Short-circuit: None weather, dome, or neutral weather
+    if weather is None or is_dome:
+        return (1.0, 1.0)
+
+    # Check if weather is neutral (≈70°F and calm)
+    if weather.temperature_f == 70.0 and weather.wind_speed_mph == 0.0:
+        return (1.0, 1.0)
+
+    hr_factor = 1.0
+    run_factor = 1.0
+
+    # Temperature effect: warm air carries the ball
+    temp_delta = weather.temperature_f - 70.0
+    hr_factor *= 1.0 + temp_delta * 0.010
+    run_factor *= 1.0 + temp_delta * 0.006
+
+    # Wind effect: project onto the out-to-CF axis
+    # In meteorology, wind_direction_deg is where wind is FROM.
+    # The direction wind is BLOWING is (wind_direction_deg + 180) % 360.
+    # out_component = wind_speed * cos(radians(wind_blowing_deg - cf_bearing_deg))
+    # positive = blowing out toward CF
+    wind_blowing_deg = (weather.wind_direction_deg + 180.0) % 360.0
+    wind_radians = math.radians(wind_blowing_deg - cf_bearing_deg)
+    out_component = weather.wind_speed_mph * math.cos(wind_radians)
+
+    hr_factor *= 1.0 + out_component * 0.010
+    run_factor *= 1.0 + out_component * 0.004
+
+    # Clamp both to [0.85, 1.20]
+    hr_factor = max(0.85, min(1.20, hr_factor))
+    run_factor = max(0.85, min(1.20, run_factor))
+
+    return (hr_factor, run_factor)
