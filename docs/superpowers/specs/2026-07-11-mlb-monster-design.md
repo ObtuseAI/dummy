@@ -57,7 +57,7 @@ Fields, by signal value:
 - **Live wind and temperature** — direction and speed, not just temperature.
 
 Contract: a `MlbGameContext` dataclass with every field nullable and a
-`fields_present` provenance map, so an engine can degrade gracefully and the
+`field_provenance()` presence map, so an engine can degrade gracefully and the
 validation harness can attribute misses to missing inputs. The existing ESPN
 feed remains the fallback when StatsAPI is unavailable.
 
