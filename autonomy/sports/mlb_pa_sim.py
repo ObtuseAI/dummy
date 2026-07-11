@@ -98,3 +98,71 @@ def plate_appearance_distribution(
     if total <= 0.0:
         return {key: LEAGUE[key] for key in PA_OUTCOMES}
     return {key: value / total for key, value in dist.items()}
+
+
+import random
+
+
+def sample_outcome(dist: dict[str, float], rng: random.Random) -> str:
+    """Weighted pick over PA_OUTCOMES using a seeded RNG."""
+    roll = rng.random()
+    cumulative = 0.0
+    for outcome in PA_OUTCOMES:
+        cumulative += dist.get(outcome, 0.0)
+        if roll <= cumulative:
+            return outcome
+    return "out"
+
+
+def _advance(bases: list[bool], outcome: str) -> int:
+    """Advance runners for a hit/walk; return runs scored. bases = [1B,2B,3B]."""
+    runs = 0
+    if outcome in ("bb", "hbp"):
+        # Force only: fill first empty base, push forced runners.
+        if not bases[0]:
+            bases[0] = True
+        elif not bases[1]:
+            bases[1] = True
+        elif not bases[2]:
+            bases[2] = True
+        else:
+            runs += 1  # bases loaded -> forced run, all stay
+        return runs
+    advance = {"single": 1, "double": 2, "triple": 3, "hr": 4}[outcome]
+    # Move existing runners.
+    new_bases = [False, False, False]
+    for base_index in (2, 1, 0):
+        if bases[base_index]:
+            dest = base_index + advance
+            if dest >= 3:
+                runs += 1
+            else:
+                new_bases[dest] = True
+    # Place the batter.
+    if advance >= 4:
+        runs += 1
+    else:
+        new_bases[advance - 1] = True
+    bases[:] = new_bases
+    return runs
+
+
+def simulate_half_inning(
+    start_cursor: int,
+    pa_fn: Any,
+    rng: random.Random,
+) -> tuple[int, int]:
+    """Simulate one half-inning; return (runs, next batting-order cursor)."""
+    outs = 0
+    runs = 0
+    bases = [False, False, False]
+    cursor = start_cursor
+    while outs < 3:
+        dist = pa_fn(cursor % 9)
+        outcome = sample_outcome(dist, rng)
+        cursor += 1
+        if outcome in ("k", "out"):
+            outs += 1
+        else:
+            runs += _advance(bases, outcome)
+    return runs, cursor

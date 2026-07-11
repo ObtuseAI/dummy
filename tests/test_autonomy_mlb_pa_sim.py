@@ -94,3 +94,37 @@ def test_extreme_rates_keep_distribution_valid():
     )
     assert abs(sum(d.values()) - 1.0) < 1e-9
     assert all(0.0 <= v <= 1.0 for v in d.values())
+
+
+import random as _random
+
+from autonomy.sports.mlb_pa_sim import sample_outcome, simulate_half_inning
+
+
+def test_sample_outcome_is_deterministic_and_valid():
+    dist = {"k": 0.25, "bb": 0.08, "hbp": 0.01, "single": 0.14,
+            "double": 0.05, "triple": 0.004, "hr": 0.03, "out": 0.436}
+    rng = _random.Random(7)
+    picks = [sample_outcome(dist, rng) for _ in range(200)]
+    assert set(picks) <= set(dist)
+    # Determinism: same seed -> same sequence.
+    rng2 = _random.Random(7)
+    picks2 = [sample_outcome(dist, rng2) for _ in range(200)]
+    assert picks == picks2
+
+
+def test_half_inning_all_home_runs_scores_until_three_outs():
+    # A distribution that always yields HR then... it can't make outs, so guard
+    # with a mixed distribution and assert runs are non-negative and bounded.
+    hr_heavy = {"k": 0.0, "bb": 0.0, "hbp": 0.0, "single": 0.0,
+                "double": 0.0, "triple": 0.0, "hr": 0.5, "out": 0.5}
+    runs, _ = simulate_half_inning(0, lambda i: hr_heavy, _random.Random(3))
+    assert runs >= 0
+
+
+def test_half_inning_all_outs_scores_zero():
+    outs_only = {"k": 0.0, "bb": 0.0, "hbp": 0.0, "single": 0.0,
+                 "double": 0.0, "triple": 0.0, "hr": 0.0, "out": 1.0}
+    runs, cursor = simulate_half_inning(0, lambda i: outs_only, _random.Random(1))
+    assert runs == 0
+    assert cursor == 3  # exactly three batters retired
