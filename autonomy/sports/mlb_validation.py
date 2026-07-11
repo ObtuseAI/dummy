@@ -160,3 +160,17 @@ def paper_pnl_head(decisions: list[SettledDecision]) -> HeadVerdict:
         n=len(realized),
         detail={"net_pnl_cents": net, "priced_decisions": len(realized)},
     )
+
+
+def score_engine(
+    rows: Any, pnl_by_id: dict[str, int], source: str,
+) -> MlbEngineScorecard:
+    """Grade one engine's settled MLB decisions on all three heads."""
+    decisions = settled_decisions_for(rows, pnl_by_id, source)
+    return MlbEngineScorecard(
+        source=source,
+        settled=len(decisions),
+        beat_close=beat_close_head(decisions),
+        calibration=calibration_head(decisions),
+        paper_pnl=paper_pnl_head(decisions),
+    )

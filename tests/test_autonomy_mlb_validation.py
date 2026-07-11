@@ -130,3 +130,32 @@ def test_paper_pnl_head_negative_fails():
     decisions = [_dec("g1", 0.6, 0.5, False, pnl=-52)]
     verdict = paper_pnl_head(decisions)
     assert verdict.passed is False
+
+
+def test_score_engine_assembles_all_three_heads():
+    from autonomy.sports.mlb_validation import score_engine
+    rows = []
+    pnl = {}
+    for i in range(20):
+        rows.append(_Row(f"w{i}", "mlb_pa_sim", "winner", f"win{i}", 0.85, 0.55, True))
+        rows.append(_Row(f"l{i}", "mlb_pa_sim", "winner", f"loss{i}", 0.15, 0.45, False))
+        pnl[f"w{i}"] = 30
+        pnl[f"l{i}"] = 20
+    # Noise from another source must be ignored.
+    rows.append(_Row("x", "mlb_gbm", "winner", "g1", 0.5, 0.5, True))
+    card = score_engine(rows, pnl, "mlb_pa_sim")
+    assert card.source == "mlb_pa_sim"
+    assert card.settled == 40
+    assert card.beat_close.name == "beat_close"
+    assert card.calibration.name == "calibration"
+    assert card.paper_pnl.name == "paper_pnl"
+    assert card.beat_close.passed is True
+    assert card.is_champion_ready is True
+
+
+def test_score_engine_no_decisions_is_unproven():
+    from autonomy.sports.mlb_validation import score_engine
+    card = score_engine([], {}, "mlb_pa_sim")
+    assert card.settled == 0
+    assert card.is_champion_ready is False
+    assert card.beat_close.n == 0
