@@ -96,6 +96,7 @@ def plate_appearance_distribution(
     pitcher: PitcherRates | None,
     *,
     park_hr_factor: float = 1.0,
+    weather_hr_factor: float = 1.0,
     platoon: float = 1.0,
 ) -> dict[str, float]:
     """Probability over PA_OUTCOMES for one batter vs one pitcher (sums to 1)."""
@@ -111,7 +112,7 @@ def plate_appearance_distribution(
     k = log5(b_k, p_k, LEAGUE["k"])
     bb = log5(b_bb, p_bb, LEAGUE["bb"]) * platoon
     hbp = LEAGUE["hbp"]
-    hr = log5(b_hr, p_hr, LEAGUE["hr"]) * park_hr_factor * platoon
+    hr = log5(b_hr, p_hr, LEAGUE["hr"]) * park_hr_factor * weather_hr_factor * platoon
 
     # Remaining mass after the "three true outcomes" splits into hits vs outs.
     remaining = max(0.0, 1.0 - k - bb - hbp - hr)
@@ -251,6 +252,7 @@ def _side_distributions(
     pitcher: Any,
     park_hr_factor: float,
     offense_mult: float = 1.0,
+    weather_hr_factor: float = 1.0,
 ) -> list[dict[str, float]]:
     dists: list[dict[str, float]] = []
     throws = getattr(pitcher, "throws", None)
@@ -259,6 +261,7 @@ def _side_distributions(
         dists.append(plate_appearance_distribution(
             batter, pitcher,
             park_hr_factor=park_hr_factor,
+            weather_hr_factor=weather_hr_factor,
             platoon=_platoon(getattr(slot, "bats", None), throws) * offense_mult,
         ))
     return dists
@@ -270,12 +273,14 @@ def _starter_distributions_by_tto(
     pitcher: Any,
     park_hr_factor: float,
     offense_mult: float,
+    weather_hr_factor: float = 1.0,
 ) -> list[list[dict[str, float]]]:
     """Per-slot distributions for each times-through-the-order level (0..MAX)."""
     return [
         _side_distributions(
             lineup, batter_rates, pitcher, park_hr_factor,
             offense_mult=offense_mult * _tto_mult(level),
+            weather_hr_factor=weather_hr_factor,
         )
         for level in range(TTO_MAX_TIMES + 1)
     ]
@@ -287,6 +292,7 @@ def _bullpen_distributions(
     fatigue: dict[int, float],
     park_hr_factor: float,
     offense_mult: float = 1.0,
+    weather_hr_factor: float = 1.0,
 ) -> list[dict[str, float]]:
     # Realistic single-inning reliever (a modest edge over league, not a
     # cartoonish super-bullpen), degraded by aggregate bullpen fatigue.
@@ -297,7 +303,8 @@ def _bullpen_distributions(
         bb_pct=RELIEVER_BB_PCT * (1.0 + 0.20 * avg_fatigue),
         hr9=RELIEVER_HR9 * (1.0 + 0.20 * avg_fatigue),
     )
-    return _side_distributions(lineup, batter_rates, reliever, park_hr_factor, offense_mult)
+    return _side_distributions(
+        lineup, batter_rates, reliever, park_hr_factor, offense_mult, weather_hr_factor)
 
 
 def _simulate_side(
@@ -336,18 +343,22 @@ def _simulate_side(
 
 def simulate_one_game(
     context: MlbGameContext, rng: random.Random, *, innings: int = 9,
+    weather: tuple[float, float] | None = None,
 ) -> GameResult:
     park_hr = context.park_hr_factor if context.park_hr_factor is not None else 1.0
+    hr_factor, run_factor = weather if weather is not None else (1.0, 1.0)
     home_starter = _starter_distributions_by_tto(
         context.home_lineup, context.batter_rates, context.away_pitcher, park_hr,
-        HOME_FIELD_BOOST)
+        HOME_FIELD_BOOST * run_factor, weather_hr_factor=hr_factor)
     home_pen = _bullpen_distributions(
         context.home_lineup, context.batter_rates, context.away_bullpen_fatigue, park_hr,
-        HOME_FIELD_BOOST)
+        HOME_FIELD_BOOST * run_factor, weather_hr_factor=hr_factor)
     away_starter = _starter_distributions_by_tto(
-        context.away_lineup, context.batter_rates, context.home_pitcher, park_hr, 1.0)
+        context.away_lineup, context.batter_rates, context.home_pitcher, park_hr,
+        run_factor, weather_hr_factor=hr_factor)
     away_pen = _bullpen_distributions(
-        context.away_lineup, context.batter_rates, context.home_bullpen_fatigue, park_hr)
+        context.away_lineup, context.batter_rates, context.home_bullpen_fatigue, park_hr,
+        run_factor, weather_hr_factor=hr_factor)
     h_total, h_first, h_five = _simulate_side(home_starter, home_pen, rng, innings)
     a_total, a_first, a_five = _simulate_side(away_starter, away_pen, rng, innings)
     return GameResult(
@@ -363,6 +374,7 @@ def simulate_game_markets(
     seed: int = 20260711,
     sims: int = 5000,
     total_line: float = 8.5,
+    weather: tuple[float, float] | None = None,
 ) -> dict[str, Any]:
     """Run N deterministic games; return coherent market probabilities."""
     runs = max(1, int(sims))
@@ -373,7 +385,7 @@ def simulate_game_markets(
     home_f5 = 0
     total_runs_sum = 0
     for _ in range(runs):
-        game = simulate_one_game(context, rng)
+        game = simulate_one_game(context, rng, weather=weather)
         if game.home_runs > game.away_runs:
             home_wins += 1.0
         elif game.home_runs == game.away_runs:
