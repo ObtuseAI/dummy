@@ -99,6 +99,37 @@ def test_extreme_rates_keep_distribution_valid():
 import random as _random
 
 from autonomy.sports.mlb_pa_sim import sample_outcome, simulate_half_inning
+from autonomy.sports.mlb_pa_sim import _advance
+
+
+def test_advance_bases_loaded_walk_scores_one_keeps_loaded():
+    bases = [True, True, True]
+    assert _advance(bases, "bb") == 1
+    assert bases == [True, True, True]
+
+
+def test_advance_walk_with_first_open_no_force_run():
+    bases = [False, True, True]  # 1st open, 2nd+3rd occupied
+    assert _advance(bases, "bb") == 0
+    assert bases == [True, True, True]  # batter to 1st, no forced run
+
+
+def test_advance_single_moves_runner_from_second_to_third():
+    bases = [False, True, False]  # runner on 2nd
+    assert _advance(bases, "single") == 0
+    assert bases == [True, False, True]  # batter on 1st, runner to 3rd
+
+
+def test_advance_double_scores_runner_from_second():
+    bases = [False, True, False]  # runner on 2nd
+    assert _advance(bases, "double") == 1  # runner scores (2+2>=3)
+    assert bases == [False, True, False]  # batter on 2nd
+
+
+def test_advance_home_run_with_two_on_scores_three_empties_bases():
+    bases = [True, True, False]  # runners on 1st and 2nd
+    assert _advance(bases, "hr") == 3  # two runners + batter
+    assert bases == [False, False, False]
 
 
 def test_sample_outcome_is_deterministic_and_valid():
@@ -113,13 +144,13 @@ def test_sample_outcome_is_deterministic_and_valid():
     assert picks == picks2
 
 
-def test_half_inning_all_home_runs_scores_until_three_outs():
-    # A distribution that always yields HR then... it can't make outs, so guard
-    # with a mixed distribution and assert runs are non-negative and bounded.
-    hr_heavy = {"k": 0.0, "bb": 0.0, "hbp": 0.0, "single": 0.0,
-                "double": 0.0, "triple": 0.0, "hr": 0.5, "out": 0.5}
-    runs, _ = simulate_half_inning(0, lambda i: hr_heavy, _random.Random(3))
-    assert runs >= 0
+def test_half_inning_hr_out_distribution_is_deterministic_and_terminates():
+    hr_out = {"k": 0.0, "bb": 0.0, "hbp": 0.0, "single": 0.0,
+              "double": 0.0, "triple": 0.0, "hr": 0.5, "out": 0.5}
+    a = simulate_half_inning(0, lambda i: hr_out, _random.Random(3))
+    b = simulate_half_inning(0, lambda i: hr_out, _random.Random(3))
+    assert a == b                      # deterministic
+    assert a[0] >= 0 and a[1] >= 3     # terminated at >= 3 outs (cursor advanced)
 
 
 def test_half_inning_all_outs_scores_zero():
