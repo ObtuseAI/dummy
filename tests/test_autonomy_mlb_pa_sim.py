@@ -267,6 +267,30 @@ def test_much_stronger_home_lineup_favored_to_win():
     assert markets["home_win"] > 0.60  # a far stronger lineup wins more often
 
 
+from autonomy.sports.mlb_pa_sim import (
+    RELIEVER_K_PCT, TTO_PENALTY_PER_TIME, _starter_distributions_by_tto,
+)
+
+
+def test_tto_penalty_raises_offense_deeper_into_the_order():
+    lineup = tuple(LineupSlot(i + 1, 100 + i, bats="R") for i in range(9))
+    rates = {100 + i: BatterRates(player_id=100 + i, bats="R", k_pct=0.20,
+                                  bb_pct=0.09, obp=0.340, slg=0.450, iso=0.15)
+             for i in range(9)}
+    pitcher = PitcherRates(player_id=9, throws="R", k_pct=0.22, bb_pct=0.08, hr9=1.2)
+    by_tto = _starter_distributions_by_tto(lineup, rates, pitcher, 1.0, 1.0)
+    # Third time through the order allows more offense than the first time.
+    first_time_hr = sum(d["hr"] for d in by_tto[0])
+    third_time_hr = sum(d["hr"] for d in by_tto[3])
+    assert third_time_hr > first_time_hr
+    assert TTO_PENALTY_PER_TIME > 0.0
+
+
+def test_realistic_reliever_is_not_cartoonish():
+    # The reliever strikes out modestly more than league, not 70% more.
+    assert 0.22 <= RELIEVER_K_PCT <= 0.28
+
+
 def test_neutral_matchup_is_calibrated_to_real_mlb():
     """Task 6 calibration lock: a neutral (average vs. average) matchup must land
     in real-MLB run-environment bands, not just "plausible" ones. Real MLB is

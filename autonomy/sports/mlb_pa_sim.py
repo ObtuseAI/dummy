@@ -178,9 +178,12 @@ def simulate_half_inning(
     return runs, cursor
 
 
-STARTER_BATTERS_FACED = 20  # ~4-5 innings before the bullpen takes over (Task 6 calibration)
-BULLPEN_K_BOOST = 1.7  # fresh reliever strikes out more than LEAGUE["k"] alone implies
-BULLPEN_BASE_HR9 = 0.20  # fresh reliever allows far fewer HR/9 than a tiring starter
+STARTER_BATTERS_FACED = 24  # a full modern start before the bullpen takes over
+TTO_PENALTY_PER_TIME = 0.04  # each time through the order lifts the batter's offense
+TTO_MAX_TIMES = 3            # penalty saturates by the third time through
+RELIEVER_K_PCT = 0.245      # relievers strike out modestly more than league
+RELIEVER_BB_PCT = 0.090
+RELIEVER_HR9 = 1.15
 
 
 @dataclass(frozen=True)
@@ -200,11 +203,16 @@ def _platoon(batter_bats: str | None, pitcher_throws: str | None) -> float:
     return 0.93 if batter_bats == pitcher_throws else 1.07
 
 
+def _tto_mult(level: int) -> float:
+    return 1.0 + TTO_PENALTY_PER_TIME * min(level, TTO_MAX_TIMES)
+
+
 def _side_distributions(
     lineup: tuple[Any, ...],
     batter_rates: dict[int, Any],
     pitcher: Any,
     park_hr_factor: float,
+    offense_mult: float = 1.0,
 ) -> list[dict[str, float]]:
     dists: list[dict[str, float]] = []
     throws = getattr(pitcher, "throws", None)
@@ -213,9 +221,26 @@ def _side_distributions(
         dists.append(plate_appearance_distribution(
             batter, pitcher,
             park_hr_factor=park_hr_factor,
-            platoon=_platoon(getattr(slot, "bats", None), throws),
+            platoon=_platoon(getattr(slot, "bats", None), throws) * offense_mult,
         ))
     return dists
+
+
+def _starter_distributions_by_tto(
+    lineup: tuple[Any, ...],
+    batter_rates: dict[int, Any],
+    pitcher: Any,
+    park_hr_factor: float,
+    offense_mult: float,
+) -> list[list[dict[str, float]]]:
+    """Per-slot distributions for each times-through-the-order level (0..MAX)."""
+    return [
+        _side_distributions(
+            lineup, batter_rates, pitcher, park_hr_factor,
+            offense_mult=offense_mult * _tto_mult(level),
+        )
+        for level in range(TTO_MAX_TIMES + 1)
+    ]
 
 
 def _bullpen_distributions(
@@ -223,21 +248,22 @@ def _bullpen_distributions(
     batter_rates: dict[int, Any],
     fatigue: dict[int, float],
     park_hr_factor: float,
+    offense_mult: float = 1.0,
 ) -> list[dict[str, float]]:
-    # Fresh, high-leverage single-inning reliever (real bullpens run measurably
-    # cooler than a tiring/pacing starter), degraded by aggregate bullpen fatigue.
+    # Realistic single-inning reliever (a modest edge over league, not a
+    # cartoonish super-bullpen), degraded by aggregate bullpen fatigue.
     avg_fatigue = (sum(fatigue.values()) / len(fatigue)) if fatigue else 0.0
     reliever = PitcherRates(
         player_id=-1, throws=None,
-        k_pct=LEAGUE["k"] * BULLPEN_K_BOOST * (1.0 - 0.15 * avg_fatigue),
-        bb_pct=LEAGUE["bb"] * (1.0 + 0.20 * avg_fatigue),
-        hr9=BULLPEN_BASE_HR9 * (1.0 + 0.20 * avg_fatigue),
+        k_pct=RELIEVER_K_PCT * (1.0 - 0.15 * avg_fatigue),
+        bb_pct=RELIEVER_BB_PCT * (1.0 + 0.20 * avg_fatigue),
+        hr9=RELIEVER_HR9 * (1.0 + 0.20 * avg_fatigue),
     )
-    return _side_distributions(lineup, batter_rates, reliever, park_hr_factor)
+    return _side_distributions(lineup, batter_rates, reliever, park_hr_factor, offense_mult)
 
 
 def _simulate_side(
-    starter_dists: list[dict[str, float]],
+    starter_by_tto: list[list[dict[str, float]]],
     bullpen_dists: list[dict[str, float]],
     rng: random.Random,
     innings: int,
@@ -245,13 +271,23 @@ def _simulate_side(
     """Return (total_runs, first_inning_runs, runs_through_5) for one team."""
     total = first = through5 = 0
     cursor = 0
-    faced = 0
+    pitcher_faced = 0   # batters the CURRENT pitcher has faced (resets on a switch)
+    total_faced = 0     # batters the starter faced (triggers the bullpen)
+    on_bullpen = False
     for inning in range(1, innings + 1):
-        use_bullpen = faced >= STARTER_BATTERS_FACED
-        dists = bullpen_dists if use_bullpen else starter_dists
+        if not on_bullpen and total_faced >= STARTER_BATTERS_FACED:
+            on_bullpen = True
+            pitcher_faced = 0  # fresh reliever -> a fresh look at the order
+        if on_bullpen:
+            dists = bullpen_dists
+        else:
+            dists = starter_by_tto[min(TTO_MAX_TIMES, pitcher_faced // 9)]
         start = cursor
         runs, cursor = simulate_half_inning(cursor, lambda i: dists[i], rng)
-        faced += cursor - start
+        batters = cursor - start
+        pitcher_faced += batters
+        if not on_bullpen:
+            total_faced += batters
         total += runs
         if inning == 1:
             first = runs
@@ -264,12 +300,12 @@ def simulate_one_game(
     context: MlbGameContext, rng: random.Random, *, innings: int = 9,
 ) -> GameResult:
     park_hr = context.park_hr_factor if context.park_hr_factor is not None else 1.0
-    home_starter = _side_distributions(
-        context.home_lineup, context.batter_rates, context.away_pitcher, park_hr)
+    home_starter = _starter_distributions_by_tto(
+        context.home_lineup, context.batter_rates, context.away_pitcher, park_hr, 1.0)
     home_pen = _bullpen_distributions(
         context.home_lineup, context.batter_rates, context.away_bullpen_fatigue, park_hr)
-    away_starter = _side_distributions(
-        context.away_lineup, context.batter_rates, context.home_pitcher, park_hr)
+    away_starter = _starter_distributions_by_tto(
+        context.away_lineup, context.batter_rates, context.home_pitcher, park_hr, 1.0)
     away_pen = _bullpen_distributions(
         context.away_lineup, context.batter_rates, context.home_bullpen_fatigue, park_hr)
     h_total, h_first, h_five = _simulate_side(home_starter, home_pen, rng, innings)
