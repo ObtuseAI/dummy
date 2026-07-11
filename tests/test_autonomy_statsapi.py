@@ -256,6 +256,7 @@ def test_client_assembles_projected_context_with_pitcher_rates():
 
     client = StatsApiClient(
         fetch_schedule=fake_schedule, fetch_people=fake_people,
+        fetch_pitcher_splits=lambda pid: {"people": []},  # keep hermetic; no network
     )
     contexts = client.projected_contexts(
         "2026-07-11", captured_at="2026-07-11T18:00:00+00:00",
@@ -314,6 +315,7 @@ def test_client_clear_cache_forces_pitcher_refetch():
         return _PEOPLE_FIXTURE
     client = StatsApiClient(
         fetch_schedule=lambda d: _SCHEDULE_FIXTURE, fetch_people=counting_people,
+        fetch_pitcher_splits=lambda pid: {"people": []},  # keep hermetic; no network
     )
     client.projected_contexts("2026-07-11", captured_at="2026-07-11T18:00:00+00:00")
     first = len(calls)
@@ -404,7 +406,10 @@ def test_client_hydrate_batter_rates_fills_lineup_and_swallows_failures():
                                 "baseOnBalls": 50, "obp": "0.340", "slg": "0.450",
                                 "avg": "0.270"}}]}]}]}
 
-    client = StatsApiClient(fetch_batter_people=fake_batter)
+    client = StatsApiClient(
+        fetch_batter_people=fake_batter,
+        fetch_batter_splits=lambda pid: {"people": []},  # keep hermetic; no network
+    )
     ctx = MlbGameContext(
         game_pk=1, snapshot="confirmed", captured_at="2026-07-11T22:40:00+00:00",
         home="LAD", away="SF",
@@ -427,7 +432,10 @@ def test_client_clear_cache_forces_batter_refetch():
                                 "baseOnBalls": 50, "obp": "0.340", "slg": "0.450",
                                 "avg": "0.270"}}]}]}]}
     from autonomy.sports.statsapi import StatsApiClient, MlbGameContext, LineupSlot
-    client = StatsApiClient(fetch_batter_people=counting_batter)
+    client = StatsApiClient(
+        fetch_batter_people=counting_batter,
+        fetch_batter_splits=lambda pid: {"people": []},  # keep hermetic; no network
+    )
     ctx = MlbGameContext(
         game_pk=1, snapshot="confirmed", captured_at="2026-07-11T22:40:00+00:00",
         home="LAD", away="SF", home_lineup=(LineupSlot(1, 605141),),
@@ -465,3 +473,143 @@ def test_pitcher_rates_vs_selects_split_by_batter_hand():
     assert pitcher_rates_vs(pitcher, "L").hr9 == 0.9
     assert pitcher_rates_vs(pitcher, "R").hr9 == 1.4
     assert pitcher_rates_vs(pitcher, "S").hr9 == 1.1   # switch hitter -> overall
+
+
+# --- Task 2: parse + hydrate StatsAPI handedness splits ---------------------
+
+from autonomy.sports.statsapi import parse_batter_splits, parse_pitcher_splits
+
+_BATTER_SPLITS_FIXTURE = {
+    "people": [
+        {
+            "id": 605141,
+            "fullName": "M. Betts",
+            "batSide": {"code": "R"},
+            "stats": [
+                {"splits": [
+                    {"split": {"code": "vl", "description": "vs Left"}, "stat": {
+                        "plateAppearances": 150, "strikeOuts": 40, "baseOnBalls": 15,
+                        "obp": "0.330", "slg": "0.410", "avg": "0.250",
+                    }},
+                    {"split": {"code": "vr", "description": "vs Right"}, "stat": {
+                        "plateAppearances": 420, "strikeOuts": 90, "baseOnBalls": 50,
+                        "obp": "0.360", "slg": "0.500", "avg": "0.280",
+                    }},
+                ]}
+            ],
+        }
+    ]
+}
+
+
+def test_parse_batter_splits_returns_vs_lhp_and_vs_rhp():
+    vs_lhp, vs_rhp = parse_batter_splits(_BATTER_SPLITS_FIXTURE)
+    assert vs_lhp.player_id == 605141
+    assert vs_lhp.k_pct == round(40 / 150, 4)
+    assert vs_lhp.bb_pct == round(15 / 150, 4)
+    assert vs_lhp.obp == 0.330
+    assert vs_lhp.slg == 0.410
+    assert vs_lhp.iso == round(0.410 - 0.250, 4)
+    assert vs_rhp.player_id == 605141
+    assert vs_rhp.k_pct == round(90 / 420, 4)
+    assert vs_rhp.bb_pct == round(50 / 420, 4)
+    assert vs_rhp.obp == 0.360
+    assert vs_rhp.slg == 0.500
+
+
+def test_parse_batter_splits_returns_none_none_on_missing_payload():
+    assert parse_batter_splits({"people": []}) == (None, None)
+    assert parse_batter_splits({}) == (None, None)
+    assert parse_batter_splits({"people": [{"id": 1}]}) == (None, None)  # no stats
+
+
+_PITCHER_SPLITS_FIXTURE = {
+    "people": [
+        {
+            "id": 592789,
+            "fullName": "L. Webb",
+            "pitchHand": {"code": "R"},
+            "stats": [
+                {"splits": [
+                    {"split": {"code": "vl", "description": "vs Left"}, "stat": {
+                        "era": "3.10", "strikeOuts": 60, "baseOnBalls": 20,
+                        "battersFaced": 300, "homeRunsPer9": "0.70",
+                    }},
+                    {"split": {"code": "vr", "description": "vs Right"}, "stat": {
+                        "era": "3.40", "strikeOuts": 90, "baseOnBalls": 20,
+                        "battersFaced": 450, "homeRunsPer9": "0.95",
+                    }},
+                ]}
+            ],
+        }
+    ]
+}
+
+
+def test_parse_pitcher_splits_returns_vs_lhb_and_vs_rhb():
+    vs_lhb, vs_rhb = parse_pitcher_splits(_PITCHER_SPLITS_FIXTURE)
+    assert vs_lhb.player_id == 592789
+    assert vs_lhb.era == 3.10
+    assert vs_lhb.k_pct == round(60 / 300, 4)
+    assert vs_lhb.bb_pct == round(20 / 300, 4)
+    assert vs_lhb.hr9 == 0.70
+    assert vs_rhb.player_id == 592789
+    assert vs_rhb.era == 3.40
+    assert vs_rhb.k_pct == round(90 / 450, 4)
+    assert vs_rhb.hr9 == 0.95
+
+
+def test_parse_pitcher_splits_returns_none_none_on_missing_payload():
+    assert parse_pitcher_splits({"people": []}) == (None, None)
+    assert parse_pitcher_splits({}) == (None, None)
+    assert parse_pitcher_splits({"people": [{"id": 1}]}) == (None, None)  # no stats
+
+
+def test_client_hydrates_batter_splits_onto_vs_lhp_vs_rhp():
+    client = StatsApiClient(
+        fetch_batter_people=lambda pid: _BATTER_FIXTURE,
+        fetch_batter_splits=lambda pid: _BATTER_SPLITS_FIXTURE,
+    )
+    rates = client._batter(605141)
+    assert rates.plate_appearances == 600  # overall rates intact
+    assert rates.vs_lhp is not None and rates.vs_lhp.obp == 0.330
+    assert rates.vs_rhp is not None and rates.vs_rhp.obp == 0.360
+
+
+def test_client_hydrates_pitcher_splits_onto_vs_lhb_vs_rhb():
+    client = StatsApiClient(
+        fetch_people=lambda pid: _PEOPLE_FIXTURE,
+        fetch_pitcher_splits=lambda pid: _PITCHER_SPLITS_FIXTURE,
+    )
+    rates = client._pitcher(592789)
+    assert rates.era == 3.25  # overall rates intact
+    assert rates.vs_lhb is not None and rates.vs_lhb.era == 3.10
+    assert rates.vs_rhb is not None and rates.vs_rhb.era == 3.40
+
+
+def test_client_swallows_batter_splits_fetch_failure_leaves_vs_none():
+    def boom_splits(pid):
+        raise RuntimeError("statsapi down")
+
+    client = StatsApiClient(
+        fetch_batter_people=lambda pid: _BATTER_FIXTURE,
+        fetch_batter_splits=boom_splits,
+    )
+    rates = client._batter(605141)
+    assert rates is not None
+    assert rates.plate_appearances == 600  # overall rates intact -> split failure didn't crash hydration
+    assert rates.vs_lhp is None and rates.vs_rhp is None  # splits failure swallowed
+
+
+def test_client_swallows_pitcher_splits_fetch_failure_leaves_vs_none():
+    def boom_splits(pid):
+        raise RuntimeError("statsapi down")
+
+    client = StatsApiClient(
+        fetch_people=lambda pid: _PEOPLE_FIXTURE,
+        fetch_pitcher_splits=boom_splits,
+    )
+    rates = client._pitcher(592789)
+    assert rates is not None
+    assert rates.era == 3.25  # overall rates intact -> split failure didn't crash hydration
+    assert rates.vs_lhb is None and rates.vs_rhb is None  # splits failure swallowed
