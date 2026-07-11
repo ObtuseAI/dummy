@@ -88,10 +88,22 @@ async def test_get_full_snapshot_no_order_endpoints(mock_kalshi_client, monkeypa
 
 
 @pytest.mark.asyncio
-async def test_real_credentials_present_skip_if_missing():
-    """Live Kalshi ping; skip when creds are missing or rejected by the server."""
+async def test_real_credentials_present_skip_if_missing(monkeypatch):
+    """Live Kalshi read-only ping.
+
+    Credentials come from the shell env or, failing that, the local .env via
+    the whitelisted reader (test-scoped; nothing leaks into other tests).
+    Skips only where credentials are genuinely absent (e.g. CI), rejected, or
+    the network is unreachable.
+    """
     if not os.environ.get("KALSHI_API_KEY_ID"):
-        pytest.skip("Kalshi credentials not present")
+        from core.env_loader import read_whitelisted_env
+
+        dotenv = read_whitelisted_env()
+        if not dotenv.get("KALSHI_API_KEY_ID"):
+            pytest.skip("Kalshi credentials not present")
+        for key, value in dotenv.items():
+            monkeypatch.setenv(key, value)
     reader = KalshiRealReadOnly()
     try:
         snapshot = await reader.get_full_snapshot("KXBTCDEMO")
@@ -99,5 +111,7 @@ async def test_real_credentials_present_skip_if_missing():
         if exc.response.status_code in (401, 403):
             pytest.skip("Kalshi credentials rejected by the server")
         raise
+    except (httpx.ConnectError, httpx.ConnectTimeout, httpx.ReadTimeout) as exc:
+        pytest.skip(f"Kalshi unreachable: {type(exc).__name__}")
     assert "account_status" in snapshot
     assert not reader.order_creating_endpoints_called()

@@ -6,6 +6,7 @@ from pathlib import Path
 import pytest
 
 import core.secret_guard as secret_guard
+from core.env_loader import read_whitelisted_env
 
 SECRET_KEYS = [
     "KALSHI_API_KEY_ID",
@@ -15,27 +16,17 @@ SECRET_KEYS = [
 
 
 def _real_secret_values():
-    """Return configured secrets that look like real credentials."""
+    """Configured secrets from the shell env or the local .env (never logged)."""
+    dotenv = read_whitelisted_env()
     values = []
     for key in SECRET_KEYS:
-        value = os.environ.get(key)
+        value = os.environ.get(key) or dotenv.get(key)
         if value and len(value) >= 8:
             values.append((key, value))
     return values
 
 
-def test_no_real_secret_values_in_logs_and_artifacts():
-    """Any real configured secret value must not appear in logs or artifacts."""
-    secrets = _real_secret_values()
-    if not secrets:
-        pytest.skip("No real secret values configured in environment")
-
-    paths = []
-    for root in ["logs", "artifacts"]:
-        p = Path(root)
-        if p.exists():
-            paths.extend(p.rglob("*"))
-
+def _find_offenders(paths, secrets):
     offenders = []
     for path in paths:
         if not path.is_file():
@@ -47,7 +38,33 @@ def test_no_real_secret_values_in_logs_and_artifacts():
         for key, value in secrets:
             if value in text:
                 offenders.append((key, str(path)))
+    return offenders
 
+
+def test_secret_leak_detector_catches_planted_value(tmp_path):
+    """The detector itself is exercised hermetically on every run."""
+    leaked = tmp_path / "leaky.log"
+    leaked.write_text("Authorization: sentinel-key-value-123456", encoding="utf-8")
+    (tmp_path / "clean.log").write_text("nothing to see", encoding="utf-8")
+    offenders = _find_offenders(
+        sorted(tmp_path.rglob("*")), [("KALSHI_API_KEY_ID", "sentinel-key-value-123456")]
+    )
+    assert offenders == [("KALSHI_API_KEY_ID", str(leaked))]
+
+
+def test_no_real_secret_values_in_logs_and_artifacts():
+    """Any real configured secret value must not appear in logs or artifacts."""
+    secrets = _real_secret_values()
+    if not secrets:
+        pytest.skip("No Kalshi secrets in the shell environment or local .env")
+
+    paths = []
+    for root in ["logs", "artifacts"]:
+        p = Path(root)
+        if p.exists():
+            paths.extend(p.rglob("*"))
+
+    offenders = _find_offenders(paths, secrets)
     assert not offenders, f"Secrets found in: {offenders}"
 
 
