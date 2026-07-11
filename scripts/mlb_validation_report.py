@@ -25,7 +25,10 @@ def main() -> int:
         return 0
     ledger = SportsEvidenceLedger(RUNTIME)
     try:
-        rows = [r for r in ledger.rows(earliest_per_ticker_source=False)
+        # One earliest snapshot per (ticker, source): per-cycle repeats of the same
+        # market are correlated and would inflate n / shrink the calibration CI,
+        # which assumes independent decisions. Mirrors backtest.py's leakage guard.
+        rows = [r for r in ledger.rows(earliest_per_ticker_source=True)
                 if r.sport == "mlb"]
         pnl_by_id: dict[str, int] = {}
         for d in ledger.recent_paper_decisions(status="SETTLED", limit=100000):

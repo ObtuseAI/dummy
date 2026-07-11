@@ -26,6 +26,9 @@ from autonomy.stats import mean_ci95
 
 # A positive mean edge concentrated in too few event clusters is not robust;
 # require cluster diversity so a single busy game cannot pass the primary head.
+# Mirrors the crypto challenger gate's 10-distinct-cluster floor in backtest.py;
+# the sports champion gate uses 20 on the full settled set, but 10 here on the
+# narrower contested subset is deliberate (contested decisions are scarcer).
 MIN_CONTESTED_CLUSTERS = 10
 
 
@@ -34,6 +37,9 @@ class HeadVerdict:
     name: str
     passed: bool
     metric: float | None
+    # n is head-specific: beat_close = total decisions (see detail["contested_n"]
+    # for the contested subset), calibration = settled edge count, paper_pnl =
+    # priced-decision count. Not comparable across heads without checking name.
     n: int
     detail: dict[str, Any] = field(default_factory=dict)
 
@@ -135,6 +141,8 @@ def calibration_head(decisions: list[SettledDecision]) -> HeadVerdict:
         edges.append(
             _brier(d.market_probability, outcome) - _brier(d.model_probability, outcome)
         )
+    # mean_ci95 assumes independent decisions; callers must pass a de-duplicated
+    # population (one snapshot per market) or this interval is over-narrow.
     ci = mean_ci95(edges) if edges else None
     lower = (ci or {}).get("lower")
     mean_edge = (ci or {}).get("mean")
@@ -144,7 +152,7 @@ def calibration_head(decisions: list[SettledDecision]) -> HeadVerdict:
         passed=passed,
         metric=mean_edge,
         n=len(edges),
-        detail={"mean_edge_ci95": ci},
+        detail={"mean_edge_ci95": ci, "assumes_independent_decisions": True},
     )
 
 
