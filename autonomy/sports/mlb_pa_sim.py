@@ -392,6 +392,16 @@ def simulate_one_game(
     )
 
 
+# Task 5 (rivalry/divisional awareness): divisional and marquee-rivalry games
+# are historically closer / higher-variance than a random pairing -- ballclubs
+# know each other intimately and the talent gap that shows up on paper tends
+# to compress. Applied as a modest post-hoc regression of the aggregate
+# home_win probability toward a pick'em line (0.5); every other market is
+# left untouched. divisional=False (the default) skips this entirely, so
+# today's output is byte-identical.
+DIVISIONAL_REGRESSION = 0.06  # fraction of the home_win edge pulled toward 0.5
+
+
 def simulate_game_markets(
     context: MlbGameContext,
     *,
@@ -399,8 +409,15 @@ def simulate_game_markets(
     sims: int = 5000,
     total_line: float = 8.5,
     weather: tuple[float, float] | None = None,
+    divisional: bool = False,
 ) -> dict[str, Any]:
-    """Run N deterministic games; return coherent market probabilities."""
+    """Run N deterministic games; return coherent market probabilities.
+
+    `divisional=True` applies a modest, deterministic regression of home_win
+    toward 0.5 (see DIVISIONAL_REGRESSION) to reflect that divisional/rivalry
+    games are historically closer. `divisional=False` (the default) is
+    byte-identical to the pre-Task-5 behavior.
+    """
     runs = max(1, int(sims))
     rng = random.Random(seed)
     home_wins = 0.0
@@ -422,8 +439,11 @@ def simulate_game_markets(
             yrfi += 1
         if game.home_runs_through_5 > game.away_runs_through_5:
             home_f5 += 1
+    home_win = home_wins / runs
+    if divisional:
+        home_win = 0.5 + (home_win - 0.5) * (1.0 - DIVISIONAL_REGRESSION)
     return {
-        "home_win": home_wins / runs,
+        "home_win": home_win,
         "total_over": total_over / runs,
         "total_line": total_line,
         "yrfi": yrfi / runs,

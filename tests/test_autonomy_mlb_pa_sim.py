@@ -495,6 +495,44 @@ def test_home_bullpen_rates_suppress_away_lineup_scoring_across_seeds():
     assert strong_total < weak_total
 
 
+def test_divisional_false_is_byte_identical_to_default():
+    # divisional defaults to False; passing it explicitly must not change a
+    # single field of the output (the CRITICAL non-destructive guarantee).
+    ctx = _context(home_batter_iso=0.30, away_batter_iso=0.08)
+    default = simulate_game_markets(ctx, seed=7, sims=800)
+    explicit_false = simulate_game_markets(ctx, seed=7, sims=800, divisional=False)
+    assert default == explicit_false
+
+
+def test_divisional_true_pulls_lopsided_home_win_toward_half():
+    # A far-stronger home lineup produces a lopsided home_win; divisional=True
+    # should regress it a touch toward 0.5 relative to divisional=False, but
+    # not eliminate the edge entirely.
+    ctx = _context(home_batter_iso=0.30, away_batter_iso=0.08)
+    neutral = simulate_game_markets(ctx, seed=7, sims=800, divisional=False)
+    div = simulate_game_markets(ctx, seed=7, sims=800, divisional=True)
+    assert neutral["home_win"] > 0.60  # confirm the lopsided baseline
+    assert 0.5 < div["home_win"] < neutral["home_win"]  # pulled toward 0.5, still home-favored
+    # Only home_win should move; the other markets are computed from the same
+    # raw per-sim results and are left unchanged.
+    assert div["total_over"] == neutral["total_over"]
+    assert div["yrfi"] == neutral["yrfi"]
+    assert div["home_f5_lead"] == neutral["home_f5_lead"]
+    assert div["expected_total_runs"] == neutral["expected_total_runs"]
+
+
+def test_divisional_regression_constant_is_modest():
+    from autonomy.sports.mlb_pa_sim import DIVISIONAL_REGRESSION
+    assert 0.0 < DIVISIONAL_REGRESSION <= 0.15  # a modest bump, not a wholesale rewrite
+
+
+def test_divisional_true_is_deterministic():
+    ctx = _context(home_batter_iso=0.30, away_batter_iso=0.08)
+    a = simulate_game_markets(ctx, seed=7, sims=500, divisional=True)
+    b = simulate_game_markets(ctx, seed=7, sims=500, divisional=True)
+    assert a == b
+
+
 def test_pitcher_only_split_is_used_when_batter_has_no_split():
     from autonomy.sports.statsapi import BatterRates, LineupSlot, MlbGameContext, PitcherRates
     # Pitcher dominates RHB but is weak vs LHB. The home lineup is all RIGHT-handed
