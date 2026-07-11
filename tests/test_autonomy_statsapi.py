@@ -344,3 +344,49 @@ def test_batter_rates_attaches_to_context_and_reports_provenance():
         home="NYY", away="BOS",
     )
     assert empty.field_provenance()["batter_rates"] is False
+
+
+from autonomy.sports.statsapi import parse_batter_rates
+
+_BATTER_FIXTURE = {
+    "people": [
+        {
+            "id": 605141,
+            "fullName": "M. Betts",
+            "batSide": {"code": "R"},
+            "stats": [
+                {"splits": [{"stat": {
+                    "plateAppearances": 600,
+                    "strikeOuts": 90,
+                    "baseOnBalls": 60,
+                    "obp": "0.360",
+                    "slg": "0.520",
+                    "avg": "0.280",
+                }}]}
+            ],
+        }
+    ]
+}
+
+
+def test_parse_batter_rates_computes_rates_and_iso():
+    rates = parse_batter_rates(_BATTER_FIXTURE)
+    assert rates.player_id == 605141
+    assert rates.bats == "R"
+    assert rates.plate_appearances == 600
+    assert rates.k_pct == round(90 / 600, 4)
+    assert rates.bb_pct == round(60 / 600, 4)
+    assert rates.obp == 0.360
+    assert rates.slg == 0.520
+    assert rates.iso == round(0.520 - 0.280, 4)  # slg - avg
+
+
+def test_parse_batter_rates_none_on_empty_and_missing_denominator():
+    assert parse_batter_rates({"people": []}) is None
+    zero = {"people": [{"id": 7, "stats": [{"splits": [{"stat": {
+        "plateAppearances": 0, "strikeOuts": 3, "baseOnBalls": 1, "slg": "0.400",
+    }}]}]}]}
+    rates = parse_batter_rates(zero)
+    assert rates.player_id == 7
+    assert rates.k_pct is None and rates.bb_pct is None  # no divide-by-zero
+    assert rates.iso is None  # no avg -> ISO unknown

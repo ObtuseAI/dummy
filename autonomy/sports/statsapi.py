@@ -225,6 +225,37 @@ def parse_pitcher_rates(people_payload: dict[str, Any]) -> PitcherRates | None:
     )
 
 
+def parse_batter_rates(people_payload: dict[str, Any]) -> BatterRates | None:
+    people = people_payload.get("people") or []
+    if not people:
+        return None
+    person = people[0] or {}
+    pid = person.get("id")
+    if pid is None:
+        return None
+    stat: dict[str, Any] = {}
+    stats = person.get("stats") or []
+    if stats:
+        splits = (stats[0] or {}).get("splits") or []
+        if splits:
+            stat = (splits[0] or {}).get("stat", {}) or {}
+    pa = stat.get("plateAppearances")
+    slg = _float(stat.get("slg"))
+    avg = _float(stat.get("avg"))
+    iso = round(slg - avg, 4) if slg is not None and avg is not None else None
+    return BatterRates(
+        player_id=int(pid),
+        name=person.get("fullName"),
+        bats=((person.get("batSide", {}) or {}).get("code")),
+        plate_appearances=int(pa) if pa is not None else None,
+        k_pct=_rate(stat.get("strikeOuts"), pa),
+        bb_pct=_rate(stat.get("baseOnBalls"), pa),
+        obp=_float(stat.get("obp")),
+        slg=slg,
+        iso=iso,
+    )
+
+
 # Seed table from public league-average park indices; neutral = 1.0. The
 # feature-discovery loop (S5) refines these from residuals later.
 PARK_FACTORS: dict[str, tuple[float, float]] = {
