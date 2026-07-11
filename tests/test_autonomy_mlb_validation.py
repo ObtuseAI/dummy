@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass as _dc
 
-from autonomy.sports.mlb_validation import HeadVerdict, MlbEngineScorecard, SettledDecision, settled_decisions_for, beat_close_head
+from autonomy.sports.mlb_validation import HeadVerdict, MlbEngineScorecard, SettledDecision, settled_decisions_for, beat_close_head, calibration_head, paper_pnl_head
 
 
 def test_scorecard_champion_ready_tracks_primary_head_only():
@@ -95,4 +95,38 @@ def test_beat_close_head_rejects_single_cluster_even_above_min_n():
     verdict = beat_close_head(decisions)
     assert verdict.detail["contested_n"] == 40
     assert verdict.detail["event_clusters"] == 1
+    assert verdict.passed is False
+
+
+def test_calibration_head_full_surface_edge():
+    # Model consistently closer to the outcome than the market across 30 games.
+    decisions = [_dec(f"g{i}", 0.90, 0.60, True) for i in range(30)]
+    verdict = calibration_head(decisions)
+    assert verdict.name == "calibration"
+    assert verdict.n == 30
+    assert verdict.metric is not None and verdict.metric > 0
+    assert verdict.passed is True
+
+
+def test_calibration_head_empty_is_unproven():
+    verdict = calibration_head([])
+    assert verdict.passed is False and verdict.n == 0
+
+
+def test_paper_pnl_head_sums_realized():
+    decisions = [
+        _dec("g1", 0.6, 0.5, True, pnl=40),
+        _dec("g2", 0.4, 0.5, False, pnl=-15),
+        _dec("g3", 0.6, 0.5, True, pnl=None),  # no realized P&L -> excluded
+    ]
+    verdict = paper_pnl_head(decisions)
+    assert verdict.name == "paper_pnl"
+    assert verdict.metric == 25.0  # 40 - 15
+    assert verdict.n == 2
+    assert verdict.passed is True
+
+
+def test_paper_pnl_head_negative_fails():
+    decisions = [_dec("g1", 0.6, 0.5, False, pnl=-52)]
+    verdict = paper_pnl_head(decisions)
     assert verdict.passed is False

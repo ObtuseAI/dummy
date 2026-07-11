@@ -22,6 +22,7 @@ from autonomy.backtest import (
     _brier,
     _cluster_bootstrap_mean_ci,
 )
+from autonomy.stats import mean_ci95
 
 # A positive mean edge concentrated in too few event clusters is not robust;
 # require cluster diversity so a single busy game cannot pass the primary head.
@@ -123,4 +124,39 @@ def beat_close_head(decisions: list[SettledDecision]) -> HeadVerdict:
             "cluster_bootstrap_ci95": ci,
             "event_clusters": event_clusters,
         },
+    )
+
+
+def calibration_head(decisions: list[SettledDecision]) -> HeadVerdict:
+    """Sanity head: full-surface mean Brier edge vs the market (all settled)."""
+    edges: list[float] = []
+    for d in decisions:
+        outcome = 1 if d.result_yes else 0
+        edges.append(
+            _brier(d.market_probability, outcome) - _brier(d.model_probability, outcome)
+        )
+    ci = mean_ci95(edges) if edges else None
+    lower = (ci or {}).get("lower")
+    mean_edge = (ci or {}).get("mean")
+    passed = bool(edges) and lower is not None and lower > 0.0
+    return HeadVerdict(
+        name="calibration",
+        passed=passed,
+        metric=mean_edge,
+        n=len(edges),
+        detail={"mean_edge_ci95": ci},
+    )
+
+
+def paper_pnl_head(decisions: list[SettledDecision]) -> HeadVerdict:
+    """Operational head: net realized paper P&L over decisions that have one."""
+    realized = [d.pnl_cents for d in decisions if d.pnl_cents is not None]
+    net = sum(realized)
+    passed = bool(realized) and net > 0
+    return HeadVerdict(
+        name="paper_pnl",
+        passed=passed,
+        metric=float(net) if realized else None,
+        n=len(realized),
+        detail={"net_pnl_cents": net, "priced_decisions": len(realized)},
     )
