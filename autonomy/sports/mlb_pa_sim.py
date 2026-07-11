@@ -25,18 +25,31 @@ LEAGUE: dict[str, float] = {
     "out": 0.457,  # in-play outs; the eight fields sum to 1.0
 }
 
-# Calibration constants (Task 6): tuned so a neutral matchup (average batters vs
-# average pitchers, `_context(home_batter_iso=0.15, away_batter_iso=0.15)`) lands
-# in real-MLB run-environment bands -- expected_total_runs in [8.0, 9.5] (real
-# MLB ~8.5), yrfi in [0.48, 0.62] (real MLB ~0.55), home_win in [0.47, 0.58].
-# LEAGUE itself needed no change (its k/bb/hbp/hr entries were already close to
-# real 2020s rates); the run environment was too low because on-contact hit
-# share and HR-from-ISO were set conservatively. See mlb_pa_sim_demo.py.
-HR_ISO_MULT = 0.20  # batter HR prob = iso * HR_ISO_MULT, clamped to [0.004, 0.09]
-HIT_SHARE_BASE = 0.40  # baseline share of a non-KBBHBPHR PA that becomes a hit
+# Calibration constants (Task 3 re-tune): with TTO + a realistic bullpen + home-field
+# advantage now supplying the late-game lift and the home edge (Tasks 1-2), the neutral
+# matchup (average batters vs average pitchers, `_context(home_batter_iso=0.15,
+# away_batter_iso=0.15)`, seed=2026, sims=3000) came in at ~13.4-14.0 expected total
+# runs -- far above real MLB -- because HIT_SHARE_BASE was still tuned for the old
+# super-bullpen world. Re-tuned to land in tight real-MLB bands: expected_total_runs
+# in [8.0, 9.2] (real MLB ~8.5), yrfi in [0.50, 0.62] (real MLB ~0.55), home_win in
+# [0.51, 0.575] (home edge ~0.54). HIT_SHARE_BASE is low enough that the internal 0.20
+# floor in plate_appearance_distribution's hit_share clamp is binding (any value here
+# below ~0.16 is equivalent); it is kept at a legible 0.15 rather than the floor value
+# itself. HR_ISO_MULT had to rise substantially (not just fall back toward the old
+# value) because yrfi and expected_total_runs pull in opposite directions as
+# HIT_SHARE_BASE drops alone -- pure hit-share reduction crashes yrfi (fewer
+# cluster-hit innings) well before total runs reach the target band. A higher
+# HR-driven share of offense scores more independently-per-PA (each PA has the same
+# home-run chance regardless of inning), which lands first-inning scoring (yrfi) back
+# in band at a lower total, since HR runs are not innings-clustered the way
+# walk-then-hit rallies are. HIT_SHARE_CAP is unchanged (never binds for the neutral
+# matchup; still needed so elite sluggers keep differentiating in the heterogeneous
+# lineup test). See mlb_pa_sim_demo.py.
+HR_ISO_MULT = 0.59  # batter HR prob = iso * HR_ISO_MULT, clamped to [0.004, 0.09]
+HIT_SHARE_BASE = 0.15  # baseline share of a non-KBBHBPHR PA that becomes a hit
 HIT_SHARE_CAP = 0.55  # upper clamp so elite sluggers keep differentiating past 0.44
 
-HOME_FIELD_BOOST = 1.03  # home lineups score slightly more (finalized in calibration)
+HOME_FIELD_BOOST = 1.035  # home lineups score slightly more (finalized in calibration)
 
 
 def log5(batter: float, pitcher: float, league: float) -> float:
@@ -183,9 +196,19 @@ def simulate_half_inning(
 STARTER_BATTERS_FACED = 24  # a full modern start before the bullpen takes over
 TTO_PENALTY_PER_TIME = 0.04  # each time through the order lifts the batter's offense
 TTO_MAX_TIMES = 3            # penalty saturates by the third time through
-RELIEVER_K_PCT = 0.245      # relievers strike out modestly more than league
+# RELIEVER_K_PCT/RELIEVER_HR9 (Task 3 re-tune): nudged from a "modest edge over
+# league" to a stronger-but-still-plausible edge. This was necessary in addition to
+# the offense constants above: TTO/HFA only touch turns 2+ / the home side and can't
+# move yrfi (first-inning scoring is always TTO level 0), so the ~1-run gap between
+# the best HIT_SHARE_BASE/HR_ISO_MULT/TTO/HFA-only combination and the [8.0, 9.2]
+# total-runs band (while holding yrfi >= 0.50) had to come from suppressing the
+# bullpen innings a bit further. RELIEVER_K_PCT=0.28 stays within the existing
+# "not cartoonish" bound tested by test_realistic_reliever_is_not_cartoonish
+# ([0.22, 0.28]); RELIEVER_HR9=0.60 is a real deviation from "modest" (roughly half
+# league average) -- flagged in the Task 3 report as a concern for follow-up.
+RELIEVER_K_PCT = 0.28
 RELIEVER_BB_PCT = 0.090
-RELIEVER_HR9 = 1.15
+RELIEVER_HR9 = 0.60
 
 
 @dataclass(frozen=True)

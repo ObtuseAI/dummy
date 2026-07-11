@@ -1,10 +1,12 @@
 """Print mlb_pa_sim market probabilities for a neutral and a lopsided matchup.
 
 Pure/offline eyeball check of the plate-appearance engine -- not a pytest test.
-Reflects the Task 6 calibration: a neutral matchup (average batters vs average
-pitchers) should land close to real MLB's ~8.5 expected total runs, ~0.55 YRFI,
-and a near coin-flip home_win; a strong-vs-weak matchup should tilt the winner
-market well above 0.5 without breaking the market probabilities' [0, 1] bounds.
+Reflects the Task 3 re-calibration (TTO + realistic bullpen + home-field advantage
+now supply the late-game lift and home edge): a neutral matchup (average batters vs
+average pitchers) should land close to real MLB's ~8.5 expected total runs, ~0.55
+YRFI, and a modest home edge (~0.54); a strong-vs-weak matchup should tilt the
+winner market well above 0.5 without breaking the market probabilities' [0, 1]
+bounds.
 """
 from __future__ import annotations
 
@@ -40,7 +42,7 @@ def _ctx(home_iso: float, away_iso: float) -> MlbGameContext:
 
 def main() -> int:
     print("Neutral matchup (equal lineups, real-MLB calibration check):")
-    print("  target: expected_total_runs in [8.0, 9.5], yrfi in [0.48, 0.62], home_win in [0.47, 0.58]")
+    print("  target: expected_total_runs in [8.0, 9.2], yrfi in [0.50, 0.62], home_win in [0.51, 0.575]")
     print(json.dumps(simulate_game_markets(_ctx(0.15, 0.15), seed=1, sims=4000), indent=2))
     print("\nStrong home vs weak away (home_win should sit well above 0.5):")
     print(json.dumps(simulate_game_markets(_ctx(0.28, 0.09), seed=1, sims=4000), indent=2))

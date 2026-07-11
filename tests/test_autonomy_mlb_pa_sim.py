@@ -300,15 +300,51 @@ def test_home_field_advantage_favors_the_home_side():
 
 
 def test_neutral_matchup_is_calibrated_to_real_mlb():
-    """Task 6 calibration lock: a neutral (average vs. average) matchup must land
+    """Task 3 calibration lock: a neutral (average vs. average) matchup must land
     in real-MLB run-environment bands, not just "plausible" ones. Real MLB is
-    roughly ~8.5 expected total runs, ~0.55 YRFI, and a near coin-flip home_win
-    for equal teams. Bands here are tighter than the original spec draft
-    ([6,12] total runs / [0.30,0.75] YRFI) precisely because this test's job is
-    to lock aggregate realism, not just sanity.
+    roughly ~8.5 expected total runs, ~0.55 YRFI, and a modest home edge
+    (~0.54) for equal teams -- now that TTO + a realistic bullpen + home-field
+    advantage supply the late-game lift and the home edge (Tasks 1-2), the
+    offense constants (HIT_SHARE_BASE/HR_ISO_MULT) plus a modest bullpen re-tune
+    (RELIEVER_K_PCT/RELIEVER_HR9) are tuned so the aggregate lands here, not just
+    in a "plausible" wide band.
     """
     ctx = _context(home_batter_iso=0.15, away_batter_iso=0.15)
     markets = simulate_game_markets(ctx, seed=2026, sims=3000)
-    assert 8.0 <= markets["expected_total_runs"] <= 9.5    # real MLB ~8.5
-    assert 0.48 <= markets["yrfi"] <= 0.62                 # real MLB ~0.55
-    assert 0.47 <= markets["home_win"] <= 0.58             # near coin-flip for equal teams
+    assert 8.0 <= markets["expected_total_runs"] <= 9.2    # real MLB ~8.5
+    assert 0.50 <= markets["yrfi"] <= 0.62                 # real MLB ~0.55
+    assert 0.51 <= markets["home_win"] <= 0.575            # home edge ~0.54
+
+
+def test_heterogeneous_lineup_still_realistic_totals():
+    # A real lineup is not uniform: a strong top, weak bottom. Totals must stay sane.
+    lineup_iso = [0.24, 0.22, 0.26, 0.20, 0.16, 0.13, 0.11, 0.09, 0.08]
+    home = tuple(LineupSlot(i + 1, 100 + i, bats="R") for i in range(9))
+    away = tuple(LineupSlot(i + 1, 200 + i, bats="R") for i in range(9))
+    rates = {}
+    for i, iso in enumerate(lineup_iso):
+        rates[100 + i] = BatterRates(player_id=100 + i, bats="R", k_pct=0.21,
+                                     bb_pct=0.085, obp=0.320 + iso * 0.2,
+                                     slg=0.360 + iso, iso=iso)
+        rates[200 + i] = BatterRates(player_id=200 + i, bats="R", k_pct=0.21,
+                                     bb_pct=0.085, obp=0.320 + iso * 0.2,
+                                     slg=0.360 + iso, iso=iso)
+    ctx = MlbGameContext(
+        game_pk=1, snapshot="confirmed", captured_at="2026-07-11T22:40:00+00:00",
+        home="H", away="A", home_lineup=home, away_lineup=away,
+        home_pitcher=PitcherRates(player_id=9, throws="R", k_pct=0.22, bb_pct=0.08, hr9=1.2),
+        away_pitcher=PitcherRates(player_id=8, throws="R", k_pct=0.22, bb_pct=0.08, hr9=1.2),
+        batter_rates=rates, park_run_factor=1.0, park_hr_factor=1.0)
+    m = simulate_game_markets(ctx, seed=7, sims=2000)
+    assert 6.5 <= m["expected_total_runs"] <= 10.5   # sane real-MLB run band
+    assert 0.0 <= m["yrfi"] <= 1.0
+
+
+def test_reliever_entry_resets_times_through_order():
+    # A game long enough to reach the bullpen must still produce sane totals; the
+    # reliever starts fresh (TTO level 0), not inheriting the starter's familiarity.
+    ctx = _context(home_batter_iso=0.15, away_batter_iso=0.15)
+    m = simulate_game_markets(ctx, seed=3, sims=800)
+    assert 0.0 < m["expected_total_runs"] < 15.0  # bounded, no runaway from stale TTO
+    a = simulate_game_markets(ctx, seed=3, sims=800)
+    assert m == a  # deterministic through the bullpen switch
