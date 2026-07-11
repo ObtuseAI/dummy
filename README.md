@@ -37,7 +37,8 @@ performance after fees and slippage, drawdown limits, and the canary firewall.
 Elapsed runtime, backtests, or counterfactual quote P&L cannot promote it.
 
 The local command-center dashboard at `http://127.0.0.1:8787/` (durable via the
-`DummyDashboard` scheduled task, `scripts/install_dashboard_task.ps1`) tracks scheduler
+`DummyDashboard` scheduled task; run `scripts/install_dashboard_task.ps1`, which
+self-elevates through a UAC prompt) tracks scheduler
 health, active and settled paper trades, decision explanations, lane-level
 calibration and P&L, target-evidence progress, weaknesses, and promotion gates.
 It also exposes the isolated forced-coverage ledgers for every designated
