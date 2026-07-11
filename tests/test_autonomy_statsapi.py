@@ -415,3 +415,25 @@ def test_client_hydrate_batter_rates_fills_lineup_and_swallows_failures():
     assert set(hydrated.batter_rates) == {605141, 592885}  # 999 failed -> absent
     assert hydrated.batter_rates[605141].k_pct == round(100 / 500, 4)
     assert ctx.batter_rates == {}  # original untouched (frozen)
+
+
+def test_client_clear_cache_forces_batter_refetch():
+    calls = []
+    def counting_batter(pid):
+        calls.append(pid)
+        return {"people": [{"id": pid, "fullName": "B", "batSide": {"code": "R"},
+                            "stats": [{"splits": [{"stat": {
+                                "plateAppearances": 500, "strikeOuts": 100,
+                                "baseOnBalls": 50, "obp": "0.340", "slg": "0.450",
+                                "avg": "0.270"}}]}]}]}
+    from autonomy.sports.statsapi import StatsApiClient, MlbGameContext, LineupSlot
+    client = StatsApiClient(fetch_batter_people=counting_batter)
+    ctx = MlbGameContext(
+        game_pk=1, snapshot="confirmed", captured_at="2026-07-11T22:40:00+00:00",
+        home="LAD", away="SF", home_lineup=(LineupSlot(1, 605141),),
+    )
+    client.hydrate_batter_rates(ctx)
+    first = len(calls)
+    client.clear_cache()
+    client.hydrate_batter_rates(ctx)
+    assert len(calls) > first  # cache cleared -> refetched

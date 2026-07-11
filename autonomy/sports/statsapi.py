@@ -366,7 +366,7 @@ class StatsApiClient:
         self._batter_cache: dict[int, BatterRates | None] = {}
 
     def clear_cache(self) -> None:
-        """Drop cached pitcher lookups so a reused client refetches season rates."""
+        """Drop cached pitcher AND batter lookups so a reused client refetches season rates."""
         self._pitcher_cache.clear()
         self._batter_cache.clear()
 
