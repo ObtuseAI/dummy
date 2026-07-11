@@ -320,3 +320,27 @@ def test_client_clear_cache_forces_pitcher_refetch():
     client.clear_cache()
     client.projected_contexts("2026-07-11", captured_at="2026-07-11T18:00:00+00:00")
     assert len(calls) > first  # cache cleared -> refetched
+
+
+from autonomy.sports.statsapi import BatterRates
+
+
+def test_batter_rates_attaches_to_context_and_reports_provenance():
+    from autonomy.sports.statsapi import MlbGameContext
+    rates = BatterRates(
+        player_id=605141, name="M. Betts", bats="R",
+        plate_appearances=600, k_pct=0.16, bb_pct=0.10,
+        obp=0.36, slg=0.52, iso=0.24,
+    )
+    ctx = MlbGameContext(
+        game_pk=1, snapshot="confirmed", captured_at="2026-07-11T22:40:00+00:00",
+        home="LAD", away="SF", batter_rates={605141: rates},
+    )
+    assert ctx.batter_rates[605141].obp == 0.36
+    assert ctx.field_provenance()["batter_rates"] is True
+    # Absent by default (empty map) -> reported absent.
+    empty = MlbGameContext(
+        game_pk=2, snapshot="projected", captured_at="2026-07-11T18:00:00+00:00",
+        home="NYY", away="BOS",
+    )
+    assert empty.field_provenance()["batter_rates"] is False

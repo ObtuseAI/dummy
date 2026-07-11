@@ -35,6 +35,19 @@ class PitcherRates:
 
 
 @dataclass(frozen=True)
+class BatterRates:
+    player_id: int
+    name: str | None = None
+    bats: str | None = None  # "L" | "R" | "S"
+    plate_appearances: int | None = None
+    k_pct: float | None = None
+    bb_pct: float | None = None
+    obp: float | None = None
+    slg: float | None = None
+    iso: float | None = None
+
+
+@dataclass(frozen=True)
 class MlbGameContext:
     game_pk: int
     snapshot: SnapshotKind
@@ -50,6 +63,7 @@ class MlbGameContext:
     away_lineup: tuple[LineupSlot, ...] = ()
     home_bullpen_fatigue: dict[int, float] = field(default_factory=dict)
     away_bullpen_fatigue: dict[int, float] = field(default_factory=dict)
+    batter_rates: dict[int, BatterRates] = field(default_factory=dict)
     park_run_factor: float | None = None
     park_hr_factor: float | None = None
     wind_speed_mph: float | None = None
