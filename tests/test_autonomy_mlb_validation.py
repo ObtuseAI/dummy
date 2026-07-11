@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass as _dc
 
-from autonomy.sports.mlb_validation import HeadVerdict, MlbEngineScorecard, SettledDecision, settled_decisions_for
+from autonomy.sports.mlb_validation import HeadVerdict, MlbEngineScorecard, SettledDecision, settled_decisions_for, beat_close_head
 
 
 def test_scorecard_champion_ready_tracks_primary_head_only():
@@ -47,3 +47,42 @@ def test_settled_decisions_filters_source_and_unsettled():
     assert out[0].pnl_cents == 30 and out[1].pnl_cents == -20
     assert all(d.source == "mlb_pa_sim" for d in out)
     assert all(isinstance(d.result_yes, bool) for d in out)
+
+
+def _dec(cluster, model, market, result, pnl=0):
+    return SettledDecision("mlb_pa_sim", "winner", cluster, model, market, result, pnl)
+
+
+def test_beat_close_head_needs_min_contested_n():
+    # Two contested decisions the model nails, but below MIN_CONTESTED_N -> fail.
+    decisions = [
+        _dec("g1", 0.80, 0.55, True),
+        _dec("g2", 0.20, 0.45, False),
+    ]
+    verdict = beat_close_head(decisions)
+    assert verdict.name == "beat_close"
+    assert verdict.passed is False  # contested_n below the minimum
+    assert verdict.n == 2
+
+
+def test_beat_close_head_passes_when_model_beats_market_on_contested():
+    # 40 contested decisions across 20 clusters; the model is confidently right
+    # and the market is closer to 0.5, so the model's Brier edge is positive
+    # with a lower bound above zero.
+    decisions = []
+    for i in range(20):
+        decisions.append(_dec(f"win{i}", 0.85, 0.55, True))
+        decisions.append(_dec(f"loss{i}", 0.15, 0.45, False))
+    verdict = beat_close_head(decisions)
+    assert verdict.n == 40
+    assert verdict.metric is not None and verdict.metric > 0
+    assert verdict.passed is True
+    assert verdict.detail["contested_n"] == 40
+
+
+def test_beat_close_head_ignores_uncontested():
+    # Model agrees with the market (<5c apart) -> not contested -> excluded.
+    decisions = [_dec(f"g{i}", 0.52, 0.51, True) for i in range(30)]
+    verdict = beat_close_head(decisions)
+    assert verdict.detail["contested_n"] == 0
+    assert verdict.passed is False

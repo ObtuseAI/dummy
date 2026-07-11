@@ -16,6 +16,13 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
+from autonomy.backtest import (
+    CONTESTED_DISAGREEMENT,
+    MIN_CONTESTED_N,
+    _brier,
+    _cluster_bootstrap_mean_ci,
+)
+
 
 @dataclass(frozen=True)
 class HeadVerdict:
@@ -70,3 +77,43 @@ def settled_decisions_for(
             pnl_cents=None if pnl is None else int(pnl),
         ))
     return out
+
+
+def beat_close_head(decisions: list[SettledDecision]) -> HeadVerdict:
+    """Primary head: contested-Brier skill vs the close, cluster-robust."""
+    edges: list[float] = []
+    edges_by_cluster: dict[str, list[float]] = {}
+    for d in decisions:
+        if abs(d.model_probability - d.market_probability) < CONTESTED_DISAGREEMENT:
+            continue
+        outcome = 1 if d.result_yes else 0
+        edge = _brier(d.market_probability, outcome) - _brier(d.model_probability, outcome)
+        edges.append(edge)
+        edges_by_cluster.setdefault(d.event_cluster, []).append(edge)
+    contested_n = len(edges)
+    # _cluster_bootstrap_mean_ci requires a fixed string seed for deterministic
+    # resampling (the codebase forbids unseeded randomness).
+    ci = (
+        _cluster_bootstrap_mean_ci(edges_by_cluster, seed="mlb-beat-close-v1")
+        if edges else None
+    )
+    mean_edge = (sum(edges) / contested_n) if contested_n else None
+    lower = (ci or {}).get("lower")
+    passed = (
+        contested_n >= MIN_CONTESTED_N
+        and lower is not None
+        and lower > 0.0
+    )
+    return HeadVerdict(
+        name="beat_close",
+        passed=passed,
+        metric=mean_edge,
+        n=len(decisions),
+        detail={
+            "contested_n": contested_n,
+            "contested_disagreement": CONTESTED_DISAGREEMENT,
+            "min_contested_n": MIN_CONTESTED_N,
+            "cluster_bootstrap_ci95": ci,
+            "event_clusters": len(edges_by_cluster),
+        },
+    )
