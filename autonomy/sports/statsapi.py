@@ -56,11 +56,21 @@ class MlbGameContext:
     temperature_f: float | None = None
 
     def field_provenance(self) -> dict[str, bool]:
-        """Presence map: True when a field carries real data, False when absent."""
+        """Presence map: True when a field carries real data, False when absent.
+
+        A scalar zero (calm wind, a 0.00 rate) is a real reading, not missing;
+        only None or an empty collection counts as absent.
+        """
+        identity = {"game_pk", "snapshot", "captured_at", "home", "away"}
         present: dict[str, bool] = {}
         for f in fields(self):
-            if f.name in {"game_pk", "snapshot", "captured_at", "home", "away"}:
+            if f.name in identity:
                 continue
             value = getattr(self, f.name)
-            present[f.name] = bool(value) if value is not None else False
+            if value is None:
+                present[f.name] = False
+            elif isinstance(value, (tuple, list, dict)) and len(value) == 0:
+                present[f.name] = False
+            else:
+                present[f.name] = True
         return present

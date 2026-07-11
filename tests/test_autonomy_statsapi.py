@@ -24,3 +24,13 @@ def test_context_provenance_marks_present_and_missing_fields():
     # A field never set is reported absent, never invented.
     assert prov["home_lineup"] is False
     assert ctx.home_lineup == ()
+
+
+def test_context_provenance_treats_zero_reading_as_present():
+    ctx = MlbGameContext(
+        game_pk=1, snapshot="projected", captured_at="2026-07-11T22:05:00+00:00",
+        home="SF", away="LAD", wind_speed_mph=0.0, temperature_f=0.0,
+    )
+    prov = ctx.field_provenance()
+    assert prov["wind_speed_mph"] is True   # calm wind is a real reading, not missing
+    assert prov["temperature_f"] is True
