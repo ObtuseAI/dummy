@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 
-from scripts.generate_v8_2_reports import (
+from archive.report_scripts.generate_v8_2_reports import (
     generate_no_provider_credential_leak_report_v1,
     generate_provider_credential_source_resolution_report_v1,
     generate_provider_route_mode_report_v1,
@@ -15,7 +15,7 @@ def test_no_provider_credential_leak_in_reports(tmp_path, monkeypatch):
     monkeypatch.setenv("OPENROUTER_API_KEY", "sk-openrouter-secret-leak-test")
 
     # Generate some V8.2 reports into tmp_path by patching ARTIFACTS.
-    import scripts.generate_v8_2_reports as gen
+    import archive.report_scripts.generate_v8_2_reports as gen
     original_artifacts = gen.ARTIFACTS
     gen.ARTIFACTS = tmp_path
     try:

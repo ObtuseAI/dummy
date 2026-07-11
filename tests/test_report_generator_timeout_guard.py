@@ -9,7 +9,7 @@ from model_router.config import ProviderConfig
 from model_router.providers import BaseModelProvider
 from model_router.smoke import LiveModelSmoke
 from model_router.tasks import ModelTask
-from scripts.generate_v8_reports import main as orchestrator_main, ORCHESTRATOR_TIMEOUT_SECONDS
+from archive.report_scripts.generate_v8_reports import main as orchestrator_main, ORCHESTRATOR_TIMEOUT_SECONDS
 
 
 class _SlowProvider(BaseModelProvider):
@@ -27,8 +27,8 @@ class _SlowProvider(BaseModelProvider):
 @pytest.mark.asyncio
 async def test_orchestrator_wraps_generators_in_wait_for(tmp_path, monkeypatch):
     """The V8 orchestrator must apply a hard timeout to every report generator."""
-    import scripts.generate_v8_reports as orchestrator
-    import scripts.generate_v8_model_provider_reports as model_reports
+    import archive.report_scripts.generate_v8_reports as orchestrator
+    import archive.report_scripts.generate_v8_model_provider_reports as model_reports
 
     artifacts = tmp_path / "dummy"
     artifacts.mkdir(parents=True, exist_ok=True)
@@ -60,7 +60,7 @@ def test_orchestrator_timeout_constant_is_finite():
 async def test_run_pytest_summary_uses_subprocess_timeout(monkeypatch):
     """``run_pytest_summary`` must pass a finite timeout to subprocess.run."""
     import subprocess
-    import scripts.generate_v8_reports as orchestrator
+    import archive.report_scripts.generate_v8_reports as orchestrator
 
     calls = []
 

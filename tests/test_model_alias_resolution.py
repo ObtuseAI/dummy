@@ -32,7 +32,7 @@ async def test_alias_resolution_report_lists_configured_aliases_and_resolution(m
         return _make_response(200, {"data": [{"id": "deepseek-chat"}, {"id": "minimax-01"}]})
 
     with patch("httpx.AsyncClient.get", new=_fake_model_list):
-        from scripts.generate_v8_1_reports import generate_model_alias_resolution_report_v1
+        from archive.report_scripts.generate_v8_1_reports import generate_model_alias_resolution_report_v1
 
         report = await generate_model_alias_resolution_report_v1()
 

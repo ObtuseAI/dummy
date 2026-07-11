@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from scripts.generate_v11_reports import generate_kalshi_read_only_still_passes_report_v11
+from archive.report_scripts.generate_v11_reports import generate_kalshi_read_only_still_passes_report_v11
 
 
 def test_kalshi_read_only_still_passes_v11() -> None:

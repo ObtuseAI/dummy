@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from predator_mesh.v63.reports import FORBIDDEN_SCHEMA_FIELDS, validate_schema
-from scripts.generate_v63_reports import generate_all_v63_reports_for_tests
+from archive.report_scripts.generate_v63_reports import generate_all_v63_reports_for_tests
 from tests.staged_gate_test_helpers import assert_staged_safe
 
 

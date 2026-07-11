@@ -4,7 +4,7 @@ import pytest
 
 @pytest.mark.asyncio
 async def test_real_kalshi_read_only_report_v3():
-    from scripts.generate_v6_reports import generate_real_kalshi_read_only_report_v3
+    from archive.report_scripts.generate_v6_reports import generate_real_kalshi_read_only_report_v3
     report = await generate_real_kalshi_read_only_report_v3()
     assert report["verdict"] in ("PASS", "SKIP")
     if os.environ.get("KALSHI_API_KEY_ID"):

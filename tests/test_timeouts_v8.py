@@ -12,7 +12,7 @@ from model_router.config import ProviderConfig
 from model_router.providers import BaseModelProvider
 from model_router.smoke import LiveModelSmoke, SMOKE_CALL_TIMEOUT
 from model_router.tasks import ModelTask
-from scripts.generate_v8_reports import main as orchestrator_main, ORCHESTRATOR_TIMEOUT_SECONDS
+from archive.report_scripts.generate_v8_reports import main as orchestrator_main, ORCHESTRATOR_TIMEOUT_SECONDS
 
 
 class _SlowProvider(BaseModelProvider):
@@ -85,8 +85,8 @@ async def test_provider_smoke_call_times_out_within_20s(tmp_path, monkeypatch):
 @pytest.mark.asyncio
 async def test_report_generator_times_out_within_90s(tmp_path, monkeypatch):
     """The orchestrator must not hang when a report generator stalls."""
-    import scripts.generate_v8_reports as orchestrator
-    import scripts.generate_v8_model_provider_reports as model_reports
+    import archive.report_scripts.generate_v8_reports as orchestrator
+    import archive.report_scripts.generate_v8_model_provider_reports as model_reports
 
     artifacts = tmp_path / "dummy"
     artifacts.mkdir(parents=True, exist_ok=True)

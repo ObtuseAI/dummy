@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from scripts.generate_v10_reports import generate_no_llm_secret_leak_report_v10
+from archive.report_scripts.generate_v10_reports import generate_no_llm_secret_leak_report_v10
 
 
 def test_no_llm_secret_leak_v10(monkeypatch) -> None:

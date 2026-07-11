@@ -15,6 +15,6 @@ def test_secret_guard_redacts_keys_and_values():
 
 
 def test_no_secret_leak_report_passes():
-    from scripts.generate_v5_reports import generate_no_secret_leak_report_v4
+    from archive.report_scripts.generate_v5_reports import generate_no_secret_leak_report_v4
     report = generate_no_secret_leak_report_v4()
     assert report["verdict"] == "PASS"

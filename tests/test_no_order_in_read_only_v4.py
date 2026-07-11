@@ -4,7 +4,7 @@ from kalshi.live_data import KalshiRealReadOnly
 
 
 def test_no_order_in_read_only_report_v4():
-    from scripts.generate_v8_kalshi_reports import generate_no_order_in_read_only_report_v4
+    from archive.report_scripts.generate_v8_kalshi_reports import generate_no_order_in_read_only_report_v4
 
     report = generate_no_order_in_read_only_report_v4()
     assert report["verdict"] == "PASS"

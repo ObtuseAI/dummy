@@ -4,7 +4,7 @@ import json
 
 from predator_mesh import staged_gate_common as sgc
 from predator_mesh.v62.reports import FORBIDDEN_SIM_FIELDS, LOCAL_REHEARSAL_SCOPE
-from scripts.generate_v62_reports import generate_all_v62_reports_for_tests
+from archive.report_scripts.generate_v62_reports import generate_all_v62_reports_for_tests
 from tests.staged_gate_test_helpers import assert_staged_safe
 
 

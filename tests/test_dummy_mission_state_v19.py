@@ -14,7 +14,7 @@ def test_dummy_mission_state_v19_summarizes_activation_without_execution() -> No
 
 
 def test_generate_v19_reports_promotes_final_report_json(tmp_path, monkeypatch) -> None:
-    from scripts import generate_v19_reports as generator
+    from archive.report_scripts import generate_v19_reports as generator
 
     monkeypatch.setattr(generator, "ARTIFACTS", tmp_path)
     (tmp_path / "final_report.json").write_text(

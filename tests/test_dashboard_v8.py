@@ -41,8 +41,8 @@ def test_v8_routes_return_200():
         "/v8/firewall-rehearsal",
         "/v8/proof-reports",
     ]
-    with patch("dashboard.backend.v8_routes.RealMarketForecastLoopV2.run", new=_mock_forecast_opinions):
-        with patch("dashboard.backend.v8_routes.LiveModelSmoke.run", new=_mock_live_smoke):
+    with patch("archive.routes.v8_routes.RealMarketForecastLoopV2.run", new=_mock_forecast_opinions):
+        with patch("archive.routes.v8_routes.LiveModelSmoke.run", new=_mock_live_smoke):
             for ep in endpoints:
                 r = client.get(ep)
                 assert r.status_code == 200, f"{ep} failed: {r.text}"

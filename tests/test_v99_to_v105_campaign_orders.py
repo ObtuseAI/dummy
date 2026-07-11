@@ -1,13 +1,13 @@
 from __future__ import annotations
 
 from predator_mesh import staged_gate_common as sgc
-from scripts.generate_v99_reports import generate_all_v99_reports_for_tests
-from scripts.generate_v100_reports import generate_all_v100_reports_for_tests
-from scripts.generate_v101_reports import generate_all_v101_reports_for_tests
-from scripts.generate_v102_reports import generate_all_v102_reports_for_tests
-from scripts.generate_v103_reports import generate_all_v103_reports_for_tests
-from scripts.generate_v104_reports import generate_all_v104_reports_for_tests
-from scripts.generate_v105_reports import generate_all_v105_reports_for_tests
+from archive.report_scripts.generate_v99_reports import generate_all_v99_reports_for_tests
+from archive.report_scripts.generate_v100_reports import generate_all_v100_reports_for_tests
+from archive.report_scripts.generate_v101_reports import generate_all_v101_reports_for_tests
+from archive.report_scripts.generate_v102_reports import generate_all_v102_reports_for_tests
+from archive.report_scripts.generate_v103_reports import generate_all_v103_reports_for_tests
+from archive.report_scripts.generate_v104_reports import generate_all_v104_reports_for_tests
+from archive.report_scripts.generate_v105_reports import generate_all_v105_reports_for_tests
 from tests.staged_gate_test_helpers import assert_staged_safe
 
 CAMPAIGN = {"exact_phrase": sgc.MICRO_CAMPAIGN_PHRASE, "operator": "op", "timestamp": "t", "reason": "r", "scope": sgc.MICRO_CAMPAIGN_SCOPE, "expiration": "e"}

@@ -1,10 +1,10 @@
 from __future__ import annotations
 
 from predator_mesh import staged_gate_common as sgc
-from scripts.generate_v95_reports import generate_all_v95_reports_for_tests
-from scripts.generate_v96_reports import generate_all_v96_reports_for_tests
-from scripts.generate_v97_reports import generate_all_v97_reports_for_tests
-from scripts.generate_v98_reports import generate_all_v98_reports_for_tests
+from archive.report_scripts.generate_v95_reports import generate_all_v95_reports_for_tests
+from archive.report_scripts.generate_v96_reports import generate_all_v96_reports_for_tests
+from archive.report_scripts.generate_v97_reports import generate_all_v97_reports_for_tests
+from archive.report_scripts.generate_v98_reports import generate_all_v98_reports_for_tests
 from tests.staged_gate_test_helpers import assert_staged_safe
 
 

@@ -5,7 +5,7 @@ from typing import Any
 
 
 def v34_reports() -> dict[str, dict[str, Any]]:
-    from scripts.generate_v34_reports import generate_all_v34_reports_for_tests
+    from archive.report_scripts.generate_v34_reports import generate_all_v34_reports_for_tests
 
     return generate_all_v34_reports_for_tests(enable_network=False)
 

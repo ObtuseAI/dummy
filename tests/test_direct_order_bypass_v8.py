@@ -1,5 +1,5 @@
 def test_direct_order_bypass_v8():
-    from scripts.generate_v8_identity_reports import generate_direct_order_bypass_report_v8
+    from archive.report_scripts.generate_v8_identity_reports import generate_direct_order_bypass_report_v8
 
     report = generate_direct_order_bypass_report_v8()
     assert report["verdict"] == "PASS"

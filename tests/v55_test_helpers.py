@@ -51,7 +51,7 @@ def write_approval_file(directory: Path, data: Any) -> Path:
 
 
 def v55_reports(**kwargs: Any) -> dict[str, dict[str, Any]]:
-    from scripts.generate_v55_reports import generate_all_v55_reports_for_tests
+    from archive.report_scripts.generate_v55_reports import generate_all_v55_reports_for_tests
 
     return generate_all_v55_reports_for_tests(**kwargs)
 

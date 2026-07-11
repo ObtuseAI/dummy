@@ -4,7 +4,7 @@ import json
 
 import pytest
 
-from scripts.generate_v8_1_reports import generate_no_llm_secret_leak_report_v3
+from archive.report_scripts.generate_v8_1_reports import generate_no_llm_secret_leak_report_v3
 
 
 def test_no_llm_secret_leak_report_passes_with_clean_prompts(monkeypatch):

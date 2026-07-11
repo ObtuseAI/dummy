@@ -61,7 +61,7 @@ def assert_required_report_exists(artifact_dir: Path, name: str) -> dict:
 
 @lru_cache(maxsize=1)
 def v20_bundle() -> dict[str, dict]:
-    from scripts.generate_v20_reports import generate_v20_report_bundle
+    from archive.report_scripts.generate_v20_reports import generate_v20_report_bundle
 
     return generate_v20_report_bundle()
 
@@ -74,7 +74,7 @@ def assert_v20_report(report_name: str, *required_keys: str) -> dict:
 
 
 def assert_security_report(factory_name: str) -> dict:
-    import scripts.generate_v20_reports as generator
+    import archive.report_scripts.generate_v20_reports as generator
 
     report = getattr(generator, factory_name)()
     assert report["verdict"] == "PASS"

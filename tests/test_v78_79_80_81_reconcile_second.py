@@ -1,10 +1,10 @@
 from __future__ import annotations
 
 from predator_mesh import staged_gate_common as sgc
-from scripts.generate_v78_reports import generate_all_v78_reports_for_tests
-from scripts.generate_v79_reports import generate_all_v79_reports_for_tests
-from scripts.generate_v80_reports import generate_all_v80_reports_for_tests
-from scripts.generate_v81_reports import generate_all_v81_reports_for_tests
+from archive.report_scripts.generate_v78_reports import generate_all_v78_reports_for_tests
+from archive.report_scripts.generate_v79_reports import generate_all_v79_reports_for_tests
+from archive.report_scripts.generate_v80_reports import generate_all_v80_reports_for_tests
+from archive.report_scripts.generate_v81_reports import generate_all_v81_reports_for_tests
 from tests.staged_gate_test_helpers import assert_staged_safe
 
 SUBMITTED_V77 = {"live_canary_controller_status": "PASS_LIVE_CANARY_SUBMITTED", "simulated_canary_submits_count": 1, "order_attempt_id": "v77-attempt-1", "verdict": "PASS"}

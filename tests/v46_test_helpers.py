@@ -29,7 +29,7 @@ class ThresholdPursuitReadOnlyTransport:
 
 
 def v46_reports(**kwargs: Any) -> dict[str, dict[str, Any]]:
-    from scripts.generate_v46_reports import generate_all_v46_reports_for_tests
+    from archive.report_scripts.generate_v46_reports import generate_all_v46_reports_for_tests
 
     return generate_all_v46_reports_for_tests(**kwargs)
 

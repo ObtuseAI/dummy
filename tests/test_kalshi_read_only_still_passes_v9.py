@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from scripts.generate_v9_reports import generate_kalshi_read_only_still_passes_report_v9
+from archive.report_scripts.generate_v9_reports import generate_kalshi_read_only_still_passes_report_v9
 
 
 @pytest.mark.asyncio

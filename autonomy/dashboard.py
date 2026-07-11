@@ -505,39 +505,41 @@ def build_app():
             return JSONResponse(assembled)
         return JSONResponse(state_cache["value"])
 
-    @app.post("/api/paper-scheduler/{action}")
-    def paper_scheduler_control(action: str, request: Request) -> JSONResponse:
+    def _scheduler_control(
+        action: str, request: Request, task_name: str | None = None
+    ) -> JSONResponse:
+        """Shared paper-scheduler control: CSRF header + loopback origin, fixed task.
+
+        ``task_name=None`` targets the default crypto paper task and keeps the
+        one-argument call contract the paper endpoint has always had.
+        """
         if request.headers.get("x-dummy-paper-control") != PAPER_CONTROL_HEADER:
             raise HTTPException(status_code=403, detail="paper control header required")
         origin = request.headers.get("origin")
         if origin and urlparse(origin).hostname not in {"127.0.0.1", "localhost", "::1"}:
             raise HTTPException(status_code=403, detail="loopback origin required")
         try:
-            result = control_paper_scheduler(action)
+            if task_name is None:
+                result = control_paper_scheduler(action)
+            else:
+                result = control_paper_scheduler(action, task_name=task_name)
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
         state_cache["epoch"] = int(state_cache["epoch"]) + 1
         state_cache["at"] = 0.0
         state_cache["value"] = None
-        result["scheduler"] = scheduled_task_status()
+        result["scheduler"] = (
+            scheduled_task_status() if task_name is None else scheduled_task_status(task_name)
+        )
         return JSONResponse(result, status_code=200 if result.get("ok") else 503)
+
+    @app.post("/api/paper-scheduler/{action}")
+    def paper_scheduler_control(action: str, request: Request) -> JSONResponse:
+        return _scheduler_control(action, request)
 
     @app.post("/api/sports-paper-scheduler/{action}")
     def sports_paper_scheduler_control(action: str, request: Request) -> JSONResponse:
-        if request.headers.get("x-dummy-paper-control") != PAPER_CONTROL_HEADER:
-            raise HTTPException(status_code=403, detail="paper control header required")
-        origin = request.headers.get("origin")
-        if origin and urlparse(origin).hostname not in {"127.0.0.1", "localhost", "::1"}:
-            raise HTTPException(status_code=403, detail="loopback origin required")
-        try:
-            result = control_paper_scheduler(action, task_name=SPORTS_TASK_NAME)
-        except ValueError as exc:
-            raise HTTPException(status_code=400, detail=str(exc)) from exc
-        state_cache["epoch"] = int(state_cache["epoch"]) + 1
-        state_cache["at"] = 0.0
-        state_cache["value"] = None
-        result["scheduler"] = scheduled_task_status(SPORTS_TASK_NAME)
-        return JSONResponse(result, status_code=200 if result.get("ok") else 503)
+        return _scheduler_control(action, request, SPORTS_TASK_NAME)
 
     @app.get("/")
     def index() -> HTMLResponse:

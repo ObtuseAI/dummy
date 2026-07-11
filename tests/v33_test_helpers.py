@@ -5,7 +5,7 @@ from typing import Any
 
 
 def v33_reports() -> dict[str, dict[str, Any]]:
-    from scripts.generate_v33_reports import generate_all_v33_reports_for_tests
+    from archive.report_scripts.generate_v33_reports import generate_all_v33_reports_for_tests
 
     return generate_all_v33_reports_for_tests(enable_network=False)
 

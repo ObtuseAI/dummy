@@ -20,6 +20,7 @@ from typing import Any
 
 from autonomy.fees import kalshi_taker_fee_cents
 from autonomy.ledger import AutonomyLedger
+from autonomy.stats import mean_ci95
 
 # Same shape as the live learner so bootstrapped weights are consistent.
 WEIGHT_FLOOR = 0.05
@@ -46,22 +47,8 @@ def _percentile(values: list[float], q: float) -> float | None:
 
 
 def _mean_ci95(values: list[float]) -> dict[str, Any] | None:
-    if not values:
-        return None
-    mean = sum(values) / len(values)
-    if len(values) == 1:
-        lower = upper = mean
-    else:
-        variance = sum((value - mean) ** 2 for value in values) / (len(values) - 1)
-        margin = 1.96 * math.sqrt(variance / len(values))
-        lower, upper = mean - margin, mean + margin
-    return {
-        "mean": round(mean, 6),
-        "lower": round(lower, 6),
-        "upper": round(upper, 6),
-        "method": "normal_mean_95",
-        "n": len(values),
-    }
+    # A lone sample collapses to a point interval here (report continuity).
+    return mean_ci95(values, collapse_single=True)
 
 
 def _wilson_ci(successes: int, n: int) -> dict[str, Any] | None:

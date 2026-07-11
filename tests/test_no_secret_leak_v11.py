@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from scripts.generate_v11_reports import generate_no_secret_leak_report_v11
+from archive.report_scripts.generate_v11_reports import generate_no_secret_leak_report_v11
 
 
 def test_no_secret_leak_v11() -> None:

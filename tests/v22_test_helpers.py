@@ -93,7 +93,7 @@ def assert_pass_or_partial(report: dict) -> None:
 
 @lru_cache(maxsize=1)
 def v22_reports() -> dict[str, dict]:
-    from scripts.generate_v22_reports import generate_all_v22_reports_for_tests
+    from archive.report_scripts.generate_v22_reports import generate_all_v22_reports_for_tests
 
     return generate_all_v22_reports_for_tests(enable_network=False)
 

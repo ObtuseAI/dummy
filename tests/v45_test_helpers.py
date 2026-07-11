@@ -29,7 +29,7 @@ class ObserverContinuationReadOnlyTransport:
 
 
 def v45_reports(**kwargs: Any) -> dict[str, dict[str, Any]]:
-    from scripts.generate_v45_reports import generate_all_v45_reports_for_tests
+    from archive.report_scripts.generate_v45_reports import generate_all_v45_reports_for_tests
 
     return generate_all_v45_reports_for_tests(**kwargs)
 

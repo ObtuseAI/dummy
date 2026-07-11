@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from scripts.generate_v10_reports import generate_timeout_guards_still_intact_report_v10
+from archive.report_scripts.generate_v10_reports import generate_timeout_guards_still_intact_report_v10
 
 
 def test_timeout_guards_still_intact_v10() -> None:

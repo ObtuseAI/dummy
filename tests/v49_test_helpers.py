@@ -21,7 +21,7 @@ class RehearsalGateReviewReadOnlyTransport:
 
 
 def v49_reports(**kwargs: Any) -> dict[str, dict[str, Any]]:
-    from scripts.generate_v49_reports import generate_all_v49_reports_for_tests
+    from archive.report_scripts.generate_v49_reports import generate_all_v49_reports_for_tests
 
     return generate_all_v49_reports_for_tests(**kwargs)
 

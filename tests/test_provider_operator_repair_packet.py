@@ -4,7 +4,7 @@ import json
 
 import pytest
 
-from scripts.generate_v8_2_reports import (
+from archive.report_scripts.generate_v8_2_reports import (
     generate_model_id_validation_report_v1,
     generate_provider_operator_repair_packet_v1,
 )
@@ -15,7 +15,7 @@ async def test_repair_packet_contains_no_secret_values(tmp_path, monkeypatch):
     monkeypatch.setenv("DEEPSEEK_API_KEY", "sk-ds-secret")
     monkeypatch.setenv("MINIMAX_API_KEY", "sk-mm-secret")
 
-    import scripts.generate_v8_2_reports as gen
+    import archive.report_scripts.generate_v8_2_reports as gen
     original_artifacts = gen.ARTIFACTS
     gen.ARTIFACTS = tmp_path
     try:

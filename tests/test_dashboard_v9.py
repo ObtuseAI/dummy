@@ -43,7 +43,7 @@ ENDPOINTS = [
 
 def test_v9_routes_return_200():
     client = TestClient(app)
-    with patch("dashboard.backend.v9_routes._run_mesh_cycle", new=_mock_run_cycle):
+    with patch("archive.routes.v9_routes._run_mesh_cycle", new=_mock_run_cycle):
         for ep in ENDPOINTS:
             r = client.get(ep)
             assert r.status_code == 200, f"{ep} failed: {r.text}"
@@ -51,7 +51,7 @@ def test_v9_routes_return_200():
 
 def test_v9_routes_contain_no_secrets():
     client = TestClient(app)
-    with patch("dashboard.backend.v9_routes._run_mesh_cycle", new=_mock_run_cycle):
+    with patch("archive.routes.v9_routes._run_mesh_cycle", new=_mock_run_cycle):
         for ep in ENDPOINTS:
             r = client.get(ep)
             assert r.status_code == 200, f"{ep} failed: {r.text}"
@@ -63,7 +63,7 @@ def test_v9_routes_contain_no_secrets():
 
 def test_v9_mesh_status_shape():
     client = TestClient(app)
-    with patch("dashboard.backend.v9_routes._run_mesh_cycle", new=_mock_run_cycle):
+    with patch("archive.routes.v9_routes._run_mesh_cycle", new=_mock_run_cycle):
         r = client.get("/api/v9/mesh/status")
     assert r.status_code == 200
     data = r.json()
@@ -137,7 +137,7 @@ def test_v9_aggression_governor_shape():
 
 def test_v9_mesh_health_shape():
     client = TestClient(app)
-    with patch("dashboard.backend.v9_routes._run_mesh_cycle", new=_mock_run_cycle):
+    with patch("archive.routes.v9_routes._run_mesh_cycle", new=_mock_run_cycle):
         r = client.get("/api/v9/mesh-health")
     assert r.status_code == 200
     data = r.json()
@@ -149,7 +149,7 @@ def test_v9_mesh_health_shape():
 
 def test_v9_proof_shape():
     client = TestClient(app)
-    with patch("dashboard.backend.v9_routes._run_mesh_cycle", new=_mock_run_cycle):
+    with patch("archive.routes.v9_routes._run_mesh_cycle", new=_mock_run_cycle):
         r = client.get("/api/v9/proof")
     assert r.status_code == 200
     data = r.json()

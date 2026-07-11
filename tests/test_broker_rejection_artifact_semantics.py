@@ -10,7 +10,7 @@ import pytest
 
 from core.ontology import LiveOrderResult
 from predator_mesh.v298.reports import full_authority_arm
-from scripts.generate_v298_reports import generate_all_v298_reports_for_tests
+from archive.report_scripts.generate_v298_reports import generate_all_v298_reports_for_tests
 from tests._real_proof_test_helpers import BACKUP_DIR_NAME
 
 

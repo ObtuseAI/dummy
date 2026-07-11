@@ -3,7 +3,7 @@ import pytest
 
 
 def test_dummy_canonical_identity_v2():
-    from scripts.generate_v6_reports import generate_dummy_canonical_identity_report_v2
+    from archive.report_scripts.generate_v6_reports import generate_dummy_canonical_identity_report_v2
     report = generate_dummy_canonical_identity_report_v2()
     assert report["project"] == "Dummy"
     assert report["previous_name"] == "Dumby"
@@ -14,7 +14,7 @@ def test_dummy_canonical_identity_v2():
 
 
 def test_dummy_canonical_identity_no_secret_leak():
-    from scripts.generate_v6_reports import generate_dummy_canonical_identity_report_v2
+    from archive.report_scripts.generate_v6_reports import generate_dummy_canonical_identity_report_v2
     report = generate_dummy_canonical_identity_report_v2()
     text = str(report)
     key_id = os.environ.get("KALSHI_API_KEY_ID", "")

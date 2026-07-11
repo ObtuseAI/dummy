@@ -10,7 +10,7 @@ from model_router.error_classifier import classify_provider_error
 from model_router.providers import DeepSeekV4FlashProvider, MinimaxM3Provider, MockProvider, ProviderError
 from model_router.config import ProviderConfig
 from model_router.tasks import ModelTask
-from scripts.generate_v8_model_provider_reports import (
+from archive.report_scripts.generate_v8_model_provider_reports import (
     generate_live_model_provider_adapter_report_v1,
     generate_model_provider_error_handling_report_v1,
     generate_provider_reports,
@@ -151,7 +151,7 @@ class TestErrorHandlingReport:
 
     @pytest.mark.asyncio
     async def test_provider_reports_writes_files(self, monkeypatch, tmp_path):
-        import scripts.generate_v8_model_provider_reports as reports_module
+        import archive.report_scripts.generate_v8_model_provider_reports as reports_module
 
         monkeypatch.delenv("DEEPSEEK_API_KEY", raising=False)
         monkeypatch.delenv("MINIMAX_API_KEY", raising=False)

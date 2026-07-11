@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from scripts.generate_v8_2_reports import generate_provider_alias_probe_report_v1
+from archive.report_scripts.generate_v8_2_reports import generate_provider_alias_probe_report_v1
 
 
 @pytest.mark.asyncio

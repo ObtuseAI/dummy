@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from scripts.generate_v12_reports import generate_v10_acceleration_status_report_v12
+from archive.report_scripts.generate_v12_reports import generate_v10_acceleration_status_report_v12
 
 
 def test_v10_acceleration_still_passes_or_partial_expected_v12() -> None:

@@ -3,7 +3,7 @@ from __future__ import annotations
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from dashboard.backend.v56_routes import router
+from archive.routes.v56_routes import router
 from predator_mesh.v56.reports import SAFETY_REPORT_NAMES, V56_ROUTES
 from tests.v56_test_helpers import assert_v56_report_named
 

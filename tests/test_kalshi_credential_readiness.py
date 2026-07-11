@@ -17,7 +17,7 @@ def test_required_secret_names_detected_without_leaking_values():
 
 
 def test_credential_helper_does_not_expose_secrets():
-    from scripts.generate_v5_reports import generate_kalshi_credential_readiness_report
+    from archive.report_scripts.generate_v5_reports import generate_kalshi_credential_readiness_report
     report = generate_kalshi_credential_readiness_report()
     assert report["credentials_present"] in (True, False)
     # The report must list the required secret names but never contain the actual values.

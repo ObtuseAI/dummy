@@ -4,7 +4,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from scripts.generate_v8_reports import main
+from archive.report_scripts.generate_v8_reports import main
 
 
 @pytest.mark.asyncio
@@ -19,7 +19,7 @@ async def test_v8_orchestrator_writes_artifacts(tmp_path, monkeypatch):
     artifacts.mkdir(parents=True, exist_ok=True)
 
     # Patch artifact directory so the orchestrator writes into a temp location.
-    import scripts.generate_v8_reports as orchestrator
+    import archive.report_scripts.generate_v8_reports as orchestrator
 
     monkeypatch.setattr(orchestrator, "ARTIFACTS", artifacts)
 

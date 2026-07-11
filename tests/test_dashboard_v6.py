@@ -2,7 +2,7 @@ from pathlib import Path
 
 
 def test_dashboard_v6_report():
-    from scripts.generate_v6_reports import generate_dashboard_v6_report
+    from archive.report_scripts.generate_v6_reports import generate_dashboard_v6_report
     report = generate_dashboard_v6_report()
     assert report["verdict"] == "PASS"
     assert report["frontend_built"] is True

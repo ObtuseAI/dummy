@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from scripts.generate_v13_reports import generate_v9_mesh_status_report_v13
+from archive.report_scripts.generate_v13_reports import generate_v9_mesh_status_report_v13
 
 
 def test_v9_mesh_still_passes_v13() -> None:

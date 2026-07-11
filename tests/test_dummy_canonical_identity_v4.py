@@ -2,7 +2,7 @@ import os
 
 
 def test_dummy_canonical_identity_v4():
-    from scripts.generate_v8_identity_reports import generate_dummy_canonical_identity_report_v4
+    from archive.report_scripts.generate_v8_identity_reports import generate_dummy_canonical_identity_report_v4
 
     report = generate_dummy_canonical_identity_report_v4()
     assert report["project"] == "Dummy"
@@ -16,7 +16,7 @@ def test_dummy_canonical_identity_v4():
 
 
 def test_dummy_canonical_identity_no_secret_leak():
-    from scripts.generate_v8_identity_reports import generate_dummy_canonical_identity_report_v4
+    from archive.report_scripts.generate_v8_identity_reports import generate_dummy_canonical_identity_report_v4
 
     report = generate_dummy_canonical_identity_report_v4()
     text = str(report)

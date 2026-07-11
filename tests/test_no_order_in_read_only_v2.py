@@ -18,6 +18,6 @@ def test_read_only_endpoints_not_flagged():
 
 
 def test_report_verdict_pass_when_no_order_endpoints():
-    from scripts.generate_v5_reports import generate_no_order_in_read_only_report_v2
+    from archive.report_scripts.generate_v5_reports import generate_no_order_in_read_only_report_v2
     report = generate_no_order_in_read_only_report_v2()
     assert report["verdict"] == "PASS"

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from scripts.generate_v69_reports import generate_all_v69_reports_for_tests
+from archive.report_scripts.generate_v69_reports import generate_all_v69_reports_for_tests
 from tests.staged_gate_test_helpers import assert_staged_safe
 
 
