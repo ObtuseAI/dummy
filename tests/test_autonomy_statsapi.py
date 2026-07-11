@@ -133,3 +133,22 @@ def test_apply_confirmed_lineups_promotes_snapshot():
     assert confirmed.captured_at == "2026-07-11T22:40:00+00:00"
     assert len(confirmed.home_lineup) == 2
     assert base.home_lineup == ()  # original untouched (frozen dataclass)
+
+
+def test_parse_boxscore_lineups_missing_batting_order_is_empty():
+    home, away = parse_boxscore_lineups({"teams": {"home": {}, "away": {}}})
+    assert home == () and away == ()
+
+
+def test_parse_boxscore_lineups_missing_players_keeps_ids_without_enrichment():
+    box = {"teams": {"home": {"battingOrder": [605141]}, "away": {}}}
+    home, away = parse_boxscore_lineups(box)
+    assert len(home) == 1
+    assert home[0].player_id == 605141
+    assert home[0].name is None and home[0].bats is None
+    assert away == ()
+
+
+def test_parse_boxscore_lineups_empty_dict_does_not_raise():
+    home, away = parse_boxscore_lineups({})
+    assert home == () and away == ()
