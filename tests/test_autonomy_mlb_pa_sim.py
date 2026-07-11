@@ -159,3 +159,53 @@ def test_half_inning_all_outs_scores_zero():
     runs, cursor = simulate_half_inning(0, lambda i: outs_only, _random.Random(1))
     assert runs == 0
     assert cursor == 3  # exactly three batters retired
+
+
+from autonomy.sports.mlb_pa_sim import GameResult, simulate_one_game
+from autonomy.sports.statsapi import LineupSlot, MlbGameContext, PitcherRates
+
+
+def _context(*, home_batter_iso, away_batter_iso):
+    home_lineup = tuple(LineupSlot(i + 1, 100 + i, bats="R") for i in range(9))
+    away_lineup = tuple(LineupSlot(i + 1, 200 + i, bats="R") for i in range(9))
+    batter_rates = {}
+    for i in range(9):
+        batter_rates[100 + i] = BatterRates(
+            player_id=100 + i, bats="R", k_pct=0.20, bb_pct=0.09,
+            obp=0.340, slg=0.300 + home_batter_iso, iso=home_batter_iso)
+        batter_rates[200 + i] = BatterRates(
+            player_id=200 + i, bats="R", k_pct=0.20, bb_pct=0.09,
+            obp=0.340, slg=0.300 + away_batter_iso, iso=away_batter_iso)
+    return MlbGameContext(
+        game_pk=1, snapshot="confirmed", captured_at="2026-07-11T22:40:00+00:00",
+        home="H", away="A",
+        home_lineup=home_lineup, away_lineup=away_lineup,
+        home_pitcher=PitcherRates(player_id=9, throws="R", k_pct=0.22, bb_pct=0.08, hr9=1.2),
+        away_pitcher=PitcherRates(player_id=8, throws="R", k_pct=0.22, bb_pct=0.08, hr9=1.2),
+        batter_rates=batter_rates, park_run_factor=1.0, park_hr_factor=1.0,
+    )
+
+
+def test_simulate_one_game_returns_coherent_result():
+    ctx = _context(home_batter_iso=0.16, away_batter_iso=0.16)
+    result = simulate_one_game(ctx, _random.Random(11))
+    assert isinstance(result, GameResult)
+    assert result.home_runs >= 0 and result.away_runs >= 0
+    # First-inning runs cannot exceed the game total; F5 cannot exceed the full game.
+    assert result.home_first_inning_runs <= result.home_runs
+    assert result.home_runs_through_5 <= result.home_runs
+
+
+def test_simulate_one_game_is_deterministic():
+    ctx = _context(home_batter_iso=0.16, away_batter_iso=0.16)
+    a = simulate_one_game(ctx, _random.Random(5))
+    b = simulate_one_game(ctx, _random.Random(5))
+    assert a == b
+
+
+def test_stronger_lineup_scores_more_on_average():
+    strong = _context(home_batter_iso=0.28, away_batter_iso=0.10)
+    weak = _context(home_batter_iso=0.10, away_batter_iso=0.10)
+    strong_total = sum(simulate_one_game(strong, _random.Random(s)).home_runs for s in range(60))
+    weak_total = sum(simulate_one_game(weak, _random.Random(s)).home_runs for s in range(60))
+    assert strong_total > weak_total  # ISO-loaded lineup scores more across seeds

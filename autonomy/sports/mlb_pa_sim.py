@@ -8,6 +8,10 @@ games yields coherent market probabilities. Pure, offline, deterministic.
 """
 from __future__ import annotations
 
+import random
+from dataclasses import dataclass
+from typing import Any
+
 # Approximate MLB-wide per-plate-appearance outcome rates (2020s). These are the
 # fallback for missing player rates and the denominator for the log5 combination.
 LEAGUE: dict[str, float] = {
@@ -40,9 +44,7 @@ def log5(batter: float, pitcher: float, league: float) -> float:
     return min(1.0, max(0.0, numerator / denominator))
 
 
-from typing import Any
-
-from autonomy.sports.statsapi import BatterRates, PitcherRates
+from autonomy.sports.statsapi import BatterRates, MlbGameContext, PitcherRates
 
 PA_OUTCOMES = ("k", "bb", "hbp", "single", "double", "triple", "hr", "out")
 
@@ -98,9 +100,6 @@ def plate_appearance_distribution(
     if total <= 0.0:
         return {key: LEAGUE[key] for key in PA_OUTCOMES}
     return {key: value / total for key, value in dist.items()}
-
-
-import random
 
 
 def sample_outcome(dist: dict[str, float], rng: random.Random) -> str:
@@ -166,3 +165,103 @@ def simulate_half_inning(
         else:
             runs += _advance(bases, outcome)
     return runs, cursor
+
+
+STARTER_BATTERS_FACED = 26  # ~6 innings before the bullpen takes over
+
+
+@dataclass(frozen=True)
+class GameResult:
+    home_runs: int
+    away_runs: int
+    home_first_inning_runs: int
+    away_first_inning_runs: int
+    home_runs_through_5: int
+    away_runs_through_5: int
+
+
+def _platoon(batter_bats: str | None, pitcher_throws: str | None) -> float:
+    """Modest platoon multiplier: opposite hands favor the batter."""
+    if not batter_bats or not pitcher_throws or batter_bats == "S":
+        return 1.0
+    return 0.93 if batter_bats == pitcher_throws else 1.07
+
+
+def _side_distributions(
+    lineup: tuple[Any, ...],
+    batter_rates: dict[int, Any],
+    pitcher: Any,
+    park_hr_factor: float,
+) -> list[dict[str, float]]:
+    dists: list[dict[str, float]] = []
+    throws = getattr(pitcher, "throws", None)
+    for slot in lineup:
+        batter = batter_rates.get(slot.player_id)
+        dists.append(plate_appearance_distribution(
+            batter, pitcher,
+            park_hr_factor=park_hr_factor,
+            platoon=_platoon(getattr(slot, "bats", None), throws),
+        ))
+    return dists
+
+
+def _bullpen_distributions(
+    lineup: tuple[Any, ...],
+    batter_rates: dict[int, Any],
+    fatigue: dict[int, float],
+    park_hr_factor: float,
+) -> list[dict[str, float]]:
+    # League-average reliever, degraded slightly by aggregate bullpen fatigue.
+    avg_fatigue = (sum(fatigue.values()) / len(fatigue)) if fatigue else 0.0
+    reliever = PitcherRates(
+        player_id=-1, throws=None,
+        k_pct=LEAGUE["k"] * (1.0 - 0.15 * avg_fatigue),
+        bb_pct=LEAGUE["bb"] * (1.0 + 0.20 * avg_fatigue),
+        hr9=1.25 * (1.0 + 0.20 * avg_fatigue),
+    )
+    return _side_distributions(lineup, batter_rates, reliever, park_hr_factor)
+
+
+def _simulate_side(
+    starter_dists: list[dict[str, float]],
+    bullpen_dists: list[dict[str, float]],
+    rng: random.Random,
+    innings: int,
+) -> tuple[int, int, int]:
+    """Return (total_runs, first_inning_runs, runs_through_5) for one team."""
+    total = first = through5 = 0
+    cursor = 0
+    faced = 0
+    for inning in range(1, innings + 1):
+        use_bullpen = faced >= STARTER_BATTERS_FACED
+        dists = bullpen_dists if use_bullpen else starter_dists
+        start = cursor
+        runs, cursor = simulate_half_inning(cursor, lambda i: dists[i], rng)
+        faced += cursor - start
+        total += runs
+        if inning == 1:
+            first = runs
+        if inning <= 5:
+            through5 += runs
+    return total, first, through5
+
+
+def simulate_one_game(
+    context: MlbGameContext, rng: random.Random, *, innings: int = 9,
+) -> GameResult:
+    park_hr = context.park_hr_factor if context.park_hr_factor is not None else 1.0
+    home_starter = _side_distributions(
+        context.home_lineup, context.batter_rates, context.away_pitcher, park_hr)
+    home_pen = _bullpen_distributions(
+        context.home_lineup, context.batter_rates, context.away_bullpen_fatigue, park_hr)
+    away_starter = _side_distributions(
+        context.away_lineup, context.batter_rates, context.home_pitcher, park_hr)
+    away_pen = _bullpen_distributions(
+        context.away_lineup, context.batter_rates, context.home_bullpen_fatigue, park_hr)
+    h_total, h_first, h_five = _simulate_side(home_starter, home_pen, rng, innings)
+    a_total, a_first, a_five = _simulate_side(away_starter, away_pen, rng, innings)
+    return GameResult(
+        home_runs=h_total, away_runs=a_total,
+        home_first_inning_runs=h_first, away_first_inning_runs=a_first,
+        home_runs_through_5=h_five, away_runs_through_5=a_five,
+    )
