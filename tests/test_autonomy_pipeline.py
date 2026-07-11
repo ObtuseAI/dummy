@@ -227,6 +227,47 @@ def test_forecaster_keeps_minimum_market_anchor_against_overconfident_model(tmp_
         ledger.close()
 
 
+def test_crypto_fused_uncertainty_cannot_collapse_below_floor(tmp_path):
+    """Two agreeing high-trust crypto vol models must not manufacture ~2%
+    fused uncertainty; the crypto floor (0.08) holds where the per-signal
+    floor otherwise leaks away in inverse-variance fusion."""
+    ledger = AutonomyLedger(db_path=tmp_path / "ledger.db")
+    try:
+        ledger.update_weight("crypto_spot_vol", 8.0)
+        ledger.update_weight("crypto_ewma_t", 8.0)
+        ledger.update_weight("market_prior", 3.0)
+        market = _market(
+            ticker="KXBTCD-26JUL11-T63799.99", yes_bid=74, yes_ask=76, volume=1,
+        )
+        assert market.vertical is Vertical.CRYPTO
+        forecast = EnsembleForecaster(ledger).fuse(market, [
+            Signal("crypto_spot_vol", market.ticker, 0.70, 0.08, ""),
+            Signal("crypto_ewma_t", market.ticker, 0.71, 0.08, ""),
+            Signal("market_prior", market.ticker, 0.75, 0.20, ""),
+        ])
+        assert forecast.uncertainty >= 0.08 - 1e-9
+    finally:
+        ledger.close()
+
+
+def test_non_crypto_fused_uncertainty_keeps_global_floor(tmp_path):
+    """The crypto floor is vertical-scoped; weather can still tighten below 8%."""
+    ledger = AutonomyLedger(db_path=tmp_path / "ledger.db")
+    try:
+        ledger.update_weight("weather_openmeteo", 8.0)
+        ledger.update_weight("market_prior", 3.0)
+        market = _market(ticker="KXHIGHNY-26JUL11-T85", yes_bid=39, yes_ask=41)
+        assert market.vertical is not Vertical.CRYPTO
+        forecast = EnsembleForecaster(ledger).fuse(market, [
+            Signal("weather_openmeteo", market.ticker, 0.70, 0.08, ""),
+            Signal("market_prior", market.ticker, 0.72, 0.20, ""),
+        ])
+        assert forecast.uncertainty < 0.08
+        assert forecast.uncertainty >= 0.02 - 1e-9
+    finally:
+        ledger.close()
+
+
 # ---------------------------------------------------------------- allocator
 
 
