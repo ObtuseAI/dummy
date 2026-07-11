@@ -32,6 +32,8 @@ class PitcherRates:
     k_pct: float | None = None
     bb_pct: float | None = None
     hr9: float | None = None
+    vs_lhb: PitcherRates | None = None
+    vs_rhb: PitcherRates | None = None
 
 
 @dataclass(frozen=True)
@@ -45,6 +47,33 @@ class BatterRates:
     obp: float | None = None
     slg: float | None = None
     iso: float | None = None
+    vs_lhp: BatterRates | None = None
+    vs_rhp: BatterRates | None = None
+
+
+def batter_rates_vs(batter: BatterRates | None, pitcher_throws: str | None) -> BatterRates | None:
+    """Return the batter's split rates vs the pitcher's hand, or overall if unavailable."""
+    if batter is None:
+        return None
+    if pitcher_throws == "L" and batter.vs_lhp is not None:
+        return batter.vs_lhp
+    if pitcher_throws == "R" and batter.vs_rhp is not None:
+        return batter.vs_rhp
+    return batter
+
+
+def pitcher_rates_vs(pitcher: PitcherRates | None, batter_bats: str | None) -> PitcherRates | None:
+    """Return the pitcher's split rates vs the batter's hand, or overall if unavailable.
+
+    Switch-hitter ('S') batters receive the pitcher's overall rates (no split).
+    """
+    if pitcher is None:
+        return None
+    if batter_bats == "L" and pitcher.vs_lhb is not None:
+        return pitcher.vs_lhb
+    if batter_bats == "R" and pitcher.vs_rhb is not None:
+        return pitcher.vs_rhb
+    return pitcher
 
 
 @dataclass(frozen=True)

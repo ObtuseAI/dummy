@@ -437,3 +437,31 @@ def test_client_clear_cache_forces_batter_refetch():
     client.clear_cache()
     client.hydrate_batter_rates(ctx)
     assert len(calls) > first  # cache cleared -> refetched
+
+
+from autonomy.sports.statsapi import batter_rates_vs, pitcher_rates_vs
+
+
+def test_batter_rates_vs_selects_split_by_pitcher_hand():
+    from autonomy.sports.statsapi import BatterRates
+    vs_l = BatterRates(player_id=1, k_pct=0.15, bb_pct=0.12, obp=0.380, slg=0.520, iso=0.24)
+    vs_r = BatterRates(player_id=1, k_pct=0.24, bb_pct=0.07, obp=0.300, slg=0.400, iso=0.14)
+    batter = BatterRates(player_id=1, k_pct=0.20, bb_pct=0.09, obp=0.340, slg=0.450,
+                         iso=0.18, vs_lhp=vs_l, vs_rhp=vs_r)
+    assert batter_rates_vs(batter, "L").obp == 0.380   # facing a lefty -> vs-LHP split
+    assert batter_rates_vs(batter, "R").obp == 0.300   # facing a righty -> vs-RHP split
+    # No split populated -> fall back to the overall line.
+    plain = BatterRates(player_id=2, k_pct=0.20, bb_pct=0.09, obp=0.340, slg=0.450, iso=0.18)
+    assert batter_rates_vs(plain, "L").obp == 0.340
+    assert batter_rates_vs(None, "L") is None
+
+
+def test_pitcher_rates_vs_selects_split_by_batter_hand():
+    from autonomy.sports.statsapi import PitcherRates
+    vs_l = PitcherRates(player_id=3, k_pct=0.30, bb_pct=0.06, hr9=0.9)
+    vs_r = PitcherRates(player_id=3, k_pct=0.20, bb_pct=0.09, hr9=1.4)
+    pitcher = PitcherRates(player_id=3, k_pct=0.25, bb_pct=0.08, hr9=1.1,
+                           vs_lhb=vs_l, vs_rhb=vs_r)
+    assert pitcher_rates_vs(pitcher, "L").hr9 == 0.9
+    assert pitcher_rates_vs(pitcher, "R").hr9 == 1.4
+    assert pitcher_rates_vs(pitcher, "S").hr9 == 1.1   # switch hitter -> overall
