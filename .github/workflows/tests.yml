@@ -17,13 +17,22 @@ jobs:
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
+      - name: Mirror checkout to the canonical root
+        # Parts of the suite assert the doctrine that the repo lives at
+        # C:\src\engine\dummy (canonical-identity gates, artifact paths).
+        # The runner checks out under D:\a\..., so mirror it across.
+        run: |
+          New-Item -ItemType Directory -Force -Path C:\src\engine | Out-Null
+          Copy-Item -Recurse -Force -Path $env:GITHUB_WORKSPACE -Destination C:\src\engine\dummy
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
           cache: pip
       - name: Install
+        working-directory: C:\src\engine\dummy
         run: pip install -e ".[dev]"
       - name: Run suite
-        # The suite is offline-hermetic: no credentials, no broker contact,
-        # no live market I/O.
+        # Offline-hermetic on CI: no credentials, no broker contact; the two
+        # live-credential tests skip without a local .env.
+        working-directory: C:\src\engine\dummy
         run: python -m pytest -q --timeout=120
