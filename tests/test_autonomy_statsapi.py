@@ -222,7 +222,7 @@ def test_park_factors_known_and_neutral():
 def test_bullpen_fatigue_rises_with_recent_use():
     recent = {
         101: ["2026-07-10", "2026-07-09", "2026-07-08"],  # 3 straight days
-        102: ["2026-07-08"],                                # rested
+        102: ["2026-07-08"],                                # 3 days ago -> light residual (0.2)
         103: [],
     }
     fatigue = bullpen_fatigue(recent, as_of="2026-07-11")
@@ -292,3 +292,31 @@ def test_client_swallows_pitcher_fetch_failure_to_none():
     lad = next(c for c in contexts if c.game_pk == 717465)
     assert lad.home_pitcher is None and lad.away_pitcher is None  # failure swallowed
     assert lad.park_run_factor == 0.98  # rest of hydration still succeeded
+
+
+def test_bullpen_fatigue_weights_by_recency():
+    fatigue = bullpen_fatigue(
+        {1: ["2026-07-10"], 2: ["2026-07-09"], 3: ["2026-07-08"]},
+        as_of="2026-07-11",
+    )
+    assert fatigue[1] == 0.5 and fatigue[2] == 0.3 and fatigue[3] == 0.2
+
+
+def test_bullpen_fatigue_accepts_full_datetime_as_of():
+    fatigue = bullpen_fatigue({3: ["2026-07-10"]}, as_of="2026-07-11T22:05:00+00:00")
+    assert fatigue[3] == 0.5  # datetime as_of parsed down to its date
+
+
+def test_client_clear_cache_forces_pitcher_refetch():
+    calls = []
+    def counting_people(pid):
+        calls.append(pid)
+        return _PEOPLE_FIXTURE
+    client = StatsApiClient(
+        fetch_schedule=lambda d: _SCHEDULE_FIXTURE, fetch_people=counting_people,
+    )
+    client.projected_contexts("2026-07-11", captured_at="2026-07-11T18:00:00+00:00")
+    first = len(calls)
+    client.clear_cache()
+    client.projected_contexts("2026-07-11", captured_at="2026-07-11T18:00:00+00:00")
+    assert len(calls) > first  # cache cleared -> refetched

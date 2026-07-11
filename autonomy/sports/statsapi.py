@@ -8,7 +8,7 @@ missing inputs. Nothing here forecasts, trades, or touches credentials.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass, field, fields
+from dataclasses import dataclass, field, fields, replace
 from datetime import date
 from typing import Any, Literal, Callable
 
@@ -138,9 +138,6 @@ def parse_schedule(
     return contexts
 
 
-from dataclasses import replace
-
-
 def _team_lineup(team_box: dict[str, Any]) -> tuple[LineupSlot, ...]:
     order = team_box.get("battingOrder") or []
     players = team_box.get("players", {}) or {}
@@ -157,7 +154,7 @@ def _team_lineup(team_box: dict[str, Any]) -> tuple[LineupSlot, ...]:
 
 
 def parse_boxscore_lineups(
-    boxscore: dict[str, Any], roster_bats: dict[int, str] | None = None,
+    boxscore: dict[str, Any],
 ) -> tuple[tuple[LineupSlot, ...], tuple[LineupSlot, ...]]:
     teams = boxscore.get("teams", {}) or {}
     home = _team_lineup(teams.get("home", {}) or {})
@@ -242,7 +239,7 @@ def bullpen_fatigue(
     weights sum to 1.0 so a reliever who pitched all three trailing days
     saturates at 1.0.
     """
-    reference = date.fromisoformat(as_of)
+    reference = date.fromisoformat(str(as_of)[:10])
     day_weight = {1: 0.5, 2: 0.3, 3: 0.2}
     fatigue: dict[int, float] = {}
     for player_id, dates in recent_appearances.items():
@@ -308,6 +305,10 @@ class StatsApiClient:
         self.fetch_boxscore = fetch_boxscore or default_fetch_boxscore
         self.fetch_people = fetch_people or default_fetch_people
         self._pitcher_cache: dict[int, PitcherRates | None] = {}
+
+    def clear_cache(self) -> None:
+        """Drop cached pitcher lookups so a reused client refetches season rates."""
+        self._pitcher_cache.clear()
 
     def _pitcher(self, player_id: int | None) -> PitcherRates | None:
         if player_id is None:
