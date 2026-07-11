@@ -77,9 +77,11 @@ def plate_appearance_distribution(
     remaining = max(0.0, 1.0 - k - bb - hbp - hr)
     # Batter contact quality: OBP above league lifts the on-contact hit share.
     obp = _rate(getattr(batter, "obp", None), 0.320)
-    hit_share = min(0.42, max(0.20, 0.30 + (obp - 0.320) * 1.5))
-    hits = remaining * hit_share
-    out = remaining - hits
+    slg = _rate(getattr(batter, "slg", None), 0.400)
+    # On-contact hit share rises with both on-base skill (obp) and power (slg).
+    hit_share = min(0.44, max(0.20, 0.28 + (obp - 0.320) * 1.2 + (slg - 0.400) * 0.35))
+    hits = remaining * hit_share * platoon
+    out = max(0.0, remaining - hits)
     # Split non-HR hits into single/double/triple, tilting toward doubles with ISO.
     iso_tilt = 1.0 + (0.0 if iso is None else min(1.0, max(-0.5, (iso - 0.150) * 2.0)))
     s_w, d_w, t_w = 0.78, 0.19 * iso_tilt, 0.03

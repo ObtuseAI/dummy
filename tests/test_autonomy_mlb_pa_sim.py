@@ -64,3 +64,33 @@ def test_park_hr_factor_increases_home_run_share():
     hitter = plate_appearance_distribution(_batter(0.20, 0.09, 0.34, 0.50, 0.22),
                                            _pitcher(0.22, 0.08, 1.3), park_hr_factor=1.3)
     assert hitter["hr"] > neutral["hr"]
+
+
+def test_platoon_advantage_raises_offensive_share():
+    b = _batter(0.20, 0.09, 0.34, 0.45, 0.18)
+    p = _pitcher(0.22, 0.08, 1.2)
+    favored = plate_appearance_distribution(b, p, platoon=1.07)
+    neutral = plate_appearance_distribution(b, p, platoon=1.0)
+    off = lambda d: d["bb"] + d["hr"] + d["single"] + d["double"] + d["triple"]
+    assert off(favored) > off(neutral)  # platoon>1 lifts the batter's offense
+    assert abs(sum(favored.values()) - 1.0) < 1e-9
+
+
+def test_higher_slugging_raises_hit_share():
+    low = plate_appearance_distribution(_batter(0.20, 0.09, 0.34, 0.38, 0.10),
+                                        _pitcher(0.22, 0.08, 1.2))
+    high = plate_appearance_distribution(_batter(0.20, 0.09, 0.34, 0.58, 0.10),
+                                         _pitcher(0.22, 0.08, 1.2))
+    hits = lambda d: d["single"] + d["double"] + d["triple"]
+    assert hits(high) > hits(low)  # slugging drives on-contact hit quality
+
+
+def test_extreme_rates_keep_distribution_valid():
+    # A very high K + BB + HR combo drives the pre-normalization remainder to zero;
+    # the distribution must still sum to 1 with every value in [0,1].
+    d = plate_appearance_distribution(
+        _batter(0.40, 0.20, 0.45, 0.70, 0.35),
+        _pitcher(0.38, 0.14, 2.5), park_hr_factor=1.5, platoon=1.1,
+    )
+    assert abs(sum(d.values()) - 1.0) < 1e-9
+    assert all(0.0 <= v <= 1.0 for v in d.values())
