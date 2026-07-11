@@ -383,3 +383,17 @@ def test_reliever_entry_resets_times_through_order():
     assert 0.0 < m["expected_total_runs"] < 15.0  # bounded, no runaway from stale TTO
     a = simulate_game_markets(ctx, seed=3, sims=800)
     assert m == a  # deterministic through the bullpen switch
+
+
+def test_weather_hr_factor_raises_home_runs():
+    ctx = _context(home_batter_iso=0.15, away_batter_iso=0.15)
+    calm = simulate_game_markets(ctx, seed=5, sims=800, weather=None)
+    windy = simulate_game_markets(ctx, seed=5, sims=800, weather=(1.30, 1.05))
+    assert windy["expected_total_runs"] > calm["expected_total_runs"]
+
+
+def test_weather_none_is_unchanged():
+    ctx = _context(home_batter_iso=0.15, away_batter_iso=0.15)
+    a = simulate_game_markets(ctx, seed=5, sims=500)
+    b = simulate_game_markets(ctx, seed=5, sims=500, weather=None)
+    assert a == b  # weather=None is a no-op, preserving all S3b calibration

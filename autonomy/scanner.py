@@ -57,9 +57,10 @@ def classify_vertical(ticker: str) -> Vertical:
 # paginated sweep of /markets drowns in thousands of auto-generated MVE parlay
 # combos; series-targeted queries go straight to where the edge sources live.
 WATCHLIST_SERIES: list[str] = [
-    # Daily high temperature (Open-Meteo ensemble coverage)
-    "KXHIGHNY", "KXHIGHCHI", "KXHIGHMIA", "KXHIGHAUS", "KXHIGHDEN",
-    "KXHIGHPHIL", "KXHIGHLAX", "KXHIGHTSEA",
+    # Weather prediction retired 2026-07-11 (net loser vs the sharp Kalshi
+    # weather market). The Open-Meteo pipeline now feeds MLB as a feature
+    # (autonomy/sports/ballpark_weather.py), not a trading target, so the
+    # daemon no longer fetches KXHIGH* weather series here.
     # Exact crypto universe: BTC/ETH/SOL at native 15m plus mixed-cadence
     # direct-price series. Event duration separates hourly/daily/weekly rows.
     "KXBTC15M", "KXETH15M", "KXSOL15M",
@@ -177,7 +178,7 @@ class MarketScanner:
     ) -> None:
         self.fetch_series = fetch_series or default_fetch_series_markets
         self.watchlist = watchlist or list(WATCHLIST_SERIES)
-        self.verticals = verticals or {Vertical.WEATHER, Vertical.CRYPTO, Vertical.SPORTS,
+        self.verticals = verticals or {Vertical.CRYPTO, Vertical.SPORTS,
                                        Vertical.COMMODITIES, Vertical.ECON}
 
     def scan(self) -> list[MarketView]:

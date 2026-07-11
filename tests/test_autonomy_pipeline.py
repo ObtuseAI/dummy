@@ -77,9 +77,10 @@ def test_scanner_walks_watchlist_and_filters():
 
     views = MarketScanner(fetch_series=fetch, watchlist=["KXHIGHNY", "KXETH", "KXDEAD"]).scan()
     tickers = [v.ticker for v in views]
-    assert tickers == ["KXHIGHNY-26JUL10-T85", "KXETH-26JUL10-T4000"]
+    # Weather (KXHIGHNY) is no longer traded by default; only KXETH (crypto) is scanned.
+    assert tickers == ["KXETH-26JUL10-T4000"]
     assert calls == ["KXHIGHNY", "KXETH", "KXDEAD"]
-    eth = views[1]
+    eth = views[0]
     assert eth.yes_bid == 30 and eth.yes_ask == 40  # dollars-string schema normalized
     assert eth.volume == 12
 
@@ -100,6 +101,31 @@ def test_scanner_classifies_exact_added_crypto_and_commodity_series():
     assert classify_vertical("KXNATGASW-26JUL1017-T4.899") is Vertical.COMMODITIES
     assert classify_vertical("KXDOGE15M-26JUL100430-30") is Vertical.OTHER
     assert classify_vertical("KXXRP15M-26JUL100430-30") is Vertical.OTHER
+
+
+def test_scanner_no_longer_trades_weather_by_default():
+    from autonomy.scanner import MarketScanner
+    from autonomy.ontology import Vertical
+    scanner = MarketScanner(fetch_series=lambda s: {"markets": []})
+    assert Vertical.WEATHER not in scanner.verticals
+    # The other verticals remain tradable.
+    assert Vertical.SPORTS in scanner.verticals
+    assert Vertical.CRYPTO in scanner.verticals
+
+
+def test_scanner_excludes_weather_market_when_scanned():
+    from autonomy.scanner import MarketScanner
+    from autonomy.ontology import Vertical
+    weather_page = {"markets": [{
+        "ticker": "KXHIGHNY-26JUL11-T85", "status": "active",
+        "yes_bid": 40, "yes_ask": 42, "no_bid": 58, "no_ask": 60,
+    }]}
+    scanner = MarketScanner(
+        fetch_series=lambda s: weather_page, watchlist=["KXHIGHNY"],
+    )
+    views = scanner.scan()
+    # A weather market still classifies as WEATHER but is filtered out of the scan.
+    assert all(v.vertical is not Vertical.WEATHER for v in views)
 
 
 def test_crypto_ticker_parse_hour_glued():
@@ -532,29 +558,32 @@ def test_reconciler_detects_settlements(tmp_path):
 
 def test_full_shadow_cycle_places_shadow_orders(tmp_path, monkeypatch):
     from autonomy.brain import PredatorBrain
+    from autonomy.signals.crypto_spot import CryptoSpotVolSignal
 
     ledger = AutonomyLedger(db_path=tmp_path / "ledger.db")
     registry = SourceRegistry()
     registry.register(MarketPriorSignal())
-    registry.register(OpenMeteoWeatherSignal(fetch_daily_temps=lambda *a: [92.0, 93.0, 91.0]))
+    # Use crypto signal instead of weather signal (weather no longer traded by default)
+    registry.register(CryptoSpotVolSignal(fetch_spot_and_vol=lambda asset: (100_000.0, 0.5)))
 
     def fetch_series(series):
-        if series != "KXHIGHNY":
+        if series != "KXBTCD":
             return {"markets": []}
         return {"markets": [{
-            "ticker": "KXHIGHNY-26JUL10-T85",
-            "title": "NYC high temp above 85",
+            "ticker": "KXBTCD-26JUL10-T100000.00",
+            "title": "BTC spot above $100k",
             "status": "active",
-            "close_time": (datetime.now(timezone.utc) + timedelta(days=1)).isoformat(),
+            "close_time": (datetime.now(timezone.utc) + timedelta(hours=2)).isoformat(),
             "yes_bid": 30, "yes_ask": 40, "no_bid": 60, "no_ask": 70,
             "volume": 500, "liquidity": 1000,
+            "strike_type": "greater", "floor_strike": 100000.0,
         }]}
 
     brain = PredatorBrain(
         mode=SessionMode.SHADOW,
         ledger=ledger,
         registry=registry,
-        scanner=MarketScanner(fetch_series=fetch_series, watchlist=["KXHIGHNY"]),
+        scanner=MarketScanner(fetch_series=fetch_series, watchlist=["KXBTCD"]),
         risk_brain=RiskBrain(state_path=tmp_path / "risk.json"),
         executor=Executor(SessionMode.SHADOW, session_path=tmp_path / "s.json", kill_path=tmp_path / "KILL"),
         reconciler=Reconciler(ledger, fetch_market_result=lambda t: {"result": ""}),
@@ -566,7 +595,7 @@ def test_full_shadow_cycle_places_shadow_orders(tmp_path, monkeypatch):
         assert report.markets_scanned == 1
         assert report.signals_generated >= 2
         assert report.decisions_made == 1
-        assert report.orders_placed == 1  # hot forecast vs 35c mid = strong YES edge
+        assert report.orders_placed == 1  # strong crypto signal vs 35c mid = strong YES edge
         summary = ledger.performance_summary()
         assert summary["decisions_total"] == 1
     finally:
