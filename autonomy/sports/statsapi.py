@@ -74,3 +74,64 @@ class MlbGameContext:
             else:
                 present[f.name] = True
         return present
+
+
+def _float(value: Any) -> float | None:
+    try:
+        if value is None or value == "":
+            return None
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _parse_wind(wind: Any) -> tuple[float | None, str | None]:
+    """StatsAPI wind is a string like '8 mph, Out To CF' or '' — split it."""
+    if not isinstance(wind, str) or not wind.strip():
+        return None, None
+    speed: float | None = None
+    direction: str | None = None
+    parts = [p.strip() for p in wind.split(",", 1)]
+    head = parts[0]
+    if "mph" in head:
+        speed = _float(head.replace("mph", "").strip())
+        direction = parts[1] if len(parts) > 1 else None
+    else:
+        direction = wind.strip()
+    return speed, (direction or None)
+
+
+def parse_schedule(
+    payload: dict[str, Any],
+    *,
+    captured_at: str,
+    snapshot: SnapshotKind = "projected",
+) -> list[MlbGameContext]:
+    """Point-in-time contexts from the hydrated schedule endpoint."""
+    contexts: list[MlbGameContext] = []
+    for date_block in payload.get("dates", []) or []:
+        for game in date_block.get("games", []) or []:
+            teams = game.get("teams", {}) or {}
+            home = ((teams.get("home", {}) or {}).get("team", {}) or {}).get("abbreviation")
+            away = ((teams.get("away", {}) or {}).get("team", {}) or {}).get("abbreviation")
+            game_pk = game.get("gamePk")
+            if not home or not away or game_pk is None:
+                continue
+            home_prob = ((teams.get("home", {}) or {}).get("probablePitcher", {}) or {}).get("id")
+            away_prob = ((teams.get("away", {}) or {}).get("probablePitcher", {}) or {}).get("id")
+            weather = game.get("weather", {}) or {}
+            wind_speed, wind_direction = _parse_wind(weather.get("wind"))
+            contexts.append(MlbGameContext(
+                game_pk=int(game_pk),
+                snapshot=snapshot,
+                captured_at=captured_at,
+                home=str(home),
+                away=str(away),
+                venue=((game.get("venue", {}) or {}).get("name")),
+                home_probable_pitcher_id=int(home_prob) if home_prob is not None else None,
+                away_probable_pitcher_id=int(away_prob) if away_prob is not None else None,
+                wind_speed_mph=wind_speed,
+                wind_direction=wind_direction,
+                temperature_f=_float(weather.get("temp")),
+            ))
+    return contexts
