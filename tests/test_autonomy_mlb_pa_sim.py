@@ -194,6 +194,8 @@ def test_simulate_one_game_returns_coherent_result():
     # First-inning runs cannot exceed the game total; F5 cannot exceed the full game.
     assert result.home_first_inning_runs <= result.home_runs
     assert result.home_runs_through_5 <= result.home_runs
+    assert result.away_first_inning_runs <= result.away_runs
+    assert result.away_runs_through_5 <= result.away_runs
 
 
 def test_simulate_one_game_is_deterministic():
@@ -209,3 +211,32 @@ def test_stronger_lineup_scores_more_on_average():
     strong_total = sum(simulate_one_game(strong, _random.Random(s)).home_runs for s in range(60))
     weak_total = sum(simulate_one_game(weak, _random.Random(s)).home_runs for s in range(60))
     assert strong_total > weak_total  # ISO-loaded lineup scores more across seeds
+
+
+def test_home_away_pitchers_are_paired_with_opposing_lineups():
+    # Equal lineups, but home has a DOMINANT starter and away a WEAK one.
+    # Home lineup faces the weak away pitcher -> scores a lot; away lineup faces
+    # the dominant home pitcher -> scores little. So home outscores away on average.
+    ctx = _context(home_batter_iso=0.15, away_batter_iso=0.15)
+    from dataclasses import replace as _replace
+    ctx = _replace(
+        ctx,
+        home_pitcher=PitcherRates(player_id=9, throws="R", k_pct=0.36, bb_pct=0.05, hr9=0.5),
+        away_pitcher=PitcherRates(player_id=8, throws="R", k_pct=0.12, bb_pct=0.11, hr9=2.4),
+    )
+    home_total = sum(simulate_one_game(ctx, _random.Random(s)).home_runs for s in range(80))
+    away_total = sum(simulate_one_game(ctx, _random.Random(s)).away_runs for s in range(80))
+    assert home_total > away_total  # a swap of the pitchers would flip this
+
+
+def test_bullpen_fatigue_degrades_run_prevention():
+    from autonomy.sports.mlb_pa_sim import _bullpen_distributions
+    lineup = tuple(LineupSlot(i + 1, 100 + i, bats="R") for i in range(9))
+    rates = {100 + i: BatterRates(player_id=100 + i, bats="R", k_pct=0.20,
+                                  bb_pct=0.09, obp=0.340, slg=0.450, iso=0.15)
+             for i in range(9)}
+    fresh = _bullpen_distributions(lineup, rates, {}, 1.0)
+    tired = _bullpen_distributions(lineup, rates, {1: 1.0, 2: 1.0}, 1.0)
+    # A fatigued bullpen allows more offense: more HR, fewer strikeouts.
+    assert sum(d["hr"] for d in tired) > sum(d["hr"] for d in fresh)
+    assert sum(d["k"] for d in tired) < sum(d["k"] for d in fresh)
