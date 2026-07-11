@@ -247,6 +247,7 @@ _HTML = """<!doctype html>
  <div class="card span"><h2>Forced crypto target coverage</h2><div id="cryptoCoverage" class="table-wrap"></div></div>
  <div class="card span"><h2>Active forced crypto papers</h2><div id="cryptoCoverageTrades" class="table-wrap"></div></div>
  <div class="card"><h2>Recent decisions and explanations</h2><div id="paperDecisions" class="table-wrap"></div></div>
+ <div class="card"><h2>Throughput: why cohorts did not trade</h2><div id="paperThroughput"></div></div>
  <div class="card"><h2>Weakness and improvement queue</h2><div id="paperWeaknesses" class="table-wrap"></div></div>
 </div>
 <div class="section-title">Sports forced-coverage paper twin</div>
@@ -356,8 +357,18 @@ function renderPaper(d){
    +coverageTrades.map(x=>`<tr><td>${dt(x.close_time)}</td><td><b>${esc(x.asset)} ${esc(x.timeframe)}</b><br><span class="muted">coverage_probe</span></td><td>${esc((x.target||{}).label||x.ticker)}</td><td>${esc(String(x.side||'').toUpperCase())}</td><td>${x.entry_price_cents}¢ + ${x.fee_cents}¢</td><td>${pct(x.probability_yes)} / ${pct(x.market_probability)}</td><td>${Number(x.conservative_ev_cents||0).toFixed(2)}¢</td><td class="${x.normal_policy_eligible?'ok':'warn'}">${esc(x.normal_policy_reason)}</td><td class="explain">${esc(x.explanation)}</td></tr>`).join('')+'</table>':'<div class="muted">No open forced crypto papers. Coverage gaps remain explicit when no real quoted target exists.</div>';
  const decisions=op.recent_decisions||[];
  document.getElementById('paperDecisions').innerHTML=decisions.length?decisions.slice(0,12).map(x=>`<div style="padding:8px 0;border-bottom:1px solid #243041"><div><b>${esc(x.asset)} ${esc(x.timeframe)} · ${esc(x.action)}</b> <span class="muted">${dt(x.created_at)}</span></div><div class="explain">${esc(x.explanation)}</div></div>`).join(''):'<div class="muted">No decisions recorded.</div>';
+ const tp=op.throughput||{},tpc=tp.classes||{},tpLegend=tp.legend||{};
+ const tpTotal=Object.values(tpc).reduce((a,b)=>a+Number(b||0),0);
+ const tpActionable=tp.actionable||{},tpExpected=tp.expected||{};
+ const tpClass=k=>k in tpActionable?'warn':k==='traded'?'ok':'muted';
+ const tpLabel={traded:'traded',policy_rejected:'policy-selective (forecast ran, EV/edge declined)',no_listed_market:'market not listed (expected)',no_two_sided_book:'one-sided book (actionable)',forecast_incomplete:'forecast incomplete (actionable)'};
+ const tpRows=Object.entries(tpc).sort((a,b)=>b[1]-a[1]);
+ document.getElementById('paperThroughput').innerHTML=tpTotal?tpRows.map(([k,v])=>{
+   const w=Math.round(100*Number(v)/tpTotal);
+   return `<div class="kv"><span class="${tpClass(k)}">${esc(tpLabel[k]||k)}</span><b>${v} · ${w}%</b></div><div class="bar"><i style="width:${w}%"></i></div>`;
+ }).join('')+`<div class="muted" style="margin-top:6px">Actionable pipeline gap: ${Object.values(tpActionable).reduce((a,b)=>a+Number(b||0),0)} of ${tpTotal} observations. Policy-selective and not-listed are by design, not defects.</div>`:'<div class="muted">No throughput evidence yet.</div>';
  const weak=op.weaknesses||[];
- document.getElementById('paperWeaknesses').innerHTML=weak.length?weak.slice(0,12).map(x=>`<div style="padding:8px 0;border-bottom:1px solid #243041"><b class="warn">${esc(x.component)}</b><div class="explain">${esc(x.reason)}</div><span class="muted">${x.observations!=null?esc(x.observations)+' observations':''}${x.net_pnl_cents!=null?' · '+cents(x.net_pnl_cents):''}</span></div>`).join(''):'<div class="muted">No current weaknesses reported.</div>';
+ document.getElementById('paperWeaknesses').innerHTML=weak.length?weak.slice(0,12).map(x=>`<div style="padding:8px 0;border-bottom:1px solid #243041"><b class="warn">${esc(x.component)}</b><div class="explain">${esc(x.reason)}</div><span class="muted">${x.observations!=null?esc(x.observations)+' observations':''}${x.net_pnl_cents!=null?' · '+cents(x.net_pnl_cents):''}</span></div>`).join(''):'<div class="muted">No current weaknesses reported. Selectivity and market absence are reported as throughput, not weaknesses.</div>';
 }
 function renderSportsScheduler(s){
  const enabled=!!s.enabled,healthy=!!s.healthy;
