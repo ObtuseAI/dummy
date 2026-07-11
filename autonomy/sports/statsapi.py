@@ -9,6 +9,7 @@ missing inputs. Nothing here forecasts, trades, or touches credentials.
 from __future__ import annotations
 
 from dataclasses import dataclass, field, fields
+from datetime import date
 from typing import Any, Literal
 
 SnapshotKind = Literal["projected", "confirmed"]
@@ -211,3 +212,46 @@ def parse_pitcher_rates(people_payload: dict[str, Any]) -> PitcherRates | None:
         bb_pct=_rate(stat.get("baseOnBalls"), stat.get("battersFaced")),
         hr9=_float(stat.get("homeRunsPer9")),
     )
+
+
+# Seed table from public league-average park indices; neutral = 1.0. The
+# feature-discovery loop (S5) refines these from residuals later.
+PARK_FACTORS: dict[str, tuple[float, float]] = {
+    "Coors Field": (1.15, 1.18),
+    "Fenway Park": (1.05, 1.03),
+    "Dodger Stadium": (0.98, 1.06),
+    "Oracle Park": (0.94, 0.90),
+    "Great American Ball Park": (1.03, 1.16),
+    "Petco Park": (0.96, 0.95),
+    "Yankee Stadium": (1.01, 1.10),
+}
+
+
+def park_factors(venue: str | None) -> tuple[float | None, float | None]:
+    if venue is None:
+        return None, None
+    return PARK_FACTORS.get(venue, (1.0, 1.0))
+
+
+def bullpen_fatigue(
+    recent_appearances: dict[int, list[str]], *, as_of: str,
+) -> dict[int, float]:
+    """Fatigue in [0,1]: weighted count of appearances in the trailing 3 days.
+
+    Yesterday weighs most (back-to-back), then two- and three-days-ago. The
+    weights sum to 1.0 so a reliever who pitched all three trailing days
+    saturates at 1.0.
+    """
+    reference = date.fromisoformat(as_of)
+    day_weight = {1: 0.5, 2: 0.3, 3: 0.2}
+    fatigue: dict[int, float] = {}
+    for player_id, dates in recent_appearances.items():
+        score = 0.0
+        for stamp in dates:
+            try:
+                delta = (reference - date.fromisoformat(stamp)).days
+            except ValueError:
+                continue
+            score += day_weight.get(delta, 0.0)
+        fatigue[int(player_id)] = round(min(1.0, score), 4)
+    return fatigue

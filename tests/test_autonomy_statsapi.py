@@ -207,3 +207,36 @@ def test_parse_pitcher_rates_missing_stats_yields_none_rates():
 
 def test_parse_pitcher_rates_absent_id_returns_none():
     assert parse_pitcher_rates({"people": [{"fullName": "No Id"}]}) is None
+
+
+from autonomy.sports.statsapi import bullpen_fatigue, park_factors
+
+
+def test_park_factors_known_and_neutral():
+    run, hr = park_factors("Coors Field")
+    assert run > 1.0 and hr > 1.0  # hitter park
+    assert park_factors("Unknown Yard") == (1.0, 1.0)
+    assert park_factors(None) == (None, None)
+
+
+def test_bullpen_fatigue_rises_with_recent_use():
+    recent = {
+        101: ["2026-07-10", "2026-07-09", "2026-07-08"],  # 3 straight days
+        102: ["2026-07-08"],                                # rested
+        103: [],
+    }
+    fatigue = bullpen_fatigue(recent, as_of="2026-07-11")
+    assert fatigue[101] > fatigue[102] > 0.0
+    assert fatigue[103] == 0.0
+    assert 0.0 <= fatigue[101] <= 1.0
+
+
+def test_bullpen_fatigue_skips_malformed_dates():
+    fatigue = bullpen_fatigue({9: ["not-a-date", "2026-07-10"]}, as_of="2026-07-11")
+    assert fatigue[9] == 0.5  # only the valid yesterday counts; bad string skipped, no raise
+
+
+def test_bullpen_fatigue_saturates_at_one():
+    # More weight than 1.0 of appearances still caps at 1.0.
+    heavy = {4: ["2026-07-10", "2026-07-09", "2026-07-08", "2026-07-07"]}
+    assert bullpen_fatigue(heavy, as_of="2026-07-11")[4] == 1.0
