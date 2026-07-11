@@ -177,7 +177,7 @@ class MarketScanner:
     ) -> None:
         self.fetch_series = fetch_series or default_fetch_series_markets
         self.watchlist = watchlist or list(WATCHLIST_SERIES)
-        self.verticals = verticals or {Vertical.WEATHER, Vertical.CRYPTO, Vertical.SPORTS,
+        self.verticals = verticals or {Vertical.CRYPTO, Vertical.SPORTS,
                                        Vertical.COMMODITIES, Vertical.ECON}
 
     def scan(self) -> list[MarketView]:
