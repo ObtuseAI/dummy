@@ -314,7 +314,12 @@ def beat_close_head(decisions: list[SettledDecision]) -> HeadVerdict:
         edges.append(edge)
         edges_by_cluster.setdefault(d.event_cluster, []).append(edge)
     contested_n = len(edges)
-    ci = _cluster_bootstrap_mean_ci(edges_by_cluster) if edges else None
+    # _cluster_bootstrap_mean_ci requires a fixed string seed for deterministic
+    # resampling (the codebase forbids unseeded randomness).
+    ci = (
+        _cluster_bootstrap_mean_ci(edges_by_cluster, seed="mlb-beat-close-v1")
+        if edges else None
+    )
     mean_edge = (sum(edges) / contested_n) if contested_n else None
     lower = (ci or {}).get("lower")
     passed = (
