@@ -30,7 +30,7 @@ jobs:
           cache: pip
       - name: Install
         working-directory: C:\src\engine\dummy
-        run: pip install -e ".[dev]"
+        run: pip install -e ".[dev,analytics,optimizer,research]"
       - name: Run suite
         # Offline-hermetic on CI: no credentials, no broker contact; the two
         # live-credential tests skip without a local .env.
