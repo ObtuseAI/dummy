@@ -263,6 +263,7 @@ def test_client_assembles_projected_context_with_pitcher_rates():
     lad = next(c for c in contexts if c.game_pk == 717465)
     assert lad.snapshot == "projected"
     assert lad.away_pitcher is not None
+    assert lad.home_pitcher is not None
     assert lad.away_pitcher.k_pct == round(150 / 750, 4)
     assert lad.park_run_factor == 0.98  # Dodger Stadium from the table
 
@@ -276,3 +277,18 @@ def test_client_confirms_lineups_via_boxscore():
     confirmed = client.confirm_lineups(base, captured_at="2026-07-11T22:40:00+00:00")
     assert confirmed.snapshot == "confirmed"
     assert len(confirmed.home_lineup) == 2
+
+
+def test_client_swallows_pitcher_fetch_failure_to_none():
+    def boom_people(player_id):
+        raise RuntimeError("statsapi down")
+
+    client = StatsApiClient(
+        fetch_schedule=lambda d: _SCHEDULE_FIXTURE, fetch_people=boom_people,
+    )
+    contexts = client.projected_contexts(
+        "2026-07-11", captured_at="2026-07-11T18:00:00+00:00",
+    )
+    lad = next(c for c in contexts if c.game_pk == 717465)
+    assert lad.home_pitcher is None and lad.away_pitcher is None  # failure swallowed
+    assert lad.park_run_factor == 0.98  # rest of hydration still succeeded
