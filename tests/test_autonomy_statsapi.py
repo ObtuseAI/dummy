@@ -240,3 +240,39 @@ def test_bullpen_fatigue_saturates_at_one():
     # More weight than 1.0 of appearances still caps at 1.0.
     heavy = {4: ["2026-07-10", "2026-07-09", "2026-07-08", "2026-07-07"]}
     assert bullpen_fatigue(heavy, as_of="2026-07-11")[4] == 1.0
+
+
+from autonomy.sports.statsapi import StatsApiClient
+
+
+def test_client_assembles_projected_context_with_pitcher_rates():
+    def fake_schedule(date_iso):
+        assert date_iso == "2026-07-11"
+        return _SCHEDULE_FIXTURE
+
+    def fake_people(player_id):
+        assert player_id in {477132, 592789}
+        return _PEOPLE_FIXTURE
+
+    client = StatsApiClient(
+        fetch_schedule=fake_schedule, fetch_people=fake_people,
+    )
+    contexts = client.projected_contexts(
+        "2026-07-11", captured_at="2026-07-11T18:00:00+00:00",
+    )
+    lad = next(c for c in contexts if c.game_pk == 717465)
+    assert lad.snapshot == "projected"
+    assert lad.away_pitcher is not None
+    assert lad.away_pitcher.k_pct == round(150 / 750, 4)
+    assert lad.park_run_factor == 0.98  # Dodger Stadium from the table
+
+
+def test_client_confirms_lineups_via_boxscore():
+    client = StatsApiClient(fetch_boxscore=lambda pk: _BOX_FIXTURE)
+    base = MlbGameContext(
+        game_pk=717465, snapshot="projected",
+        captured_at="2026-07-11T18:00:00+00:00", home="LAD", away="SF",
+    )
+    confirmed = client.confirm_lineups(base, captured_at="2026-07-11T22:40:00+00:00")
+    assert confirmed.snapshot == "confirmed"
+    assert len(confirmed.home_lineup) == 2

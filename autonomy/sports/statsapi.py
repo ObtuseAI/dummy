@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field, fields
 from datetime import date
-from typing import Any, Literal
+from typing import Any, Literal, Callable
 
 SnapshotKind = Literal["projected", "confirmed"]
 
@@ -255,3 +255,89 @@ def bullpen_fatigue(
             score += day_weight.get(delta, 0.0)
         fatigue[int(player_id)] = round(min(1.0, score), 4)
     return fatigue
+
+
+_BASE = "https://statsapi.mlb.com/api/v1"
+
+
+def default_fetch_schedule(date_iso: str) -> dict[str, Any]:
+    import httpx
+    response = httpx.get(
+        f"{_BASE}/schedule",
+        params={
+            "sportId": 1, "date": date_iso,
+            "hydrate": "probablePitcher,weather,venue",
+        },
+        timeout=20,
+    )
+    response.raise_for_status()
+    return response.json()
+
+
+def default_fetch_boxscore(game_pk: int) -> dict[str, Any]:
+    import httpx
+    response = httpx.get(f"{_BASE}/game/{game_pk}/boxscore", timeout=20)
+    response.raise_for_status()
+    return response.json()
+
+
+def default_fetch_people(player_id: int) -> dict[str, Any]:
+    import httpx
+    response = httpx.get(
+        f"{_BASE}/people/{player_id}",
+        params={"hydrate": "stats(group=[pitching],type=[season])"},
+        timeout=20,
+    )
+    response.raise_for_status()
+    return response.json()
+
+
+class StatsApiClient:
+    """Assembles point-in-time MlbGameContexts from injectable StatsAPI fetchers."""
+
+    def __init__(
+        self,
+        fetch_schedule: Callable[[str], dict[str, Any]] | None = None,
+        fetch_boxscore: Callable[[int], dict[str, Any]] | None = None,
+        fetch_people: Callable[[int], dict[str, Any]] | None = None,
+    ) -> None:
+        self.fetch_schedule = fetch_schedule or default_fetch_schedule
+        self.fetch_boxscore = fetch_boxscore or default_fetch_boxscore
+        self.fetch_people = fetch_people or default_fetch_people
+        self._pitcher_cache: dict[int, PitcherRates | None] = {}
+
+    def _pitcher(self, player_id: int | None) -> PitcherRates | None:
+        if player_id is None:
+            return None
+        if player_id not in self._pitcher_cache:
+            try:
+                self._pitcher_cache[player_id] = parse_pitcher_rates(
+                    self.fetch_people(player_id)
+                )
+            except Exception:
+                self._pitcher_cache[player_id] = None
+        return self._pitcher_cache[player_id]
+
+    def projected_contexts(
+        self, date_iso: str, *, captured_at: str,
+    ) -> list[MlbGameContext]:
+        contexts = parse_schedule(
+            self.fetch_schedule(date_iso), captured_at=captured_at,
+        )
+        hydrated: list[MlbGameContext] = []
+        for ctx in contexts:
+            run_factor, hr_factor = park_factors(ctx.venue)
+            hydrated.append(replace(
+                ctx,
+                home_pitcher=self._pitcher(ctx.home_probable_pitcher_id),
+                away_pitcher=self._pitcher(ctx.away_probable_pitcher_id),
+                park_run_factor=run_factor,
+                park_hr_factor=hr_factor,
+            ))
+        return hydrated
+
+    def confirm_lineups(
+        self, ctx: MlbGameContext, *, captured_at: str,
+    ) -> MlbGameContext:
+        home, away = parse_boxscore_lineups(self.fetch_boxscore(ctx.game_pk))
+        return apply_confirmed_lineups(ctx, home, away, captured_at=captured_at)
