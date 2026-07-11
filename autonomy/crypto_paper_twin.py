@@ -67,6 +67,8 @@ HOURLY_CALIBRATION_MIN_CLUSTERS = 10
 HOURLY_CALIBRATION_MIN_TRAIN = 10
 HOURLY_CALIBRATION_MIN_FORWARD = 10
 TARGET_CANDIDATE_VERSION = "earliest-target-candidate-v1"
+CRYPTO_COVERAGE_VERSION = "all-listed-nearest-expiry-targets-v1"
+CRYPTO_COVERAGE_LANE = "coverage_probe"
 
 
 @dataclass(frozen=True)
@@ -297,6 +299,42 @@ CREATE TABLE IF NOT EXISTS target_candidate_forecasts(
 );
 CREATE INDEX IF NOT EXISTS target_candidate_unsettled
 ON target_candidate_forecasts(result_yes,close_time,ticker);
+CREATE TABLE IF NOT EXISTS crypto_coverage_trades(
+    coverage_id TEXT PRIMARY KEY,
+    cycle_id TEXT NOT NULL,
+    coverage_version TEXT NOT NULL,
+    lane TEXT NOT NULL,
+    timeframe TEXT NOT NULL,
+    asset TEXT NOT NULL,
+    event_cluster TEXT NOT NULL,
+    ticker TEXT NOT NULL,
+    side TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    close_time TEXT NOT NULL,
+    probability_yes REAL NOT NULL,
+    market_probability REAL NOT NULL,
+    uncertainty REAL NOT NULL,
+    conservative_ev_cents REAL NOT NULL,
+    entry_price_cents INTEGER NOT NULL,
+    fee_cents INTEGER NOT NULL,
+    target_json TEXT NOT NULL,
+    normal_policy_eligible INTEGER NOT NULL,
+    normal_policy_reason TEXT NOT NULL,
+    explanation TEXT NOT NULL,
+    status TEXT NOT NULL,
+    result_yes INTEGER,
+    settled_at TEXT,
+    pnl_cents INTEGER,
+    brier REAL,
+    market_brier REAL,
+    counts_toward_promotion INTEGER NOT NULL DEFAULT 0,
+    counts_toward_readiness INTEGER NOT NULL DEFAULT 0,
+    broker_contacted INTEGER NOT NULL DEFAULT 0,
+    UNIQUE(coverage_version,ticker),
+    FOREIGN KEY(cycle_id) REFERENCES cycles(cycle_id)
+);
+CREATE INDEX IF NOT EXISTS crypto_coverage_status
+ON crypto_coverage_trades(status,close_time,ticker);
 """
 
 
@@ -862,10 +900,48 @@ class PaperTwinLedger:
         except sqlite3.IntegrityError:
             return False
 
+    def record_crypto_coverage_trade(self, row: dict[str, Any]) -> bool:
+        """Freeze the earliest forced decision for one real listed ticker."""
+        try:
+            self.connection.execute(
+                "INSERT INTO crypto_coverage_trades(coverage_id,cycle_id,coverage_version,"
+                "lane,timeframe,asset,event_cluster,ticker,side,created_at,close_time,"
+                "probability_yes,market_probability,uncertainty,conservative_ev_cents,"
+                "entry_price_cents,fee_cents,target_json,normal_policy_eligible,"
+                "normal_policy_reason,explanation,status,counts_toward_promotion,"
+                "counts_toward_readiness,broker_contacted) "
+                "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,'OPEN',?,?,?)",
+                (
+                    row["coverage_id"], row["cycle_id"], row["coverage_version"],
+                    row["lane"], row["timeframe"], row["asset"], row["event_cluster"],
+                    row["ticker"], row["side"], row["created_at"], row["close_time"],
+                    row["probability_yes"], row["market_probability"], row["uncertainty"],
+                    row["conservative_ev_cents"], row["entry_price_cents"],
+                    row["fee_cents"], _json(row.get("target") or {}),
+                    int(bool(row.get("normal_policy_eligible"))),
+                    row["normal_policy_reason"], row["explanation"],
+                    int(bool(row.get("counts_toward_promotion"))),
+                    int(bool(row.get("counts_toward_readiness"))),
+                    int(bool(row.get("broker_contacted"))),
+                ),
+            )
+            self.connection.commit()
+            return True
+        except sqlite3.IntegrityError:
+            return False
+
     def open_tickers(self) -> list[str]:
         return [
             str(row[0]) for row in self.connection.execute(
                 "SELECT DISTINCT ticker FROM trades WHERE status='OPEN' ORDER BY ticker"
+            )
+        ]
+
+    def open_crypto_coverage_tickers(self) -> list[str]:
+        return [
+            str(row[0]) for row in self.connection.execute(
+                "SELECT DISTINCT ticker FROM crypto_coverage_trades "
+                "WHERE status='OPEN' ORDER BY ticker"
             )
         ]
 
@@ -902,6 +978,35 @@ class PaperTwinLedger:
             updated += 1
         self.connection.commit()
         return updated
+
+    def settle_crypto_coverage_ticker(
+        self, ticker: str, result_yes: bool, settled_at: datetime,
+    ) -> int:
+        rows = self.connection.execute(
+            "SELECT coverage_id,side,entry_price_cents,fee_cents,probability_yes,"
+            "market_probability FROM crypto_coverage_trades "
+            "WHERE ticker=? AND status='OPEN'",
+            (ticker,),
+        ).fetchall()
+        for row in rows:
+            won = (str(row["side"]) == "yes" and result_yes) or (
+                str(row["side"]) == "no" and not result_yes
+            )
+            price = int(row["entry_price_cents"])
+            pnl = (100 - price if won else -price) - int(row["fee_cents"])
+            outcome = 1.0 if result_yes else 0.0
+            self.connection.execute(
+                "UPDATE crypto_coverage_trades SET status='SETTLED',result_yes=?,"
+                "settled_at=?,pnl_cents=?,brier=?,market_brier=? WHERE coverage_id=?",
+                (
+                    int(result_yes), settled_at.isoformat(), pnl,
+                    round((float(row["probability_yes"]) - outcome) ** 2, 10),
+                    round((float(row["market_probability"]) - outcome) ** 2, 10),
+                    str(row["coverage_id"]),
+                ),
+            )
+        self.connection.commit()
+        return len(rows)
 
     def record_hourly_calibration_forecast(self, row: dict[str, Any]) -> bool:
         """Freeze the earliest clean hourly forecast for one asset/expiry.
@@ -1347,6 +1452,61 @@ class PaperTwinLedger:
             "maker_settled_trades": len(maker_settled),
             "maker_net_pnl_cents": sum(int(row["maker_pnl_cents"]) for row in maker_settled),
         }
+
+    def crypto_coverage_summary(self) -> dict[str, Any]:
+        aggregate = self.connection.execute(
+            "SELECT COUNT(*) decisions,"
+            "SUM(CASE WHEN status='OPEN' THEN 1 ELSE 0 END) open_decisions,"
+            "SUM(CASE WHEN status='SETTLED' THEN 1 ELSE 0 END) settled_decisions,"
+            "SUM(CASE WHEN status='SETTLED' AND pnl_cents>0 THEN 1 ELSE 0 END) wins,"
+            "COALESCE(SUM(CASE WHEN status='SETTLED' THEN pnl_cents END),0) pnl_cents "
+            "FROM crypto_coverage_trades"
+        ).fetchone()
+        lanes = [
+            dict(row) for row in self.connection.execute(
+                "SELECT timeframe,asset,COUNT(*) decisions,"
+                "SUM(CASE WHEN status='OPEN' THEN 1 ELSE 0 END) open_decisions,"
+                "SUM(CASE WHEN status='SETTLED' THEN 1 ELSE 0 END) settled_decisions,"
+                "SUM(CASE WHEN status='SETTLED' AND pnl_cents>0 THEN 1 ELSE 0 END) wins,"
+                "COALESCE(SUM(CASE WHEN status='SETTLED' THEN pnl_cents END),0) pnl_cents "
+                "FROM crypto_coverage_trades GROUP BY timeframe,asset "
+                "ORDER BY timeframe,asset"
+            )
+        ]
+        settled = int(aggregate["settled_decisions"] or 0)
+        wins = int(aggregate["wins"] or 0)
+        return {
+            "decisions": int(aggregate["decisions"] or 0),
+            "open_decisions": int(aggregate["open_decisions"] or 0),
+            "settled_decisions": settled,
+            "wins": wins,
+            "win_rate": round(wins / settled, 6) if settled else None,
+            "net_pnl_cents": int(aggregate["pnl_cents"] or 0),
+            "lanes": lanes,
+            "counts_toward_promotion": False,
+            "counts_toward_readiness": False,
+        }
+
+    def recent_crypto_coverage_trades(
+        self, *, status: str | None = None, limit: int = 100,
+    ) -> list[dict[str, Any]]:
+        query = "SELECT * FROM crypto_coverage_trades"
+        params: list[Any] = []
+        if status is not None:
+            query += " WHERE status=?"
+            params.append(status)
+        query += " ORDER BY created_at DESC,coverage_id DESC LIMIT ?"
+        params.append(max(1, int(limit)))
+        values: list[dict[str, Any]] = []
+        for row in self.connection.execute(query, params):
+            value = dict(row)
+            try:
+                value["target"] = json.loads(str(value.pop("target_json")))
+            except (TypeError, ValueError, json.JSONDecodeError):
+                value["target"] = {}
+                value.pop("target_json", None)
+            values.append(value)
+        return values
 
     def settled_trade_rows(
         self,
@@ -1895,6 +2055,59 @@ def decision_explanation(candidate: dict[str, Any], asset: str) -> str:
     )
 
 
+def forced_crypto_coverage_decision(
+    candidate: dict[str, Any], asset: str,
+) -> dict[str, Any]:
+    """Freeze one diagnostic paper side without relaxing the normal policy."""
+    market = candidate.get("market")
+    best = candidate.get("best")
+    target = candidate.get("target") or {}
+    if (
+        not isinstance(market, MarketView)
+        or not isinstance(best, dict)
+        or not bool(target.get("valid"))
+    ):
+        raise ValueError("coverage decision requires a real valid quoted target")
+    normal_reason = str(candidate.get("reason") or "unknown")
+    side = str(best["side"])
+    explanation = (
+        f"CRYPTO {asset} {candidate.get('timeframe')} {CRYPTO_COVERAGE_LANE} "
+        f"FORCED PAPER BUY {side.upper()} on {market.ticker} "
+        f"({target.get('label') or 'listed target'}). "
+        f"Model YES={float(candidate['probability_yes']):.1%}, "
+        f"market={float(candidate['market_probability']):.1%}, "
+        f"uncertainty={float(candidate['uncertainty']):.1%}; "
+        f"entry={int(best['price_cents'])}c + {int(best['fee_cents'])}c fee, "
+        f"conservative EV={float(best['ev_cents']):.2f}c. "
+        f"Normal exploratory policy status: {normal_reason}. Forced solely to measure "
+        "listed-target coverage, calibration, and failure modes; excluded from model "
+        "promotion, readiness, execution, and capital evidence."
+    )
+    return {
+        "coverage_version": CRYPTO_COVERAGE_VERSION,
+        "lane": CRYPTO_COVERAGE_LANE,
+        "timeframe": str(candidate["timeframe"]),
+        "asset": str(asset),
+        "event_cluster": str(candidate["event_cluster"]),
+        "ticker": market.ticker,
+        "side": side,
+        "close_time": market.close_time,
+        "probability_yes": round(float(candidate["probability_yes"]), 10),
+        "market_probability": round(float(candidate["market_probability"]), 10),
+        "uncertainty": round(float(candidate["uncertainty"]), 10),
+        "conservative_ev_cents": round(float(best["ev_cents"]), 6),
+        "entry_price_cents": int(best["price_cents"]),
+        "fee_cents": int(best["fee_cents"]),
+        "target": target,
+        "normal_policy_eligible": bool(candidate.get("eligible")),
+        "normal_policy_reason": normal_reason,
+        "explanation": explanation,
+        "counts_toward_promotion": False,
+        "counts_toward_readiness": False,
+        "broker_contacted": False,
+    }
+
+
 def _percentile(values: Sequence[float], fraction: float) -> float | None:
     if not values:
         return None
@@ -2334,13 +2547,17 @@ class CryptoPaperTwin:
 
     def _reconcile_settlements(
         self, now: datetime, errors: list[str],
-    ) -> tuple[int, int, int]:
+    ) -> tuple[int, int, int, int]:
         trade_updates = 0
+        coverage_updates = 0
         calibration_updates = 0
         target_candidate_updates = 0
-        tickers = sorted(set(self.ledger.open_tickers()) | set(
-            self.ledger.unsettled_hourly_calibration_tickers()
-        ) | set(self.ledger.unsettled_target_candidate_tickers(now)))
+        tickers = sorted(
+            set(self.ledger.open_tickers())
+            | set(self.ledger.open_crypto_coverage_tickers())
+            | set(self.ledger.unsettled_hourly_calibration_tickers())
+            | set(self.ledger.unsettled_target_candidate_tickers(now))
+        )
         for ticker in tickers:
             try:
                 market = self.fetch_result(ticker)
@@ -2348,6 +2565,9 @@ class CryptoPaperTwin:
                 if result in {"yes", "no"}:
                     resolved_yes = result == "yes"
                     trade_updates += self.ledger.settle_ticker(ticker, resolved_yes, now)
+                    coverage_updates += self.ledger.settle_crypto_coverage_ticker(
+                        ticker, resolved_yes, now,
+                    )
                     calibration_updates += self.ledger.settle_hourly_calibration_ticker(
                         ticker, resolved_yes, now,
                     )
@@ -2358,7 +2578,10 @@ class CryptoPaperTwin:
                     )
             except Exception as exc:
                 errors.append(f"settlement:{ticker}:{type(exc).__name__}")
-        return trade_updates, calibration_updates, target_candidate_updates
+        return (
+            trade_updates, coverage_updates, calibration_updates,
+            target_candidate_updates,
+        )
 
     def _reconcile_makers(self, now: datetime, errors: list[str]) -> int:
         updated = 0
@@ -2388,11 +2611,20 @@ class CryptoPaperTwin:
         errors: list[str] = []
         observations_written = trades_opened = calibration_forecasts_recorded = 0
         target_candidate_forecasts_recorded = 0
+        coverage_trades_recorded = 0
+        coverage_scope_targets: dict[str, int] = {
+            f"{asset}:{timeframe}": 0
+            for asset in ASSETS for timeframe in TIMEFRAMES
+        }
+        coverage_scope_recorded: dict[str, int] = dict.fromkeys(
+            coverage_scope_targets, 0,
+        )
         try:
             self.hub.clear()
             maker_updates = self._reconcile_makers(now, errors)
             (
                 settlements,
+                coverage_settlements,
                 hourly_calibration_settlements,
                 target_candidate_settlements,
             ) = self._reconcile_settlements(now, errors)
@@ -2439,6 +2671,41 @@ class CryptoPaperTwin:
                 cluster = event_cluster(
                     vertical, timeframe, asset, listed_lane_markets[0].close_time,
                 ) if listed_lane_markets else None
+                if vertical is Vertical.CRYPTO and cluster is not None:
+                    scope_key = f"{asset}:{timeframe}"
+                    for market in lane_markets:
+                        forecast = forecasts.get(market.ticker)
+                        if forecast is None:
+                            continue
+                        coverage_candidate = _candidate(
+                            market,
+                            forecast,
+                            self._technical(market, timeframe, states),
+                            strategy="exploratory",
+                            timeframe=timeframe,
+                            genome=active_genome,
+                        )
+                        coverage_candidate["vertical"] = vertical.value
+                        coverage_candidate["event_cluster"] = cluster
+                        if (
+                            not isinstance(coverage_candidate.get("best"), dict)
+                            or not bool((coverage_candidate.get("target") or {}).get("valid"))
+                        ):
+                            continue
+                        coverage_scope_targets[scope_key] += 1
+                        forced = forced_crypto_coverage_decision(
+                            coverage_candidate, asset,
+                        )
+                        recorded = int(
+                            self.ledger.record_crypto_coverage_trade({
+                                **forced,
+                                "coverage_id": f"crypto-coverage-{uuid.uuid4().hex[:16]}",
+                                "cycle_id": cycle_id,
+                                "created_at": now.isoformat(),
+                            })
+                        )
+                        coverage_trades_recorded += recorded
+                        coverage_scope_recorded[scope_key] += recorded
                 for strategy in strategies_for(vertical, timeframe):
                         strategy_cluster = (
                             hourly_calibration_event_cluster(
@@ -2744,6 +3011,10 @@ class CryptoPaperTwin:
                 observations_written=observations_written,
                 trades_opened=trades_opened,
                 settlements_recorded=settlements,
+                coverage_settlements_recorded=coverage_settlements,
+                coverage_trades_recorded=coverage_trades_recorded,
+                coverage_scope_targets=coverage_scope_targets,
+                coverage_scope_recorded=coverage_scope_recorded,
                 maker_updates=maker_updates,
                 hourly_calibration_settlements=hourly_calibration_settlements,
                 calibration_forecasts_recorded=calibration_forecasts_recorded,
@@ -2762,6 +3033,10 @@ class CryptoPaperTwin:
                 observations_written=observations_written,
                 trades_opened=trades_opened,
                 settlements_recorded=0,
+                coverage_settlements_recorded=0,
+                coverage_trades_recorded=coverage_trades_recorded,
+                coverage_scope_targets=coverage_scope_targets,
+                coverage_scope_recorded=coverage_scope_recorded,
                 maker_updates=0,
                 hourly_calibration_settlements=0,
                 calibration_forecasts_recorded=calibration_forecasts_recorded,
@@ -2784,6 +3059,10 @@ class CryptoPaperTwin:
         observations_written: int,
         trades_opened: int,
         settlements_recorded: int,
+        coverage_settlements_recorded: int,
+        coverage_trades_recorded: int,
+        coverage_scope_targets: dict[str, int],
+        coverage_scope_recorded: dict[str, int],
         maker_updates: int,
         hourly_calibration_settlements: int,
         calibration_forecasts_recorded: int,
@@ -2934,6 +3213,47 @@ class CryptoPaperTwin:
                 ),
                 "active_model_share": hourly_profile.model_share,
             })
+        coverage_summary = self.ledger.crypto_coverage_summary()
+        coverage_lanes = {
+            f"{row['asset']}:{row['timeframe']}": row
+            for row in coverage_summary["lanes"]
+        }
+        coverage_matrix: list[dict[str, Any]] = []
+        for timeframe in vertical_timeframes[Vertical.CRYPTO]:
+            for asset in ASSETS:
+                scope = f"{asset}:{timeframe}"
+                observed = int(coverage_scope_targets.get(scope) or 0)
+                tracked = coverage_lanes.get(scope) or {}
+                if observed:
+                    status = "TRACKING_FORCED_PAPER"
+                    explanation = (
+                        f"{observed} real listed signal-compatible nearest-expiry "
+                        "target(s) were forced into the diagnostic paper ledger."
+                    )
+                else:
+                    status = "NO_LISTED_SIGNAL_COMPATIBLE_MARKET"
+                    explanation = (
+                        "No real listed target had both a complete forecast and executable "
+                        "two-sided quote this cycle; no synthetic trade was fabricated."
+                    )
+                coverage_matrix.append({
+                    "scope": scope,
+                    "asset": asset,
+                    "timeframe": timeframe,
+                    "status": status,
+                    "is_coverage_gap": not bool(observed),
+                    "targets_observed_this_cycle": observed,
+                    "forced_trades_recorded_this_cycle": int(
+                        coverage_scope_recorded.get(scope) or 0
+                    ),
+                    "tracked_decisions": int(tracked.get("decisions") or 0),
+                    "open_decisions": int(tracked.get("open_decisions") or 0),
+                    "settled_decisions": int(tracked.get("settled_decisions") or 0),
+                    "net_pnl_cents": int(tracked.get("pnl_cents") or 0),
+                    "explanation": explanation,
+                    "counts_toward_promotion": False,
+                    "counts_toward_readiness": False,
+                })
         active = self.ledger.active_epoch()
         completed_at = self.now_fn().astimezone(timezone.utc)
         crypto_name = Vertical.CRYPTO.value
@@ -2948,6 +3268,8 @@ class CryptoPaperTwin:
             "observations_written": observations_written,
             "trades_opened": trades_opened,
             "settlements_recorded": settlements_recorded,
+            "forced_crypto_trades_recorded": coverage_trades_recorded,
+            "forced_crypto_settlements_recorded": coverage_settlements_recorded,
             "hourly_calibration_settlements_recorded": hourly_calibration_settlements,
             "hourly_calibration_forecasts_recorded": calibration_forecasts_recorded,
             "target_candidate_settlements_recorded": target_candidate_settlements,
@@ -3026,6 +3348,44 @@ class CryptoPaperTwin:
                 "execution_authority": False,
                 "capital_authority": False,
             },
+            "forced_crypto_coverage": {
+                "version": CRYPTO_COVERAGE_VERSION,
+                "lane": CRYPTO_COVERAGE_LANE,
+                "designated_scopes": len(ASSETS) * len(
+                    vertical_timeframes[Vertical.CRYPTO]
+                ),
+                "scopes_observed_this_cycle": sum(
+                    int(row["targets_observed_this_cycle"] > 0)
+                    for row in coverage_matrix
+                ),
+                "coverage_gap_count": sum(
+                    int(row["is_coverage_gap"]) for row in coverage_matrix
+                ),
+                "coverage_gaps": [
+                    row["scope"] for row in coverage_matrix
+                    if row["is_coverage_gap"]
+                ],
+                "targets_observed_this_cycle": sum(coverage_scope_targets.values()),
+                "forced_trades_recorded_this_cycle": coverage_trades_recorded,
+                "forced_settlements_recorded_this_cycle": (
+                    coverage_settlements_recorded
+                ),
+                "matrix": coverage_matrix,
+                "summary": coverage_summary,
+                "active_trades": self.ledger.recent_crypto_coverage_trades(
+                    status="OPEN", limit=100,
+                ),
+                "recent_settlements": self.ledger.recent_crypto_coverage_trades(
+                    status="SETTLED", limit=50,
+                ),
+                "real_listed_markets_only": True,
+                "all_valid_nearest_expiry_targets": True,
+                "fabricated_trades": False,
+                "counts_toward_promotion": False,
+                "counts_toward_readiness": False,
+                "execution_authority": False,
+                "capital_authority": False,
+            },
             "timeframe_comparison": comparisons[crypto_name],
             "timeframe_comparison_by_vertical": comparisons,
             "phase_3_execution": {
@@ -3064,6 +3424,8 @@ class CryptoPaperTwin:
                 "selected_hourly_bootstrap_counts_toward_activation": False,
                 "target_candidate_counterfactual_counts_as_fill_evidence": False,
                 "target_candidate_counterfactual_auto_tunes_gates": False,
+                "forced_crypto_coverage_counts_toward_promotion": False,
+                "forced_crypto_coverage_counts_toward_readiness": False,
                 "legacy_15m_hourly_rows": self.ledger.legacy_quarantine_summary(),
             },
             "authority": {
@@ -3076,6 +3438,7 @@ class CryptoPaperTwin:
                 "capital_authority": False,
                 "production_weight_write_authority": False,
                 "production_risk_write_authority": False,
+                "forced_crypto_coverage_counts_toward_promotion": False,
             },
         }
 

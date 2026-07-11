@@ -18,6 +18,9 @@ from autonomy.sports.baseball import BaseballRunModel, poisson_over_probability
 from autonomy.sports.espn import EspnClient, Game, parse_scoreboard
 from autonomy.sports.formula_one import F1Model, parse_f1_scoreboard
 from autonomy.sports.simulation import (
+    DESIGNATED_SPORTS_PREDICTION_TYPES,
+    FORCED_COVERAGE_LANE,
+    POLICY_LANE,
     RecursiveSportsLab,
     SportsEvidenceLedger,
     SportsGenome,
@@ -26,9 +29,12 @@ from autonomy.sports.simulation import (
     chronological_folds,
     curriculum_stage,
     evaluate_genome,
+    forced_coverage_action,
     mutate_population,
     paper_action,
+    paper_decision_explanation,
     paired_cluster_bootstrap,
+    sports_coverage_assessment,
     unlocked_mutations,
 )
 from autonomy.sports.team_scores import TeamScoreModel
@@ -305,6 +311,54 @@ def test_cold_participant_history_blocks_even_a_large_apparent_edge():
     assert decision["blocker"] == "insufficient participant history"
 
 
+def test_forced_coverage_action_trades_but_never_counts_toward_promotion():
+    cold = SportsObservation(**{**_observation(99).__dict__, "sample_size": 0})
+
+    decision = forced_coverage_action(cold, SportsGenome())
+    explanation = paper_decision_explanation(
+        cold, decision, "cold model rationale", lane=FORCED_COVERAGE_LANE,
+    )
+
+    assert decision["action"].startswith("PAPER_FORCE_")
+    assert decision["policy_eligible"] is False
+    assert decision["forced"] is True
+    assert decision["counts_toward_promotion"] is False
+    assert "insufficient participant history" in decision["coverage_reason"]
+    assert "Excluded from promotion" in explanation
+
+
+def test_designated_sports_types_are_complete_and_tennis_remains_excluded():
+    scopes = set(DESIGNATED_SPORTS_PREDICTION_TYPES)
+    assert scopes == {
+        ("mlb", "winner"), ("mlb", "total_runs"), ("mlb", "yrfi"),
+        ("nba", "winner"), ("nba", "total"),
+        ("nfl", "winner"), ("nfl", "total"),
+        ("ncaaf", "winner"), ("ncaaf", "total"),
+        ("nhl", "winner"), ("nhl", "total"),
+        ("ncaamb", "winner"), ("ncaamb", "total"),
+        ("ufc", "winner"), ("ufc", "before_round"), ("ufc", "distance"),
+        ("f1", "winner"),
+    }
+    assert all(sport != "tennis" for sport, _market_type in scopes)
+
+
+def test_nfl_winner_remains_explicit_gap_even_with_listed_paper_markets():
+    assessment = sports_coverage_assessment("nfl", "winner", 58)
+
+    assert assessment["status"] == "TRACKING_FORCED_PAPER_COVERAGE_GAP"
+    assert assessment["is_coverage_gap"] is True
+    assert "58 real listed" in assessment["explanation"]
+    assert "forced paper capture alone do not close" in assessment["coverage_gap_reason"]
+
+
+def test_normal_observed_scope_is_not_a_coverage_gap():
+    assessment = sports_coverage_assessment("mlb", "yrfi", 18)
+
+    assert assessment["status"] == "TRACKING_FORCED_PAPER"
+    assert assessment["is_coverage_gap"] is False
+    assert assessment["coverage_gap_reason"] is None
+
+
 def test_walk_forward_never_splits_an_event_cluster():
     rows = [_observation(index) for index in range(30)]
     for train, test in chronological_folds(rows, folds=4):
@@ -346,6 +400,48 @@ def test_evidence_ledger_keeps_earliest_point_in_time_row(tmp_path):
         ledger.record("c2", market, later, "mlb", "yrfi")
         rows = ledger.rows()
         assert len(rows) == 1 and rows[0].model_probability == 0.60
+    finally:
+        ledger.close()
+
+
+def test_sports_paper_ledger_freezes_lanes_and_settles_pnl(tmp_path):
+    ledger = SportsEvidenceLedger(tmp_path / "sports.db")
+    observation = _observation(7, probability=0.75, result=None)
+    policy = paper_action(observation, SportsGenome())
+    forced = forced_coverage_action(observation, SportsGenome())
+    try:
+        assert policy["eligible"] is True
+        assert ledger.record_paper_decision(
+            observation,
+            policy,
+            paper_decision_explanation(
+                observation, policy, "policy rationale", lane=POLICY_LANE,
+            ),
+            lane=POLICY_LANE,
+        ) is True
+        assert ledger.record_paper_decision(
+            observation,
+            forced,
+            paper_decision_explanation(
+                observation, forced, "coverage rationale", lane=FORCED_COVERAGE_LANE,
+            ),
+            lane=FORCED_COVERAGE_LANE,
+        ) is True
+        assert ledger.record_paper_decision(
+            observation, forced, "later rewrite", lane=FORCED_COVERAGE_LANE,
+        ) is False
+
+        assert ledger.settle_paper_decisions(observation.ticker, True) == 2
+        summary = ledger.paper_decision_summary()
+        rows = ledger.recent_paper_decisions(status="SETTLED")
+
+        assert summary["decisions"] == 2
+        assert summary["settled_decisions"] == 2
+        assert summary["wins"] == 2
+        assert summary["net_pnl_cents"] > 0
+        assert summary["forced_coverage_counts_toward_promotion"] is False
+        assert {row["lane"] for row in rows} == {POLICY_LANE, FORCED_COVERAGE_LANE}
+        assert all(row["counts_toward_promotion"] == (row["lane"] == POLICY_LANE) for row in rows)
     finally:
         ledger.close()
 

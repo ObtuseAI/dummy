@@ -256,6 +256,7 @@ def assemble_paper_dashboard(runtime_dir: Path) -> dict[str, Any]:
         "freshness_seconds": _age_seconds(summary.get("completed_at")),
         "target_candidate_counts": summary.get("target_candidate_counts") or {},
         "hourly_calibration": summary.get("hourly_calibration") or {},
+        "forced_crypto_coverage": summary.get("forced_crypto_coverage") or {},
         "lanes": _flatten_lanes(summary),
         "weaknesses": list(summary.get("weaknesses") or [])[:20],
         "active_trades": [],

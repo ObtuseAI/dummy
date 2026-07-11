@@ -60,6 +60,21 @@ exist, at least ten genuinely later forecasts are scored, and the
 event-cluster-bootstrap lower-95% Brier advantage is positive. Even after
 activation, model share is capped at 50% and the lane remains paper-only.
 
+A fourth, physically separate `coverage_probe` ledger now forces one
+quote-simulated side for every real, valid, two-sided nearest-expiry crypto
+target across all 12 BTC/ETH/SOL horizon scopes. This includes every available
+hourly, daily, and weekly price target, not only the normal policy winner, plus
+each native 15-minute direction contract. It preserves the normal lane's
+eligibility result and blocker in every explanation so negative-EV, high-price,
+high-uncertainty, and low-edge failures can be measured instead of disappearing
+behind abstention. Missing or one-sided markets remain explicit coverage gaps;
+Dummy never fabricates a quote or synthetic contract.
+
+Forced coverage rows live in their own SQLite table and cannot enter recursive
+selection, hourly calibration, execution challengers, canary/scale readiness,
+production weights, execution, or capital. They have no maker-fill claim; their
+P&L is explicitly a one-contract live-top-ask counterfactual.
+
 Only one paper position may be opened per strategy, vertical, timeframe, asset, and
 expiry. Adjacent strike ladders therefore cannot manufacture independent
 trades or pyramid one event.
@@ -199,4 +214,6 @@ execution ceiling cannot strand the scheduler behind a thirty-minute lock.
 The loopback dashboard exposes scheduler health, open and settled paper trades,
 separately labeled quote-simulated and maker-witness P&L, evidence progress,
 decision explanations, and weaknesses. Its Start and Stop buttons only control
-this paper task; they cannot grant live execution or capital authority.
+this paper task; they cannot grant live execution or capital authority. The
+dashboard separately shows the 12-scope coverage matrix, active forced target
+papers, normal-policy blockers, settlements, and forced-lane P&L.

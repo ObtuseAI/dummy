@@ -88,6 +88,16 @@ def test_paper_dashboard_reads_open_settled_and_pnl_truth(tmp_path):
             "settled_event_clusters": 4,
         },
         "lanes": {"1h": {"exploratory": {"trades": 2, "settled_trades": 1}}},
+        "forced_crypto_coverage": {
+            "designated_scopes": 12,
+            "scopes_observed_this_cycle": 12,
+            "coverage_gap_count": 0,
+            "summary": {"open_decisions": 12, "settled_decisions": 0},
+            "matrix": [{
+                "asset": "BTC", "timeframe": "15m",
+                "status": "TRACKING_FORCED_PAPER", "is_coverage_gap": False,
+            }],
+        },
         "authority": {
             "broker_contacted": False,
             "execution_authority": False,
@@ -108,6 +118,8 @@ def test_paper_dashboard_reads_open_settled_and_pnl_truth(tmp_path):
     assert state["recent_settlements"][0]["taker_pnl_cents"] == 59
     assert state["pnl_curve"][-1]["pnl_cents"] == 59
     assert state["lanes"][0]["vertical"] == "CRYPTO"
+    assert state["forced_crypto_coverage"]["summary"]["open_decisions"] == 12
+    assert state["forced_crypto_coverage"]["matrix"][0]["timeframe"] == "15m"
 
 
 def test_scheduled_task_status_normalizes_windows_task():

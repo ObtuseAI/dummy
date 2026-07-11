@@ -39,8 +39,11 @@ Elapsed runtime, backtests, or counterfactual quote P&L cannot promote it.
 The local command-center dashboard at `http://127.0.0.1:8787/` tracks scheduler
 health, active and settled paper trades, decision explanations, lane-level
 calibration and P&L, target-evidence progress, weaknesses, and promotion gates.
-Its Start and Stop controls only enable or pause `DummyCryptoPaperTwin`; they
-cannot reach live execution, credentials, risk settings, or capital.
+It also exposes the isolated forced-coverage ledgers for every designated
+crypto scope and sports prediction type so missing markets, explanations, and
+settlements are visible without contaminating promotion evidence. Its Start
+and Stop controls only enable or pause the paper schedulers; they cannot reach
+live execution, credentials, risk settings, or capital.
 
 ![Dummy paper trading command center](docs/assets/dummy-paper-dashboard.jpg)
 
@@ -90,14 +93,24 @@ default), reconciles settlements, and grades every source against reality.
   and exploratory lanes. Unlisted horizons abstain explicitly; listed markets
   explain every decision, simulate one-contract top-ask entries, and diagnose
   maker execution from public prints. It runs beside shadow and authorized live
-  sessions but has no credentials, broker, readiness, execution, or capital authority.
+  sessions but has no credentials, broker, readiness, execution, or capital
+  authority. A physically separate coverage-probe ledger also forces a paper
+  side for every real, valid nearest-expiry crypto target in all 12 asset/horizon
+  scopes, records the normal-policy blocker, and exposes missing scopes as gaps.
+  Forced crypto samples cannot influence calibration, promotion, readiness, or
+  execution.
 - **Multi-sport game engine**: MLB, NFL, NCAAF, NHL, NBA, NCAAB, UFC, and F1
   challengers feed a deterministic replay buffer and Monte Carlo curriculum.
   League-isolated genomes progress through Rookie/Veteran/Elite/Boss tiers,
   face fog-of-war/meta-shift/boss-chaos arenas, and unlock mutation skills only
   after settled event-cluster evidence. Deep analytics include Brier, log loss,
   ECE/MCE, AUC, sharpness, Sortino, drawdown, and paired-cluster confidence.
-  Research champions cannot rewrite code, alter production weights, or trade.
+  A separate forced-coverage lane paper-trades every real, signal-compatible
+  designated winner/total/YRFI-NRFI/UFC/F1 market and explains the decision;
+  missing types become explicit coverage gaps. Forced samples cannot promote a
+  model, rewrite code, alter production weights, or reach capital. NFL winner
+  is also retained as an explicit gap while listed contracts accumulate
+  scope-specific forward settlement and calibration evidence.
 - **Reflexion**: losing decisions distilled into structured lessons via the
   model router.
 

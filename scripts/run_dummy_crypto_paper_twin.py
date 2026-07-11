@@ -58,6 +58,12 @@ def _summary(report: dict, report_path: Path) -> dict:
         "observations_written": report.get("observations_written"),
         "trades_opened": report.get("trades_opened"),
         "settlements_recorded": report.get("settlements_recorded"),
+        "forced_crypto_trades_recorded": report.get(
+            "forced_crypto_trades_recorded"
+        ),
+        "forced_crypto_settlements_recorded": report.get(
+            "forced_crypto_settlements_recorded"
+        ),
         "target_candidate_forecasts_recorded": report.get(
             "target_candidate_forecasts_recorded"
         ),
@@ -73,6 +79,7 @@ def _summary(report: dict, report_path: Path) -> dict:
         "active_recursive_epoch": report.get("active_recursive_epoch"),
         "hourly_calibration": report.get("hourly_calibration"),
         "target_candidate_counts": rejection_regret.get("counts"),
+        "forced_crypto_coverage": report.get("forced_crypto_coverage"),
         "weaknesses": list(report.get("weaknesses") or [])[:20],
         "evidence_quarantine": report.get("evidence_quarantine"),
         "authority": report.get("authority"),
@@ -92,6 +99,12 @@ def _console_summary(summary: dict) -> dict:
         "observations_written": summary.get("observations_written"),
         "trades_opened": summary.get("trades_opened"),
         "settlements_recorded": summary.get("settlements_recorded"),
+        "forced_crypto_trades_recorded": summary.get(
+            "forced_crypto_trades_recorded"
+        ),
+        "forced_crypto_settlements_recorded": summary.get(
+            "forced_crypto_settlements_recorded"
+        ),
         "target_candidate_forecasts_recorded": summary.get(
             "target_candidate_forecasts_recorded"
         ),
