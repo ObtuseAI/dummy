@@ -32,6 +32,31 @@ DEFAULT_EDGE_THRESHOLD = 0.04
 # The book must lead/lag the market by at least this much to count as
 # confirming or conflicting (inside this band the book is treated as neutral).
 DEFAULT_AGREE_MARGIN = 0.02
+# Thin books require MORE edge before an assessment is actionable: a marginal
+# edge on a market with almost no depth is usually un-executable at that price
+# (you move the book taking it), so it pollutes the shortlist. Thresholds are
+# RESTING LIQUIDITY IN CENTS -- MarketView.liquidity is cents (the scanner
+# derives it from Kalshi's liquidity / liquidity_dollars*100). Most-restrictive
+# tier first: under $50 of depth (+0.04), under $200 (+0.02), deeper is neutral.
+LIQUIDITY_EDGE_FLOOR_TIERS: tuple[tuple[int, float], ...] = ((5_000, 0.04), (20_000, 0.02))
+
+
+def liquidity_edge_floor(liquidity: int | None) -> float:
+    """Extra fair-vs-price edge for a thin book, keyed on resting cents.
+
+    ``None`` (unknown depth) is neutral (0.0); a reported 0 is genuinely
+    empty and gets the most-restrictive floor.
+    """
+    if liquidity is None:
+        return 0.0
+    try:
+        depth_cents = int(liquidity)
+    except (TypeError, ValueError):
+        return 0.0
+    for threshold, extra in LIQUIDITY_EDGE_FLOOR_TIERS:
+        if depth_cents < threshold:
+            return extra
+    return 0.0
 
 
 @dataclass(frozen=True)
@@ -78,15 +103,18 @@ def assess_mispricing(
     book_prob: float | None = None,
     edge_threshold: float = DEFAULT_EDGE_THRESHOLD,
     agree_margin: float = DEFAULT_AGREE_MARGIN,
+    liquidity: int | None = None,
 ) -> MispricingAssessment:
     """Assess whether the market is mispriced vs the model (and book).
 
     ``yes_ask``/``no_ask`` are the executable ask quotes in cents. Returns a
     NONE assessment (no actionable edge) when quotes are missing or neither side
-    clears ``edge_threshold``.
+    clears the effective threshold (``edge_threshold`` plus a thin-book floor
+    from ``liquidity``).
     """
     model_prob = min(1.0, max(0.0, float(model_prob)))
     yes_cost, no_cost, mid = _implied_yes_from_quotes(yes_ask, no_ask)
+    effective_threshold = edge_threshold + liquidity_edge_floor(liquidity)
 
     # Edge = our fair probability minus what we pay to hold that side.
     yes_edge = (model_prob - yes_cost) if yes_cost is not None else None
@@ -101,7 +129,7 @@ def assess_mispricing(
         candidates.append(("NO", no_edge))
     if candidates:
         best_side, best_edge = max(candidates, key=lambda item: item[1])
-        if best_edge >= edge_threshold:
+        if best_edge >= effective_threshold:
             side, edge = best_side, best_edge
 
     if mid is None or side == "NONE":
@@ -111,7 +139,7 @@ def assess_mispricing(
             edge=0.0, agreement="none", confidence="low",
             rationale=(
                 "no executable quote" if mid is None
-                else f"no side clears {edge_threshold:.0%} edge (best model vs mid)"
+                else f"no side clears {effective_threshold:.0%} edge (best model vs mid)"
             ),
         )
 
@@ -198,6 +226,7 @@ class MispricingMonitor:
             book_prob=book_prob,
             edge_threshold=self.edge_threshold,
             agree_margin=self.agree_margin,
+            liquidity=getattr(market, "liquidity", None),
         )
 
     def scan(self, markets: list[Any]) -> list[MispricingAssessment]:
