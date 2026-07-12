@@ -475,6 +475,16 @@ def test_pitcher_rates_vs_selects_split_by_batter_hand():
     assert pitcher_rates_vs(pitcher, "S").hr9 == 1.1   # switch hitter -> overall
 
 
+def test_rates_vs_ignores_empty_small_sample_split():
+    from autonomy.sports.statsapi import BatterRates, PitcherRates, batter_rates_vs, pitcher_rates_vs
+    empty_b = BatterRates(player_id=1)  # all rates None (0 PA vs that hand)
+    batter = BatterRates(player_id=1, k_pct=0.20, obp=0.340, slg=0.450, iso=0.15, vs_lhp=empty_b)
+    assert batter_rates_vs(batter, "L") is batter   # empty split ignored -> overall
+    empty_p = PitcherRates(player_id=2)
+    pitcher = PitcherRates(player_id=2, k_pct=0.22, bb_pct=0.08, hr9=1.2, vs_lhb=empty_p)
+    assert pitcher_rates_vs(pitcher, "L") is pitcher
+
+
 # --- Task 2: parse + hydrate StatsAPI handedness splits ---------------------
 
 from autonomy.sports.statsapi import parse_batter_splits, parse_pitcher_splits

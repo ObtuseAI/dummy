@@ -393,12 +393,12 @@ def simulate_one_game(
 
 
 # Task 5 (rivalry/divisional awareness): divisional and marquee-rivalry games
-# are historically closer / higher-variance than a random pairing -- ballclubs
-# know each other intimately and the talent gap that shows up on paper tends
-# to compress. Applied as a modest post-hoc regression of the aggregate
-# home_win probability toward a pick'em line (0.5); every other market is
-# left untouched. divisional=False (the default) skips this entirely, so
-# today's output is byte-identical.
+# are historically closer than a random pairing -- ballclubs know each other
+# intimately and the talent gap that shows up on paper tends to compress.
+# Applied as a modest post-hoc regression of the aggregate home_win probability
+# toward a pick'em line (0.5); this is a deterministic point regression, not a
+# variance change. Every other market is left untouched. divisional=False
+# (the default) skips this entirely, so today's output is byte-identical.
 DIVISIONAL_REGRESSION = 0.06  # fraction of the home_win edge pulled toward 0.5
 
 

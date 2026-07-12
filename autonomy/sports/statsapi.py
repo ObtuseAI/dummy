@@ -51,13 +51,23 @@ class BatterRates:
     vs_rhp: BatterRates | None = None
 
 
+def _has_usable_rates(rates: Any) -> bool:
+    """True when a split carries at least one real rate (not an empty small-sample split)."""
+    if rates is None:
+        return False
+    return any(
+        getattr(rates, name, None) is not None
+        for name in ("k_pct", "bb_pct", "obp", "slg", "iso", "hr9", "era")
+    )
+
+
 def batter_rates_vs(batter: BatterRates | None, pitcher_throws: str | None) -> BatterRates | None:
     """Return the batter's split rates vs the pitcher's hand, or overall if unavailable."""
     if batter is None:
         return None
-    if pitcher_throws == "L" and batter.vs_lhp is not None:
+    if pitcher_throws == "L" and _has_usable_rates(batter.vs_lhp):
         return batter.vs_lhp
-    if pitcher_throws == "R" and batter.vs_rhp is not None:
+    if pitcher_throws == "R" and _has_usable_rates(batter.vs_rhp):
         return batter.vs_rhp
     return batter
 
@@ -69,9 +79,9 @@ def pitcher_rates_vs(pitcher: PitcherRates | None, batter_bats: str | None) -> P
     """
     if pitcher is None:
         return None
-    if batter_bats == "L" and pitcher.vs_lhb is not None:
+    if batter_bats == "L" and _has_usable_rates(pitcher.vs_lhb):
         return pitcher.vs_lhb
-    if batter_bats == "R" and pitcher.vs_rhb is not None:
+    if batter_bats == "R" and _has_usable_rates(pitcher.vs_rhb):
         return pitcher.vs_rhb
     return pitcher
 
