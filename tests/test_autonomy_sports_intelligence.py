@@ -104,6 +104,7 @@ def test_exact_requested_sports_series_are_in_public_scanner_watchlist():
     }
     assert required <= set(WATCHLIST_SERIES)
     assert classify_vertical("KXF1RACE-BELGP26-VER") is Vertical.SPORTS
+    assert classify_vertical("KXMLBSPREAD-26JUL112110AZLAD-AZ8") is Vertical.SPORTS
 
 
 def test_scoreboard_retains_final_scores_and_first_inning():
@@ -181,6 +182,14 @@ def test_poisson_spread_probability_is_monotone_and_bounded():
     assert all(0.005 <= p <= 0.995 for p in (p_neg, p_half, p_one, p_big))
     # A bigger favorite covers a given line more often than a coin-flip matchup.
     assert poisson_spread_probability(6.0, 3.0, 1.5) > poisson_spread_probability(4.5, 4.5, 1.5)
+    # Pin the exact need=floor(margin)+1 mapping around zero via tie mass: for an
+    # even matchup, P(win by >-0.5) counts wins+ties (need=0) and sits ABOVE 0.5,
+    # while P(win by >0.5) is the strict win (need=1) and sits BELOW 0.5. An
+    # off-by-one in `need` (floor(margin) or +2) breaks this.
+    even_ge0 = poisson_spread_probability(4.5, 4.5, -0.5)  # need=0 -> win or tie
+    even_gt0 = poisson_spread_probability(4.5, 4.5, 0.5)   # need=1 -> strict win
+    assert even_gt0 < 0.5 < even_ge0
+    assert even_ge0 - even_gt0 > 0.02  # the regulation tie mass, a real gap
 
 
 def test_baseball_spread_probability_sides_are_coherent(tmp_path):
@@ -214,8 +223,11 @@ def test_baseball_signal_emits_run_spread_challenger(tmp_path):
     assert home_spread.features["promotion_eligible"] is False
     assert home_spread.features["market_type"] == "spread"
     assert 0.005 <= home_spread.probability_yes <= 0.995
-    # Same line, opposite subjects -> different probabilities.
-    assert home_spread.probability_yes != away_spread.probability_yes
+    # The away pitcher (2.5 ERA) is far better than the home pitcher (5.2), so the
+    # away side is expected stronger and covers the same +1.5 line more often.
+    assert away_spread.probability_yes > home_spread.probability_yes
+    # Only one side can win by 2+, so the two YES probabilities cannot sum above 1.
+    assert home_spread.probability_yes + away_spread.probability_yes <= 1.0
 
 
 def _ufc_payload(state: str = "pre", decision: bool = False):
