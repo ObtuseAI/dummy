@@ -344,6 +344,48 @@ def test_live_winner_abstains_on_invalid_period(tmp_path):
     assert source.generate(_market("KXMLBGAME-26JUL102005HOUTEX-TEX", "Winner?")) is None
 
 
+def test_live_total_and_spread_reduce_to_pregame_at_start(tmp_path):
+    model = BaseballRunModel()
+    prediction = model.predict(_mlb_game())
+    # At 0-0 with 9 innings left, live == pre-game for totals and spreads.
+    assert abs(
+        model.live_total_probability(prediction, 0, 8.5, 9)
+        - model.total_probability(prediction, 8.5)
+    ) < 1e-9
+    assert abs(
+        model.live_spread_probability(prediction, True, 1.5, 0, 0, 9)
+        - model.spread_probability(prediction, subject_is_home=True, margin=1.5)
+    ) < 1e-9
+
+
+def test_live_total_counts_runs_already_scored(tmp_path):
+    model = BaseballRunModel()
+    prediction = model.predict(_mlb_game())
+    # 9 runs already in past an 8.5 line -> over is already decided (~certain).
+    assert model.live_total_probability(prediction, 9, 8.5, 2) > 0.95
+    # A quiet 1-run game late -> the 8.5 over is nearly dead.
+    assert model.live_total_probability(prediction, 1, 8.5, 2) < 0.1
+
+
+def test_live_signal_prices_live_total_and_spread(tmp_path):
+    client = EspnClient(fetch_scoreboard=lambda _l, _d: {"events": []})
+    client._cache[("mlb", "20260710")] = [
+        _mlb_game(status="in", home_score=6, away_score=3, current_period=8)
+    ]
+    source = BaseballIntelligenceSignal(
+        espn=client, model=BaseballRunModel(), model_path=tmp_path / "mlb.json",
+    )
+    total = source.generate(_market(
+        "KXMLBTOTAL-26JUL102005HOUTEX-9", "Total Runs?", floor_strike=8.5))
+    spread = source.generate(_market(
+        "KXMLBSPREAD-26JUL102005HOUTEX-TEX2", "Texas by 1.5?",
+        floor_strike=1.5, strike_type="greater"))
+    assert total.source == "mlb_live_total" and total.features["live"] is True
+    assert total.probability_yes > 0.5      # 9 already scored, over 8.5 likely
+    assert spread.source == "mlb_live_spread"
+    assert spread.probability_yes > 0.5     # TEX (home) up 3, covering +1.5 likely
+
+
 def test_live_winner_fails_closed_without_live_state(tmp_path):
     client = EspnClient(fetch_scoreboard=lambda _l, _d: {"events": []})
     # In-progress but the payload lacks the inning -> abstain, never guess.
@@ -357,7 +399,7 @@ def test_live_winner_fails_closed_without_live_state(tmp_path):
         _market("KXMLBGAME-26JUL102005HOUTEX-TEX", "Winner?")) is None
 
 
-def test_live_game_abstains_on_non_winner_markets(tmp_path):
+def test_live_game_abstains_on_yrfi(tmp_path):
     client = EspnClient(fetch_scoreboard=lambda _l, _d: {"events": []})
     client._cache[("mlb", "20260710")] = [
         _mlb_game(status="in", home_score=5, away_score=2, current_period=7)
@@ -365,9 +407,10 @@ def test_live_game_abstains_on_non_winner_markets(tmp_path):
     source = BaseballIntelligenceSignal(
         espn=client, model=BaseballRunModel(), model_path=tmp_path / "mlb.json",
     )
-    # Totals are pre-game only for now; an in-progress game abstains.
+    # YRFI is a first-inning market; an in-progress game abstains (winner,
+    # total, and spread are re-priced live, but YRFI is meaningless once underway).
     assert source.generate(_market(
-        "KXMLBTOTAL-26JUL102005HOUTEX-9", "Total Runs?", floor_strike=8.5)) is None
+        "KXMLBRFI-26JUL102005HOUTEX", "First Inning Run?")) is None
 
 
 def _ufc_payload(state: str = "pre", decision: bool = False):

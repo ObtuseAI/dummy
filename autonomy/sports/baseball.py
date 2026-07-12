@@ -355,6 +355,48 @@ class BaseballRunModel:
             home_remaining, away_remaining, int(home_score) - int(away_score)
         )
 
+    def live_total_probability(
+        self,
+        prediction: BaseballPrediction,
+        current_total_runs: int,
+        threshold: float,
+        remaining_innings: float,
+    ) -> float:
+        """Live P(final total > threshold): runs already in plus the rest.
+
+        Only the runs still to come are random (Poisson over the innings left),
+        shifted by what's already scored. At the start it reduces to
+        ``total_probability``.
+        """
+        fraction = max(0.0, float(remaining_innings)) / 9.0
+        remaining_mean = prediction.expected_total_runs * fraction
+        return poisson_over_probability(remaining_mean, threshold - int(current_total_runs))
+
+    def live_spread_probability(
+        self,
+        prediction: BaseballPrediction,
+        subject_is_home: bool,
+        margin: float,
+        home_score: int,
+        away_score: int,
+        remaining_innings: float,
+    ) -> float:
+        """Live P(subject wins by more than `margin`) given the current lead.
+
+        The remaining-run margin is Skellam over the innings left, shifted by the
+        lead already banked. At the start it reduces to ``spread_probability``.
+        """
+        fraction = max(0.0, float(remaining_innings)) / 9.0
+        if subject_is_home:
+            subject_mean = prediction.expected_home_runs * fraction
+            opponent_mean = prediction.expected_away_runs * fraction
+            current_lead = int(home_score) - int(away_score)
+        else:
+            subject_mean = prediction.expected_away_runs * fraction
+            opponent_mean = prediction.expected_home_runs * fraction
+            current_lead = int(away_score) - int(home_score)
+        return poisson_spread_probability(subject_mean, opponent_mean, margin - current_lead)
+
     def to_dict(self) -> dict[str, Any]:
         variance = (
             self.league_total_m2 / (self.games_seen - 1) if self.games_seen > 1 else None
