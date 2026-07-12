@@ -85,6 +85,9 @@ class MinedRow:
     market_probability: float
     result_yes: bool
     features: dict[str, Any]
+    # Grading scope (source|market_type|horizon_or_phase) so mined rules can
+    # be read per-scope, consistent with the backtest's per-scope trackers.
+    scope: str = ""
 
 
 @dataclass(frozen=True)
@@ -195,6 +198,8 @@ def load_settled_rows(
         placeholders = ",".join("?" for _ in sources)
         query += f" AND s.source IN ({placeholders})"
         parameters.extend(sources)
+    from autonomy.taxonomy import grading_scope, horizon_bucket, market_type_for
+
     rows: list[MinedRow] = []
     for record in conn.execute(query, parameters):
         source, ticker, created_at, probability, features_json, result_yes = record
@@ -206,6 +211,17 @@ def load_settled_rows(
             features = json.loads(features_json or "{}")
         except json.JSONDecodeError:
             features = {}
+        if not isinstance(features, dict):
+            features = {}
+        # Surface the grading-scope axes as features so mined rules can carry
+        # horizon/market-type context (both point-in-time: horizon comes from
+        # the persisted emission-time hours_to_close).
+        features = {
+            **features,
+            "horizon_bucket": horizon_bucket(str(ticker), features.get("hours_to_close")),
+            "market_type": features.get("market_type")
+            or market_type_for(str(source), str(ticker), features),
+        }
         rows.append(MinedRow(
             source=str(source),
             ticker=str(ticker),
@@ -215,6 +231,7 @@ def load_settled_rows(
             market_probability=float(market_probability),
             result_yes=bool(result_yes),
             features=features,
+            scope=grading_scope(str(source), str(ticker), features),
         ))
     # Sort by PARSED time, not the raw string: ISO strings only sort
     # chronologically when every writer uses the same UTC offset format,

@@ -124,6 +124,17 @@ def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+def _loads_features(raw: Any) -> dict[str, Any]:
+    """Parse a persisted features JSON blob; never raise on a bad row."""
+    if not raw:
+        return {}
+    try:
+        value = json.loads(raw)
+    except (TypeError, ValueError):
+        return {}
+    return value if isinstance(value, dict) else {}
+
+
 def _external_observation_id(
     source: str, series_id: str, observed_at: str, published_at: str | None,
     value: float, unit: str,
@@ -591,7 +602,7 @@ class AutonomyLedger:
         if decision_time:
             rows = self._conn.execute(
                 """
-                SELECT source, probability_yes, uncertainty, created_at
+                SELECT source, probability_yes, uncertainty, created_at, features
                 FROM signals WHERE market_ticker=? AND created_at<=?
                 ORDER BY id
                 """,
@@ -603,7 +614,7 @@ class AutonomyLedger:
         else:
             rows = self._conn.execute(
                 """
-                SELECT source, probability_yes, uncertainty, created_at
+                SELECT source, probability_yes, uncertainty, created_at, features
                 FROM signals WHERE market_ticker=? ORDER BY id
                 """,
                 (market_ticker,),
@@ -613,7 +624,7 @@ class AutonomyLedger:
                 chosen.setdefault(str(row[0]), row)  # earliest phantom opinion
         return [
             {"source": row[0], "probability_yes": row[1], "uncertainty": row[2],
-             "created_at": row[3]}
+             "created_at": row[3], "features": _loads_features(row[4])}
             for row in chosen.values()
         ]
 
