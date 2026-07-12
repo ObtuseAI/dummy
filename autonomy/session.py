@@ -236,6 +236,11 @@ def build_brain(mode: SessionMode):
     registry.register(CryptoEmpiricalRegimeSignal(fetch_state=crypto_hub.state))
     registry.register(CryptoTechnicalCompositeSignal(fetch_state=crypto_hub.state))
     registry.register(CryptoDvolSignal(fetch_state=crypto_hub.state))
+    # Multi-timeframe structure (S/R + trend channels + confirming
+    # technicals): opines ONLY at actionable swing setups, challenger-only.
+    from autonomy.signals.crypto_structure import CryptoStructureSignal
+
+    registry.register(CryptoStructureSignal(fetch_state=crypto_hub.state))
     # Macro risk-regime (S&P/DXY/VIX/10y/gold/oil) reused from the retired
     # commodities/econ pipeline as a crypto feature. Challenger-only: logged as
     # point-in-time evidence, excluded from the execution ensemble until a
