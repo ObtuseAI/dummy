@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Any
 
 from autonomy.ontology import MarketView, Signal, Vertical
-from autonomy.sports.baseball import BaseballRunModel
+from autonomy.sports.baseball import BaseballRunModel, remaining_innings
 from autonomy.sports.espn import EspnClient, canonical_team
 from autonomy.sports.formula_one import F1EspnClient, F1Model, normalize_text
 from autonomy.sports.team_scores import LEAGUE_SCORE_CONFIGS, TeamScoreModel
@@ -234,21 +234,40 @@ class BaseballIntelligenceSignal:
         game = self.espn.find_matchup(
             "mlb", parsed.competitors[0], parsed.competitors[1], parsed.date_yyyymmdd,
         )
-        if game is None or game.status != "pre":
+        if game is None or game.status not in ("pre", "in"):
             return None
         prediction = self.model.predict(game)
+        live = game.status == "in"
+        # Live re-pricing is winner-only for now; totals/spreads/YRFI stay
+        # pre-game (a live in-progress game abstains on those, fail-closed).
+        if live and parsed.market_type != "winner":
+            return None
         if parsed.market_type == "winner":
             subject = canonical_team("mlb", parsed.subject or "")
             home = canonical_team("mlb", game.home)
             if subject not in {home, canonical_team("mlb", game.away)}:
                 return None
-            probability = (
-                prediction.home_win_probability
-                if subject == home else 1.0 - prediction.home_win_probability
-            )
-            uncertainty = prediction.winner_uncertainty
-            source = "mlb_structural_winner"
-            market_detail = f"{subject} win"
+            if live:
+                if game.home_score is None or game.away_score is None or not game.current_period:
+                    return None  # in-progress but missing live state -> fail-closed
+                home_win = self.model.live_win_probability(
+                    prediction, game.home_score, game.away_score,
+                    remaining_innings(game.current_period),
+                )
+                # A per-inning live approximation is coarser than the pre-game
+                # line, so widen the uncertainty a touch.
+                uncertainty = min(0.45, prediction.winner_uncertainty + 0.05)
+                source = "mlb_live_winner"
+                market_detail = (
+                    f"{subject} live win ({game.away_score}-{game.home_score}, "
+                    f"inning {game.current_period})"
+                )
+            else:
+                home_win = prediction.home_win_probability
+                uncertainty = prediction.winner_uncertainty
+                source = "mlb_structural_winner"
+                market_detail = f"{subject} win"
+            probability = home_win if subject == home else 1.0 - home_win
         elif parsed.market_type == "total_runs" and parsed.threshold is not None:
             probability = self.model.total_probability(prediction, parsed.threshold)
             uncertainty = prediction.total_uncertainty
@@ -295,6 +314,10 @@ class BaseballIntelligenceSignal:
                 "public_read_only": True,
                 "sport": "mlb",
                 "market_type": parsed.market_type,
+                "live": live,
+                "current_period": game.current_period,
+                "home_score": game.home_score,
+                "away_score": game.away_score,
                 "model_version": prediction.model_version,
                 "event_start": game.date,
                 "home": game.home,

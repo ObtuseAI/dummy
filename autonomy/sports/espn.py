@@ -59,6 +59,9 @@ class Game:
     away_score: int | None = None
     home_first_inning_runs: int | None = None
     away_first_inning_runs: int | None = None
+    # Live game state (in-progress only): the current period/inning, so a live
+    # model can price the remaining game. None pre-game and post-game.
+    current_period: int | None = None
     venue: str | None = None
     indoor: bool | None = None
     weather_temperature_f: float | None = None
@@ -220,6 +223,14 @@ def parse_scoreboard(league: str, payload: dict[str, Any]) -> list[Game]:
             elif home_won is False or away_won is True:
                 resolved = False
         home_ml, away_ml, home_ml_open, away_ml_open, provider = _moneylines(comp)
+        # Live scores + inning are exposed for in-progress games so the live
+        # model can re-price; final scores remain settlement facts.
+        live_or_final = state in ("post", "in")
+        period_raw = comp.get("status", {}).get("period")
+        try:
+            current_period = int(period_raw) if state == "in" and period_raw is not None else None
+        except (TypeError, ValueError):
+            current_period = None
         venue = comp.get("venue") or {}
         weather = comp.get("weather") or {}
         try:
@@ -235,14 +246,15 @@ def parse_scoreboard(league: str, payload: dict[str, Any]) -> list[Game]:
             home_ml=home_ml, away_ml=away_ml,
             home_ml_open=home_ml_open, away_ml_open=away_ml_open,
             odds_provider=provider,
-            home_score=_score(home_competitor or {}) if state == "post" else None,
-            away_score=_score(away_competitor or {}) if state == "post" else None,
+            home_score=_score(home_competitor or {}) if live_or_final else None,
+            away_score=_score(away_competitor or {}) if live_or_final else None,
             home_first_inning_runs=(
                 _inning_runs(home_competitor or {}) if state == "post" else None
             ),
             away_first_inning_runs=(
                 _inning_runs(away_competitor or {}) if state == "post" else None
             ),
+            current_period=current_period,
             venue=venue.get("fullName"),
             indoor=venue.get("indoor") if isinstance(venue.get("indoor"), bool) else None,
             weather_temperature_f=temperature,
