@@ -39,7 +39,7 @@ class MispricingAssessment:
     market_ticker: str
     side: str            # "YES" | "NO" | "NONE"
     model_prob: float
-    market_prob: float   # mid implied by the executable quotes
+    market_prob: float | None   # mid implied by the executable quotes; None if unpriced
     book_prob: float | None
     edge: float          # signed fair-minus-price edge on the chosen side (>=0 when actionable)
     agreement: str       # "model+book" | "model_only" | "conflict" | "none"
@@ -107,7 +107,7 @@ def assess_mispricing(
     if mid is None or side == "NONE":
         return MispricingAssessment(
             market_ticker=market_ticker, side="NONE", model_prob=model_prob,
-            market_prob=mid if mid is not None else model_prob, book_prob=book_prob,
+            market_prob=mid, book_prob=book_prob,
             edge=0.0, agreement="none", confidence="low",
             rationale=(
                 "no executable quote" if mid is None
@@ -120,10 +120,8 @@ def assess_mispricing(
     if book_prob is not None:
         book_prob = min(1.0, max(0.0, float(book_prob)))
         if side == "YES":
-            model_lead = model_prob - mid
             book_lead = book_prob - mid
         else:  # NO: underpricing of NO means the market's YES is too HIGH
-            model_lead = mid - model_prob
             book_lead = mid - book_prob
         if book_lead >= agree_margin:
             agreement, confidence = "model+book", "high"

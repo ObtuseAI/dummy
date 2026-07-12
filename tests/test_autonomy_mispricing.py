@@ -88,6 +88,24 @@ def test_no_side_book_conflict():
     assert a.agreement == "conflict" and a.confidence == "low"
 
 
+def test_no_side_book_neutral():
+    # Model likes NO; book sits near the market mid -> neutral, medium.
+    a = assess_mispricing("KXX", model_prob=0.30, yes_ask=55, no_ask=48, book_prob=0.53)
+    assert a.side == "NO"
+    assert a.agreement == "model_only" and a.confidence == "medium"
+
+
+def test_no_side_without_book_is_model_only_medium():
+    a = assess_mispricing("KXX", model_prob=0.30, yes_ask=55, no_ask=48)
+    assert a.side == "NO"
+    assert a.agreement == "model_only" and a.confidence == "medium"
+
+
+def test_unpriced_market_reports_none_market_prob():
+    a = assess_mispricing("KXX", model_prob=0.80, yes_ask=None, no_ask=None)
+    assert a.side == "NONE" and a.market_prob is None
+
+
 def test_model_prob_is_clamped_and_result_is_frozen():
     a = assess_mispricing("KXX", model_prob=1.4, yes_ask=50, no_ask=52)
     assert a.model_prob == 1.0
