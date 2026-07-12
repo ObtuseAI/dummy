@@ -32,6 +32,8 @@ class PitcherRates:
     k_pct: float | None = None
     bb_pct: float | None = None
     hr9: float | None = None
+    vs_lhb: PitcherRates | None = None
+    vs_rhb: PitcherRates | None = None
 
 
 @dataclass(frozen=True)
@@ -45,6 +47,43 @@ class BatterRates:
     obp: float | None = None
     slg: float | None = None
     iso: float | None = None
+    vs_lhp: BatterRates | None = None
+    vs_rhp: BatterRates | None = None
+
+
+def _has_usable_rates(rates: Any) -> bool:
+    """True when a split carries at least one real rate (not an empty small-sample split)."""
+    if rates is None:
+        return False
+    return any(
+        getattr(rates, name, None) is not None
+        for name in ("k_pct", "bb_pct", "obp", "slg", "iso", "hr9", "era")
+    )
+
+
+def batter_rates_vs(batter: BatterRates | None, pitcher_throws: str | None) -> BatterRates | None:
+    """Return the batter's split rates vs the pitcher's hand, or overall if unavailable."""
+    if batter is None:
+        return None
+    if pitcher_throws == "L" and _has_usable_rates(batter.vs_lhp):
+        return batter.vs_lhp
+    if pitcher_throws == "R" and _has_usable_rates(batter.vs_rhp):
+        return batter.vs_rhp
+    return batter
+
+
+def pitcher_rates_vs(pitcher: PitcherRates | None, batter_bats: str | None) -> PitcherRates | None:
+    """Return the pitcher's split rates vs the batter's hand, or overall if unavailable.
+
+    Switch-hitter ('S') batters receive the pitcher's overall rates (no split).
+    """
+    if pitcher is None:
+        return None
+    if batter_bats == "L" and _has_usable_rates(pitcher.vs_lhb):
+        return pitcher.vs_lhb
+    if batter_bats == "R" and _has_usable_rates(pitcher.vs_rhb):
+        return pitcher.vs_rhb
+    return pitcher
 
 
 @dataclass(frozen=True)
@@ -63,6 +102,8 @@ class MlbGameContext:
     away_lineup: tuple[LineupSlot, ...] = ()
     home_bullpen_fatigue: dict[int, float] = field(default_factory=dict)
     away_bullpen_fatigue: dict[int, float] = field(default_factory=dict)
+    home_bullpen_rates: PitcherRates | None = None
+    away_bullpen_rates: PitcherRates | None = None
     batter_rates: dict[int, BatterRates] = field(default_factory=dict)
     park_run_factor: float | None = None
     park_hr_factor: float | None = None
@@ -200,6 +241,20 @@ def _rate(numerator: Any, denominator: Any) -> float | None:
     return round(n / d, 4)
 
 
+def _pitcher_rates_from_stat(
+    pid: Any, person: dict[str, Any], stat: dict[str, Any],
+) -> PitcherRates:
+    return PitcherRates(
+        player_id=int(pid),
+        name=person.get("fullName"),
+        throws=((person.get("pitchHand", {}) or {}).get("code")),
+        era=_float(stat.get("era")),
+        k_pct=_rate(stat.get("strikeOuts"), stat.get("battersFaced")),
+        bb_pct=_rate(stat.get("baseOnBalls"), stat.get("battersFaced")),
+        hr9=_float(stat.get("homeRunsPer9")),
+    )
+
+
 def parse_pitcher_rates(people_payload: dict[str, Any]) -> PitcherRates | None:
     people = people_payload.get("people") or []
     if not people:
@@ -214,14 +269,62 @@ def parse_pitcher_rates(people_payload: dict[str, Any]) -> PitcherRates | None:
         splits = (stats[0] or {}).get("splits") or []
         if splits:
             stat = (splits[0] or {}).get("stat", {}) or {}
-    return PitcherRates(
+    return _pitcher_rates_from_stat(pid, person, stat)
+
+
+def parse_pitcher_splits(
+    people_payload: dict[str, Any],
+) -> tuple[PitcherRates | None, PitcherRates | None]:
+    """Return (vs-LHB, vs-RHB) PitcherRates from a statSplits payload.
+
+    Reads people[0].stats[0].splits, keyed by split.code ("vl" = vs
+    left-handed batters, "vr" = vs right-handed batters). Missing/empty/
+    malformed payloads resolve to (None, None); this never raises.
+    """
+    try:
+        people = people_payload.get("people") or []
+        if not people:
+            return None, None
+        person = people[0] or {}
+        pid = person.get("id")
+        if pid is None:
+            return None, None
+        stats = person.get("stats") or []
+        if not stats:
+            return None, None
+        splits = (stats[0] or {}).get("splits") or []
+        vs_lhb: PitcherRates | None = None
+        vs_rhb: PitcherRates | None = None
+        for entry in splits:
+            entry = entry or {}
+            code = ((entry.get("split") or {}) or {}).get("code")
+            stat = (entry.get("stat") or {}) or {}
+            if code == "vl":
+                vs_lhb = _pitcher_rates_from_stat(pid, person, stat)
+            elif code == "vr":
+                vs_rhb = _pitcher_rates_from_stat(pid, person, stat)
+        return vs_lhb, vs_rhb
+    except Exception:
+        return None, None
+
+
+def _batter_rates_from_stat(
+    pid: Any, person: dict[str, Any], stat: dict[str, Any],
+) -> BatterRates:
+    pa = stat.get("plateAppearances")
+    slg = _float(stat.get("slg"))
+    avg = _float(stat.get("avg"))
+    iso = round(slg - avg, 4) if slg is not None and avg is not None else None
+    return BatterRates(
         player_id=int(pid),
         name=person.get("fullName"),
-        throws=((person.get("pitchHand", {}) or {}).get("code")),
-        era=_float(stat.get("era")),
-        k_pct=_rate(stat.get("strikeOuts"), stat.get("battersFaced")),
-        bb_pct=_rate(stat.get("baseOnBalls"), stat.get("battersFaced")),
-        hr9=_float(stat.get("homeRunsPer9")),
+        bats=((person.get("batSide", {}) or {}).get("code")),
+        plate_appearances=int(pa) if pa is not None else None,
+        k_pct=_rate(stat.get("strikeOuts"), pa),
+        bb_pct=_rate(stat.get("baseOnBalls"), pa),
+        obp=_float(stat.get("obp")),
+        slg=slg,
+        iso=iso,
     )
 
 
@@ -239,21 +342,68 @@ def parse_batter_rates(people_payload: dict[str, Any]) -> BatterRates | None:
         splits = (stats[0] or {}).get("splits") or []
         if splits:
             stat = (splits[0] or {}).get("stat", {}) or {}
-    pa = stat.get("plateAppearances")
-    slg = _float(stat.get("slg"))
-    avg = _float(stat.get("avg"))
-    iso = round(slg - avg, 4) if slg is not None and avg is not None else None
-    return BatterRates(
-        player_id=int(pid),
-        name=person.get("fullName"),
-        bats=((person.get("batSide", {}) or {}).get("code")),
-        plate_appearances=int(pa) if pa is not None else None,
-        k_pct=_rate(stat.get("strikeOuts"), pa),
-        bb_pct=_rate(stat.get("baseOnBalls"), pa),
-        obp=_float(stat.get("obp")),
-        slg=slg,
-        iso=iso,
-    )
+    return _batter_rates_from_stat(pid, person, stat)
+
+
+def parse_batter_splits(
+    people_payload: dict[str, Any],
+) -> tuple[BatterRates | None, BatterRates | None]:
+    """Return (vs-LHP, vs-RHP) BatterRates from a statSplits payload.
+
+    Reads people[0].stats[0].splits, keyed by split.code ("vl" = vs
+    left-handed pitchers, "vr" = vs right-handed pitchers). Missing/empty/
+    malformed payloads resolve to (None, None); this never raises.
+    """
+    try:
+        people = people_payload.get("people") or []
+        if not people:
+            return None, None
+        person = people[0] or {}
+        pid = person.get("id")
+        if pid is None:
+            return None, None
+        stats = person.get("stats") or []
+        if not stats:
+            return None, None
+        splits = (stats[0] or {}).get("splits") or []
+        vs_lhp: BatterRates | None = None
+        vs_rhp: BatterRates | None = None
+        for entry in splits:
+            entry = entry or {}
+            code = ((entry.get("split") or {}) or {}).get("code")
+            stat = (entry.get("stat") or {}) or {}
+            if code == "vl":
+                vs_lhp = _batter_rates_from_stat(pid, person, stat)
+            elif code == "vr":
+                vs_rhp = _batter_rates_from_stat(pid, person, stat)
+        return vs_lhp, vs_rhp
+    except Exception:
+        return None, None
+
+
+def parse_team_bullpen(payload: dict[str, Any]) -> PitcherRates | None:
+    """Parse a team relief-pitching stats payload into an aggregate PitcherRates.
+
+    Reads stats[0].splits[0].stat and delegates to `_pitcher_rates_from_stat`
+    (era, k_pct=strikeOuts/battersFaced, bb_pct=baseOnBalls/battersFaced,
+    hr9=homeRunsPer9). Uses player_id=-1 -- this is a team bullpen aggregate,
+    not an individual person. Missing/empty stats or splits resolve to None;
+    this never raises.
+    """
+    try:
+        stats = payload.get("stats") or []
+        if not stats:
+            return None
+        splits = (stats[0] or {}).get("splits") or []
+        if not splits:
+            return None
+        stat = (splits[0] or {}).get("stat") or {}
+        # Reuse the shared stat->PitcherRates extraction (one place to maintain
+        # if a stat key ever changes). player_id=-1 marks a team bullpen
+        # aggregate; the empty person dict yields name=None, throws=None.
+        return _pitcher_rates_from_stat(-1, {}, stat)
+    except Exception:
+        return None
 
 
 # Seed table from public league-average park indices; neutral = 1.0. The
@@ -348,6 +498,43 @@ def default_fetch_batter_people(player_id: int) -> dict[str, Any]:
     return response.json()
 
 
+def default_fetch_batter_splits(player_id: int) -> dict[str, Any]:
+    import httpx
+    response = httpx.get(
+        f"{_BASE}/people/{player_id}",
+        params={"hydrate": "stats(group=[hitting],type=[statSplits],sitCodes=[vl,vr])"},
+        timeout=20,
+    )
+    response.raise_for_status()
+    return response.json()
+
+
+def default_fetch_pitcher_splits(player_id: int) -> dict[str, Any]:
+    import httpx
+    response = httpx.get(
+        f"{_BASE}/people/{player_id}",
+        params={"hydrate": "stats(group=[pitching],type=[statSplits],sitCodes=[vl,vr])"},
+        timeout=20,
+    )
+    response.raise_for_status()
+    return response.json()
+
+
+def default_fetch_team_bullpen(team_id: int) -> dict[str, Any]:
+    import httpx
+    response = httpx.get(
+        f"{_BASE}/teams/{team_id}/stats",
+        params={
+            "stats": "statSplits", "group": "pitching",
+            "sitCodes": "rp",  # relief pitching
+            "gameType": "R",
+        },
+        timeout=20,
+    )
+    response.raise_for_status()
+    return response.json()
+
+
 class StatsApiClient:
     """Assembles point-in-time MlbGameContexts from injectable StatsAPI fetchers."""
 
@@ -357,16 +544,21 @@ class StatsApiClient:
         fetch_boxscore: Callable[[int], dict[str, Any]] | None = None,
         fetch_people: Callable[[int], dict[str, Any]] | None = None,
         fetch_batter_people: Callable[[int], dict[str, Any]] | None = None,
+        fetch_batter_splits: Callable[[int], dict[str, Any]] | None = None,
+        fetch_pitcher_splits: Callable[[int], dict[str, Any]] | None = None,
     ) -> None:
         self.fetch_schedule = fetch_schedule or default_fetch_schedule
         self.fetch_boxscore = fetch_boxscore or default_fetch_boxscore
         self.fetch_people = fetch_people or default_fetch_people
         self.fetch_batter_people = fetch_batter_people or default_fetch_batter_people
+        self.fetch_batter_splits = fetch_batter_splits or default_fetch_batter_splits
+        self.fetch_pitcher_splits = fetch_pitcher_splits or default_fetch_pitcher_splits
         self._pitcher_cache: dict[int, PitcherRates | None] = {}
         self._batter_cache: dict[int, BatterRates | None] = {}
 
     def clear_cache(self) -> None:
-        """Drop cached pitcher AND batter lookups so a reused client refetches season rates."""
+        """Drop cached pitcher AND batter lookups (splits are baked into these
+        same cached rates objects) so a reused client refetches season rates."""
         self._pitcher_cache.clear()
         self._batter_cache.clear()
 
@@ -375,21 +567,35 @@ class StatsApiClient:
             return None
         if player_id not in self._pitcher_cache:
             try:
-                self._pitcher_cache[player_id] = parse_pitcher_rates(
-                    self.fetch_people(player_id)
-                )
+                rates = parse_pitcher_rates(self.fetch_people(player_id))
             except Exception:
-                self._pitcher_cache[player_id] = None
+                rates = None
+            if rates is not None:
+                try:
+                    vs_lhb, vs_rhb = parse_pitcher_splits(
+                        self.fetch_pitcher_splits(player_id)
+                    )
+                    rates = replace(rates, vs_lhb=vs_lhb, vs_rhb=vs_rhb)
+                except Exception:
+                    pass  # splits fetch failure must not crash hydration; vs_* stay None
+            self._pitcher_cache[player_id] = rates
         return self._pitcher_cache[player_id]
 
     def _batter(self, player_id: int) -> BatterRates | None:
         if player_id not in self._batter_cache:
             try:
-                self._batter_cache[player_id] = parse_batter_rates(
-                    self.fetch_batter_people(player_id)
-                )
+                rates = parse_batter_rates(self.fetch_batter_people(player_id))
             except Exception:
-                self._batter_cache[player_id] = None
+                rates = None
+            if rates is not None:
+                try:
+                    vs_lhp, vs_rhp = parse_batter_splits(
+                        self.fetch_batter_splits(player_id)
+                    )
+                    rates = replace(rates, vs_lhp=vs_lhp, vs_rhp=vs_rhp)
+                except Exception:
+                    pass  # splits fetch failure must not crash hydration; vs_* stay None
+            self._batter_cache[player_id] = rates
         return self._batter_cache[player_id]
 
     def projected_contexts(

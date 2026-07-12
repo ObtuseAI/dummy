@@ -82,7 +82,9 @@ def log5(batter: float, pitcher: float, league: float) -> float:
     return min(1.0, max(0.0, numerator / denominator))
 
 
-from autonomy.sports.statsapi import BatterRates, MlbGameContext, PitcherRates
+from autonomy.sports.statsapi import (
+    BatterRates, MlbGameContext, PitcherRates, batter_rates_vs, pitcher_rates_vs,
+)
 
 PA_OUTCOMES = ("k", "bb", "hbp", "single", "double", "triple", "hr", "out")
 
@@ -258,11 +260,20 @@ def _side_distributions(
     throws = getattr(pitcher, "throws", None)
     for slot in lineup:
         batter = batter_rates.get(slot.player_id)
+        batter_bats = getattr(slot, "bats", None)
+        eff_batter = batter_rates_vs(batter, throws)
+        eff_pitcher = pitcher_rates_vs(pitcher, batter_bats)
+        # A real vs-hand split on EITHER side already encodes the platoon effect,
+        # so the flat multiplier collapses to 1.0 (offense_mult -- HFA/weather/TTO --
+        # always applies). Only when NEITHER side has split data do we fall back to
+        # today's flat-platoon approximation, byte-identical for split-less fixtures.
+        has_real_split = eff_batter is not batter or eff_pitcher is not pitcher
+        platoon = offense_mult if has_real_split else _platoon(batter_bats, throws) * offense_mult
         dists.append(plate_appearance_distribution(
-            batter, pitcher,
+            eff_batter, eff_pitcher,
             park_hr_factor=park_hr_factor,
             weather_hr_factor=weather_hr_factor,
-            platoon=_platoon(getattr(slot, "bats", None), throws) * offense_mult,
+            platoon=platoon,
         ))
     return dists
 
@@ -293,15 +304,26 @@ def _bullpen_distributions(
     park_hr_factor: float,
     offense_mult: float = 1.0,
     weather_hr_factor: float = 1.0,
+    team_bullpen: PitcherRates | None = None,
 ) -> list[dict[str, float]]:
     # Realistic single-inning reliever (a modest edge over league, not a
-    # cartoonish super-bullpen), degraded by aggregate bullpen fatigue.
+    # cartoonish super-bullpen), degraded by aggregate bullpen fatigue. When a
+    # real team bullpen aggregate is available (Task 4), its rates replace the
+    # league-average RELIEVER_* baseline field-by-field -- any individual field
+    # still missing on the team bullpen falls back to league average -- so a
+    # shutdown pen suppresses runs and a bad pen leaks them. The fatigue
+    # scaling still applies on top either way. team_bullpen=None (the default,
+    # and every context until hydrated) reproduces today's league-average path
+    # byte-for-byte.
+    base_k = _rate(getattr(team_bullpen, "k_pct", None), RELIEVER_K_PCT)
+    base_bb = _rate(getattr(team_bullpen, "bb_pct", None), RELIEVER_BB_PCT)
+    base_hr9 = _rate(getattr(team_bullpen, "hr9", None), RELIEVER_HR9)
     avg_fatigue = (sum(fatigue.values()) / len(fatigue)) if fatigue else 0.0
     reliever = PitcherRates(
         player_id=-1, throws=None,
-        k_pct=RELIEVER_K_PCT * (1.0 - 0.15 * avg_fatigue),
-        bb_pct=RELIEVER_BB_PCT * (1.0 + 0.20 * avg_fatigue),
-        hr9=RELIEVER_HR9 * (1.0 + 0.20 * avg_fatigue),
+        k_pct=base_k * (1.0 - 0.15 * avg_fatigue),
+        bb_pct=base_bb * (1.0 + 0.20 * avg_fatigue),
+        hr9=base_hr9 * (1.0 + 0.20 * avg_fatigue),
     )
     return _side_distributions(
         lineup, batter_rates, reliever, park_hr_factor, offense_mult, weather_hr_factor)
@@ -352,13 +374,15 @@ def simulate_one_game(
         HOME_FIELD_BOOST * run_factor, weather_hr_factor=hr_factor)
     home_pen = _bullpen_distributions(
         context.home_lineup, context.batter_rates, context.away_bullpen_fatigue, park_hr,
-        HOME_FIELD_BOOST * run_factor, weather_hr_factor=hr_factor)
+        HOME_FIELD_BOOST * run_factor, weather_hr_factor=hr_factor,
+        team_bullpen=context.away_bullpen_rates)
     away_starter = _starter_distributions_by_tto(
         context.away_lineup, context.batter_rates, context.home_pitcher, park_hr,
         run_factor, weather_hr_factor=hr_factor)
     away_pen = _bullpen_distributions(
         context.away_lineup, context.batter_rates, context.home_bullpen_fatigue, park_hr,
-        run_factor, weather_hr_factor=hr_factor)
+        run_factor, weather_hr_factor=hr_factor,
+        team_bullpen=context.home_bullpen_rates)
     h_total, h_first, h_five = _simulate_side(home_starter, home_pen, rng, innings)
     a_total, a_first, a_five = _simulate_side(away_starter, away_pen, rng, innings)
     return GameResult(
@@ -368,6 +392,16 @@ def simulate_one_game(
     )
 
 
+# Task 5 (rivalry/divisional awareness): divisional and marquee-rivalry games
+# are historically closer than a random pairing -- ballclubs know each other
+# intimately and the talent gap that shows up on paper tends to compress.
+# Applied as a modest post-hoc regression of the aggregate home_win probability
+# toward a pick'em line (0.5); this is a deterministic point regression, not a
+# variance change. Every other market is left untouched. divisional=False
+# (the default) skips this entirely, so today's output is byte-identical.
+DIVISIONAL_REGRESSION = 0.06  # fraction of the home_win edge pulled toward 0.5
+
+
 def simulate_game_markets(
     context: MlbGameContext,
     *,
@@ -375,8 +409,15 @@ def simulate_game_markets(
     sims: int = 5000,
     total_line: float = 8.5,
     weather: tuple[float, float] | None = None,
+    divisional: bool = False,
 ) -> dict[str, Any]:
-    """Run N deterministic games; return coherent market probabilities."""
+    """Run N deterministic games; return coherent market probabilities.
+
+    `divisional=True` applies a modest, deterministic regression of home_win
+    toward 0.5 (see DIVISIONAL_REGRESSION) to reflect that divisional/rivalry
+    games are historically closer. `divisional=False` (the default) is
+    byte-identical to the pre-Task-5 behavior.
+    """
     runs = max(1, int(sims))
     rng = random.Random(seed)
     home_wins = 0.0
@@ -398,8 +439,11 @@ def simulate_game_markets(
             yrfi += 1
         if game.home_runs_through_5 > game.away_runs_through_5:
             home_f5 += 1
+    home_win = home_wins / runs
+    if divisional:
+        home_win = 0.5 + (home_win - 0.5) * (1.0 - DIVISIONAL_REGRESSION)
     return {
-        "home_win": home_wins / runs,
+        "home_win": home_win,
         "total_over": total_over / runs,
         "total_line": total_line,
         "yrfi": yrfi / runs,

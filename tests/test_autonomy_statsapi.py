@@ -256,6 +256,7 @@ def test_client_assembles_projected_context_with_pitcher_rates():
 
     client = StatsApiClient(
         fetch_schedule=fake_schedule, fetch_people=fake_people,
+        fetch_pitcher_splits=lambda pid: {"people": []},  # keep hermetic; no network
     )
     contexts = client.projected_contexts(
         "2026-07-11", captured_at="2026-07-11T18:00:00+00:00",
@@ -314,6 +315,7 @@ def test_client_clear_cache_forces_pitcher_refetch():
         return _PEOPLE_FIXTURE
     client = StatsApiClient(
         fetch_schedule=lambda d: _SCHEDULE_FIXTURE, fetch_people=counting_people,
+        fetch_pitcher_splits=lambda pid: {"people": []},  # keep hermetic; no network
     )
     client.projected_contexts("2026-07-11", captured_at="2026-07-11T18:00:00+00:00")
     first = len(calls)
@@ -404,7 +406,10 @@ def test_client_hydrate_batter_rates_fills_lineup_and_swallows_failures():
                                 "baseOnBalls": 50, "obp": "0.340", "slg": "0.450",
                                 "avg": "0.270"}}]}]}]}
 
-    client = StatsApiClient(fetch_batter_people=fake_batter)
+    client = StatsApiClient(
+        fetch_batter_people=fake_batter,
+        fetch_batter_splits=lambda pid: {"people": []},  # keep hermetic; no network
+    )
     ctx = MlbGameContext(
         game_pk=1, snapshot="confirmed", captured_at="2026-07-11T22:40:00+00:00",
         home="LAD", away="SF",
@@ -427,7 +432,10 @@ def test_client_clear_cache_forces_batter_refetch():
                                 "baseOnBalls": 50, "obp": "0.340", "slg": "0.450",
                                 "avg": "0.270"}}]}]}]}
     from autonomy.sports.statsapi import StatsApiClient, MlbGameContext, LineupSlot
-    client = StatsApiClient(fetch_batter_people=counting_batter)
+    client = StatsApiClient(
+        fetch_batter_people=counting_batter,
+        fetch_batter_splits=lambda pid: {"people": []},  # keep hermetic; no network
+    )
     ctx = MlbGameContext(
         game_pk=1, snapshot="confirmed", captured_at="2026-07-11T22:40:00+00:00",
         home="LAD", away="SF", home_lineup=(LineupSlot(1, 605141),),
@@ -437,3 +445,255 @@ def test_client_clear_cache_forces_batter_refetch():
     client.clear_cache()
     client.hydrate_batter_rates(ctx)
     assert len(calls) > first  # cache cleared -> refetched
+
+
+from autonomy.sports.statsapi import batter_rates_vs, pitcher_rates_vs
+
+
+def test_batter_rates_vs_selects_split_by_pitcher_hand():
+    from autonomy.sports.statsapi import BatterRates
+    vs_l = BatterRates(player_id=1, k_pct=0.15, bb_pct=0.12, obp=0.380, slg=0.520, iso=0.24)
+    vs_r = BatterRates(player_id=1, k_pct=0.24, bb_pct=0.07, obp=0.300, slg=0.400, iso=0.14)
+    batter = BatterRates(player_id=1, k_pct=0.20, bb_pct=0.09, obp=0.340, slg=0.450,
+                         iso=0.18, vs_lhp=vs_l, vs_rhp=vs_r)
+    assert batter_rates_vs(batter, "L").obp == 0.380   # facing a lefty -> vs-LHP split
+    assert batter_rates_vs(batter, "R").obp == 0.300   # facing a righty -> vs-RHP split
+    # No split populated -> fall back to the overall line.
+    plain = BatterRates(player_id=2, k_pct=0.20, bb_pct=0.09, obp=0.340, slg=0.450, iso=0.18)
+    assert batter_rates_vs(plain, "L").obp == 0.340
+    assert batter_rates_vs(None, "L") is None
+
+
+def test_pitcher_rates_vs_selects_split_by_batter_hand():
+    from autonomy.sports.statsapi import PitcherRates
+    vs_l = PitcherRates(player_id=3, k_pct=0.30, bb_pct=0.06, hr9=0.9)
+    vs_r = PitcherRates(player_id=3, k_pct=0.20, bb_pct=0.09, hr9=1.4)
+    pitcher = PitcherRates(player_id=3, k_pct=0.25, bb_pct=0.08, hr9=1.1,
+                           vs_lhb=vs_l, vs_rhb=vs_r)
+    assert pitcher_rates_vs(pitcher, "L").hr9 == 0.9
+    assert pitcher_rates_vs(pitcher, "R").hr9 == 1.4
+    assert pitcher_rates_vs(pitcher, "S").hr9 == 1.1   # switch hitter -> overall
+
+
+def test_rates_vs_ignores_empty_small_sample_split():
+    from autonomy.sports.statsapi import BatterRates, PitcherRates, batter_rates_vs, pitcher_rates_vs
+    empty_b = BatterRates(player_id=1)  # all rates None (0 PA vs that hand)
+    batter = BatterRates(player_id=1, k_pct=0.20, obp=0.340, slg=0.450, iso=0.15, vs_lhp=empty_b)
+    assert batter_rates_vs(batter, "L") is batter   # empty split ignored -> overall
+    empty_p = PitcherRates(player_id=2)
+    pitcher = PitcherRates(player_id=2, k_pct=0.22, bb_pct=0.08, hr9=1.2, vs_lhb=empty_p)
+    assert pitcher_rates_vs(pitcher, "L") is pitcher
+
+
+# --- Task 2: parse + hydrate StatsAPI handedness splits ---------------------
+
+from autonomy.sports.statsapi import parse_batter_splits, parse_pitcher_splits
+
+_BATTER_SPLITS_FIXTURE = {
+    "people": [
+        {
+            "id": 605141,
+            "fullName": "M. Betts",
+            "batSide": {"code": "R"},
+            "stats": [
+                {"splits": [
+                    {"split": {"code": "vl", "description": "vs Left"}, "stat": {
+                        "plateAppearances": 150, "strikeOuts": 40, "baseOnBalls": 15,
+                        "obp": "0.330", "slg": "0.410", "avg": "0.250",
+                    }},
+                    {"split": {"code": "vr", "description": "vs Right"}, "stat": {
+                        "plateAppearances": 420, "strikeOuts": 90, "baseOnBalls": 50,
+                        "obp": "0.360", "slg": "0.500", "avg": "0.280",
+                    }},
+                ]}
+            ],
+        }
+    ]
+}
+
+
+def test_parse_batter_splits_returns_vs_lhp_and_vs_rhp():
+    vs_lhp, vs_rhp = parse_batter_splits(_BATTER_SPLITS_FIXTURE)
+    assert vs_lhp.player_id == 605141
+    assert vs_lhp.k_pct == round(40 / 150, 4)
+    assert vs_lhp.bb_pct == round(15 / 150, 4)
+    assert vs_lhp.obp == 0.330
+    assert vs_lhp.slg == 0.410
+    assert vs_lhp.iso == round(0.410 - 0.250, 4)
+    assert vs_rhp.player_id == 605141
+    assert vs_rhp.k_pct == round(90 / 420, 4)
+    assert vs_rhp.bb_pct == round(50 / 420, 4)
+    assert vs_rhp.obp == 0.360
+    assert vs_rhp.slg == 0.500
+
+
+def test_parse_batter_splits_returns_none_none_on_missing_payload():
+    assert parse_batter_splits({"people": []}) == (None, None)
+    assert parse_batter_splits({}) == (None, None)
+    assert parse_batter_splits({"people": [{"id": 1}]}) == (None, None)  # no stats
+
+
+_PITCHER_SPLITS_FIXTURE = {
+    "people": [
+        {
+            "id": 592789,
+            "fullName": "L. Webb",
+            "pitchHand": {"code": "R"},
+            "stats": [
+                {"splits": [
+                    {"split": {"code": "vl", "description": "vs Left"}, "stat": {
+                        "era": "3.10", "strikeOuts": 60, "baseOnBalls": 20,
+                        "battersFaced": 300, "homeRunsPer9": "0.70",
+                    }},
+                    {"split": {"code": "vr", "description": "vs Right"}, "stat": {
+                        "era": "3.40", "strikeOuts": 90, "baseOnBalls": 20,
+                        "battersFaced": 450, "homeRunsPer9": "0.95",
+                    }},
+                ]}
+            ],
+        }
+    ]
+}
+
+
+def test_parse_pitcher_splits_returns_vs_lhb_and_vs_rhb():
+    vs_lhb, vs_rhb = parse_pitcher_splits(_PITCHER_SPLITS_FIXTURE)
+    assert vs_lhb.player_id == 592789
+    assert vs_lhb.era == 3.10
+    assert vs_lhb.k_pct == round(60 / 300, 4)
+    assert vs_lhb.bb_pct == round(20 / 300, 4)
+    assert vs_lhb.hr9 == 0.70
+    assert vs_rhb.player_id == 592789
+    assert vs_rhb.era == 3.40
+    assert vs_rhb.k_pct == round(90 / 450, 4)
+    assert vs_rhb.hr9 == 0.95
+
+
+def test_parse_pitcher_splits_returns_none_none_on_missing_payload():
+    assert parse_pitcher_splits({"people": []}) == (None, None)
+    assert parse_pitcher_splits({}) == (None, None)
+    assert parse_pitcher_splits({"people": [{"id": 1}]}) == (None, None)  # no stats
+
+
+def test_client_hydrates_batter_splits_onto_vs_lhp_vs_rhp():
+    client = StatsApiClient(
+        fetch_batter_people=lambda pid: _BATTER_FIXTURE,
+        fetch_batter_splits=lambda pid: _BATTER_SPLITS_FIXTURE,
+    )
+    rates = client._batter(605141)
+    assert rates.plate_appearances == 600  # overall rates intact
+    assert rates.vs_lhp is not None and rates.vs_lhp.obp == 0.330
+    assert rates.vs_rhp is not None and rates.vs_rhp.obp == 0.360
+
+
+def test_client_hydrates_pitcher_splits_onto_vs_lhb_vs_rhb():
+    client = StatsApiClient(
+        fetch_people=lambda pid: _PEOPLE_FIXTURE,
+        fetch_pitcher_splits=lambda pid: _PITCHER_SPLITS_FIXTURE,
+    )
+    rates = client._pitcher(592789)
+    assert rates.era == 3.25  # overall rates intact
+    assert rates.vs_lhb is not None and rates.vs_lhb.era == 3.10
+    assert rates.vs_rhb is not None and rates.vs_rhb.era == 3.40
+
+
+def test_client_swallows_batter_splits_fetch_failure_leaves_vs_none():
+    def boom_splits(pid):
+        raise RuntimeError("statsapi down")
+
+    client = StatsApiClient(
+        fetch_batter_people=lambda pid: _BATTER_FIXTURE,
+        fetch_batter_splits=boom_splits,
+    )
+    rates = client._batter(605141)
+    assert rates is not None
+    assert rates.plate_appearances == 600  # overall rates intact -> split failure didn't crash hydration
+    assert rates.vs_lhp is None and rates.vs_rhp is None  # splits failure swallowed
+
+
+def test_client_swallows_pitcher_splits_fetch_failure_leaves_vs_none():
+    def boom_splits(pid):
+        raise RuntimeError("statsapi down")
+
+    client = StatsApiClient(
+        fetch_people=lambda pid: _PEOPLE_FIXTURE,
+        fetch_pitcher_splits=boom_splits,
+    )
+    rates = client._pitcher(592789)
+    assert rates is not None
+    assert rates.era == 3.25  # overall rates intact -> split failure didn't crash hydration
+    assert rates.vs_lhb is None and rates.vs_rhb is None  # splits failure swallowed
+
+
+# --- Task 4: per-team bullpen quality ---------------------------------------
+
+from autonomy.sports.statsapi import parse_team_bullpen
+
+
+def test_context_gains_bullpen_rates_fields_defaulting_to_none():
+    ctx = MlbGameContext(
+        game_pk=1, snapshot="projected", captured_at="2026-07-11T18:00:00+00:00",
+        home="LAD", away="SF",
+    )
+    assert ctx.home_bullpen_rates is None
+    assert ctx.away_bullpen_rates is None
+    prov = ctx.field_provenance()
+    assert prov["home_bullpen_rates"] is False
+    assert prov["away_bullpen_rates"] is False
+
+
+def test_context_bullpen_rates_present_reports_true_in_provenance():
+    from autonomy.sports.statsapi import PitcherRates
+    pen = PitcherRates(player_id=-1, era=3.60, k_pct=0.26, bb_pct=0.09, hr9=1.05)
+    ctx = MlbGameContext(
+        game_pk=1, snapshot="projected", captured_at="2026-07-11T18:00:00+00:00",
+        home="LAD", away="SF", home_bullpen_rates=pen,
+    )
+    assert ctx.field_provenance()["home_bullpen_rates"] is True
+    assert ctx.field_provenance()["away_bullpen_rates"] is False
+
+
+_TEAM_BULLPEN_FIXTURE = {
+    "stats": [
+        {"splits": [{"stat": {
+            "era": "3.60",
+            "strikeOuts": 520,
+            "baseOnBalls": 180,
+            "battersFaced": 2000,
+            "homeRunsPer9": "1.05",
+        }}]}
+    ]
+}
+
+
+def test_parse_team_bullpen_computes_rates_from_relief_split():
+    rates = parse_team_bullpen(_TEAM_BULLPEN_FIXTURE)
+    assert rates.player_id == -1  # team aggregate, not a person
+    assert rates.era == 3.60
+    assert rates.k_pct == round(520 / 2000, 4)
+    assert rates.bb_pct == round(180 / 2000, 4)
+    assert rates.hr9 == 1.05
+
+
+def test_parse_team_bullpen_none_on_missing_or_empty_payload():
+    assert parse_team_bullpen({}) is None
+    assert parse_team_bullpen({"stats": []}) is None
+    assert parse_team_bullpen({"stats": [{"splits": []}]}) is None
+    assert parse_team_bullpen({"stats": [{}]}) is None
+
+
+def test_parse_team_bullpen_never_raises_on_malformed_payload():
+    assert parse_team_bullpen({"stats": "not-a-list"}) is None
+    assert parse_team_bullpen({"stats": [None]}) is None
+    assert parse_team_bullpen({"stats": [{"splits": [None]}]}) is not None
+    assert parse_team_bullpen(None) is None  # never raises, even on a non-dict payload
+
+
+def test_parse_team_bullpen_zero_denominator_yields_none_rates_not_crash():
+    payload = {"stats": [{"splits": [{"stat": {
+        "era": "4.10", "strikeOuts": 5, "baseOnBalls": 2, "battersFaced": 0,
+    }}]}]}
+    rates = parse_team_bullpen(payload)
+    assert rates.era == 4.10
+    assert rates.k_pct is None and rates.bb_pct is None  # no divide-by-zero
+    assert rates.hr9 is None  # homeRunsPer9 absent -> None, not invented

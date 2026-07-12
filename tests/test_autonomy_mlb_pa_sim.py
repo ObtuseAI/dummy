@@ -397,3 +397,215 @@ def test_weather_none_is_unchanged():
     a = simulate_game_markets(ctx, seed=5, sims=500)
     b = simulate_game_markets(ctx, seed=5, sims=500, weather=None)
     assert a == b  # weather=None is a no-op, preserving all S3b calibration
+
+
+def test_extreme_platoon_split_batter_uses_real_rates():
+    # A batter who crushes RHP but is weak vs LHP should score much more vs a RHP
+    # starter than the flat 7% platoon bump would ever produce.
+    from autonomy.sports.statsapi import BatterRates, LineupSlot, MlbGameContext, PitcherRates
+    strong_vs_r = BatterRates(player_id=1, bats="L", k_pct=0.12, bb_pct=0.14,
+                              obp=0.420, slg=0.620, iso=0.30)
+    weak_vs_l = BatterRates(player_id=1, bats="L", k_pct=0.30, bb_pct=0.05,
+                            obp=0.280, slg=0.330, iso=0.09)
+    split_batter = BatterRates(player_id=1, bats="L", k_pct=0.20, bb_pct=0.10,
+                               obp=0.350, slg=0.470, iso=0.20,
+                               vs_lhp=weak_vs_l, vs_rhp=strong_vs_r)
+    def ctx(pitcher_throws):
+        rates = {100 + i: split_batter for i in range(9)}
+        home = tuple(LineupSlot(i + 1, 100 + i, bats="L") for i in range(9))
+        away = tuple(LineupSlot(i + 1, 200 + i, bats="R") for i in range(9))
+        for i in range(9):
+            rates[200 + i] = BatterRates(player_id=200 + i, bats="R", k_pct=0.22,
+                                         bb_pct=0.08, obp=0.320, slg=0.400, iso=0.14)
+        return MlbGameContext(
+            game_pk=1, snapshot="confirmed", captured_at="x", home="H", away="A",
+            home_lineup=home, away_lineup=away,
+            home_pitcher=PitcherRates(player_id=9, throws="R", k_pct=0.22, bb_pct=0.08, hr9=1.2),
+            away_pitcher=PitcherRates(player_id=8, throws=pitcher_throws, k_pct=0.22, bb_pct=0.08, hr9=1.2),
+            batter_rates=rates, park_run_factor=1.0, park_hr_factor=1.0)
+    vs_rhp = sum(simulate_one_game(ctx("R"), _random.Random(s)).home_runs for s in range(60))
+    vs_lhp = sum(simulate_one_game(ctx("L"), _random.Random(s)).home_runs for s in range(60))
+    assert vs_rhp > vs_lhp * 1.3   # real split >> flat 7% platoon swing
+
+
+def test_team_bullpen_rates_omitted_is_byte_identical_to_league_average():
+    from autonomy.sports.mlb_pa_sim import _bullpen_distributions
+    lineup = tuple(LineupSlot(i + 1, 100 + i, bats="R") for i in range(9))
+    rates = {100 + i: BatterRates(player_id=100 + i, bats="R", k_pct=0.20,
+                                  bb_pct=0.09, obp=0.340, slg=0.450, iso=0.15)
+             for i in range(9)}
+    # Positional call matching the pre-Task-4 signature (no team_bullpen arg at all).
+    legacy = _bullpen_distributions(lineup, rates, {}, 1.0)
+    explicit_none = _bullpen_distributions(lineup, rates, {}, 1.0, team_bullpen=None)
+    assert legacy == explicit_none  # byte-identical: today's league-average path
+
+
+def test_team_bullpen_rates_none_is_byte_identical_across_calibration_lock():
+    # The full calibration-lock context never sets home/away_bullpen_rates, so this
+    # is already covered by test_neutral_matchup_is_calibrated_to_real_mlb staying
+    # green unchanged; this test pins the same guarantee directly against the
+    # simulate_game_markets entry point for a second, explicit signal.
+    ctx = _context(home_batter_iso=0.15, away_batter_iso=0.15)
+    assert ctx.home_bullpen_rates is None and ctx.away_bullpen_rates is None
+    markets = simulate_game_markets(ctx, seed=2026, sims=3000)
+    assert 8.0 <= markets["expected_total_runs"] <= 9.2
+    assert 0.51 <= markets["home_win"] <= 0.575
+
+
+def test_strong_team_bullpen_suppresses_runs_vs_weak_bullpen():
+    from autonomy.sports.mlb_pa_sim import _bullpen_distributions
+    lineup = tuple(LineupSlot(i + 1, 100 + i, bats="R") for i in range(9))
+    rates = {100 + i: BatterRates(player_id=100 + i, bats="R", k_pct=0.20,
+                                  bb_pct=0.09, obp=0.340, slg=0.450, iso=0.15)
+             for i in range(9)}
+    strong_pen = PitcherRates(player_id=-1, k_pct=0.32, bb_pct=0.06, hr9=0.6)
+    weak_pen = PitcherRates(player_id=-1, k_pct=0.16, bb_pct=0.13, hr9=2.2)
+    strong_dists = _bullpen_distributions(lineup, rates, {}, 1.0, team_bullpen=strong_pen)
+    weak_dists = _bullpen_distributions(lineup, rates, {}, 1.0, team_bullpen=weak_pen)
+    assert sum(d["hr"] for d in strong_dists) < sum(d["hr"] for d in weak_dists)
+    assert sum(d["k"] for d in strong_dists) > sum(d["k"] for d in weak_dists)
+    # Bullpen fatigue scaling still applies on top of the team-specific baseline.
+    tired = _bullpen_distributions(lineup, rates, {1: 1.0, 2: 1.0}, 1.0, team_bullpen=strong_pen)
+    assert sum(d["hr"] for d in tired) > sum(d["hr"] for d in strong_dists)
+
+
+def test_away_bullpen_rates_suppress_home_lineup_scoring_across_seeds():
+    # Home lineup faces the AWAY pitcher/bullpen -> away_bullpen_rates governs it.
+    from dataclasses import replace as _replace
+    ctx = _context(home_batter_iso=0.15, away_batter_iso=0.15)
+    strong_pen = PitcherRates(player_id=-1, k_pct=0.34, bb_pct=0.05, hr9=0.5)
+    weak_pen = PitcherRates(player_id=-1, k_pct=0.15, bb_pct=0.14, hr9=2.3)
+    strong_ctx = _replace(ctx, away_bullpen_rates=strong_pen)
+    weak_ctx = _replace(ctx, away_bullpen_rates=weak_pen)
+    strong_total = sum(simulate_one_game(strong_ctx, _random.Random(s)).home_runs for s in range(80))
+    weak_total = sum(simulate_one_game(weak_ctx, _random.Random(s)).home_runs for s in range(80))
+    assert strong_total < weak_total
+
+
+def test_home_bullpen_rates_suppress_away_lineup_scoring_across_seeds():
+    # Away lineup faces the HOME pitcher/bullpen -> home_bullpen_rates governs it.
+    from dataclasses import replace as _replace
+    ctx = _context(home_batter_iso=0.15, away_batter_iso=0.15)
+    strong_pen = PitcherRates(player_id=-1, k_pct=0.34, bb_pct=0.05, hr9=0.5)
+    weak_pen = PitcherRates(player_id=-1, k_pct=0.15, bb_pct=0.14, hr9=2.3)
+    strong_ctx = _replace(ctx, home_bullpen_rates=strong_pen)
+    weak_ctx = _replace(ctx, home_bullpen_rates=weak_pen)
+    strong_total = sum(simulate_one_game(strong_ctx, _random.Random(s)).away_runs for s in range(80))
+    weak_total = sum(simulate_one_game(weak_ctx, _random.Random(s)).away_runs for s in range(80))
+    assert strong_total < weak_total
+
+
+def test_divisional_false_is_byte_identical_to_default():
+    # divisional defaults to False; passing it explicitly must not change a
+    # single field of the output (the CRITICAL non-destructive guarantee).
+    ctx = _context(home_batter_iso=0.30, away_batter_iso=0.08)
+    default = simulate_game_markets(ctx, seed=7, sims=800)
+    explicit_false = simulate_game_markets(ctx, seed=7, sims=800, divisional=False)
+    assert default == explicit_false
+
+
+def test_divisional_true_pulls_lopsided_home_win_toward_half():
+    # A far-stronger home lineup produces a lopsided home_win; divisional=True
+    # should regress it a touch toward 0.5 relative to divisional=False, but
+    # not eliminate the edge entirely.
+    ctx = _context(home_batter_iso=0.30, away_batter_iso=0.08)
+    neutral = simulate_game_markets(ctx, seed=7, sims=800, divisional=False)
+    div = simulate_game_markets(ctx, seed=7, sims=800, divisional=True)
+    assert neutral["home_win"] > 0.60  # confirm the lopsided baseline
+    assert 0.5 < div["home_win"] < neutral["home_win"]  # pulled toward 0.5, still home-favored
+    # Only home_win should move; the other markets are computed from the same
+    # raw per-sim results and are left unchanged.
+    assert div["total_over"] == neutral["total_over"]
+    assert div["yrfi"] == neutral["yrfi"]
+    assert div["home_f5_lead"] == neutral["home_f5_lead"]
+    assert div["expected_total_runs"] == neutral["expected_total_runs"]
+
+
+def test_divisional_regression_constant_is_modest():
+    from autonomy.sports.mlb_pa_sim import DIVISIONAL_REGRESSION
+    assert 0.0 < DIVISIONAL_REGRESSION <= 0.15  # a modest bump, not a wholesale rewrite
+
+
+def test_divisional_true_is_deterministic():
+    ctx = _context(home_batter_iso=0.30, away_batter_iso=0.08)
+    a = simulate_game_markets(ctx, seed=7, sims=500, divisional=True)
+    b = simulate_game_markets(ctx, seed=7, sims=500, divisional=True)
+    assert a == b
+
+
+def test_pitcher_only_split_is_used_when_batter_has_no_split():
+    from autonomy.sports.statsapi import BatterRates, LineupSlot, MlbGameContext, PitcherRates
+    # Pitcher dominates RHB but is weak vs LHB. The home lineup is all RIGHT-handed
+    # batters WITH NO splits -> they should score much LESS vs this pitcher's real
+    # vs-RHB split than vs a neutral pitcher, proving the pitcher split is applied.
+    tough_vs_r = PitcherRates(player_id=8, throws="R", k_pct=0.34, bb_pct=0.05, hr9=0.6)
+    weak_vs_l = PitcherRates(player_id=8, throws="R", k_pct=0.15, bb_pct=0.12, hr9=2.0)
+    split_pitcher = PitcherRates(player_id=8, throws="R", k_pct=0.22, bb_pct=0.08, hr9=1.2,
+                                 vs_lhb=weak_vs_l, vs_rhb=tough_vs_r)
+    neutral_pitcher = PitcherRates(player_id=8, throws="R", k_pct=0.22, bb_pct=0.08, hr9=1.2)
+    def ctx(away_pitcher):
+        rates = {100 + i: BatterRates(player_id=100 + i, bats="R", k_pct=0.20,
+                                      bb_pct=0.09, obp=0.340, slg=0.450, iso=0.16)
+                 for i in range(9)}  # RIGHT-handed batters, NO splits
+        home = tuple(LineupSlot(i + 1, 100 + i, bats="R") for i in range(9))
+        away = tuple(LineupSlot(i + 1, 200 + i, bats="R") for i in range(9))
+        for i in range(9):
+            rates[200 + i] = BatterRates(player_id=200 + i, bats="R", k_pct=0.22,
+                                         bb_pct=0.08, obp=0.320, slg=0.400, iso=0.14)
+        return MlbGameContext(
+            game_pk=1, snapshot="confirmed", captured_at="x", home="H", away="A",
+            home_lineup=home, away_lineup=away,
+            home_pitcher=PitcherRates(player_id=9, throws="R", k_pct=0.22, bb_pct=0.08, hr9=1.2),
+            away_pitcher=away_pitcher, batter_rates=rates,
+            park_run_factor=1.0, park_hr_factor=1.0)
+    tough = sum(simulate_one_game(ctx(split_pitcher), _random.Random(s)).home_runs for s in range(60))
+    neutral = sum(simulate_one_game(ctx(neutral_pitcher), _random.Random(s)).home_runs for s in range(60))
+    assert tough < neutral  # the pitcher's tough vs-RHB split suppresses the R lineup
+
+
+def test_all_intelligence_absent_equals_baseline():
+    """Task 6 guard: the entire Tasks 1-5 intelligence layer (handedness
+    splits, per-team bullpen quality, divisional/rivalry awareness) must be a
+    complete no-op when its inputs are absent. A neutral context with every
+    vs_* split None, no team bullpen rates, and no divisional flag must
+    reproduce EXACTLY today's pre-intelligence calibrated behavior.
+
+    This makes explicit, in one place, the "all intelligence absent ==
+    baseline" contract that the individual byte-identical guards
+    (test_team_bullpen_rates_none_is_byte_identical_across_calibration_lock,
+    test_divisional_false_is_byte_identical_to_default) and the calibration
+    locks (test_neutral_matchup_is_calibrated_to_real_mlb,
+    test_neutral_run_composition_is_realistic) already cover individually.
+    """
+    ctx = _context(home_batter_iso=0.15, away_batter_iso=0.15)
+
+    # No splits: every batter and both starters carry vs_* = None.
+    assert ctx.batter_rates  # sanity: the context actually has batters
+    for rates in ctx.batter_rates.values():
+        assert rates.vs_lhp is None and rates.vs_rhp is None
+    assert ctx.home_pitcher.vs_lhb is None and ctx.home_pitcher.vs_rhb is None
+    assert ctx.away_pitcher.vs_lhb is None and ctx.away_pitcher.vs_rhb is None
+    # No team bullpen quality.
+    assert ctx.home_bullpen_rates is None and ctx.away_bullpen_rates is None
+
+    # The whole intelligence layer is inert: omitting `divisional` must be
+    # byte-identical to passing divisional=False explicitly.
+    baseline = simulate_game_markets(ctx, seed=2026, sims=3000)
+    explicit_false = simulate_game_markets(ctx, seed=2026, sims=3000, divisional=False)
+    assert baseline == explicit_false
+
+    # And the baseline itself still lands in today's calibrated bands (same
+    # guards as test_neutral_matchup_is_calibrated_to_real_mlb).
+    assert 8.0 <= baseline["expected_total_runs"] <= 9.2    # real MLB ~8.5
+    assert 0.38 <= baseline["yrfi"] <= 0.55                 # see that test's docstring
+    assert 0.51 <= baseline["home_win"] <= 0.575             # home edge ~0.54
+
+    # ...with realistic run composition (same guards as
+    # test_neutral_run_composition_is_realistic), reusing the same helper.
+    b = BatterRates(player_id=1, k_pct=0.20, bb_pct=0.09, obp=0.340, slg=0.450, iso=0.15)
+    p = PitcherRates(player_id=2, k_pct=0.22, bb_pct=0.08, hr9=1.2)
+    from autonomy.sports.mlb_pa_sim import plate_appearance_distribution as _pa_dist
+    d = _pa_dist(b, p)
+    hits = d["single"] + d["double"] + d["triple"] + d["hr"]
+    assert d["hr"] <= 0.045                    # HR/PA near real ~0.033, not 2x
+    assert d["hr"] / hits <= 0.22              # HR share of hits near real ~0.15
