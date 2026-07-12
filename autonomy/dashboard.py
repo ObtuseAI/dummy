@@ -287,6 +287,7 @@ _HTML = """<!doctype html>
  <div class="card"><h2>Recursive evolution lab</h2><div id="evolution"></div></div>
  <div class="card"><h2>Always-on market paper twin</h2><div id="paper"></div></div>
  <div class="card"><h2>Crypto execution truth</h2><div id="crypto"></div></div>
+ <div class="card" style="grid-column:1/-1"><h2>Buy-low mispricing monitor</h2><div id="mispricing"></div></div>
  <div class="card" style="grid-column:1/-1"><h2>Source scoreboard</h2><div id="board"></div></div>
  <div class="card" style="grid-column:1/-1"><h2>Recent cycles</h2><div id="cycles"></div></div>
  <div class="card" style="grid-column:1/-1"><h2>Alerts</h2><div id="alerts"></div></div>
@@ -440,6 +441,14 @@ async function controlSports(action){
  const msg=document.getElementById('sportsControlMsg'),buttons=[document.getElementById('sportsStartBtn'),document.getElementById('sportsStopBtn')];buttons.forEach(x=>x.disabled=true);msg.textContent=action==='start'?'Starting sports scheduler…':'Pausing future sports cycles…';
  try{const r=await fetch('/api/sports-paper-scheduler/'+action,{method:'POST',headers:{'X-Dummy-Paper-Control':'paper-twin-scheduler-v1'}});const v=await r.json();msg.textContent=v.message||v.detail||v.error||'Control completed';tickGeneration++;if(v.scheduler)renderSportsScheduler(v.scheduler);tick();}catch(e){msg.textContent='Sports control request failed';}finally{setTimeout(()=>{msg.textContent='';},6000);}
 }
+function renderMispricing(m){
+ m=m||{};
+ const short=m.shortlist||[], opps=m.opportunities||[];
+ const meta=`<div class="muted">scanned ${m.scanned??'—'} · shortlist ${m.shortlist_count??0} · opportunist strikes ${m.opportunity_count??0}${m.generated_at?' · '+dt(m.generated_at):''}</div>`;
+ const shortTable=short.length?'<table><tr><th>ticker</th><th>side</th><th>edge</th><th>model</th><th>market</th><th>book</th><th>agreement</th><th>conf</th></tr>'+short.map(x=>`<tr><td>${esc(x.ticker)}</td><td>${esc(x.side)}</td><td>${pct(x.edge)}</td><td>${pct(x.model_prob)}</td><td>${x.market_prob==null?'—':pct(x.market_prob)}</td><td>${x.book_prob==null?'—':pct(x.book_prob)}</td><td>${esc(x.agreement)}</td><td>${esc(x.confidence)}</td></tr>`).join('')+'</table>':'<div class="muted">No actionable mispricing this pass.</div>';
+ const oppTable=opps.length?'<h3>Opportunist strikes (patience → pounce)</h3><table><tr><th>ticker</th><th>side</th><th>conviction</th><th>anchor→entry</th><th>deviation</th><th>edge</th><th>conf</th></tr>'+opps.map(x=>`<tr><td>${esc(x.ticker)}</td><td>${esc(x.side)}</td><td>${pct(x.conviction)}</td><td>${pct(x.anchor_prob)}→${pct(x.entry_prob)}</td><td>${pct(x.deviation)}</td><td>${pct(x.edge)}</td><td>${esc(x.confidence)}</td></tr>`).join('')+'</table>':'';
+ document.getElementById('mispricing').innerHTML=meta+shortTable+oppTable+'<div class="truth">Paper/challenger evidence only — the monitor surfaces mispricing (our model vs the de-vigged sharp book vs the price) and opportunist strikes for review; it never places an order.</div>';
+}
 async function tick(){
  const generation=++tickGeneration;
  let d; try{ d=await (await fetch('/api/autonomy')).json(); }catch(e){ document.getElementById('ts').textContent='backend unreachable'; return; }
@@ -448,6 +457,7 @@ async function tick(){
  try{renderPaper(d);renderSports(d);}catch(e){document.getElementById('ts').textContent+=' · paper render error: '+e.message;console.error('paper render',e);}
  renderSession(d.session||{},d.heartbeat||{});
  renderFleet(d.scheduler_fleet||[]);
+ try{renderMispricing(d.mispricing_monitor||{});}catch(e){console.error('mispricing render',e);}
  const hb=d.heartbeat||{};
  document.getElementById('live').innerHTML =
    kv('status', `<span class="pill ${hb.alive?'live':'dead'}">${hb.alive?'ALIVE':'STALE'}</span>`)
