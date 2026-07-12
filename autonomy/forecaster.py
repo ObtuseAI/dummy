@@ -8,6 +8,7 @@ learning".
 from __future__ import annotations
 
 import math
+from typing import Any
 
 from autonomy.ledger import AutonomyLedger
 from autonomy.ontology import Forecast, MarketView, Signal, Vertical
@@ -36,13 +37,24 @@ SOURCE_FAMILIES = {
 
 
 class EnsembleForecaster:
-    def __init__(self, ledger: AutonomyLedger):
+    def __init__(self, ledger: AutonomyLedger, promotion: Any = None):
         self.ledger = ledger
+        # Promotion registry (WS-14). Default loads the standard governance
+        # files; missing files => nobody promoted => this filter is unchanged
+        # (byte-identical to a build without promotion). A promoted scope is
+        # the ONE way a challenger_only signal enters the live ensemble.
+        if promotion is None:
+            from autonomy.promotion import PromotionRegistry
+
+            promotion = PromotionRegistry()
+        self.promotion = promotion
 
     def fuse(self, market: MarketView, signals: list[Signal]) -> Forecast | None:
         active_signals = [
             signal for signal in signals
             if not bool((signal.features or {}).get("challenger_only"))
+            or self.promotion.is_promoted_signal(
+                signal.source, market.ticker, signal.features or {})
         ]
         if not active_signals:
             return None
