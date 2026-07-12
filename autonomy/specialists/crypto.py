@@ -19,10 +19,13 @@ class CryptoSpecialist:
 
     name = "crypto"
 
-    def __init__(self, champion: Any) -> None:
+    def __init__(self, champion: Any, implied_book: Any = None) -> None:
         # ``champion`` is the registered CryptoSpotVolSignal instance
         # (shared per-cycle spot/vol cache); never constructed here.
+        # ``implied_book`` is the Deribit DVOL CryptoImpliedBook (Phase 1);
+        # None keeps the Phase 0 behavior (book abstains, model_only).
         self.champion = champion
+        self.implied_book = implied_book
 
     def applicable(self, market: MarketView) -> bool:
         from autonomy.signals.crypto_spot import parse_crypto_ticker
@@ -46,9 +49,16 @@ class CryptoSpecialist:
         return None
 
     def book(self, market: MarketView) -> float | None:
-        # Phase 1: Deribit DVOL implied book. Until then, no crypto book --
-        # assessments stay "model_only", byte-identical to pre-council runs.
-        return None
+        # Deribit DVOL implied book: risk-neutral P(above strike) from
+        # forward-looking implied sigma -- the independent counterpart to the
+        # champion's realized sigma. No book wired (or no DVOL/state) means
+        # abstain and assessments stay "model_only".
+        try:
+            if self.implied_book is None or not self.applicable(market):
+                return None
+            return self.implied_book.book_probability(market)
+        except Exception:
+            return None
 
     def on_cycle_start(self) -> None:
         # The shared CryptoDataHub is warmed by the brain's registry cycle.
@@ -58,5 +68,8 @@ class CryptoSpecialist:
         return SpecialistHealth(
             name=self.name,
             status="ok" if self.champion is not None else "cold",
-            details={"has_champion": self.champion is not None, "book": "phase-1"},
+            details={
+                "has_champion": self.champion is not None,
+                "book": "dvol_implied" if self.implied_book is not None else "none",
+            },
         )

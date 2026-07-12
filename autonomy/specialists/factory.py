@@ -29,11 +29,25 @@ def build_specialist_registry(source_registry: Any) -> SpecialistRegistry:
     sportsbook = _source_by_name(sources, "sportsbook_consensus")
     crypto_champion = _source_by_name(sources, "crypto_spot_vol")
 
+    # The Deribit DVOL implied book rides the SAME shared CryptoDataHub the
+    # registered indicator signals use (one multi-venue fetch per asset per
+    # cycle) -- recovered via any hub-backed signal's fetch_state. No hub
+    # signal registered means no crypto book (fail-closed, model_only).
+    implied_book = None
+    dvol_signal = _source_by_name(sources, "crypto_dvol_implied")
+    fetch_state = getattr(dvol_signal, "fetch_state", None)
+    if callable(fetch_state):
+        from autonomy.crypto_implied_book import CryptoImpliedBook
+
+        implied_book = CryptoImpliedBook(fetch_state)
+
     registry = SpecialistRegistry()
     registry.register(MlbSpecialist(intelligence=mlb_signal, sportsbook=sportsbook))
     for league in TEAM_LEAGUES:
         registry.register(TeamLeagueSpecialist(
             league=league, intelligence=team_signal, sportsbook=sportsbook,
         ))
-    registry.register(CryptoSpecialist(champion=crypto_champion))
+    registry.register(CryptoSpecialist(
+        champion=crypto_champion, implied_book=implied_book,
+    ))
     return registry

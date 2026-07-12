@@ -149,6 +149,61 @@ class CryptoDataHub:
         parsed = [row for row in rows if isinstance(row, list) and len(row) >= 6]
         return sorted(parsed, key=lambda row: int(row[0]))
 
+    @staticmethod
+    def _kraken_hourly_rows(client: Any, asset: str) -> list[list[float]]:
+        """Kraken hourly OHLC mapped to the Coinbase candle row shape."""
+        response = client.get(
+            "https://api.kraken.com/0/public/OHLC",
+            params={"pair": _KRAKEN_PAIRS[asset], "interval": 60},
+        )
+        response.raise_for_status()
+        payload = response.json()
+        if payload.get("error"):
+            raise ValueError("kraken ohlc error")
+        result = payload.get("result") or {}
+        rows = next(
+            (value for key, value in result.items()
+             if key != "last" and isinstance(value, list)),
+            None,
+        )
+        if not rows:
+            raise ValueError("kraken ohlc empty")
+        # Kraken: [time, open, high, low, close, vwap, volume, count]
+        # -> Coinbase shape [time, low, high, open, close, volume]
+        mapped = [
+            [int(row[0]), float(row[3]), float(row[2]),
+             float(row[1]), float(row[4]), float(row[6])]
+            for row in rows if isinstance(row, list) and len(row) >= 7
+        ]
+        return sorted(mapped, key=lambda row: int(row[0]))
+
+    def _fresh_hourly(
+        self, client: Any, product: str, asset: str, now_s: float,
+    ) -> tuple[list[list[float]], str]:
+        """Coinbase hourly closes, failing over to Kraken when thin/stale.
+
+        The realized-vol pipeline dies without hourly history; Coinbase is
+        the primary (byte-identical behavior when healthy -- Kraken is not
+        even fetched), Kraken the failover under the SAME depth/freshness
+        gates. Only when both are unusable does the state raise, and every
+        crypto signal abstains for the cycle.
+        """
+        try:
+            hourly = self._candle_rows(client, product, 3600)
+            if len(hourly) >= 48 and now_s - int(hourly[-1][0]) <= 3 * 3600:
+                return hourly, "coinbase"
+        except Exception:
+            pass
+        try:
+            hourly = self._kraken_hourly_rows(client, asset)
+        except Exception:
+            raise ValueError("insufficient hourly crypto history") from None
+        if len(hourly) < 48:
+            raise ValueError("insufficient hourly crypto history")
+        if now_s - int(hourly[-1][0]) > 3 * 3600:
+            raise ValueError("stale hourly crypto history")
+        return hourly, "kraken"
+
     def state(self, asset: str) -> dict[str, Any]:
         if asset in self._cache:
             return self._cache[asset]
@@ -156,13 +211,9 @@ class CryptoDataHub:
         client = self._client()
         close = getattr(client, "close", None)
         try:
-            hourly = self._candle_rows(client, product, 3600)
-            if len(hourly) < 48:
-                raise ValueError("insufficient hourly crypto history")
             now_s = self.now_s()
+            hourly, hourly_source = self._fresh_hourly(client, product, asset, now_s)
             hourly_at_s = int(hourly[-1][0])
-            if now_s - hourly_at_s > 3 * 3600:
-                raise ValueError("stale hourly crypto history")
             try:
                 minute = self._candle_rows(client, product, 60)
                 if minute and now_s - int(minute[-1][0]) > 10 * 60:
@@ -171,6 +222,11 @@ class CryptoDataHub:
                 minute = []
             minute_at_s = int(minute[-1][0]) if minute else None
             coinbase_spot = float((minute or hourly)[-1][4])
+            # Under Kraken hourly failover with no fresh Coinbase minute data,
+            # that value is a Kraken close -- honest telemetry reports no
+            # Coinbase spot (and no cross-venue divergence) rather than a
+            # mislabeled one. The internal spot median still uses the price.
+            coinbase_spot_genuine = bool(minute) or hourly_source == "coinbase"
             book_bid = book_ask = bid_size = ask_size = None
             try:
                 response = client.get(
@@ -238,14 +294,15 @@ class CryptoDataHub:
             microprice_basis_bps = 10_000.0 * (microprice / spot - 1.0)
         venue_divergence = (
             10_000.0 * abs(coinbase_spot / kraken_spot - 1.0)
-            if kraken_spot and kraken_spot > 0 else None
+            if coinbase_spot_genuine and kraken_spot and kraken_spot > 0 else None
         )
         state = {
             "asset": asset,
             "spot": spot,
-            "coinbase_spot": coinbase_spot,
+            "coinbase_spot": coinbase_spot if coinbase_spot_genuine else None,
             "kraken_spot": kraken_spot,
             "venue_divergence_bps": venue_divergence,
+            "hourly_source": hourly_source,
             "hourly_closes": [float(row[4]) for row in hourly],
             "minute_closes": [float(row[4]) for row in minute],
             "minute_volumes": [float(row[5]) for row in minute],
