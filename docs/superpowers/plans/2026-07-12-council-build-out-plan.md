@@ -364,7 +364,25 @@ Operator directive (2026-07-12, final design pass): improve crypto prediction, r
 
 - [ ] Steps: module → blend challenger → VRP feature + challenger → guard wiring → registration → tests → commit.
 
-## WS-17: Funding/basis + BTC lead-lag challengers — new alpha from existing feeds
+## WS-17: BTC lead-lag challenger — new alpha from existing spot feeds
+
+> **SCOPE CHANGE (operator directive 2026-07-12): NO PERPETUALS.** The
+> original WS-17 funding/basis challenger (Deribit perpetual `funding_8h` +
+> mark-vs-index basis) is CANCELLED — the system does not touch perpetuals,
+> as data or otherwise. Only the spot-based BTC-to-alt lead-lag ships. The
+> struck-through funding design below is retained for the record only.
+
+### Shipped: BTC-to-alt lead-lag (`crypto_btc_leadlag`, spot only)
+`autonomy/signals/crypto_flows.py`: ETH/SOL contracts, 15m/hourly buckets
+only. BTC leads alts by minutes on the SPOT tape (Coinbase minute closes the
+hub already caches — zero new feeds, zero derivatives). Drift on the
+RESIDUAL catch-up: `residual = leadlag_residual(btc_move_sigma,
+alt_move_sigma, beta)` (beta ETH 0.70, SOL 0.60), floored at 0 once the alt
+has moved as far as/farther than beta*BTC in the same direction (no double
+counting, never a reversal); cap 0.35 sigma; abstains on thin data or
+sub-0.15-sigma residual. Challenger-only, fail-closed.
+
+### CANCELLED — funding/basis (perpetuals, not built)
 
 **Files:** Create `autonomy/signals/crypto_flows.py` (two signals); Modify `autonomy/signals/crypto_indicators.py` (one gated Deribit perp read in the hub); session registration; Tests `tests/test_autonomy_crypto_flows.py`.
 
