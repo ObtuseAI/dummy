@@ -73,7 +73,12 @@ class EnsembleForecaster:
             weighted[signal.source] = weight
         families: dict[str, list[Signal]] = {}
         for signal in active_signals:
-            families.setdefault(SOURCE_FAMILIES.get(signal.source, signal.source), []).append(signal)
+            # A calibrated challenger ("{source}::cal", WS-18) is a monotone
+            # transform of its parent, not independent evidence: it shares the
+            # parent's family so a promoted ::cal can never double-count with
+            # the parent it recalibrates. Byte-identical for non-::cal sources.
+            base = signal.source[:-5] if signal.source.endswith("::cal") else signal.source
+            families.setdefault(SOURCE_FAMILIES.get(base, base), []).append(signal)
         family_weights: dict[str, float] = {}
         within_family: dict[str, dict[str, float]] = {}
         for family, members in families.items():
