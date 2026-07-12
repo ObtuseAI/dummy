@@ -5,8 +5,9 @@ higher-variance than a random pairing of teams: familiarity, geographic
 proximity, and playoff stakes compress the talent gap that shows up on paper.
 This module supplies the lookup tables and pure predicates the plate-
 appearance simulator (`autonomy.sports.mlb_pa_sim`) uses to apply a modest,
-deterministic variance bump when a game is divisional. Pure, offline,
-deterministic; no network calls.
+deterministic regression of home_win toward a pick'em line when a game is
+divisional or a marquee rivalry (rivalry regresses a touch harder). Pure,
+offline, deterministic; no network calls.
 """
 from __future__ import annotations
 

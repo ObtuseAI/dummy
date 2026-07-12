@@ -431,9 +431,14 @@ def simulate_one_game(
 # intimately and the talent gap that shows up on paper tends to compress.
 # Applied as a modest post-hoc regression of the aggregate home_win probability
 # toward a pick'em line (0.5); this is a deterministic point regression, not a
-# variance change. Every other market is left untouched. divisional=False
-# (the default) skips this entirely, so today's output is byte-identical.
+# variance change. Every other market is left untouched. A marquee rivalry
+# (RIVALRIES in autonomy.sports.mlb_matchups) compresses the gap a touch more
+# than a plain divisional matchup, so it regresses slightly harder. The two are
+# combined by MAX, never added -- a divisional rivalry pulls by the rivalry
+# amount, not the sum. divisional=False and rivalry=False (the defaults) skip
+# this entirely, so today's output is byte-identical.
 DIVISIONAL_REGRESSION = 0.06  # fraction of the home_win edge pulled toward 0.5
+RIVALRY_REGRESSION = 0.09     # marquee rivalries compress the gap a bit more
 
 
 def simulate_game_markets(
@@ -444,13 +449,15 @@ def simulate_game_markets(
     total_line: float = 8.5,
     weather: tuple[float, float] | None = None,
     divisional: bool = False,
+    rivalry: bool = False,
 ) -> dict[str, Any]:
     """Run N deterministic games; return coherent market probabilities.
 
-    `divisional=True` applies a modest, deterministic regression of home_win
-    toward 0.5 (see DIVISIONAL_REGRESSION) to reflect that divisional/rivalry
-    games are historically closer. `divisional=False` (the default) is
-    byte-identical to the pre-Task-5 behavior.
+    `divisional=True` and/or `rivalry=True` apply a modest, deterministic
+    regression of home_win toward 0.5 to reflect that such games are
+    historically closer (see DIVISIONAL_REGRESSION / RIVALRY_REGRESSION). When
+    both hold, the larger (rivalry) regression is used, not their sum. With both
+    False (the defaults) the output is byte-identical to the pre-Task-5 behavior.
     """
     runs = max(1, int(sims))
     rng = random.Random(seed)
@@ -474,8 +481,13 @@ def simulate_game_markets(
         if game.home_runs_through_5 > game.away_runs_through_5:
             home_f5 += 1
     home_win = home_wins / runs
-    if divisional:
-        home_win = 0.5 + (home_win - 0.5) * (1.0 - DIVISIONAL_REGRESSION)
+    # Rivalry dominates divisional (max, never summed); both-False -> no change.
+    regression = max(
+        RIVALRY_REGRESSION if rivalry else 0.0,
+        DIVISIONAL_REGRESSION if divisional else 0.0,
+    )
+    if regression > 0.0:
+        home_win = 0.5 + (home_win - 0.5) * (1.0 - regression)
     return {
         "home_win": home_win,
         "total_over": total_over / runs,
