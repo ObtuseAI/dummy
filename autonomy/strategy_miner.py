@@ -56,8 +56,21 @@ NUMERIC_FEATURES = (
 )
 MIN_TRAIN_SAMPLES = 30
 MIN_TEST_SAMPLES = 20
+# Correlated emissions (many rows per market, sibling strikes per event)
+# would make a per-row CI dishonestly tight; the CI is therefore computed
+# over per-event-cluster mean edges, and needs this many clusters.
+MIN_TEST_CLUSTERS = 10
 MAX_CANDIDATE_RULES = 500
 MATCH_WINDOW_MINUTES = 15.0
+
+
+def _parse_ts(text: str) -> float | None:
+    from datetime import datetime as _dt
+
+    try:
+        return _dt.fromisoformat(str(text).replace("Z", "+00:00")).timestamp()
+    except ValueError:
+        return None
 
 
 @dataclass(frozen=True)
@@ -142,14 +155,8 @@ def load_settled_rows(
     # outer references inside a subquery's ORDER BY, and a flat two-query
     # plus bisect approach is deterministic and easy to audit.
     import bisect
-    from datetime import datetime as _dt
 
-    def _ts(text: str) -> float | None:
-        try:
-            return _dt.fromisoformat(str(text).replace("Z", "+00:00")).timestamp()
-        except ValueError:
-            return None
-
+    _ts = _parse_ts
     priors: dict[str, list[tuple[float, float]]] = {}
     for ticker, created_at, probability in conn.execute(
         "SELECT market_ticker, created_at, probability_yes FROM signals"
@@ -199,7 +206,6 @@ def load_settled_rows(
             features = json.loads(features_json or "{}")
         except json.JSONDecodeError:
             features = {}
-        features = {**features, "hours_to_close": features.get("hours_to_close")}
         rows.append(MinedRow(
             source=str(source),
             ticker=str(ticker),
@@ -210,7 +216,10 @@ def load_settled_rows(
             result_yes=bool(result_yes),
             features=features,
         ))
-    rows.sort(key=lambda row: row.created_at)
+    # Sort by PARSED time, not the raw string: ISO strings only sort
+    # chronologically when every writer uses the same UTC offset format,
+    # and the walk-forward split must never trust that.
+    rows.sort(key=lambda row: _parse_ts(row.created_at) or 0.0)
     return rows
 
 
@@ -271,24 +280,45 @@ def _purged_split(rows: list[MinedRow], train_fraction: float = 0.6) -> tuple[li
     return train, test
 
 
+def _cluster_mean_edges(rows: list[MinedRow]) -> list[float]:
+    """One mean edge per event cluster.
+
+    Emissions within a cluster share the same settlement print, so treating
+    them as independent samples would shrink the CI dishonestly; the cluster
+    mean is the honest unit of evidence.
+    """
+    sums: dict[str, list[float]] = {}
+    for row in rows:
+        sums.setdefault(row.event_cluster, []).append(_brier_edge(row))
+    return [sum(edges) / len(edges) for edges in sums.values()]
+
+
 def mine_rules(
     rows: list[MinedRow],
     *,
     min_train: int = MIN_TRAIN_SAMPLES,
     min_test: int = MIN_TEST_SAMPLES,
+    min_test_clusters: int = MIN_TEST_CLUSTERS,
     top_k: int = 12,
-) -> list[RuleEvidence]:
-    """Walk-forward rule mining over settled, market-benchmarked rows."""
+) -> tuple[list[RuleEvidence], int]:
+    """Walk-forward rule mining over settled, market-benchmarked rows.
+
+    Returns (evidence, rules_tested) so callers can disclose the family
+    size behind the per-rule confidence intervals.
+    """
     train, test = _purged_split(rows)
     if len(train) < min_train or len(test) < min_test:
-        return []
-    baseline_train = sum(_brier_edge(row) for row in train) / len(train)
+        return [], 0
+    baseline_edges = _cluster_mean_edges(train)
+    baseline_train = sum(baseline_edges) / len(baseline_edges)
     results: list[RuleEvidence] = []
+    rules_tested = 0
     for rule in candidate_rules(train):
         train_hits = [row for row in train if rule.matches(row)]
         if len(train_hits) < min_train:
             continue
-        train_edge = sum(_brier_edge(row) for row in train_hits) / len(train_hits)
+        train_cluster_edges = _cluster_mean_edges(train_hits)
+        train_edge = sum(train_cluster_edges) / len(train_cluster_edges)
         # Only rules that OUTPERFORM the unconditional baseline in train
         # graduate to the out-of-sample exam.
         if train_edge <= max(0.0, baseline_train):
@@ -296,7 +326,10 @@ def mine_rules(
         test_hits = [row for row in test if rule.matches(row)]
         if len(test_hits) < min_test:
             continue
-        edges = [_brier_edge(row) for row in test_hits]
+        edges = _cluster_mean_edges(test_hits)
+        if len(edges) < min_test_clusters:
+            continue
+        rules_tested += 1
         stats = mean_ci95(edges) or {}
         mean = float(stats.get("mean") or 0.0)
         low = stats.get("lower")
@@ -316,6 +349,7 @@ def mine_rules(
             verdict=verdict,
             detail={
                 "sources": sorted({row.source for row in test_hits}),
+                "test_clusters": len(edges),
                 "test_win_rate": round(
                     sum(1 for row in test_hits if row.result_yes) / len(test_hits), 4,
                 ),
@@ -324,7 +358,7 @@ def mine_rules(
     results.sort(key=lambda evidence: (
         evidence.verdict != "candidate", -evidence.test_ci95_low,
     ))
-    return results[:top_k]
+    return results[:top_k], rules_tested
 
 
 def mining_report(
@@ -335,7 +369,7 @@ def mining_report(
 ) -> dict[str, Any]:
     """One full mining pass -> JSON-able proposal artifact."""
     rows = load_settled_rows(conn, sources=sources)
-    mined = mine_rules(rows)
+    mined, rules_tested = mine_rules(rows)
     return {
         "generated_at": now_iso,
         "settled_rows": len(rows),
@@ -354,11 +388,18 @@ def mining_report(
             for evidence in mined
         ],
         "candidate_count": sum(1 for e in mined if e.verdict == "candidate"),
+        # Multiple-testing disclosure: each rule is examined once at a
+        # one-sided ~2.5% level, so this many false candidates are EXPECTED
+        # from noise alone across the tested family. Candidates are leads
+        # for the challenger pipeline, not validated edges.
+        "rules_tested": rules_tested,
+        "expected_false_positives": round(rules_tested * 0.025, 2),
         "note": (
             "Proposal artifact only. Rules are mined walk-forward from settled,"
             " market-benchmarked signal history (including setups never acted"
-            " on); adopting one is an explicit governance action and any"
-            " adopted rule ships challenger-only first."
+            " on); CIs use per-event-cluster means; adopting a rule is an"
+            " explicit governance action and any adopted rule ships"
+            " challenger-only first."
         ),
     }
 

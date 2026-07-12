@@ -107,24 +107,31 @@ def test_miner_finds_planted_setup_edge_out_of_sample():
     assert top["n_train"] >= 30 and top["n_test"] >= 20
 
 
-def test_miner_rejects_pure_noise():
-    """Coin-flip outcomes with a 50/50 model and market: nothing qualifies."""
+def test_miner_rejects_pure_noise_and_discloses_family_size():
+    """Model disagrees with the market but has NO real relationship to the
+    outcome: nothing may qualify, and the multiple-testing exposure must be
+    disclosed in the artifact."""
     conn = sqlite3.connect(":memory:")
     _seed_db(conn)
     for index in range(240):
         when = (START + timedelta(hours=index)).isoformat()
         ticker = f"KXETHD-26JUN{index:04d}-T3500"
-        _insert_signal(conn, "crypto_structure_swing", ticker, 0.5,
+        # Model alternates 0.6/0.4 on a cadence decoupled from both the
+        # mined feature and the outcome pattern.
+        model_probability = 0.6 if (index % 3) == 0 else 0.4
+        _insert_signal(conn, "crypto_structure_swing", ticker, model_probability,
                        {"setup_score": (index % 7) / 7.0, "hours_to_close": 12.0},
                        when)
         _insert_signal(conn, "market_prior", ticker, 0.5, {}, when)
         conn.execute(
             "INSERT INTO settlements (market_ticker, result_yes, settled_at)"
-            " VALUES (?,?,?)", (ticker, index % 2, when),
+            " VALUES (?,?,?)", (ticker, (index // 5) % 2, when),
         )
     conn.commit()
     report = mining_report(conn, now_iso="2026-07-12T00:00:00+00:00")
     assert report["candidate_count"] == 0
+    assert "rules_tested" in report and "expected_false_positives" in report
+    assert report["expected_false_positives"] == round(report["rules_tested"] * 0.025, 2)
 
 
 def test_walk_forward_kills_train_only_mirages():
@@ -160,14 +167,21 @@ def test_walk_forward_kills_train_only_mirages():
     assert report["candidate_count"] == 0
 
 
-def test_event_cluster_purging_prevents_straddle_leakage():
+def test_event_cluster_purging_drops_straddlers_and_keeps_fresh_clusters():
+    # Clusters 0-4 span the whole window (straddle the split); clusters
+    # named by index exist only in the late window and must SURVIVE purge.
     rows = [
-        MinedRow("s", f"KXBTCD-26JUL{index:02d}-T70000", f"KXBTCD-26JUL{index % 5:02d}",
-                 (START + timedelta(hours=index)).isoformat(), 0.6, 0.5, True, {})
+        MinedRow(
+            "s", f"KXBTCD-26JUL{index:03d}-T70000",
+            f"KXBTCD-26JUL{index % 5:02d}" if index < 60 else f"KXBTCD-26JULLATE{index:03d}",
+            (START + timedelta(hours=index)).isoformat(), 0.6, 0.5, True, {},
+        )
         for index in range(100)
     ]
     from autonomy.strategy_miner import _purged_split
 
     train, test = _purged_split(rows)
     train_clusters = {row.event_cluster for row in train}
+    assert test, "late-only clusters must be retained in the test fold"
     assert all(row.event_cluster not in train_clusters for row in test)
+    assert all(row.event_cluster.startswith("KXBTCD-26JULLATE") for row in test)
