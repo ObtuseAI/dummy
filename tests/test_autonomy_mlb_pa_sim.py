@@ -577,6 +577,41 @@ def test_divisional_true_is_deterministic():
     assert a == b
 
 
+def test_rivalry_false_is_byte_identical_to_default():
+    # rivalry defaults to False; passing it explicitly must not change output.
+    ctx = _context(home_batter_iso=0.30, away_batter_iso=0.08)
+    default = simulate_game_markets(ctx, seed=7, sims=800)
+    explicit_false = simulate_game_markets(ctx, seed=7, sims=800, rivalry=False)
+    assert default == explicit_false
+
+
+def test_rivalry_pulls_home_win_harder_than_divisional():
+    # A rivalry regresses the lopsided home_win a touch harder than a plain
+    # divisional matchup (RIVALRY_REGRESSION > DIVISIONAL_REGRESSION), but stays
+    # home-favored and moves ONLY home_win.
+    ctx = _context(home_batter_iso=0.30, away_batter_iso=0.08)
+    neutral = simulate_game_markets(ctx, seed=7, sims=800)
+    div = simulate_game_markets(ctx, seed=7, sims=800, divisional=True)
+    riv = simulate_game_markets(ctx, seed=7, sims=800, rivalry=True)
+    assert 0.5 < riv["home_win"] < div["home_win"] < neutral["home_win"]
+    assert riv["total_over"] == neutral["total_over"]
+    assert riv["yrfi"] == neutral["yrfi"]
+    assert riv["expected_total_runs"] == neutral["expected_total_runs"]
+
+
+def test_divisional_rivalry_uses_max_not_sum():
+    # A divisional rivalry pulls by the rivalry amount, not divisional+rivalry.
+    ctx = _context(home_batter_iso=0.30, away_batter_iso=0.08)
+    riv = simulate_game_markets(ctx, seed=7, sims=800, rivalry=True)
+    both = simulate_game_markets(ctx, seed=7, sims=800, divisional=True, rivalry=True)
+    assert both["home_win"] == riv["home_win"]
+
+
+def test_rivalry_regression_constant_is_modest_and_exceeds_divisional():
+    from autonomy.sports.mlb_pa_sim import DIVISIONAL_REGRESSION, RIVALRY_REGRESSION
+    assert DIVISIONAL_REGRESSION < RIVALRY_REGRESSION <= 0.15  # modest, but a bit stronger
+
+
 def test_pitcher_only_split_is_used_when_batter_has_no_split():
     from autonomy.sports.statsapi import BatterRates, LineupSlot, MlbGameContext, PitcherRates
     # Pitcher dominates RHB but is weak vs LHB. The home lineup is all RIGHT-handed
