@@ -1,6 +1,7 @@
 """Settlement-trained sports intelligence challengers (MLB + team leagues)."""
 from __future__ import annotations
 
+import math
 import re
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
@@ -36,6 +37,13 @@ _TEAM_TOTAL_SERIES = {
     "KXNCAAFTOTAL": "ncaaf",
     "KXNHLTOTAL": "nhl",
     "KXNCAAMBTOTAL": "ncaamb",
+}
+_TEAM_SPREAD_SERIES = {
+    "KXNBASPREAD": "nba",
+    "KXNFLSPREAD": "nfl",
+    "KXNCAAFSPREAD": "ncaaf",
+    "KXNHLSPREAD": "nhl",
+    "KXNCAAMBSPREAD": "ncaamb",
 }
 
 
@@ -109,6 +117,30 @@ def parse_sports_contract(market: MarketView) -> SportsContract | None:
         return SportsContract(
             _TEAM_TOTAL_SERIES[series], "total", date_yyyymmdd,
             (names[0].strip(), names[1].strip()), threshold=parsed_threshold,
+        )
+
+    if series in _TEAM_SPREAD_SERIES:
+        # e.g. KXNFLSPREAD-26SEP13KCBUF-KC3: subject abbreviation + strike
+        # index in the suffix; the real margin line is floor_strike, and the
+        # full team names ride the title ("Chiefs vs Bills Spread...").
+        if len(parts) < 3:
+            return None
+        subject_match = re.match(r"^([A-Z]+?)\d+$", parts[2])
+        if subject_match is None:
+            return None
+        threshold = market.raw.get("floor_strike")
+        try:
+            parsed_threshold = float(threshold)
+        except (TypeError, ValueError):
+            return None
+        title = re.sub(r"\s+Spread.*$", "", market.title, flags=re.IGNORECASE)
+        names = re.split(r"\s+vs\.?\s+", title, maxsplit=1, flags=re.IGNORECASE)
+        if len(names) != 2:
+            return None
+        return SportsContract(
+            _TEAM_SPREAD_SERIES[series], "spread", date_yyyymmdd,
+            (names[0].strip(), names[1].strip()),
+            subject=subject_match.group(1), threshold=parsed_threshold,
         )
 
     if series in {"KXMLBGAME", "KXMLBTOTAL", "KXMLBRFI", "KXMLBSPREAD"}:
@@ -433,17 +465,63 @@ class TeamSportsIntelligenceSignal:
         if game is None or game.status != "pre":
             return None
         prediction = self.models[parsed.sport].predict(game)
+        # NFL winner/spread price from the key-number margin kernel (mass at
+        # 3/7/10 priced where it lives) instead of a smooth normal; the
+        # winner cell and every spread rung share ONE tilted distribution,
+        # so the 3x3 lattice's margin column is coherent by construction.
+        nfl_kernel = None
+        margin_model_version = None
+        if parsed.sport == "nfl" and parsed.market_type in ("winner", "spread"):
+            from autonomy.sports.nfl_margin import NflMarginModel
+
+            nfl_kernel = NflMarginModel(
+                prediction.expected_home_score, prediction.expected_away_score)
+            margin_model_version = "nfl_key_number_kernel_v1"
         if parsed.market_type == "winner" and parsed.subject:
             subject = parsed.subject.upper()
             if subject == game.home.upper():
-                probability = prediction.home_win_probability
+                probability = (
+                    nfl_kernel.home_win_probability() if nfl_kernel is not None
+                    else prediction.home_win_probability
+                )
             elif subject == game.away.upper():
-                probability = 1.0 - prediction.home_win_probability
+                probability = (
+                    1.0 - nfl_kernel.home_win_probability() if nfl_kernel is not None
+                    else 1.0 - prediction.home_win_probability
+                )
             else:
                 return None
             uncertainty = prediction.winner_uncertainty
             source = f"{parsed.sport}_structural_winner"
             detail = f"{subject} win"
+        elif parsed.market_type == "spread" and parsed.subject and parsed.threshold is not None:
+            subject = parsed.subject.upper()
+            if subject == game.home.upper():
+                subject_is_home = True
+            elif subject == game.away.upper():
+                subject_is_home = False
+            else:
+                return None
+            if nfl_kernel is not None:
+                probability = (
+                    nfl_kernel.home_cover_probability(parsed.threshold)
+                    if subject_is_home
+                    else nfl_kernel.away_cover_probability(parsed.threshold)
+                )
+            else:
+                # Generic leagues: normal margin over the model's own sigma
+                # (NBA/NHL/college kernels arrive with their engines).
+                subject_margin = (
+                    prediction.expected_home_score - prediction.expected_away_score
+                    if subject_is_home
+                    else prediction.expected_away_score - prediction.expected_home_score
+                )
+                sigma = LEAGUE_SCORE_CONFIGS[parsed.sport].margin_sigma
+                z = (parsed.threshold - subject_margin) / max(0.25, sigma)
+                probability = min(0.995, max(0.005, 1.0 - 0.5 * (1.0 + math.erf(z / math.sqrt(2.0)))))
+            uncertainty = min(0.44, prediction.winner_uncertainty + 0.02)
+            source = f"{parsed.sport}_spread"
+            detail = f"{subject} covers {parsed.threshold:g}"
         elif parsed.market_type == "total" and parsed.threshold is not None:
             probability = self.models[parsed.sport].total_probability(
                 prediction, parsed.threshold,
@@ -479,5 +557,9 @@ class TeamSportsIntelligenceSignal:
                 "expected_total": prediction.expected_total,
                 "threshold": parsed.threshold,
                 "sample_games": prediction.sample_games,
+                **(
+                    {"margin_model_version": margin_model_version}
+                    if margin_model_version else {}
+                ),
             },
         )
