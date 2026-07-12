@@ -18,8 +18,18 @@ an order; it surfaces the shortlist and the opportunist strikes for review.
 """
 from __future__ import annotations
 
+from dataclasses import replace
 from typing import Any, Callable
 
+from autonomy.coherence import (
+    TIER_CROSS_CONFIRMED,
+    TIER_RANK,
+    TIER_STRUCTURAL,
+    build_game_lattices,
+    cross_family_incoherence,
+    ladder_violations,
+    lattice_conviction,
+)
 from autonomy.mispricing import (
     DEFAULT_AGREE_MARGIN,
     DEFAULT_EDGE_THRESHOLD,
@@ -27,6 +37,9 @@ from autonomy.mispricing import (
     MispricingMonitor,
 )
 from autonomy.opportunist import OpportunistEngine, Opportunity
+
+# Report caps: at most this many per-game lattice rows, richest tier first.
+MAX_LATTICES = 20
 
 
 def _assessment_row(a: MispricingAssessment) -> dict[str, Any]:
@@ -40,7 +53,53 @@ def _assessment_row(a: MispricingAssessment) -> dict[str, Any]:
         "agreement": a.agreement,
         "confidence": a.confidence,
         "rationale": a.rationale,
+        "conviction_tier": a.conviction_tier,
     }
+
+
+def _lattice_section(
+    markets: list[Any], assessments_by_ticker: dict[str, MispricingAssessment],
+) -> tuple[list[dict[str, Any]], dict[str, str]]:
+    """Build ALL per-game lattice rows (uncapped) + a ticker -> tier map.
+
+    Fail-closed by construction: ``build_game_lattices`` only produces a
+    ``GameLattice`` for games with at least one real cell (grouped through
+    the real ``parse_sports_contract``, no hand-built dicts); a market that
+    never parses to a sports contract simply never appears here, so a pass
+    with no sports markets yields empty lattices/counts and an unchanged
+    opportunist tier map -- byte-identical to pre-WS-5 behavior.
+
+    Returns the FULL sorted row list (richest tier first) -- the caller caps
+    the report's ``lattices`` display list at ``MAX_LATTICES``, but the
+    ``structural_count``/``cross_confirmed_count`` totals must reflect every
+    game that reached that tier, not just the ones that made the display cap.
+    """
+    lattices = build_game_lattices(markets, assessments_by_ticker)
+    rows: list[dict[str, Any]] = []
+    tier_by_ticker: dict[str, str] = {}
+    for lattice in lattices:
+        ladder_rows = [
+            {**violation, "game_key": lattice.game_key}
+            for family in ("spread", "total")
+            for violation in ladder_violations(lattice.cells, family)
+        ]
+        incoherence_rows = cross_family_incoherence(lattice)
+        conviction = lattice_conviction(lattice, assessments_by_ticker)
+        tier = conviction["conviction_tier"]
+        if tier in (TIER_STRUCTURAL, TIER_CROSS_CONFIRMED):
+            for cell in lattice.cells:
+                tier_by_ticker[cell.ticker] = tier
+        rows.append({
+            "game_key": lattice.game_key,
+            "sport": lattice.sport,
+            "conviction_tier": tier,
+            "cell_count": len(lattice.cells),
+            "ladder_violations": ladder_rows,
+            "cross_family_incoherence": incoherence_rows,
+        })
+
+    rows.sort(key=lambda row: (TIER_RANK.get(row["conviction_tier"], 0), row["game_key"]), reverse=True)
+    return rows, tier_by_ticker
 
 
 def _opportunity_row(o: Opportunity) -> dict[str, Any]:
@@ -81,16 +140,35 @@ def run_mispricing_sweep(
         edge_threshold=edge_threshold, agree_margin=agree_margin,
         min_confidence=min_confidence,
     )
-    shortlist: list[MispricingAssessment] = []
-    opportunities: list[dict[str, Any]] = []
     scanned = 0
-    assessed = 0
+    assessed_pairs: list[tuple[Any, MispricingAssessment]] = []
+    assessments_by_ticker: dict[str, MispricingAssessment] = {}
     for market in markets:
         scanned += 1
         assessment = monitor.assess_market(market)
         if assessment is None:
             continue
-        assessed += 1
+        assessed_pairs.append((market, assessment))
+        assessments_by_ticker[assessment.market_ticker] = assessment
+
+    # WS-5: group into per-game 3x3 lattices from the SAME markets/assessments
+    # already computed above (no second fetch); a market that doesn't parse to
+    # a sports contract simply isn't grouped (fail-closed).
+    all_lattice_rows, tier_by_ticker = _lattice_section(
+        [market for market, _ in assessed_pairs], assessments_by_ticker,
+    )
+    structural_count = sum(1 for row in all_lattice_rows if row["conviction_tier"] == TIER_STRUCTURAL)
+    cross_confirmed_count = sum(
+        1 for row in all_lattice_rows if row["conviction_tier"] == TIER_CROSS_CONFIRMED
+    )
+    lattice_rows = all_lattice_rows[:MAX_LATTICES]
+
+    shortlist: list[MispricingAssessment] = []
+    opportunities: list[dict[str, Any]] = []
+    for market, assessment in assessed_pairs:
+        tier = tier_by_ticker.get(assessment.market_ticker)
+        if tier is not None:
+            assessment = replace(assessment, conviction_tier=tier)
         if opportunist is not None:
             opportunity = opportunist.observe(assessment)
             if opportunity is not None:
@@ -107,11 +185,14 @@ def run_mispricing_sweep(
     return {
         "generated_at": now_iso,
         "scanned": scanned,
-        "assessed": assessed,
+        "assessed": len(assessed_pairs),
         "shortlist_count": len(shortlist),
         "opportunity_count": len(opportunities),
         "shortlist": [_assessment_row(a) for a in top],
         "opportunities": opportunities,
+        "lattices": lattice_rows,
+        "structural_count": structural_count,
+        "cross_confirmed_count": cross_confirmed_count,
         "params": {
             "edge_threshold": edge_threshold,
             "agree_margin": agree_margin,

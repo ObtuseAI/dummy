@@ -33,3 +33,12 @@ def test_dashboard_fleet_includes_the_monitor_role(tmp_path):
 def test_missing_monitor_file_yields_empty_block(tmp_path):
     state = assemble_dashboard_state(runtime_dir=tmp_path)
     assert state["mispricing_monitor"] == {}
+
+
+def test_dashboard_renders_the_lattice_conviction_counts():
+    # WS-5: renderMispricing gets two small counts (structural, cross_confirmed)
+    # alongside the existing scanned/shortlist/opportunist-strikes meta line.
+    from autonomy.dashboard import _HTML
+
+    assert "structural_count" in _HTML
+    assert "cross_confirmed_count" in _HTML
