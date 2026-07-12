@@ -238,29 +238,31 @@ class BaseballIntelligenceSignal:
             return None
         prediction = self.model.predict(game)
         live = game.status == "in"
-        # Live re-pricing is winner-only for now; totals/spreads/YRFI stay
-        # pre-game (a live in-progress game abstains on those, fail-closed).
-        if live and parsed.market_type != "winner":
-            return None
+        # One fail-closed gate for every live market: a valid score + inning are
+        # required, and YRFI (a first-inning market) is meaningless once underway.
+        live_state: tuple[int, int, float] | None = None
+        if live:
+            if (game.home_score is None or game.away_score is None
+                    or game.current_period is None or game.current_period < 1
+                    or parsed.market_type == "yrfi"):
+                return None
+            live_state = (
+                game.home_score, game.away_score, remaining_innings(game.current_period),
+            )
         if parsed.market_type == "winner":
             subject = canonical_team("mlb", parsed.subject or "")
             home = canonical_team("mlb", game.home)
             if subject not in {home, canonical_team("mlb", game.away)}:
                 return None
-            if live:
-                if (game.home_score is None or game.away_score is None
-                        or game.current_period is None or game.current_period < 1):
-                    return None  # in-progress but missing/invalid live state -> fail-closed
+            if live_state is not None:
+                home_score, away_score, rem = live_state
                 home_win = self.model.live_win_probability(
-                    prediction, game.home_score, game.away_score,
-                    remaining_innings(game.current_period),
-                )
-                # A per-inning live approximation is coarser than the pre-game
-                # line, so widen the uncertainty a touch.
+                    prediction, home_score, away_score, rem)
+                # A per-inning live approximation is coarser than the pre-game line.
                 uncertainty = min(0.45, prediction.winner_uncertainty + 0.05)
                 source = "mlb_live_winner"
                 market_detail = (
-                    f"{subject} live win ({game.away_score}-{game.home_score}, "
+                    f"{subject} live win ({away_score}-{home_score}, "
                     f"inning {game.current_period})"
                 )
             else:
@@ -270,26 +272,45 @@ class BaseballIntelligenceSignal:
                 market_detail = f"{subject} win"
             probability = home_win if subject == home else 1.0 - home_win
         elif parsed.market_type == "total_runs" and parsed.threshold is not None:
-            probability = self.model.total_probability(prediction, parsed.threshold)
-            uncertainty = prediction.total_uncertainty
-            source = "mlb_total_runs"
-            market_detail = f"over {parsed.threshold:g} runs"
+            if live_state is not None:
+                home_score, away_score, rem = live_state
+                probability = self.model.live_total_probability(
+                    prediction, home_score + away_score, parsed.threshold, rem)
+                uncertainty = min(0.45, prediction.total_uncertainty + 0.05)
+                source = "mlb_live_total"
+                market_detail = (
+                    f"live over {parsed.threshold:g} ({home_score + away_score} so far, "
+                    f"inning {game.current_period})"
+                )
+            else:
+                probability = self.model.total_probability(prediction, parsed.threshold)
+                uncertainty = prediction.total_uncertainty
+                source = "mlb_total_runs"
+                market_detail = f"over {parsed.threshold:g} runs"
         elif parsed.market_type == "spread" and parsed.threshold is not None and parsed.subject:
             subject = canonical_team("mlb", parsed.subject)
             home = canonical_team("mlb", game.home)
             away = canonical_team("mlb", game.away)
-            if subject == home:
-                probability = self.model.spread_probability(
-                    prediction, subject_is_home=True, margin=parsed.threshold)
-            elif subject == away:
-                probability = self.model.spread_probability(
-                    prediction, subject_is_home=False, margin=parsed.threshold)
-            else:
+            if subject not in {home, away}:
                 return None
-            # Run-margin tails are higher-variance than the moneyline; widen a touch.
-            uncertainty = min(0.45, prediction.winner_uncertainty + 0.06)
-            source = "mlb_run_spread"
-            market_detail = f"{subject} by >{parsed.threshold:g}"
+            subject_is_home = subject == home
+            if live_state is not None:
+                home_score, away_score, rem = live_state
+                probability = self.model.live_spread_probability(
+                    prediction, subject_is_home, parsed.threshold,
+                    home_score, away_score, rem)
+                uncertainty = min(0.45, prediction.winner_uncertainty + 0.07)
+                source = "mlb_live_spread"
+                market_detail = (
+                    f"{subject} live by >{parsed.threshold:g} (inning {game.current_period})"
+                )
+            else:
+                probability = self.model.spread_probability(
+                    prediction, subject_is_home=subject_is_home, margin=parsed.threshold)
+                # Run-margin tails are higher-variance than the moneyline; widen a touch.
+                uncertainty = min(0.45, prediction.winner_uncertainty + 0.06)
+                source = "mlb_run_spread"
+                market_detail = f"{subject} by >{parsed.threshold:g}"
         elif parsed.market_type == "yrfi":
             probability = prediction.yrfi_probability
             uncertainty = prediction.first_inning_uncertainty
