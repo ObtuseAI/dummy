@@ -192,6 +192,40 @@ def test_poisson_spread_probability_is_monotone_and_bounded():
     assert even_ge0 - even_gt0 > 0.02  # the regulation tie mass, a real gap
 
 
+def test_live_win_probability_reduces_to_pregame_at_start():
+    from autonomy.sports.baseball import (
+        poisson_live_win_probability, poisson_win_probability,
+    )
+    # Full-game means, no lead -> identical to the pre-game moneyline.
+    live = poisson_live_win_probability(4.8, 4.2, 0)
+    pre = poisson_win_probability(4.8, 4.2)
+    assert abs(live - pre) < 1e-9
+
+
+def test_live_win_probability_reflects_lead_and_time():
+    from autonomy.sports.baseball import poisson_live_win_probability
+    # A big lead with almost no baseball left -> near-certain.
+    assert poisson_live_win_probability(0.5, 0.5, 4) > 0.98
+    # Trailing by three with little left -> near-hopeless.
+    assert poisson_live_win_probability(0.5, 0.5, -3) < 0.05
+    # Monotonic in the lead for a fixed remaining-run environment.
+    probs = [poisson_live_win_probability(2.4, 2.4, lead) for lead in (-3, -1, 0, 1, 3)]
+    assert probs == sorted(probs)
+    assert all(0.0005 <= p <= 0.9995 for p in probs)
+
+
+def test_model_live_win_probability_matches_pregame_at_first_pitch(tmp_path):
+    model = BaseballRunModel()
+    game = _mlb_game()  # 0-0, pre-game
+    prediction = model.predict(game)
+    live_start = model.live_win_probability(prediction, 0, 0, remaining_innings=9)
+    assert abs(live_start - prediction.home_win_probability) < 1e-9
+    # Same game, home up 3 with 2 innings left -> well above the pre-game number.
+    ahead = model.live_win_probability(prediction, 5, 2, remaining_innings=2)
+    assert ahead > prediction.home_win_probability
+    assert ahead > 0.8
+
+
 def test_baseball_spread_probability_sides_are_coherent(tmp_path):
     model = BaseballRunModel()
     game = _mlb_game()  # home TEX, away HOU
