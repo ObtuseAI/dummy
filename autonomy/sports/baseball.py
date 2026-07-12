@@ -140,6 +140,41 @@ def poisson_spread_probability(
     return min(0.995, max(0.005, probability))
 
 
+def poisson_live_win_probability(
+    home_remaining_mean: float, away_remaining_mean: float, home_lead: int
+) -> float:
+    """P(home wins | current lead) with remaining runs as independent Poissons.
+
+    ``home_lead`` = home_score - away_score right now. Home wins the game when
+    ``home_lead + (H - A) > 0`` over the innings still to be played (H, A the
+    remaining-run Poissons); the regulation-tie mass (== 0) is split evenly. At
+    lead 0 with full-game means it equals ``poisson_win_probability``.
+    """
+    limit = max(25, int(math.ceil(max(home_remaining_mean, away_remaining_mean) + 8.0)))
+    home = [math.exp(-home_remaining_mean)]
+    away = [math.exp(-away_remaining_mean)]
+    for runs in range(1, limit + 1):
+        home.append(home[-1] * home_remaining_mean / runs)
+        away.append(away[-1] * away_remaining_mean / runs)
+    # home_tail[m] = P(H >= m), for m in [0, limit]; out of range -> 0.
+    home_tail = [0.0] * (limit + 2)
+    running = 0.0
+    for m in range(limit, -1, -1):
+        running += home[m]
+        home_tail[m] = running
+    probability = 0.0
+    for away_runs, away_mass in enumerate(away):
+        # Home needs H > (away_runs - home_lead) to win; == is a split tie.
+        k = away_runs - home_lead
+        if k < 0:
+            probability += away_mass  # home already ahead regardless of H >= 0
+        else:
+            win_more = home_tail[k + 1] if (k + 1) <= limit else 0.0
+            tie = home[k] if k <= limit else 0.0
+            probability += away_mass * (win_more + 0.5 * tie)
+    return min(0.9995, max(0.0005, probability))
+
+
 @dataclass
 class BaseballRunModel:
     teams: dict[str, TeamRunState] = field(default_factory=dict)
@@ -286,6 +321,26 @@ class BaseballRunModel:
             )
         return poisson_spread_probability(
             prediction.expected_away_runs, prediction.expected_home_runs, margin
+        )
+
+    def live_win_probability(
+        self,
+        prediction: BaseballPrediction,
+        home_score: int,
+        away_score: int,
+        remaining_innings: float,
+    ) -> float:
+        """Live P(home wins) given the current score and innings left to play.
+
+        Scales the pre-game per-game run rates down to the innings remaining and
+        shifts by the current lead. At the start (remaining_innings == 9, score
+        0-0) it reduces to the pre-game ``home_win_probability``.
+        """
+        fraction = max(0.0, float(remaining_innings)) / 9.0
+        home_remaining = prediction.expected_home_runs * fraction
+        away_remaining = prediction.expected_away_runs * fraction
+        return poisson_live_win_probability(
+            home_remaining, away_remaining, int(home_score) - int(away_score)
         )
 
     def to_dict(self) -> dict[str, Any]:
