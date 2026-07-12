@@ -62,10 +62,16 @@ def parse_game_ticker(ticker: str) -> dict[str, Any] | None:
 class SportsEloSignal:
     name = "sports_elo"
 
-    def __init__(self, espn: EspnClient | None = None, elo_dir: Path | None = None):
+    def __init__(self, espn: EspnClient | None = None, elo_dir: Path | None = None,
+                 seasons=None):
+        from autonomy.specialists.seasons import SeasonMonitor
+
         self.espn = espn or EspnClient()
         self.elo_dir = elo_dir or ELO_DIR
         self._models: dict[str, EloModel] = {}
+        # Season gate shares this signal's ESPN client and skips dormant
+        # leagues' per-cycle retrain fetches (they have no finished games).
+        self.seasons = seasons or SeasonMonitor(espn=self.espn)
 
     def _model(self, league: str) -> EloModel:
         if league not in self._models:
@@ -99,6 +105,8 @@ class SportsEloSignal:
             recent_range = f"{start.strftime('%Y%m%d')}-{today.strftime('%Y%m%d')}"
         for league in LEAGUE_TO_ESPN:
             try:
+                if not self.seasons.active(league):
+                    continue  # dormant league: no finished games to absorb
                 self.warmup(league, [recent_range])
             except Exception:
                 continue

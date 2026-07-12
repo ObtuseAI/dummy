@@ -257,7 +257,14 @@ def build_brain(mode: SessionMode):
     # receives tradable markets, but keeping it registered is harmless and
     # preserves its settled-market record.
     registry.register(CommoditiesSpotVolSignal())
-    registry.register(SportsEloSignal())
+    # One shared season monitor gates every sports warmup: dormant leagues
+    # skip their per-cycle fetches and auto-wake when preseason games appear
+    # on the scoreboard. Sharing one instance keeps one verdict cache and
+    # one writer for the persisted season state.
+    from autonomy.specialists.seasons import SeasonMonitor
+
+    seasons = SeasonMonitor()
+    registry.register(SportsEloSignal(seasons=seasons))
     # De-vigged sportsbook moneyline + open->close steam: the sharpest public
     # game forecast, and the trap detector when Elo fights the book.
     registry.register(SportsbookConsensusSignal())
@@ -266,8 +273,8 @@ def build_brain(mode: SessionMode):
     # execution ensemble until a settlement-backed promotion review.
     # UFC and Formula One intelligence retired 2026-07-12 (operator directive):
     # their markets route to no sports model and are simply never forecast.
-    registry.register(BaseballIntelligenceSignal())
-    registry.register(TeamSportsIntelligenceSignal())
+    registry.register(BaseballIntelligenceSignal(seasons=seasons))
+    registry.register(TeamSportsIntelligenceSignal(seasons=seasons))
     registry.register(CrossVenueSignal())
     # Empirical price->outcome curve mined from settled-market history; no
     # curve artifact on disk means the source simply never opines.
