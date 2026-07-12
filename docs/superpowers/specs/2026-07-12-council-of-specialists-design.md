@@ -112,6 +112,61 @@ Dashboard **Council panel**: one row per specialist — feed freshness, model ag
 | **4** | NBA + NHL specialists (§5.2, §5.3) | October starts |
 | **5** | NCAAMB specialist + trust surface (§3.3) + propose-then-promote tuner (§3.4) | November start; reuses Phase-4 NBA engine |
 
+## 8b. Amendment v1.1 (operator directive, 2026-07-12 later same day)
+
+### 8b.1 Confirmed trading surface — all leagues, full ladders
+NFL/NCAAF/NBA/NCAAMB/NHL each trade **winners + the full spread ladder + the
+full total ladder**. Verified live: "alt" lines are NOT separate series --
+they are multiple strikes inside the existing `KX*SPREAD`/`KX*TOTAL` events
+(MLB spreads carry 1.5/2.5/3.5 per side; MLB totals carry an 11-strike
+2.5-9.5 ladder). Each specialist's joint score distribution prices the
+entire ladder coherently by construction; the parsers already read
+per-strike `floor_strike`. The coherence engine (section 3.1) extends to
+**ladder coherence**: within one game, P(cover 1.5) >= P(cover 2.5) >=
+P(cover 3.5) with model-calibrated gaps -- Kalshi's crowd sets each rung
+independently, so rung-level incoherence is a structural edge tier.
+
+### 8b.2 Player-matchup + rookie-impact layer (each league)
+- Player-state EWMAs from keyless ESPN rosters/depth charts/boxscores:
+  QB identity (NFL/NCAAF), usage/minutes stars (NBA/NCAAMB), starting
+  goalie (NHL). Position-weighted availability deltas (QB >> RB; star
+  minutes; goalie identity).
+- **Rookie impacts:** rookie starters flagged from roster experience
+  fields. Thin priors make rookie starts the market's misprice zone: widen
+  uncertainty on rookie-QB/rookie-goalie/rookie-heavy lineups early, log
+  `rookie_start` features, and let the strategy miner grade which rookie
+  states carried edge (mined, not assumed).
+- **Mismatch finder:** per-league unit-level EWMAs and their deltas --
+  NFL pass-offense vs opponent pass-defense, NBA pace/style/rest deltas,
+  NHL goalie-quality and special-teams gaps (PP% vs PK%), NCAA
+  talent/experience gaps. Bounded challenger drift under the shared
+  0.45-sigma cap; every mismatch score logged as features.
+
+### 8b.3 Situational-awareness engine (each league; in-game and between games)
+States: trades/roster deltas (transactions feed), rest and
+back-to-backs (computable from schedule), coaching changes, gameplan
+narratives, playoff seeding/clinch/elimination (standings), bye weeks,
+suspensions (status feeds). Doctrine: **hard, verifiable states** (rest,
+b2b, bye, clinched/eliminated, suspension, confirmed trade) may apply
+bounded per-league mean adjustments; **narrative-soft states** (gameplan
+talk, coach-bounce lore) widen uncertainty only and never shift the mean.
+All states logged as features so the miner grades which situations pay --
+propose-then-promote, like everything else.
+
+### 8b.4 Crypto equities / ETF / treasury-company lane (Phase 1d)
+`CryptoEquitiesSignal` challenger via the existing keyless Yahoo chart
+pipeline (all symbols verified live 2026-07-12): spot-ETF flow proxies
+(IBIT, FBTC, ETHA -- price momentum + volume-surge amplifier, hard-capped),
+crypto-beta equities (COIN, MARA, RIOT), treasury companies (MSTR).
+Asset-conditioned factor weights (the ETH ETF barely opines on a BTC
+strike). Bounded risk-appetite drift like the macro signal
+(<= 0.35 sigma); divergence between the equity complex and the spot tape's
+own momentum WIDENS uncertainty instead of picking a winner.
+
+Phase mapping: 8b.1 ladder coherence lands with Phase 2's coherence engine;
+8b.2/8b.3 land inside each league's phase (MLB gets rest/travel + situational
+states in Phase 2); 8b.4 is Phase 1d.
+
 ## 9. Testing & governance doctrine (applies to every phase)
 
 - Every new estimator: hand-computed fixture tests (known inputs → asserted probability), abstention tests (missing feed → None), byte-identical fail-closed tests (feature off/absent → unchanged output).

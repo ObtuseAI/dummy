@@ -246,6 +246,12 @@ def build_brain(mode: SessionMode):
     # point-in-time evidence, excluded from the execution ensemble until a
     # settlement-backed promotion review, and abstains when no macro feed exists.
     registry.register(CryptoMacroRegimeSignal(fetch_state=crypto_hub.state))
+    # Crypto-equities flow (BTC/ETH ETFs, crypto stocks, treasury companies
+    # via the keyless Yahoo pipeline): institutional-appetite drift,
+    # challenger-only, abstains without equity data.
+    from autonomy.signals.crypto_equities import CryptoEquitiesSignal
+
+    registry.register(CryptoEquitiesSignal(fetch_state=crypto_hub.state))
     # CommoditiesSpotVolSignal is retained only as challenger evidence: with
     # COMMODITIES dropped from the scanner's trading verticals it no longer
     # receives tradable markets, but keeping it registered is harmless and
