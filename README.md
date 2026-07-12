@@ -6,11 +6,14 @@ simulates and stress-tests challengers, explains every paper decision, and
 records the full lifecycle in an auditable ledger.
 
 - **Crypto arsenal:** BTC, ETH, and SOL across native 15-minute, hourly, daily,
-  and weekly horizons, combining realized and implied volatility, market
-  regime, momentum, technical, volume, order-book, and cross-venue evidence.
-- **Sports arsenal:** MLB winners, totals, and YRFI/NRFI; UFC winners, round
-  totals, and distance; NBA, NCAAB, NFL, NCAAF, and NHL winners and totals;
-  plus Formula One race-winner modeling.
+  and weekly horizons, combining realized and implied volatility, market and
+  macro risk regime (S&P/DXY/VIX/10y/gold/oil), momentum, technical, volume,
+  order-book, and cross-venue evidence.
+- **Sports arsenal:** MLB winners, totals, and YRFI/NRFI — with real left/right
+  platoon splits, per-team bullpen quality, rivalry/divisional awareness, and
+  probabilistic baserunning; UFC winners, round totals, and distance; NBA,
+  NCAAB, NFL, NCAAF, and NHL winners and totals; plus Formula One race-winner
+  modeling.
 - **Training arsenal:** point-in-time replay, Monte Carlo simulation,
   adversarial arenas, event-purged walk-forward validation, calibration and
   risk analytics, deterministic replay buffers, and bounded recursive
