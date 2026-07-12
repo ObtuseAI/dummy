@@ -140,16 +140,43 @@ def test_abstains_when_crypto_state_missing_spot():
     assert sig.generate(_crypto_market()) is None
 
 
-def test_short_horizon_drift_is_negligible():
-    # Macro drift scales with horizon_sigma, so a 15-minute contract barely
-    # moves off center even under a strong risk-on regime.
+def test_abstains_on_just_closed_market_no_throw():
+    # A market whose close_time has passed (negative hours) must abstain, not
+    # raise on sqrt(negative) -- the fail-closed contract.
+    sig = CryptoMacroRegimeSignal(
+        fetch_state=_state, fetch_macro=lambda: {"sp500": 0.03, "dxy": -0.02},
+        hours_to_close=lambda m: -3.0,
+    )
+    assert sig.generate(_crypto_market()) is None
+
+
+def test_abstains_on_non_numeric_dvol_no_throw():
+    # A malformed vol field must abstain, not throw float("N/A").
+    sig = CryptoMacroRegimeSignal(
+        fetch_state=lambda a: {"spot": 71000.0, "dvol": "N/A"},
+        fetch_macro=lambda: {"sp500": 0.03, "dxy": -0.02},
+        hours_to_close=lambda m: 12.0,
+    )
+    assert sig.generate(_crypto_market()) is None
+
+
+def test_short_horizon_drift_follows_sqrt_hours_law():
+    # The at-the-money shift (in horizon-sigma units) grows as sqrt(hours), so a
+    # 24h contract shifts ~sqrt(24/0.25)=9.8x as far off center as a 15-min one.
+    # Assert the actual scaling law, not merely the direction.
+    import math
+
+    macro = {"sp500": 0.03, "dxy": -0.02, "vix": -0.15}
     market = _crypto_market()
-    p_long = CryptoMacroRegimeSignal(
-        fetch_state=_state, fetch_macro=lambda: {"sp500": 0.03, "dxy": -0.02, "vix": -0.15},
-        hours_to_close=lambda m: 24.0,
-    ).generate(market).probability_yes
-    p_short = CryptoMacroRegimeSignal(
-        fetch_state=_state, fetch_macro=lambda: {"sp500": 0.03, "dxy": -0.02, "vix": -0.15},
-        hours_to_close=lambda m: 0.25,
-    ).generate(market).probability_yes
-    assert abs(p_short - 0.5) < abs(p_long - 0.5)
+    long = CryptoMacroRegimeSignal(
+        fetch_state=_state, fetch_macro=lambda: macro, hours_to_close=lambda m: 24.0,
+    ).generate(market)
+    short = CryptoMacroRegimeSignal(
+        fetch_state=_state, fetch_macro=lambda: macro, hours_to_close=lambda m: 0.25,
+    ).generate(market)
+    shift_long = long.features["shift_in_horizon_sigma"]
+    shift_short = short.features["shift_in_horizon_sigma"]
+    assert shift_short > 0 and shift_long > 0
+    ratio = shift_long / shift_short
+    assert abs(ratio - math.sqrt(24.0 / 0.25)) < 0.2  # ~9.8, the sqrt(hours) law
+    assert abs(long.probability_yes - 0.5) > abs(short.probability_yes - 0.5)

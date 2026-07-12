@@ -182,24 +182,31 @@ class CryptoMacroRegimeSignal:
         if spot <= 0:
             return None
         # dvol (implied) preferred; realized-vol fallback only computed if needed.
-        if state.get("dvol") is not None:
-            annual_vol: float | None = float(state["dvol"]) / 100.0
-        else:
-            indicators = _indicator_features(state)
-            annual_vol = (
-                indicators.get("realized_vol_60m_annualized")
-                or indicators.get("realized_vol_7d_annualized")
-            )
-        if annual_vol is None or float(annual_vol) <= 0:
+        # Any non-numeric vol field abstains rather than throwing (fail-closed).
+        try:
+            if state.get("dvol") is not None:
+                annual_vol: float | None = float(state["dvol"]) / 100.0
+            else:
+                indicators = _indicator_features(state)
+                annual_vol = (
+                    indicators.get("realized_vol_60m_annualized")
+                    or indicators.get("realized_vol_7d_annualized")
+                )
+            annual_vol = None if annual_vol is None else float(annual_vol)
+        except (TypeError, ValueError):
+            return None
+        if annual_vol is None or annual_vol <= 0:
             return None
         hours = self.hours_to_close(market)
-        horizon_sigma = float(annual_vol) * math.sqrt(hours / (24.0 * 365.0))
+        if hours <= 0:  # a just-closed market must abstain, never sqrt(negative)
+            return None
+        horizon_sigma = annual_vol * math.sqrt(hours / (24.0 * 365.0))
         if horizon_sigma <= 0:
             return None
         # Drift-rate over the horizon, capped at MACRO_MAX_SHIFT_SIGMA sigma.
         raw_drift = MACRO_DAILY_DRIFT * score * (hours / 24.0)
-        cap = MACRO_MAX_SHIFT_SIGMA * horizon_sigma
-        expected_log_return = max(-cap, min(cap, raw_drift))
+        sigma_cap = MACRO_MAX_SHIFT_SIGMA * horizon_sigma
+        expected_log_return = max(-sigma_cap, min(sigma_cap, raw_drift))
 
         def p_above(strike: float) -> float:
             if strike <= 0:

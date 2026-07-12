@@ -77,10 +77,12 @@ WATCHLIST_SERIES: list[str] = [
     # Commodities + econ trading retired 2026-07-11 (never demonstrated an edge
     # vs the sharp Kalshi price/econ markets). The Yahoo macro pipeline those
     # used now feeds CRYPTO as a risk-regime feature (crypto_macro_regime), not a
-    # trading target, so the daemon no longer fetches KXWTI/KXNATGAS/KXGOLD or
-    # any KXCPI/KXFED/KXGDP/KXPAYROLL series here. The classifiers below are kept
-    # so any such markets still classify and are then excluded by the vertical
-    # filter (verticals defaults to {CRYPTO, SPORTS}).
+    # trading target, so the daemon no longer fetches KXWTI/KXNATGAS/KXGOLD (or
+    # any KXCPI/KXFED/KXGDP/KXPAYROLL) series here -- dropping them from the
+    # watchlist is what stops the daemon surfacing them. The vertical classifiers
+    # for those prefixes are kept (defence in depth): if such a series is ever
+    # re-added or reached another way, classify_vertical still tags it and the
+    # scan()-time vertical filter ({CRYPTO, SPORTS}) excludes it from trading.
 ]
 
 
