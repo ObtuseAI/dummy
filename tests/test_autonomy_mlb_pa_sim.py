@@ -138,12 +138,27 @@ def test_advance_single_holds_runner_at_third_on_high_roll():
     assert bases == [True, False, True]  # batter on 1st, runner held at 3rd
 
 
+def test_advance_single_first_to_third_taken_on_low_roll():
+    # 3rd is open; runner on 1st takes 3rd on a low first-to-third roll.
+    bases = [True, False, False]  # runner on 1st only
+    assert _advance(bases, "single", _QueuedRng([0.0])) == 0
+    assert bases == [True, False, True]  # batter on 1st, runner to 3rd
+
+
 def test_advance_single_first_to_third_blocked_by_held_runner():
-    # Runner on 2nd holds at 3rd (high roll); runner on 1st cannot pass to 3rd
-    # even on a low first-to-third roll -- the base is occupied.
+    # Runner on 2nd holds at 3rd (high roll), which occupies 3rd; the runner on
+    # 1st is then forced to 2nd WITHOUT a first-to-third roll (the base is taken,
+    # so the guard short-circuits and no second value is drawn).
     bases = [True, True, False]  # runners on 1st and 2nd
-    assert _advance(bases, "single", _QueuedRng([0.99, 0.0])) == 0
+    assert _advance(bases, "single", _QueuedRng([0.99])) == 0
     assert bases == [True, True, True]  # batter 1B, 1B-runner 2B, 2B-runner 3B
+
+
+def test_advance_single_scores_runner_from_third():
+    # A runner on 3rd always scores on a single (no roll for the 3B runner).
+    bases = [False, False, True]  # runner on 3rd
+    assert _advance(bases, "single", _QueuedRng()) == 1
+    assert bases == [True, False, False]  # only the batter, on 1st
 
 
 def test_advance_double_scores_runner_from_second():
