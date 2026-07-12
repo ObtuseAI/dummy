@@ -193,7 +193,7 @@ def test_team_league_specialist_abstains_live_and_books_consensus():
     assert TeamLeagueSpecialist("nba", None, None).book(market) is None
 
 
-def test_crypto_specialist_routes_and_abstains_from_book_until_phase_1():
+def test_crypto_specialist_routes_and_abstains_from_book_when_unwired():
     champion_signal = _signal("crypto_spot_vol", "KXBTCD-26JUL1217-T71249.99", 0.55)
     specialist = CryptoSpecialist(champion=_StubIntelligence("crypto_spot_vol", champion_signal))
     market = _market("KXBTCD-26JUL1217-T71249.99", "BTC above 71249.99?",
@@ -203,6 +203,60 @@ def test_crypto_specialist_routes_and_abstains_from_book_until_phase_1():
     assert specialist.book(market) is None
     assert specialist.live_forecast(market) is None
     assert not specialist.applicable(_mlb_winner_market())
+
+
+def test_crypto_specialist_book_uses_wired_implied_book_and_fails_closed():
+    class _StubImpliedBook:
+        def __init__(self, value):
+            self.value = value
+
+        def book_probability(self, market):
+            if isinstance(self.value, Exception):
+                raise self.value
+            return self.value
+
+    market = _market("KXBTCD-26JUL1217-T71249.99", "BTC above?",
+                     vertical=Vertical.CRYPTO)
+    wired = CryptoSpecialist(champion=None, implied_book=_StubImpliedBook(0.63))
+    assert wired.book(market) == 0.63
+    assert wired.health().details["book"] == "dvol_implied"
+    # A raising book abstains instead of propagating.
+    broken = CryptoSpecialist(champion=None,
+                              implied_book=_StubImpliedBook(RuntimeError("hub down")))
+    assert broken.book(market) is None
+    # Non-crypto markets never reach the book.
+    assert wired.book(_mlb_winner_market()) is None
+
+
+def test_factory_wires_dvol_implied_book_from_hub_backed_signal():
+    state = {"dvol": 50.0, "spot": 71_000.0}
+
+    class _StubDvolSignal:
+        name = "crypto_dvol_implied"
+
+        def __init__(self):
+            self.fetch_state = lambda _asset: state
+
+    class _FakeSourceRegistry:
+        def sources(self):
+            return [_StubDvolSignal()]
+
+    council = build_specialist_registry(_FakeSourceRegistry())
+    crypto = next(s for s in council.specialists() if s.name == "crypto")
+    assert crypto.implied_book is not None
+    market = _market("KXBTCD-26JUL1317-T70000", "BTC above 70000?",
+                     vertical=Vertical.CRYPTO)
+    probability = crypto.book(market)
+    assert probability is not None and probability > 0.5  # spot above strike
+    # No hub-backed signal registered -> no book, crypto stays model_only.
+    class _EmptyRegistry:
+        def sources(self):
+            return []
+
+    cold = build_specialist_registry(_EmptyRegistry())
+    cold_crypto = next(s for s in cold.specialists() if s.name == "crypto")
+    assert cold_crypto.implied_book is None
+    assert cold_crypto.book(market) is None
 
 
 def test_mlb_methods_fail_closed_when_espn_fetch_raises():

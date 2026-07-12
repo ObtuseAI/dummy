@@ -35,8 +35,15 @@ _PRODUCTS = {"BTC": "BTC-USD", "ETH": "ETH-USD", "SOL": "SOL-USD"}
 CRYPTO_PROBABILITY_UNCERTAINTY_FLOOR = 0.08
 
 
-def crypto_probability_uncertainty(probability: float, horizon_sigma: float) -> float:
-    """Conservative probability-model uncertainty, not return volatility."""
+def crypto_probability_uncertainty(
+    probability: float, horizon_sigma: float, event_bump: float = 0.0,
+) -> float:
+    """Conservative probability-model uncertainty, not return volatility.
+
+    ``event_bump`` widens uncertainty inside scheduled macro windows
+    (autonomy/crypto_events.py); it never shifts the mean and is 0.0 outside
+    every window, keeping non-event forecasts byte-identical.
+    """
     boundary_sensitivity = 4.0 * probability * (1.0 - probability)
     horizon_penalty = min(0.08, max(0.0, horizon_sigma) * 1.5)
     return min(
@@ -45,7 +52,8 @@ def crypto_probability_uncertainty(probability: float, horizon_sigma: float) -> 
             CRYPTO_PROBABILITY_UNCERTAINTY_FLOOR,
             CRYPTO_PROBABILITY_UNCERTAINTY_FLOOR
             + 0.04 * boundary_sensitivity
-            + horizon_penalty,
+            + horizon_penalty
+            + max(0.0, event_bump),
         ),
     )
 
@@ -175,7 +183,11 @@ class CryptoSpotVolSignal:
         else:
             p_yes = p_above(parsed["strike"])
         p_yes = min(0.995, max(0.005, p_yes))
-        probability_uncertainty = crypto_probability_uncertainty(p_yes, horizon_sigma)
+        from autonomy.crypto_events import active_bump
+
+        probability_uncertainty = crypto_probability_uncertainty(
+            p_yes, horizon_sigma, event_bump=active_bump(),
+        )
         return Signal(
             source=self.name,
             market_ticker=market.ticker,
@@ -252,7 +264,11 @@ class CryptoEwmaTailSignal(CryptoSpotVolSignal):
         else:
             p_yes = p_above(parsed["strike"])
         p_yes = min(0.995, max(0.005, p_yes))
-        probability_uncertainty = crypto_probability_uncertainty(p_yes, horizon_sigma)
+        from autonomy.crypto_events import active_bump
+
+        probability_uncertainty = crypto_probability_uncertainty(
+            p_yes, horizon_sigma, event_bump=active_bump(),
+        )
         return Signal(
             source=self.name,
             market_ticker=market.ticker,
