@@ -965,24 +965,35 @@ def run_backtest(ledger: AutonomyLedger, bootstrap_weights: bool = False) -> dic
 
     from autonomy.correlation import group_key
     from autonomy.scanner import classify_vertical
+    from autonomy.taxonomy import grading_scope
 
     trackers: dict[str, SourceScoreTracker] = {}
     scoped_trackers: dict[str, SourceScoreTracker] = {}
+    # Per-scope trust: (source, market_type, horizon|phase). A source's good
+    # daily-crypto behaviour no longer averages away its bad 15-minute
+    # behaviour, and pre/live sports records stay separate. Evidence only --
+    # scope keys are NOT written to the weights table (the live forecaster
+    # looks up bare source names); they feed the WS-14 readiness report.
+    scope_trackers: dict[str, SourceScoreTracker] = {}
     for ticker, result in settlements.items():
         rows = ledger.calibration_signals_for_market(ticker)
         latest = {str(row["source"]): float(row["probability_yes"]) for row in rows}
+        features = {str(row["source"]): (row.get("features") or {}) for row in rows}
         market_p = latest.get("market_prior", 0.5)
         market_brier = _brier(market_p, result)
         vertical = classify_vertical(ticker).value
+        cluster = group_key(ticker)
         for source, prob in latest.items():
             trackers.setdefault(source, SourceScoreTracker(source)).observe(
-                prob, result, market_brier, market_p=market_p,
-                cluster_key=group_key(ticker),
+                prob, result, market_brier, market_p=market_p, cluster_key=cluster,
             )
             scoped_key = f"{source}@{vertical}"
             scoped_trackers.setdefault(scoped_key, SourceScoreTracker(scoped_key)).observe(
-                prob, result, market_brier, market_p=market_p,
-                cluster_key=group_key(ticker),
+                prob, result, market_brier, market_p=market_p, cluster_key=cluster,
+            )
+            scope_key = grading_scope(source, ticker, features.get(source) or {})
+            scope_trackers.setdefault(scope_key, SourceScoreTracker(scope_key)).observe(
+                prob, result, market_brier, market_p=market_p, cluster_key=cluster,
             )
 
     # Realized decision P&L (settled decisions only).
@@ -1032,6 +1043,12 @@ def run_backtest(ledger: AutonomyLedger, bootstrap_weights: bool = False) -> dic
                                      "contested_mean_brier_edge_ci95",
                                      "expected_calibration_error")}
                                 for s, t in scoped_trackers.items()},
+        "sources_by_scope": {s: {k: t.summary()[k] for k in
+                                 ("n", "mean_brier", "contested_n",
+                                  "contested_beat_rate", "contested_event_clusters",
+                                  "contested_mean_brier_edge_ci95",
+                                  "expected_calibration_error")}
+                             for s, t in scope_trackers.items()},
         "derived_weights": derived,
         "derived_weights_by_vertical": derived_scoped,
         "weights_written": bootstrap_weights,
