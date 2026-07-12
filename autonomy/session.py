@@ -213,6 +213,7 @@ def build_brain(mode: SessionMode):
         CryptoEmpiricalRegimeSignal,
         CryptoTechnicalCompositeSignal,
     )
+    from autonomy.signals.crypto_macro import CryptoMacroRegimeSignal
     from autonomy.signals.crypto_spot import CryptoEwmaTailSignal
     from autonomy.signals.sportsbook import SportsbookConsensusSignal
     from autonomy.signals.sports_intelligence import (
@@ -237,6 +238,15 @@ def build_brain(mode: SessionMode):
     registry.register(CryptoEmpiricalRegimeSignal(fetch_state=crypto_hub.state))
     registry.register(CryptoTechnicalCompositeSignal(fetch_state=crypto_hub.state))
     registry.register(CryptoDvolSignal(fetch_state=crypto_hub.state))
+    # Macro risk-regime (S&P/DXY/VIX/10y/gold/oil) reused from the retired
+    # commodities/econ pipeline as a crypto feature. Challenger-only: logged as
+    # point-in-time evidence, excluded from the execution ensemble until a
+    # settlement-backed promotion review, and abstains when no macro feed exists.
+    registry.register(CryptoMacroRegimeSignal(fetch_state=crypto_hub.state))
+    # CommoditiesSpotVolSignal is retained only as challenger evidence: with
+    # COMMODITIES dropped from the scanner's trading verticals it no longer
+    # receives tradable markets, but keeping it registered is harmless and
+    # preserves its settled-market record.
     registry.register(CommoditiesSpotVolSignal())
     registry.register(SportsEloSignal())
     # De-vigged sportsbook moneyline + open->close steam: the sharpest public
