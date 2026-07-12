@@ -102,33 +102,81 @@ from autonomy.sports.mlb_pa_sim import sample_outcome, simulate_half_inning
 from autonomy.sports.mlb_pa_sim import _advance
 
 
+class _QueuedRng:
+    """Deterministic rng stub: random() yields queued values, then 0.999."""
+
+    def __init__(self, values=()):
+        self._values = list(values)
+
+    def random(self) -> float:
+        return self._values.pop(0) if self._values else 0.999
+
+
 def test_advance_bases_loaded_walk_scores_one_keeps_loaded():
     bases = [True, True, True]
-    assert _advance(bases, "bb") == 1
+    assert _advance(bases, "bb", _QueuedRng()) == 1
     assert bases == [True, True, True]
 
 
 def test_advance_walk_with_first_open_no_force_run():
     bases = [False, True, True]  # 1st open, 2nd+3rd occupied
-    assert _advance(bases, "bb") == 0
+    assert _advance(bases, "bb", _QueuedRng()) == 0
     assert bases == [True, True, True]  # batter to 1st, no forced run
 
 
-def test_advance_single_moves_runner_from_second_to_third():
+def test_advance_single_scores_runner_from_second_on_low_roll():
     bases = [False, True, False]  # runner on 2nd
-    assert _advance(bases, "single") == 0
+    # Low roll < SINGLE_SCORE_FROM_SECOND -> the runner scores from 2nd.
+    assert _advance(bases, "single", _QueuedRng([0.0])) == 1
+    assert bases == [True, False, False]  # only the batter, on 1st
+
+
+def test_advance_single_holds_runner_at_third_on_high_roll():
+    bases = [False, True, False]  # runner on 2nd
+    # High roll -> the runner holds at 3rd (old station-to-station behavior).
+    assert _advance(bases, "single", _QueuedRng([0.99])) == 0
+    assert bases == [True, False, True]  # batter on 1st, runner held at 3rd
+
+
+def test_advance_single_first_to_third_taken_on_low_roll():
+    # 3rd is open; runner on 1st takes 3rd on a low first-to-third roll.
+    bases = [True, False, False]  # runner on 1st only
+    assert _advance(bases, "single", _QueuedRng([0.0])) == 0
     assert bases == [True, False, True]  # batter on 1st, runner to 3rd
+
+
+def test_advance_single_first_to_third_blocked_by_held_runner():
+    # Runner on 2nd holds at 3rd (high roll), which occupies 3rd; the runner on
+    # 1st is then forced to 2nd WITHOUT a first-to-third roll (the base is taken,
+    # so the guard short-circuits and no second value is drawn).
+    bases = [True, True, False]  # runners on 1st and 2nd
+    assert _advance(bases, "single", _QueuedRng([0.99])) == 0
+    assert bases == [True, True, True]  # batter 1B, 1B-runner 2B, 2B-runner 3B
+
+
+def test_advance_single_scores_runner_from_third():
+    # A runner on 3rd always scores on a single (no roll for the 3B runner).
+    bases = [False, False, True]  # runner on 3rd
+    assert _advance(bases, "single", _QueuedRng()) == 1
+    assert bases == [True, False, False]  # only the batter, on 1st
 
 
 def test_advance_double_scores_runner_from_second():
     bases = [False, True, False]  # runner on 2nd
-    assert _advance(bases, "double") == 1  # runner scores (2+2>=3)
+    assert _advance(bases, "double", _QueuedRng()) == 1  # 2nd always scores
+    assert bases == [False, True, False]  # batter on 2nd
+
+
+def test_advance_double_scores_runner_from_first_on_low_roll():
+    bases = [True, False, False]  # runner on 1st
+    # Low roll < DOUBLE_SCORE_FROM_FIRST -> the runner scores from 1st.
+    assert _advance(bases, "double", _QueuedRng([0.0])) == 1
     assert bases == [False, True, False]  # batter on 2nd
 
 
 def test_advance_home_run_with_two_on_scores_three_empties_bases():
     bases = [True, True, False]  # runners on 1st and 2nd
-    assert _advance(bases, "hr") == 3  # two runners + batter
+    assert _advance(bases, "hr", _QueuedRng()) == 3  # two runners + batter
     assert bases == [False, False, False]
 
 
@@ -307,25 +355,21 @@ def test_neutral_matchup_is_calibrated_to_real_mlb():
 
     Total runs (~8.5 real) and the home edge (~0.54 real) are held tightly.
 
-    YRFI is deliberately loosened to [0.38, 0.55], BELOW real MLB's ~0.55 and
-    below the review's requested [0.50, 0.62] / fallback [0.46, 0.62]. This is
-    not a tuning miss -- it is a structural consequence of insisting on realistic
-    composition. An exhaustive search (HIT_SHARE_BASE x HR_ISO_MULT x hit-mix x
-    TTO x HFA) showed the maximum in-band yrfi reachable with realistic
-    composition is ~0.44, and only by pushing HR to ~1.35x real and doubles to
-    ~1.25x real -- i.e. re-introducing the HR-heavy distortion this task exists
-    to remove. The root cause is the station-to-station single advancement in
-    _advance (a documented deferred limitation): runners advance one base per
-    single, so they pile up and strand, depressing the fraction of innings that
-    score >=1 run (which is what yrfi measures) relative to the mean run rate.
-    Per the review's explicit priority -- realistic composition over the yrfi
-    band -- yrfi is locked at its honest realistic-composition value here; the
-    real fix is the deferred _advance improvement.
+    YRFI band is [0.40, 0.55]. Probabilistic baserunning (the _advance fix)
+    replaced the old station-to-station single advancement and raised neutral
+    yrfi from ~0.40 to ~0.43 at the SAME realistic run environment/composition:
+    runners now convert to runs at real-MLB rates rather than piling up one base
+    per single. yrfi ~0.43 remains modestly below real MLB's ~0.55; the residual
+    gap is a subtler artifact of the independent per-PA run process (runs stay a
+    touch over-clustered, no situational contact-vs-K shift), not the (now-fixed)
+    station-to-station advancement. Forcing yrfi to ~0.55 still requires
+    re-distorting composition (HR/doubles inflation), so composition stays the
+    priority and yrfi is locked at its honest realistic-composition value.
     """
     ctx = _context(home_batter_iso=0.15, away_batter_iso=0.15)
     markets = simulate_game_markets(ctx, seed=2026, sims=3000)
     assert 8.0 <= markets["expected_total_runs"] <= 9.2    # real MLB ~8.5
-    assert 0.38 <= markets["yrfi"] <= 0.55                 # structurally < real ~0.55 (see docstring)
+    assert 0.40 <= markets["yrfi"] <= 0.55                 # improved via _advance; still < real ~0.55
     assert 0.51 <= markets["home_win"] <= 0.575            # home edge ~0.54
 
 

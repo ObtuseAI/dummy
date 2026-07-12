@@ -4,11 +4,12 @@ Pure/offline eyeball check of the plate-appearance engine -- not a pytest test.
 Reflects the Task 3 re-calibration for realistic run COMPOSITION: a neutral matchup
 (average batters vs average pitchers) should land close to real MLB's ~8.5 expected
 total runs and a modest home edge (~0.54), with a realistic run process -- HR/PA
-~0.033 and HR ~0.13-0.15 of hits, not an HR-inflated shortcut. YRFI lands ~0.41,
-structurally BELOW real MLB's ~0.55: holding composition realistic caps it there
-because the model's station-to-station single advancement (a documented deferred
-limitation) under-converts baserunners into runs. A strong-vs-weak matchup should
-still tilt the winner market well above 0.5 without breaking the [0, 1] bounds.
+~0.033 and HR ~0.13-0.15 of hits, not an HR-inflated shortcut. YRFI lands ~0.43
+(raised from ~0.40 by the probabilistic _advance baserunning fix), still modestly
+below real MLB's ~0.55 -- the residual gap is a subtler artifact of the
+independent per-PA run process, not the (now-fixed) station-to-station single
+advancement. A strong-vs-weak matchup should still tilt the winner market well
+above 0.5 without breaking the [0, 1] bounds.
 """
 from __future__ import annotations
 
@@ -54,7 +55,7 @@ def main() -> int:
     print(f"  HR/PA={d['hr']:.4f}  HR/hits={d['hr'] / hits:.3f}")
     print("\nNeutral matchup (equal lineups, real-MLB calibration check):")
     print("  target: expected_total_runs in [8.0, 9.2], home_win in [0.51, 0.575];")
-    print("  yrfi ~0.41 (structurally < real ~0.55 while composition is held realistic)")
+    print("  yrfi ~0.42 (raised by probabilistic _advance; still < real ~0.55)")
     print(json.dumps(simulate_game_markets(_ctx(0.15, 0.15), seed=1, sims=4000), indent=2))
     print("\nStrong home vs weak away (home_win should sit well above 0.5):")
     print(json.dumps(simulate_game_markets(_ctx(0.28, 0.09), seed=1, sims=4000), indent=2))
