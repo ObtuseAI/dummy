@@ -252,6 +252,17 @@ def build_brain(mode: SessionMode):
     from autonomy.signals.crypto_equities import CryptoEquitiesSignal
 
     registry.register(CryptoEquitiesSignal(fetch_state=crypto_hub.state))
+    # Volatility triangulation (blended flat/EWMA/implied sigma + settlement-
+    # proximity guard) and the VRP mean-reversion regime, both challenger-only
+    # over the shared hub state. The blend + guard reach execution only via a
+    # WS-14 promotion; the champion is never silently altered.
+    from autonomy.signals.crypto_vol import (
+        CryptoBlendSigmaSignal,
+        CryptoVrpRegimeSignal,
+    )
+
+    registry.register(CryptoBlendSigmaSignal(fetch_state=crypto_hub.state))
+    registry.register(CryptoVrpRegimeSignal(fetch_state=crypto_hub.state))
     # CommoditiesSpotVolSignal is retained only as challenger evidence: with
     # COMMODITIES dropped from the scanner's trading verticals it no longer
     # receives tradable markets, but keeping it registered is harmless and

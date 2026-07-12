@@ -102,6 +102,13 @@ def _indicator_features(state: dict[str, Any]) -> dict[str, Any]:
         "vol_regime_ratio": (
             recent_vol / long_vol if recent_vol is not None and long_vol else None
         ),
+        # Volatility risk premium in points (implied DVOL minus 7-day realized);
+        # None when either leg is missing. Consumed by the WS-16 VRP challenger
+        # and available as graded evidence on every crypto signal.
+        "vrp_points": (
+            float(state["dvol"]) - long_vol * 100.0
+            if state.get("dvol") is not None and long_vol is not None else None
+        ),
         "volume_surge_15m": volume_surge,
         "top_book_imbalance": state.get("book_imbalance"),
         "microprice_basis_bps": state.get("microprice_basis_bps"),
