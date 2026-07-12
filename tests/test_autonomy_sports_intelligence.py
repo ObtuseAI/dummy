@@ -399,6 +399,32 @@ def test_live_winner_fails_closed_without_live_state(tmp_path):
         _market("KXMLBGAME-26JUL102005HOUTEX-TEX", "Winner?")) is None
 
 
+def test_injuries_widen_uncertainty_without_shifting_the_mean(tmp_path):
+    from autonomy.sports.injuries import InjuryBook
+    client = EspnClient(fetch_scoreboard=lambda _l, _d: {"events": []})
+    client._cache[("mlb", "20260710")] = [_mlb_game()]  # home TEX, away HOU
+    hurt_payload = {"injuries": [
+        {"displayName": "Texas Rangers",
+         "injuries": [{"status": "Out"}, {"status": "Day-To-Day"}, {"status": "Out"}]},
+        {"displayName": "Houston Astros", "injuries": [{"status": "Day-To-Day"}]},
+    ]}
+    healthy = BaseballIntelligenceSignal(
+        espn=client, model=BaseballRunModel(), model_path=tmp_path / "a.json",
+        injuries=InjuryBook(fetch_fn=lambda: {"injuries": []}))
+    hurt = BaseballIntelligenceSignal(
+        espn=client, model=BaseballRunModel(), model_path=tmp_path / "b.json",
+        injuries=InjuryBook(fetch_fn=lambda: hurt_payload))
+    healthy.injuries.refresh()
+    hurt.injuries.refresh()
+    market = _market("KXMLBGAME-26JUL102005HOUTEX-TEX", "Winner?")
+    clean = healthy.generate(market)
+    banged = hurt.generate(market)
+    assert banged.uncertainty > clean.uncertainty          # widened
+    assert banged.features["injury_burden"] > 0
+    assert clean.features["injury_burden"] == 0
+    assert abs(banged.probability_yes - clean.probability_yes) < 1e-9  # mean unchanged
+
+
 def test_live_game_abstains_on_yrfi(tmp_path):
     client = EspnClient(fetch_scoreboard=lambda _l, _d: {"events": []})
     client._cache[("mlb", "20260710")] = [

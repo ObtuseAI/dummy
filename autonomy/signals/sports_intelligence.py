@@ -10,6 +10,7 @@ from typing import Any
 from autonomy.ontology import MarketView, Signal, Vertical
 from autonomy.sports.baseball import BaseballRunModel, remaining_innings
 from autonomy.sports.espn import EspnClient, canonical_team
+from autonomy.sports.injuries import InjuryBook
 from autonomy.sports.formula_one import F1EspnClient, F1Model, normalize_text
 from autonomy.sports.team_scores import LEAGUE_SCORE_CONFIGS, TeamScoreModel
 from autonomy.sports.ufc import UfcEspnClient, UfcModel, normalize_name
@@ -202,10 +203,12 @@ class BaseballIntelligenceSignal:
         espn: EspnClient | None = None,
         model: BaseballRunModel | None = None,
         model_path: Path | None = None,
+        injuries: "InjuryBook | None" = None,
     ) -> None:
         self.espn = espn or EspnClient()
         self.model_path = model_path or MODEL_DIR / "mlb_runs_model.json"
         self.model = model or BaseballRunModel.load(self.model_path)
+        self.injuries = injuries or InjuryBook()
 
     def warmup(self, date_ranges: list[str]) -> int:
         updated = 0
@@ -222,6 +225,7 @@ class BaseballIntelligenceSignal:
         self.espn.clear_cache()
         self.warmup([_date_range()])
         self.espn.clear_cache()
+        self.injuries.refresh()  # refresh availability once per cycle
 
     def applicable(self, market: MarketView) -> bool:
         parsed = parse_sports_contract(market)
@@ -318,6 +322,14 @@ class BaseballIntelligenceSignal:
             market_detail = "YRFI (NO is NRFI)"
         else:
             return None
+        # Availability: a banged-up roster is harder to forecast, so widen the
+        # uncertainty (never shift the mean -- which player and how much is
+        # unknown). No injury feed -> zero burden -> byte-identical output.
+        injury_burden = (
+            self.injuries.burden_for(game.home_name)
+            + self.injuries.burden_for(game.away_name)
+        )
+        uncertainty = min(0.45, uncertainty + 0.05 * injury_burden)
         return Signal(
             source=source,
             market_ticker=market.ticker,
@@ -337,6 +349,7 @@ class BaseballIntelligenceSignal:
                 "sport": "mlb",
                 "market_type": parsed.market_type,
                 "live": live,
+                "injury_burden": round(injury_burden, 3),
                 "current_period": game.current_period,
                 "home_score": game.home_score,
                 "away_score": game.away_score,
