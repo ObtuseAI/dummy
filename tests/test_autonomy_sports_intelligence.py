@@ -1,4 +1,4 @@
-"""MLB/UFC/all-sport intelligence and recursive simulation invariants."""
+"""MLB/all-sport intelligence and recursive simulation invariants."""
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
@@ -11,12 +11,10 @@ from autonomy.scanner import WATCHLIST_SERIES, classify_vertical
 from autonomy.signals.sports_intelligence import (
     BaseballIntelligenceSignal,
     TeamSportsIntelligenceSignal,
-    UfcIntelligenceSignal,
     parse_sports_contract,
 )
 from autonomy.sports.baseball import BaseballRunModel, poisson_over_probability
 from autonomy.sports.espn import EspnClient, Game, canonical_team, parse_scoreboard
-from autonomy.sports.formula_one import F1Model, parse_f1_scoreboard
 from autonomy.sports.simulation import (
     DESIGNATED_SPORTS_PREDICTION_TYPES,
     FORCED_COVERAGE_LANE,
@@ -38,7 +36,6 @@ from autonomy.sports.simulation import (
     unlocked_mutations,
 )
 from autonomy.sports.team_scores import TeamScoreModel
-from autonomy.sports.ufc import UfcEspnClient, UfcModel, parse_ufc_scoreboard
 
 NOW = datetime(2026, 7, 10, tzinfo=timezone.utc)
 
@@ -101,11 +98,19 @@ def test_exact_requested_sports_series_are_in_public_scanner_watchlist():
         "KXMLBGAME", "KXMLBTOTAL", "KXMLBRFI", "KXMLBSPREAD",
         "KXNBAGAME", "KXNBATOTAL", "KXNFLGAME", "KXNFLTOTAL",
         "KXNCAAFGAME", "KXNCAAFTOTAL", "KXNHLGAME", "KXNHLTOTAL",
-        "KXNCAAMBGAME", "KXNCAAMBTOTAL", "KXUFCFIGHT", "KXUFCROUNDS",
-        "KXUFCDISTANCE", "KXF1RACE",
+        "KXNCAAMBGAME", "KXNCAAMBTOTAL",
     }
     assert required <= set(WATCHLIST_SERIES)
-    assert classify_vertical("KXF1RACE-BELGP26-VER") is Vertical.SPORTS
+    # UFC and Formula One retired 2026-07-12: no longer scanned, classified,
+    # or parsed as sports contracts.
+    retired = {"KXUFCFIGHT", "KXUFCROUNDS", "KXUFCDISTANCE", "KXF1RACE"}
+    assert not retired & set(WATCHLIST_SERIES)
+    assert classify_vertical("KXF1RACE-BELGP26-VER") is Vertical.OTHER
+    assert classify_vertical("KXUFCFIGHT-26JUL11COSDUR-COS") is Vertical.OTHER
+    assert parse_sports_contract(_market(
+        "KXUFCFIGHT-26JUL11COSDUR-COS", "Will Alessandro Costa win?")) is None
+    assert parse_sports_contract(_market(
+        "KXF1RACE-BELGP26-VER", "Belgian Grand Prix winner?")) is None
     assert classify_vertical("KXMLBSPREAD-26JUL112110AZLAD-AZ8") is Vertical.SPORTS
 
 
@@ -439,57 +444,6 @@ def test_live_game_abstains_on_yrfi(tmp_path):
         "KXMLBRFI-26JUL102005HOUTEX", "First Inning Run?")) is None
 
 
-def _ufc_payload(state: str = "pre", decision: bool = False):
-    status = {
-        "period": 3 if state == "post" else 0,
-        "clock": 300 if decision else 95,
-        "type": {"state": state},
-    }
-    return {"events": [{"competitions": [{
-        "id": "fight-1", "date": "2026-07-11T21:00Z",
-        "type": {"abbreviation": "Flyweight"},
-        "status": status,
-        "format": {"regulation": {"periods": 3}},
-        "details": ([{"type": {"text": "Unofficial Winner Decision"}}] if decision else []),
-        "competitors": [
-            {"winner": state == "post", "athlete": {"displayName": "Alessandro Costa"},
-             "records": [{"type": "total", "summary": "16-5-0"}]},
-            {"winner": False, "athlete": {"displayName": "Cody Durden"},
-             "records": [{"type": "total", "summary": "18-10-1"}]},
-        ],
-    }]}]}
-
-
-def test_ufc_model_links_winner_round_total_and_distance():
-    final = parse_ufc_scoreboard(_ufc_payload("post", decision=True))[0]
-    assert final.went_distance is True and final.elapsed_minutes == 15.0
-    model = UfcModel()
-    assert model.update(final)
-    upcoming = parse_ufc_scoreboard(_ufc_payload("pre"))[0]
-    prediction = model.predict(upcoming)
-    assert 0 < prediction.fighter_a_win_probability < 1
-    assert prediction.before_round_probability(2) < prediction.before_round_probability(3)
-    assert 0 < prediction.distance_probability < 1
-
-
-def test_ufc_signal_routes_real_contract_shapes(tmp_path):
-    client = UfcEspnClient(fetch_scoreboard=lambda _dates: _ufc_payload("pre"))
-    source = UfcIntelligenceSignal(
-        espn=client, model=UfcModel(), model_path=tmp_path / "ufc.json",
-    )
-    markets = [
-        _market("KXUFCFIGHT-26JUL11COSDUR-COS", "Will Alessandro Costa win?",
-                yes_sub_title="Alessandro Costa"),
-        _market("KXUFCROUNDS-26JUL11COSDUR-3", "Will the Fight end before round 3?"),
-        _market("KXUFCDISTANCE-26JUL11COSDUR-DIST", "Will the fight go the distance?"),
-    ]
-    signals = [source.generate(market) for market in markets]
-    assert [signal.source for signal in signals] == [
-        "ufc_fight_winner", "ufc_round_total", "ufc_fight_distance",
-    ]
-    assert all(signal.features["challenger_only"] for signal in signals)
-
-
 def test_team_score_models_are_league_isolated_and_parse_college_markets(tmp_path):
     model = TeamScoreModel("ncaaf")
     game = Game(
@@ -517,33 +471,6 @@ def test_team_score_models_are_league_isolated_and_parse_college_markets(tmp_pat
     source = TeamSportsIntelligenceSignal(espn=client, models=models, model_dir=tmp_path)
     signal = source.generate(total_market)
     assert signal is not None and signal.source == "ncaaf_game_total"
-
-
-def _f1_payload(state: str):
-    return {"events": [{
-        "id": "bel-2026", "name": "Belgian Grand Prix", "date": "2026-07-26T13:00Z",
-        "competitions": [{
-            "id": "race-1", "date": "2026-07-26T13:00Z",
-            "type": {"abbreviation": "Race"}, "status": {"type": {"state": state}},
-            "competitors": [
-                {"order": 1, "winner": state == "post", "athlete": {"displayName": "Max Verstappen"}},
-                {"order": 2, "winner": False, "athlete": {"displayName": "Oscar Piastri"}},
-                {"order": 3, "winner": False, "athlete": {"displayName": "George Russell"}},
-                {"order": 4, "winner": False, "athlete": {"displayName": "Lando Norris"}},
-                {"order": 5, "winner": False, "athlete": {"displayName": "Charles Leclerc"}},
-            ],
-        }],
-    }]}
-
-
-def test_formula_one_model_normalizes_one_race_winner_distribution():
-    final = parse_f1_scoreboard(_f1_payload("post"))[0]
-    model = F1Model()
-    assert model.update(final)
-    upcoming = parse_f1_scoreboard(_f1_payload("pre"))[0]
-    prediction = model.predict(upcoming)
-    assert sum(prediction.probabilities.values()) == pytest.approx(1.0)
-    assert prediction.probabilities["max verstappen"] > prediction.probabilities["charles leclerc"]
 
 
 def _observation(index: int, probability: float = 0.75, result: bool | None = True):
@@ -617,8 +544,6 @@ def test_designated_sports_types_are_complete_and_tennis_remains_excluded():
         ("ncaaf", "winner"), ("ncaaf", "total"),
         ("nhl", "winner"), ("nhl", "total"),
         ("ncaamb", "winner"), ("ncaamb", "total"),
-        ("ufc", "winner"), ("ufc", "before_round"), ("ufc", "distance"),
-        ("f1", "winner"),
     }
     assert all(sport != "tennis" for sport, _market_type in scopes)
 

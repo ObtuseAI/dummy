@@ -1,7 +1,8 @@
 # Multi-sport intelligence and recursive simulation lab
 
 Dummy now maintains a public-read-only sports research stack across MLB, NFL,
-NCAAF, NHL, NBA, NCAAB, UFC, and Formula One. It produces paper picks and
+NCAAF, NHL, NBA, and NCAAB (UFC and Formula One retired 2026-07-12; their
+markets are no longer scanned or forecast). It produces paper picks and
 settlement evidence; the new challengers are explicitly excluded from the
 execution ensemble until their own league and market-type scope passes the
 forward promotion gates.
@@ -32,23 +33,14 @@ calibration support a later, reviewed change.
 | NHL | `KXNHLGAME` | `KXNHLTOTAL` | League-isolated goal model |
 | NBA | `KXNBAGAME` | `KXNBATOTAL` | League-isolated score model |
 | NCAAB | `KXNCAAMBGAME` | `KXNCAAMBTOTAL` | League-isolated score model |
-| UFC | `KXUFCFIGHT` | `KXUFCROUNDS` | `KXUFCDISTANCE` |
-| Formula One | `KXF1RACE` | Not listed | Field-normalized race winner |
 
 The MLB run model learns exponentially weighted offense, prevention,
 first-inning scoring and prevention, venue environment, announced-starter ERA,
 and outdoor temperature. It derives winner, total-run, and YRFI probabilities
 from one internally coherent run distribution.
 
-The UFC model combines fighter Elo, weight-class Elo, bounded record priors,
-distance tendencies, scheduled rounds, and a survival curve. A single curve
-prices winner, finish-before-round, and go-the-distance contracts without
-allowing logically inconsistent round probabilities.
-
 The generic team model keeps independent score distributions for NFL, NCAAF,
-NHL, NBA, and NCAAB. Formula One uses a field-normalized multi-competitor
-rating and recent finishing-percentile state; contract probabilities across a
-race sum to one before market-specific clipping.
+NHL, NBA, and NCAAB.
 
 ## Game-engine mechanics
 

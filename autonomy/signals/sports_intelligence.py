@@ -1,4 +1,4 @@
-"""Settlement-trained MLB runs and UFC fight intelligence challengers."""
+"""Settlement-trained sports intelligence challengers (MLB + team leagues)."""
 from __future__ import annotations
 
 import re
@@ -11,9 +11,7 @@ from autonomy.ontology import MarketView, Signal, Vertical
 from autonomy.sports.baseball import BaseballRunModel, remaining_innings
 from autonomy.sports.espn import EspnClient, canonical_team
 from autonomy.sports.injuries import InjuryBook
-from autonomy.sports.formula_one import F1EspnClient, F1Model, normalize_text
 from autonomy.sports.team_scores import LEAGUE_SCORE_CONFIGS, TeamScoreModel
-from autonomy.sports.ufc import UfcEspnClient, UfcModel, normalize_name
 
 MODEL_DIR = Path("runtime/autonomy")
 _MONTHS = {month: index for index, month in enumerate(
@@ -82,11 +80,6 @@ def parse_sports_contract(market: MarketView) -> SportsContract | None:
     if len(parts) < 2:
         return None
     series = parts[0]
-    if series == "KXF1RACE":
-        subject = str(market.raw.get("yes_sub_title") or "").strip()
-        return SportsContract(
-            "f1", "winner", "", subject=subject or None, fight_code=parts[1],
-        )
     dated = _date_and_remainder(parts[1])
     if dated is None:
         return None
@@ -159,31 +152,6 @@ def parse_sports_contract(market: MarketView) -> SportsContract | None:
             )
         return SportsContract("mlb", "yrfi", date_yyyymmdd, teams)
 
-    if series in {"KXUFCFIGHT", "KXUFCROUNDS", "KXUFCDISTANCE"}:
-        fight_code = remainder[:6] if len(remainder) >= 6 else remainder
-        if series == "KXUFCFIGHT":
-            subject = str(market.raw.get("yes_sub_title") or "").strip()
-            return SportsContract(
-                "ufc", "winner", date_yyyymmdd,
-                subject=subject or None, fight_code=fight_code,
-            )
-        if series == "KXUFCROUNDS":
-            threshold = None
-            if len(parts) >= 3:
-                try:
-                    threshold = float(parts[2])
-                except ValueError:
-                    threshold = None
-            if threshold is None:
-                match = re.search(r"before round\s+(\d+)", market.title, flags=re.IGNORECASE)
-                threshold = float(match.group(1)) if match else None
-            if threshold is None:
-                return None
-            return SportsContract(
-                "ufc", "before_round", date_yyyymmdd,
-                threshold=threshold, fight_code=fight_code,
-            )
-        return SportsContract("ufc", "distance", date_yyyymmdd, fight_code=fight_code)
     return None
 
 
@@ -488,171 +456,5 @@ class TeamSportsIntelligenceSignal:
                 "expected_total": prediction.expected_total,
                 "threshold": parsed.threshold,
                 "sample_games": prediction.sample_games,
-            },
-        )
-
-
-class UfcIntelligenceSignal:
-    """Challenger forecasts for UFC winners, round totals, and distance."""
-
-    name = "ufc_intelligence"
-
-    def __init__(
-        self,
-        espn: UfcEspnClient | None = None,
-        model: UfcModel | None = None,
-        model_path: Path | None = None,
-    ) -> None:
-        self.espn = espn or UfcEspnClient()
-        self.model_path = model_path or MODEL_DIR / "ufc_model.json"
-        self.model = model or UfcModel.load(self.model_path)
-
-    def warmup(self, dates: list[str]) -> int:
-        updated = 0
-        fights: list[Any] = []
-        for date_range in dates:
-            fights.extend(self.espn.fights(date_range))
-        for fight in sorted(fights, key=lambda item: item.date):
-            updated += int(self.model.update(fight))
-        if updated:
-            self.model.save(self.model_path)
-        return updated
-
-    def on_cycle_start(self) -> None:
-        self.espn.clear_cache()
-        self.warmup([_date_range(14)])
-        self.espn.clear_cache()
-
-    def applicable(self, market: MarketView) -> bool:
-        parsed = parse_sports_contract(market)
-        return market.vertical is Vertical.SPORTS and parsed is not None and parsed.sport == "ufc"
-
-    def generate(self, market: MarketView) -> Signal | None:
-        parsed = parse_sports_contract(market)
-        if parsed is None or parsed.sport != "ufc":
-            return None
-        fight = self.espn.find_fight(parsed.subject, parsed.fight_code, parsed.date_yyyymmdd)
-        if fight is None or fight.status != "pre":
-            return None
-        prediction = self.model.predict(fight)
-        if parsed.market_type == "winner" and parsed.subject:
-            subject = normalize_name(parsed.subject)
-            if subject == normalize_name(fight.fighter_a):
-                probability = prediction.fighter_a_win_probability
-            elif subject == normalize_name(fight.fighter_b):
-                probability = 1.0 - prediction.fighter_a_win_probability
-            else:
-                return None
-            uncertainty = prediction.winner_uncertainty
-            source = "ufc_fight_winner"
-            market_detail = f"{parsed.subject} win"
-        elif parsed.market_type == "before_round" and parsed.threshold is not None:
-            probability = prediction.before_round_probability(int(parsed.threshold))
-            uncertainty = prediction.duration_uncertainty
-            source = "ufc_round_total"
-            market_detail = f"finish before round {int(parsed.threshold)}"
-        elif parsed.market_type == "distance":
-            probability = prediction.distance_probability
-            uncertainty = prediction.duration_uncertainty
-            source = "ufc_fight_distance"
-            market_detail = "go the distance"
-        else:
-            return None
-        return Signal(
-            source=source,
-            market_ticker=market.ticker,
-            probability_yes=min(0.995, max(0.005, probability)),
-            uncertainty=uncertainty,
-            rationale=(
-                f"UFC {market_detail}: {fight.fighter_a} vs {fight.fighter_b}; "
-                f"distance={prediction.distance_probability:.3f}; "
-                f"weight={prediction.weight_class}; scheduled={prediction.scheduled_rounds}; "
-                f"paired sample={prediction.sample_fights}"
-            ),
-            features={
-                "challenger_only": True,
-                "promotion_eligible": False,
-                "point_in_time": True,
-                "public_read_only": True,
-                "market_type": parsed.market_type,
-                "model_version": prediction.model_version,
-                "event_start": fight.date,
-                "fighter_a": fight.fighter_a,
-                "fighter_b": fight.fighter_b,
-                "weight_class": prediction.weight_class,
-                "scheduled_rounds": prediction.scheduled_rounds,
-                "distance_probability": prediction.distance_probability,
-                "threshold": parsed.threshold,
-                "sample_fights": prediction.sample_fights,
-            },
-        )
-
-
-class FormulaOneIntelligenceSignal:
-    """Field-normalized Formula One race-winner challenger."""
-
-    name = "f1_intelligence"
-
-    def __init__(
-        self,
-        espn: F1EspnClient | None = None,
-        model: F1Model | None = None,
-        model_path: Path | None = None,
-    ) -> None:
-        self.espn = espn or F1EspnClient()
-        self.model_path = model_path or MODEL_DIR / "f1_model.json"
-        self.model = model or F1Model.load(self.model_path)
-
-    def warmup(self, year: int) -> int:
-        updated = 0
-        for race in sorted(self.espn.races(year), key=lambda item: item.date):
-            updated += int(self.model.update(race))
-        if updated:
-            self.model.save(self.model_path)
-        return updated
-
-    def on_cycle_start(self) -> None:
-        self.espn.clear_cache()
-        self.warmup(datetime.now(timezone.utc).year)
-
-    def applicable(self, market: MarketView) -> bool:
-        parsed = parse_sports_contract(market)
-        return market.vertical is Vertical.SPORTS and parsed is not None and parsed.sport == "f1"
-
-    def generate(self, market: MarketView) -> Signal | None:
-        parsed = parse_sports_contract(market)
-        if parsed is None or parsed.sport != "f1" or not parsed.subject:
-            return None
-        year = datetime.now(timezone.utc).year
-        race = self.espn.find_race(year, market.title)
-        if race is None or race.status != "pre":
-            return None
-        prediction = self.model.predict(race)
-        probability = prediction.probabilities.get(normalize_text(parsed.subject))
-        if probability is None:
-            return None
-        return Signal(
-            source="f1_race_winner",
-            market_ticker=market.ticker,
-            probability_yes=min(0.995, max(0.005, probability)),
-            uncertainty=prediction.uncertainty,
-            rationale=(
-                f"F1 {parsed.subject} to win {race.name}: field-normalized probability "
-                f"{probability:.3f}; field={prediction.field_size}; "
-                f"minimum driver history={prediction.minimum_driver_races} races"
-            ),
-            features={
-                "challenger_only": True,
-                "promotion_eligible": False,
-                "point_in_time": True,
-                "public_read_only": True,
-                "sport": "f1",
-                "market_type": "winner",
-                "model_version": prediction.model_version,
-                "event_start": race.date,
-                "race": race.name,
-                "driver": parsed.subject,
-                "field_size": prediction.field_size,
-                "sample_races": prediction.minimum_driver_races,
             },
         )

@@ -9,11 +9,10 @@ records the full lifecycle in an auditable ledger.
   and weekly horizons, combining realized and implied volatility, market and
   macro risk regime (S&P/DXY/VIX/10y/gold/oil), momentum, technical, volume,
   order-book, and cross-venue evidence.
-- **Sports arsenal:** MLB winners, totals, and YRFI/NRFI — with real left/right
-  platoon splits, per-team bullpen quality, rivalry/divisional awareness, and
-  probabilistic baserunning; UFC winners, round totals, and distance; NBA,
-  NCAAB, NFL, NCAAF, and NHL winners and totals; plus Formula One race-winner
-  modeling.
+- **Sports arsenal:** MLB winners, totals, spreads, and YRFI/NRFI — with real
+  left/right platoon splits, per-team bullpen quality, rivalry/divisional
+  awareness, and probabilistic baserunning; NBA, NCAAB, NFL, NCAAF, and NHL
+  winners and totals. (UFC and Formula One retired 2026-07-12.)
 - **Training arsenal:** point-in-time replay, Monte Carlo simulation,
   adversarial arenas, event-purged walk-forward validation, calibration and
   risk analytics, deterministic replay buffers, and bounded recursive
@@ -104,14 +103,14 @@ default), reconciles settlements, and grades every source against reality.
   scopes, records the normal-policy blocker, and exposes missing scopes as gaps.
   Forced crypto samples cannot influence calibration, promotion, readiness, or
   execution.
-- **Multi-sport game engine**: MLB, NFL, NCAAF, NHL, NBA, NCAAB, UFC, and F1
+- **Multi-sport game engine**: MLB, NFL, NCAAF, NHL, NBA, and NCAAB
   challengers feed a deterministic replay buffer and Monte Carlo curriculum.
   League-isolated genomes progress through Rookie/Veteran/Elite/Boss tiers,
   face fog-of-war/meta-shift/boss-chaos arenas, and unlock mutation skills only
   after settled event-cluster evidence. Deep analytics include Brier, log loss,
   ECE/MCE, AUC, sharpness, Sortino, drawdown, and paired-cluster confidence.
   A separate forced-coverage lane paper-trades every real, signal-compatible
-  designated winner/total/YRFI-NRFI/UFC/F1 market and explains the decision;
+  designated winner/total/YRFI-NRFI market and explains the decision;
   missing types become explicit coverage gaps. Forced samples cannot promote a
   model, rewrite code, alter production weights, or reach capital. NFL winner
   is also retained as an explicit gap while listed contracts accumulate

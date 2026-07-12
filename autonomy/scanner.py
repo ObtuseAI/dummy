@@ -26,8 +26,6 @@ _VERTICAL_PREFIXES: list[tuple[str, Vertical]] = [
     ("KXNFL", Vertical.SPORTS),
     ("KXMLB", Vertical.SPORTS),
     ("KXNHL", Vertical.SPORTS),
-    ("KXUFC", Vertical.SPORTS),
-    ("KXF1", Vertical.SPORTS),
     ("KXWTA", Vertical.SPORTS),
     ("KXATP", Vertical.SPORTS),
     ("KXMVESPORTS", Vertical.SPORTS),
@@ -67,13 +65,12 @@ WATCHLIST_SERIES: list[str] = [
     "KXBTCD", "KXBTC", "KXETHD", "KXETH", "KXSOLD", "KXSOLE",
     "BTCD", "BTC", "ETHD", "ETH",
     # Sports intelligence: active moneylines plus settlement-trained MLB runs
-    # and UFC fight-duration challengers. All external reads are public GETs.
+    # challengers. UFC and Formula One retired 2026-07-12 (operator directive).
+    # All external reads are public GETs.
     "KXMLBGAME", "KXNBAGAME", "KXNFLGAME", "KXNCAAFGAME", "KXNHLGAME",
     "KXNCAAMBGAME", "KXWNBAGAME",
     "KXMLBTOTAL", "KXMLBRFI", "KXMLBSPREAD",
     "KXNBATOTAL", "KXNFLTOTAL", "KXNCAAFTOTAL", "KXNHLTOTAL", "KXNCAAMBTOTAL",
-    "KXUFCFIGHT", "KXUFCROUNDS", "KXUFCDISTANCE",
-    "KXF1RACE",
     # Commodities + econ trading retired 2026-07-11 (never demonstrated an edge
     # vs the sharp Kalshi price/econ markets). The Yahoo macro pipeline those
     # used now feeds CRYPTO as a risk-regime feature (crypto_macro_regime), not a

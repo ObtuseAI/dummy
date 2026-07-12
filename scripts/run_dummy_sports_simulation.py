@@ -19,9 +19,7 @@ if str(ROOT) not in sys.path:
 from autonomy.scanner import MarketScanner  # noqa: E402
 from autonomy.signals.sports_intelligence import (  # noqa: E402
     BaseballIntelligenceSignal,
-    FormulaOneIntelligenceSignal,
     TeamSportsIntelligenceSignal,
-    UfcIntelligenceSignal,
     parse_sports_contract,
 )
 from autonomy.sports.simulation import (  # noqa: E402
@@ -45,8 +43,6 @@ SPORTS_SERIES = [
     "KXNCAAFGAME", "KXNCAAFTOTAL",
     "KXNHLGAME", "KXNHLTOTAL",
     "KXNCAAMBGAME", "KXNCAAMBTOTAL",
-    "KXUFCFIGHT", "KXUFCROUNDS", "KXUFCDISTANCE",
-    "KXF1RACE",
 ]
 
 
@@ -143,7 +139,6 @@ def main() -> int:
     )
     sources = [
         BaseballIntelligenceSignal(), TeamSportsIntelligenceSignal(),
-        UfcIntelligenceSignal(), FormulaOneIntelligenceSignal(),
     ]
     errors: list[str] = []
     for source in sources:
@@ -298,12 +293,7 @@ def main() -> int:
             "paper_settlements_recorded": paper_settlements_recorded,
             "coverage": {
                 "team_sports": ["MLB", "NFL", "NCAAF", "NHL", "NBA", "NCAAB"],
-                "combat": ["UFC"],
-                "motorsport": ["FORMULA_ONE"],
-                "market_types": [
-                    "WINNER", "GAME_TOTAL", "MLB_YRFI_NRFI", "UFC_ROUND_TOTAL",
-                    "UFC_DISTANCE", "F1_RACE_WINNER",
-                ],
+                "market_types": ["WINNER", "GAME_TOTAL", "MLB_YRFI_NRFI"],
             },
             "game_engine": {
                 "deterministic_replay_buffer": True,
