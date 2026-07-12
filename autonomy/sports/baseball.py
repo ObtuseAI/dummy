@@ -140,6 +140,18 @@ def poisson_spread_probability(
     return min(0.995, max(0.005, probability))
 
 
+def remaining_innings(current_period: int | None) -> float:
+    """Approximate innings left given the current inning (1-based).
+
+    At the start of inning N, N-1 innings are complete, so ~ (9 - (N-1)) remain.
+    Extra innings (period > 9) keep a small residual leverage, and the result is
+    floored at 0.5 so a live game always carries some remaining variance.
+    """
+    if not current_period or int(current_period) < 1:
+        return 9.0
+    return max(0.5, 9.0 - (int(current_period) - 1))
+
+
 def poisson_live_win_probability(
     home_remaining_mean: float, away_remaining_mean: float, home_lead: int
 ) -> float:

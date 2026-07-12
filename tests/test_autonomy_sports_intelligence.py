@@ -61,7 +61,8 @@ def _market(ticker: str, title: str, **raw) -> MarketView:
     )
 
 
-def _mlb_game(status: str = "pre", home_score=None, away_score=None) -> Game:
+def _mlb_game(status: str = "pre", home_score=None, away_score=None,
+              current_period=None) -> Game:
     return Game(
         game_id="g1", league="mlb", home="TEX", away="HOU", status=status,
         home_won=(None if status != "post" else home_score > away_score),
@@ -71,6 +72,7 @@ def _mlb_game(status: str = "pre", home_score=None, away_score=None) -> Game:
         home_score=home_score, away_score=away_score,
         home_first_inning_runs=(0 if status == "post" else None),
         away_first_inning_runs=(1 if status == "post" else None),
+        current_period=current_period,
         venue="Test Park", home_name="Texas Rangers", away_name="Houston Astros",
     )
 
@@ -127,6 +129,28 @@ def test_scoreboard_retains_final_scores_and_first_inning():
     assert (game.home_score, game.away_score) == (5, 10)
     assert (game.home_first_inning_runs, game.away_first_inning_runs) == (0, 1)
     assert game.home_name == "Pittsburgh Pirates"
+
+
+def test_scoreboard_captures_live_score_and_inning():
+    payload = {"events": [{
+        "id": "g2", "date": "2026-07-12T20:05Z",
+        "competitions": [{
+            "status": {"type": {"state": "in"}, "period": 6},
+            "venue": {"fullName": "Globe Life Field", "indoor": True},
+            "competitors": [
+                {"homeAway": "home", "score": "4",
+                 "team": {"abbreviation": "TEX", "displayName": "Texas Rangers"}},
+                {"homeAway": "away", "score": "1",
+                 "team": {"abbreviation": "HOU", "displayName": "Houston Astros"}},
+            ],
+        }],
+    }]}
+    game = parse_scoreboard("mlb", payload)[0]
+    assert game.status == "in"
+    assert (game.home_score, game.away_score) == (4, 1)  # live scores captured
+    assert game.current_period == 6
+    # First-inning settlement facts stay None for an unfinished game.
+    assert game.home_first_inning_runs is None
 
 
 def test_baseball_model_learns_runs_and_first_inning_idempotently():
@@ -262,6 +286,88 @@ def test_baseball_signal_emits_run_spread_challenger(tmp_path):
     assert away_spread.probability_yes > home_spread.probability_yes
     # Only one side can win by 2+, so the two YES probabilities cannot sum above 1.
     assert home_spread.probability_yes + away_spread.probability_yes <= 1.0
+
+
+def test_remaining_innings_helper():
+    from autonomy.sports.baseball import remaining_innings
+    assert remaining_innings(1) == 9.0
+    assert remaining_innings(9) == 1.0
+    assert remaining_innings(5) == 5.0
+    assert remaining_innings(11) == 0.5   # extras keep a small residual
+    assert remaining_innings(None) == 9.0
+
+
+def test_live_winner_signal_reprices_an_in_progress_game(tmp_path):
+    client = EspnClient(fetch_scoreboard=lambda _l, _d: {"events": []})
+    # Home (TEX) up 5-2 in the 7th inning.
+    client._cache[("mlb", "20260710")] = [
+        _mlb_game(status="in", home_score=5, away_score=2, current_period=7)
+    ]
+    source = BaseballIntelligenceSignal(
+        espn=client, model=BaseballRunModel(), model_path=tmp_path / "mlb.json",
+    )
+    sig = source.generate(_market("KXMLBGAME-26JUL102005HOUTEX-TEX", "Houston vs Texas Winner?"))
+    assert sig is not None
+    assert sig.source == "mlb_live_winner"
+    assert sig.features["live"] is True
+    assert sig.features["current_period"] == 7
+    # Leading late -> strong live win probability for TEX (the subject).
+    assert sig.probability_yes > 0.85
+    assert sig.features["challenger_only"] is True
+
+
+def test_live_winner_away_subject_is_inverted(tmp_path):
+    client = EspnClient(fetch_scoreboard=lambda _l, _d: {"events": []})
+    # Home (TEX) up 5-2 in the 7th -> the AWAY subject (HOU) should be the
+    # complement and well below 0.5.
+    client._cache[("mlb", "20260710")] = [
+        _mlb_game(status="in", home_score=5, away_score=2, current_period=7)
+    ]
+    source = BaseballIntelligenceSignal(
+        espn=client, model=BaseballRunModel(), model_path=tmp_path / "mlb.json",
+    )
+    home_sig = source.generate(_market("KXMLBGAME-26JUL102005HOUTEX-TEX", "Winner?"))
+    away_sig = source.generate(_market("KXMLBGAME-26JUL102005HOUTEX-HOU", "Winner?"))
+    assert away_sig.source == "mlb_live_winner"
+    assert away_sig.probability_yes < 0.15
+    assert abs((home_sig.probability_yes + away_sig.probability_yes) - 1.0) < 1e-9
+
+
+def test_live_winner_abstains_on_invalid_period(tmp_path):
+    client = EspnClient(fetch_scoreboard=lambda _l, _d: {"events": []})
+    client._cache[("mlb", "20260710")] = [
+        _mlb_game(status="in", home_score=5, away_score=2, current_period=0)
+    ]
+    source = BaseballIntelligenceSignal(
+        espn=client, model=BaseballRunModel(), model_path=tmp_path / "mlb.json",
+    )
+    assert source.generate(_market("KXMLBGAME-26JUL102005HOUTEX-TEX", "Winner?")) is None
+
+
+def test_live_winner_fails_closed_without_live_state(tmp_path):
+    client = EspnClient(fetch_scoreboard=lambda _l, _d: {"events": []})
+    # In-progress but the payload lacks the inning -> abstain, never guess.
+    client._cache[("mlb", "20260710")] = [
+        _mlb_game(status="in", home_score=5, away_score=2, current_period=None)
+    ]
+    source = BaseballIntelligenceSignal(
+        espn=client, model=BaseballRunModel(), model_path=tmp_path / "mlb.json",
+    )
+    assert source.generate(
+        _market("KXMLBGAME-26JUL102005HOUTEX-TEX", "Winner?")) is None
+
+
+def test_live_game_abstains_on_non_winner_markets(tmp_path):
+    client = EspnClient(fetch_scoreboard=lambda _l, _d: {"events": []})
+    client._cache[("mlb", "20260710")] = [
+        _mlb_game(status="in", home_score=5, away_score=2, current_period=7)
+    ]
+    source = BaseballIntelligenceSignal(
+        espn=client, model=BaseballRunModel(), model_path=tmp_path / "mlb.json",
+    )
+    # Totals are pre-game only for now; an in-progress game abstains.
+    assert source.generate(_market(
+        "KXMLBTOTAL-26JUL102005HOUTEX-9", "Total Runs?", floor_strike=8.5)) is None
 
 
 def _ufc_payload(state: str = "pre", decision: bool = False):
