@@ -317,3 +317,98 @@ WS-12/13 last
 - Merged council PRs: #38 (skeleton+UFC/F1), #39 (crypto DVOL/failover/events), #40 (structure+miner), #41 (equities+spec v1.1), #42 (season gating+lattice spec), #43 (NFL kernel+spread ladders). Main green, ~4,930 tests.
 - Live paper systems: shadow predator, paper twin, mispricing monitor (2-min), strategy miner (nightly) — all challenger/paper, zero capital authority changes throughout.
 - Spec: `docs/superpowers/specs/2026-07-12-council-of-specialists-design.md` (§3.0 lattice, §8b directives) is the authority; this plan implements it.
+
+---
+
+# Part II — Floor raisers, ceiling removers, readiness accelerators (WS-14…WS-19)
+
+Operator directive (2026-07-12, final design pass): improve crypto prediction, raise the floor across the board, remove ceilings where possible, accelerate readiness. Same discipline as Part I: challenger-only, fail-closed, propose-then-promote, per-PR adversarial review.
+
+**Limiter analysis (why these six):** the system's binding ceiling is that promotion from challenger to execution has doctrine but no MECHANISM — evidence accrues forever and the execution ensemble can never improve. The binding floors: one distribution shape prices every crypto horizon; three volatility estimates exist (realized-flat, EWMA, DVOL-implied) but never triangulate; we price off a Coinbase/Kraken median while Kalshi settles on CF Benchmarks (basis error concentrated exactly at close — the strategy miner's first live run surfaced a final-45-minutes weakness lead); funding/basis and BTC-to-alt lead-lag alpha sit unused in already-whitelisted feeds. Readiness is slow only because it is invisible: 15m contracts settle 288x/day across three assets, but nothing projects days-to-eligibility per source.
+
+## WS-14: Promotion protocol + readiness report — THE ceiling remover
+
+**Files:** Create `autonomy/promotion.py`; governance artifact `runtime/autonomy/promotions.json` (HUMAN-EDITED ONLY); Create `scripts/run_dummy_readiness_report.py` (nightly, chain with existing miner schtask); one shared emission helper wired into crypto challengers; Tests `tests/test_autonomy_promotion.py`. `autonomy/forecaster.py` is NOT modified — the hook already exists (fuse() excludes on `features["challenger_only"]`, forecaster.py:45).
+
+**Mechanism:**
+- `PromotionRegistry(path)` with `is_promoted(source, market_type, horizon) -> bool` reading promotions.json: `{"promotions": [{"source", "market_type", "horizon", "promoted_at", "evidence_ref", "review_after_n"}], "revocations": [...]}`. Missing/corrupt file = nobody promoted (fail-closed).
+- Emission helper `challenger_flag(registry, source, market_type, horizon) -> bool`: promoted scopes emit `challenger_only=False` + `promoted=True` (audit feature); everything else byte-identical. The system PROPOSES promotions in the readiness report; a human edits promotions.json in a PR citing the report. Never self-applied.
+- **Eligibility criteria (auditable constants, all four shown PASS/FAIL per scope):** contested event-clusters >= 300; cluster-mean contested Brier edge CI95 lower bound > 0; CLV mean >= 0 where tape coverage exists (corroboration, not gate); no degradation flag (trailing-100-cluster edge not below -0.005).
+- **Auto-demotion — the ONLY automatic transition, and it only reduces risk:** promoted scope whose trailing-200-cluster edge CI95 UPPER bound < 0 → registry returns un-promoted (fail-closed override) + alert row. Promotion needs a human; demotion must not wait for one.
+- **Readiness report** (`runtime/autonomy/readiness_report.json`, nightly): per challenger x market_type x horizon: n_clusters, contested edge CI, CLV, accrual rate (clusters/day trailing 14d), **projected days-to-eligibility = max(0, (300 - n)/rate)**. This is the acceleration lever: the path becomes visible and steerable. Dashboard (WS-13) gains the readiness table.
+
+**Key tests:** missing registry = nobody promoted; helper flips flag only for the exact (source, market_type, horizon) scope; demotion override math; eligibility matrix on synthetic clusters; projection arithmetic; INTEGRATION: a promoted-source signal flows through the real `forecaster.fuse()` and lands in the ensemble.
+
+- [ ] Steps: registry → helper → wire into crypto challenger feature builders → readiness script → tests → commit.
+
+## WS-15: Horizon taxonomy + per-horizon trust — floor raiser
+
+**Files:** Create `autonomy/taxonomy.py` (SHARED with Part I WS-8 — build once, whichever lands first); Modify `autonomy/backtest.py` tracker keying; Tests `tests/test_autonomy_taxonomy.py`.
+
+- `horizon_bucket(market) -> "15m" | "hourly" | "daily+"` for crypto: KX*15M series → 15m; hours_to_close <= 3 → hourly; else daily+. Sports use phase (`pre|live`) — live sources already carry distinct names (`mlb_live_*`), formalized in one table: `SOURCE_TAXONOMY[source] -> specialist`, grading key = (source, market_type, horizon_or_phase).
+- Contested-Brier trackers + strategy-miner rows key on the full triple. Effect: per-scope trust — the ensemble stops averaging a source's good daily behavior with its bad 15m behavior. WS-14 promotion is per-scope by construction.
+- Crypto emissions stamp `horizon_bucket` as a feature (point-in-time; no re-derivation at grading).
+- **Key tests:** bucket boundaries (2.9h vs 3.1h); completeness tripwire iterating `build_brain(SHADOW)` registry sources against SOURCE_TAXONOMY (fails when a future source goes unmapped); end-to-end tracker keying on synthetic settlements.
+
+- [ ] Steps: module → feature stamping → backtest keying → tests → commit.
+
+## WS-16: Vol triangulation + VRP + settlement-proximity guard — floor raiser (attacks the mined final-45m weakness)
+
+**Files:** Create `autonomy/crypto_vol.py`; new challenger registrations in `autonomy/session.py`; VRP feature in `autonomy/signals/crypto_indicators.py`; Tests `tests/test_autonomy_crypto_vol.py`. The champion (`crypto_spot_vol`) is NEVER silently altered.
+
+- **Vol triangle:** `blended_sigma(realized_flat, realized_ewma, implied_dvol, horizon_bucket) -> (sigma, disagreement)`. v1 static weights per horizon (15m: 0.6 ewma / 0.4 flat / 0.0 implied — DVOL is daily-scale; hourly: 0.4/0.3/0.3; daily+: 0.25/0.25/0.5), tuner-managed later (WS-9 tunables). `disagreement = max/min - 1` over available estimates; missing estimates renormalize (fail-closed to whatever exists; none → abstain).
+- **New challenger `crypto_blend_sigma`:** champion lognormal shape with blended sigma; uncertainty += 0.02 * min(3, disagreement * 10). Graded per horizon against the champion; promotion via WS-14 (a promoted blend at a given horizon scope OUTRANKS the champion there — the registry `supersedes` field records it).
+- **VRP (volatility risk premium):** `vrp = implied_annual - realized_7d_annual` (both already in hub/indicators). (a) feature on all crypto signals; (b) bounded drift challenger `crypto_vrp_regime`: VRP > +15 vol pts (fear premium, mean-reverting) → mild positive drift; VRP < -5 (complacency inversion) → mild negative; cap 0.25 sigma; constants auditable.
+- **Settlement-proximity guard (the mined-lead countermeasure):** shared helper applied to every crypto signal's uncertainty: when `hours_to_close <= 0.75` AND near-strike (|ln(spot/strike)| / sigma_horizon < 1.0) → uncertainty += 0.06, feature `near_close_near_strike=true`. Rationale: settlement-index basis (CF Benchmarks vs our exchange median) dominates model edge near strike near close. The miner grades whether the guard earns its keep; WS-8's close-time tape later replaces the flat +0.06 with a measured basis distribution via the tuner.
+- **Key tests:** blend weights per bucket + renormalization on missing estimates; disagreement math; guard 2x2 matrix (fires only inside BOTH conditions); champion byte-identical regression (build champion output before/after module import and registration; assert equality); VRP drift caps and dead-zone.
+
+- [ ] Steps: module → blend challenger → VRP feature + challenger → guard wiring → registration → tests → commit.
+
+## WS-17: Funding/basis + BTC lead-lag challengers — new alpha from existing feeds
+
+**Files:** Create `autonomy/signals/crypto_flows.py` (two signals); Modify `autonomy/signals/crypto_indicators.py` (one gated Deribit perp read in the hub); session registration; Tests `tests/test_autonomy_crypto_flows.py`.
+
+- **`crypto_funding_regime`:** Deribit is already whitelisted (DVOL). PROBE (no auth expected): `GET public/ticker?instrument_name=BTC-PERPETUAL` → `current_funding`, `funding_8h`, `mark_price`, `index_price`; capture a fixture. Hub state gains `perp_funding_8h`, `perp_basis_bps` per asset (one extra call per asset per cycle; try/except → None, fail-closed). Signal: funding extremes mean-revert at short horizons — |funding_8h| > 0.05% → bounded drift AGAINST the crowded side (positive funding = longs pay = crowded long → negative drift), cap 0.30 sigma, 15m/hourly buckets ONLY (daily+ abstains). Challenger-only.
+- **`crypto_btc_leadlag`:** ETH/SOL contracts, 15m/hourly buckets only. BTC leads alts by minutes; hub already caches BTC minute closes every cycle. Drift on the RESIDUAL: `residual = btc_15m_move_sigma * beta - alt_15m_move_sigma` (beta: ETH 0.7, SOL 0.6, auditable), floored at 0 when the alt has already moved as far or farther in the same direction (no double counting); cap 0.35 sigma. Abstains on thin BTC data.
+- **Key tests:** funding sign convention hand-checked; horizon gating; fixture parse; lead-lag residual matrix (BTC +2 sigma & ETH +1.5*beta → small positive residual; alt moved MORE → exactly zero; opposite signs → full beta drift); thin-data abstain; challenger_only on both.
+
+- [ ] Steps: Deribit probe + fixture → hub read → two signals → registration → tests → commit.
+
+## WS-18: Reliability/calibration layer — global floor raiser (all verticals)
+
+**Files:** Create `autonomy/reliability.py`; maps artifact `runtime/autonomy/reliability_maps.json` via the WS-14 nightly script; Tests `tests/test_autonomy_reliability.py`.
+
+- Per (source, market_type, horizon/phase) with >= 200 settled clusters: 10-bin reliability curve (predicted vs realized frequency, cluster-weighted) → monotone correction map via pool-adjacent-violators (isotonic-lite).
+- **Consumption is challenger-shaped:** wrapper source `"{source}::cal"` re-emits the parent signal with the correction applied, `challenger_only=True`, all parent features preserved + `calibration_map_version`. Graded head-to-head vs parent; promotion via WS-14 with `supersedes` recorded. Nothing is silently recalibrated; the maps artifact is reviewable.
+- Initial rollout list `CALIBRATED_SOURCES` (curated, not auto-everything): crypto sources + MLB winner/total (largest settled histories).
+- **Key tests:** PAV monotonicity; synthetically overconfident source (predicts 0.9, wins 0.75) beats its parent Brier on held-out clusters after correction; under-sampled scope → identity map (fail-closed); wrapper feature preservation.
+
+- [ ] Steps: curve fit → PAV → wrapper → artifact → rollout list → tests → commit.
+
+## WS-19: Crypto fast lane + liquidity-bucketed edge floors — cadence ceiling + execution realism
+
+**Files:** Modify `scripts/run_dummy_mispricing_monitor.py` (crypto micro-pass), `autonomy/mispricing.py` (edge floors); Tests extend the mispricing/monitor suites.
+
+- **Fast lane (evidence cadence, NOT execution — capital authority untouched):** a 15m contract lives ~1.5 brain cycles; only the monitor is fast enough to watch its whole life. `--crypto-fast` mode: between full sweeps, a crypto-only micro-pass every 30s that re-reads ONLY Kalshi quotes for the current crypto shortlist (<= 30 tickers) reusing the hub cycle cache — zero new candle/Deribit fetches. Shared opportunist state; skip-if-previous-still-running guard. ~4x observation density on 15m markets → faster phantom/CLV evidence → faster WS-14 eligibility.
+- **Liquidity-bucketed edge floors:** paper twin already models maker/taker fees; the shortlist does not floor edges by depth. `assess_mispricing` gains `min_edge_by_liquidity`: liquidity < 500 contracts → required edge +0.02; < 100 → +0.04 (auditable constants). Thin far strikes stop polluting the shortlist with un-executable edge.
+- **Key tests:** micro-pass performs zero hub fetches (spy assertion); skip-if-running guard; edge-floor tiers; a thin-book marginal edge that previously made the shortlist is now excluded.
+
+- [ ] Steps: edge floors → micro-pass loop → tests → schtask arg update → commit.
+
+## Part II sequencing
+
+```
+WS-15 (taxonomy) FIRST — WS-14/16/17/18 all key on it (shared with Part I WS-8; build once)
+WS-14 (promotion + readiness) SECOND — every later challenger lands into a working pipe
+WS-16 + WS-17 in parallel after (independent modules)
+WS-18 after WS-14 (wrapper promotion needs the registry)
+WS-19 anytime (independent)
+```
+
+Part II is crypto-heavy by design: crypto is live 24/7 NOW, so every floor raised there compounds immediately — and the readiness machinery (WS-14/15) is vertical-agnostic, so every Part I sports engine inherits the promotion pipe, per-scope trust, reliability wrappers, and days-to-eligibility projections for free the day it ships.
+
+## Part II acceptance
+
+- Merge-day execution behavior unchanged everywhere: every new estimator is challenger-only; promotion requires the human-edited registry; the only automatic transition is demotion (risk-reducing).
+- Readiness report live within the first Part II PR cycle; days-to-eligibility visible per scope.
+- The final-45-minutes mined weakness has a shipped countermeasure (WS-16 guard) whose own effectiveness is miner-graded.
