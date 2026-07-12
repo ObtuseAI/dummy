@@ -205,6 +205,27 @@ def test_crypto_specialist_routes_and_abstains_from_book_until_phase_1():
     assert not specialist.applicable(_mlb_winner_market())
 
 
+def test_mlb_methods_fail_closed_when_espn_fetch_raises():
+    class _RaisingEspn:
+        def find_matchup(self, *_args, **_kwargs):
+            raise RuntimeError("espn down")
+
+    live_signal = _signal("mlb_intelligence", "KXMLBGAME-26JUL122005HOUTEX-HOU",
+                          0.71, live=True)
+    specialist = MlbSpecialist(
+        intelligence=_StubIntelligence("mlb_intelligence", live_signal),
+        sportsbook=_StubSportsbook(0.58),
+        espn=_RaisingEspn(), live_book=_StubLiveBook(0.64),
+    )
+    market = _mlb_winner_market()
+    # Every protocol method abstains instead of propagating the feed error.
+    # book() abstains entirely (matching the pre-council monitor, whose whole
+    # book closure aborted to None when the live-game lookup raised).
+    assert specialist.live_forecast(market) is None
+    assert specialist.book(market) is None
+    assert specialist.forecast(market) is not None  # routing needs no ESPN fetch
+
+
 # -- registry isolation -------------------------------------------------------
 
 def test_registry_isolates_broken_specialists():

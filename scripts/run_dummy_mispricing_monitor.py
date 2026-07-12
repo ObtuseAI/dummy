@@ -71,15 +71,12 @@ def _build():
 
     def book_fn(market):
         # The specialist's book (live ESPN-summary de-vig in play, sportsbook
-        # consensus pre-game); unrouted sports markets keep the consensus book.
+        # consensus pre-game); a routed specialist owns the book decision, so
+        # only unrouted sports markets (e.g. WNBA) keep the consensus book.
         try:
             specialist = council.route(market)
             if specialist is not None:
-                book_prob = specialist.book(market)
-                if book_prob is not None:
-                    return book_prob
-                if specialist.name == "crypto":
-                    return None  # no crypto book until Phase 1 (DVOL)
+                return specialist.book(market)
             if fallback_book.applicable(market):
                 signal = fallback_book.generate(market)
                 return signal.probability_yes if signal else None

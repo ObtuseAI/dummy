@@ -35,9 +35,9 @@ class TeamLeagueSpecialist:
         return market.vertical is Vertical.SPORTS and self._parsed(market) is not None
 
     def forecast(self, market: MarketView) -> Signal | None:
-        if self.intelligence is None or not self.applicable(market):
-            return None
         try:
+            if self.intelligence is None or not self.applicable(market):
+                return None
             return self.intelligence.generate(market)
         except Exception:
             return None

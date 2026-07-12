@@ -62,23 +62,23 @@ class MlbSpecialist:
 
     # -- protocol --------------------------------------------------------
     def forecast(self, market: MarketView) -> Signal | None:
-        if self.intelligence is None or not self.applicable(market):
-            return None
         try:
+            if self.intelligence is None or not self.applicable(market):
+                return None
             return self.intelligence.generate(market)
         except Exception:
             return None
 
     def live_forecast(self, market: MarketView) -> Signal | None:
-        if self.intelligence is None or self._live_game(market) is None:
-            return None
         try:
+            if self.intelligence is None or self._live_game(market) is None:
+                return None
             signal = self.intelligence.generate(market)
+            if signal is not None and signal.features.get("live"):
+                return signal
+            return None
         except Exception:
             return None
-        if signal is not None and signal.features.get("live"):
-            return signal
-        return None
 
     def book(self, market: MarketView) -> float | None:
         try:

@@ -33,9 +33,9 @@ class CryptoSpecialist:
         )
 
     def forecast(self, market: MarketView) -> Signal | None:
-        if self.champion is None or not self.applicable(market):
-            return None
         try:
+            if self.champion is None or not self.applicable(market):
+                return None
             return self.champion.generate(market)
         except Exception:
             return None
