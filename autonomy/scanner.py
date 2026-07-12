@@ -74,9 +74,13 @@ WATCHLIST_SERIES: list[str] = [
     "KXNBATOTAL", "KXNFLTOTAL", "KXNCAAFTOTAL", "KXNHLTOTAL", "KXNCAAMBTOTAL",
     "KXUFCFIGHT", "KXUFCROUNDS", "KXUFCDISTANCE",
     "KXF1RACE",
-    # Daily/weekly commodity price thresholds (Yahoo proxy + realized vol).
-    "KXWTI", "KXNATGASD", "KXGOLDD",
-    "KXWTIW", "KXNATGASW", "KXGOLDW",
+    # Commodities + econ trading retired 2026-07-11 (never demonstrated an edge
+    # vs the sharp Kalshi price/econ markets). The Yahoo macro pipeline those
+    # used now feeds CRYPTO as a risk-regime feature (crypto_macro_regime), not a
+    # trading target, so the daemon no longer fetches KXWTI/KXNATGAS/KXGOLD or
+    # any KXCPI/KXFED/KXGDP/KXPAYROLL series here. The classifiers below are kept
+    # so any such markets still classify and are then excluded by the vertical
+    # filter (verticals defaults to {CRYPTO, SPORTS}).
 ]
 
 
@@ -178,8 +182,11 @@ class MarketScanner:
     ) -> None:
         self.fetch_series = fetch_series or default_fetch_series_markets
         self.watchlist = watchlist or list(WATCHLIST_SERIES)
-        self.verticals = verticals or {Vertical.CRYPTO, Vertical.SPORTS,
-                                       Vertical.COMMODITIES, Vertical.ECON}
+        # Commodities + econ retired as trading targets 2026-07-11; their macro
+        # data is repurposed as a crypto feature (see WATCHLIST_SERIES note and
+        # autonomy/signals/crypto_macro.py). Classifiers still tag those markets
+        # so they are recognized and then excluded here.
+        self.verticals = verticals or {Vertical.CRYPTO, Vertical.SPORTS}
 
     def scan(self) -> list[MarketView]:
         views: list[MarketView] = []
