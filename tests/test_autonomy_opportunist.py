@@ -48,11 +48,24 @@ def test_small_deviation_does_not_trigger():
 
 
 def test_book_conflict_never_pounces():
-    eng = OpportunistEngine()
+    # min_confidence="low" so the confidence gate would PASS -> only the explicit
+    # conflict guard can block the fire, pinning that guard independently.
+    eng = OpportunistEngine(min_confidence="low")
     eng.observe(_assess(model_prob=0.75, market_prob=0.70, side="YES", edge=0.03))
     assert eng.observe(_assess(
         model_prob=0.75, market_prob=0.58, side="YES", edge=0.15,
-        agreement="conflict", confidence="low")) is None
+        agreement="conflict", confidence="medium")) is None
+
+
+def test_never_fires_when_value_is_on_the_other_side():
+    # Locked YES-favored; a qualifying dip whose actionable side is NOT our
+    # locked side must not fire (pins the side-match guard).
+    eng = OpportunistEngine()
+    eng.observe(_assess(model_prob=0.75, market_prob=0.70, side="YES", edge=0.03))
+    assert eng.observe(_assess(
+        model_prob=0.75, market_prob=0.60, side="NONE", edge=0.12)) is None
+    assert eng.observe(_assess(
+        model_prob=0.75, market_prob=0.60, side="NO", edge=0.12)) is None
 
 
 def test_low_conviction_never_locks():

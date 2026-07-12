@@ -41,8 +41,6 @@ class Candidate:
     side: str              # favored side at lock-in ("YES"/"NO")
     conviction: float      # model P on the favored side at lock-in
     anchor_prob: float     # market mid (implied YES prob) when locked
-    best_edge: float = 0.0
-    max_deviation: float = 0.0
     triggered: bool = False
 
 
@@ -110,10 +108,6 @@ class OpportunistEngine:
         # Deviation = how far the price has moved AGAINST the favored side since
         # the anchor (YES favored -> YES prob fell; NO favored -> YES prob rose).
         deviation = (candidate.anchor_prob - mid) if candidate.side == "YES" else (mid - candidate.anchor_prob)
-        candidate.max_deviation = max(candidate.max_deviation, deviation)
-        if assessment.side == candidate.side:
-            candidate.best_edge = max(candidate.best_edge, assessment.edge)
-
         if (
             not candidate.triggered
             and assessment.side == candidate.side
