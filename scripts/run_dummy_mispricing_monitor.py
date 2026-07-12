@@ -39,14 +39,44 @@ def _atomic_json(path: Path, value: dict) -> None:
 
 def _build():
     """Assemble the read-only forecast + book providers from the shadow brain."""
+    from autonomy.live_odds import EspnSummaryBook
+    from autonomy.signals.sports_intelligence import parse_sports_contract
+    from autonomy.sports.espn import EspnClient, canonical_team
+
     brain = build_brain(SessionMode.SHADOW)
     forecaster = EnsembleForecaster(brain.ledger)
     book_signal = SportsbookConsensusSignal()
+    espn = EspnClient()
+    live_book = EspnSummaryBook(league="mlb")
+    # The live MLB challenger already prices in-progress games (mlb_live_winner);
+    # the monitor is paper/evidence, so it may consume that live view directly.
+    mlb_signal = next(
+        (s for s in brain.registry.sources() if getattr(s, "name", "") == "mlb_intelligence"),
+        None,
+    )
+
+    def _live_mlb_game(market):
+        """Resolve an in-progress MLB game for a winner market, else None."""
+        parsed = parse_sports_contract(market)
+        if parsed is None or parsed.sport != "mlb" or parsed.market_type != "winner":
+            return None
+        if not parsed.competitors:
+            return None
+        game = espn.find_matchup(
+            "mlb", parsed.competitors[0], parsed.competitors[1], parsed.date_yyyymmdd)
+        if game is None or game.status != "in":
+            return None
+        return parsed, game
 
     def forecast_fn(market):
-        # Our fused model probability. fuse() excludes challenger_only sources,
-        # so this is the execution-grade model view, not the challengers.
         try:
+            # For an in-progress MLB winner, prefer the live challenger view (the
+            # monitor never trades, so live evidence is fair game); else the
+            # execution-grade fused model (fuse() excludes challenger_only).
+            if mlb_signal is not None and _live_mlb_game(market) is not None:
+                live = mlb_signal.generate(market)
+                if live is not None and live.features.get("live"):
+                    return live.probability_yes
             signals = list(brain.registry.signals_for(market))
             forecast = forecaster.fuse(market, signals)
             return forecast.probability_yes if forecast else None
@@ -54,12 +84,21 @@ def _build():
             return None
 
     def book_fn(market):
-        # De-vigged sportsbook consensus (winner markets only); None otherwise.
+        # De-vigged sportsbook consensus. For an in-progress MLB winner, the live
+        # ESPN-summary book overrides the pre-game scoreboard line.
         try:
-            if not book_signal.applicable(market):
-                return None
-            signal = book_signal.generate(market)
-            return signal.probability_yes if signal else None
+            resolved = _live_mlb_game(market)
+            if resolved is not None:
+                parsed, game = resolved
+                home_prob = live_book.home_win_probability(game.game_id)
+                if home_prob is not None:
+                    subject = canonical_team("mlb", parsed.subject or "")
+                    yes_is_home = subject == canonical_team("mlb", game.home)
+                    return home_prob if yes_is_home else 1.0 - home_prob
+            if book_signal.applicable(market):
+                signal = book_signal.generate(market)
+                return signal.probability_yes if signal else None
+            return None
         except Exception:
             return None
 
