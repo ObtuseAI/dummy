@@ -1,0 +1,201 @@
+{
+  "boxscore": {
+    "teams": [
+      {
+        "homeAway": "away",
+        "statistics": [
+          {
+            "abbreviation": "BS",
+            "displayValue": "14",
+            "label": "Blocked Shots",
+            "name": "blockedShots"
+          },
+          {
+            "abbreviation": "HT",
+            "displayValue": "18",
+            "label": "Hits",
+            "name": "hits"
+          },
+          {
+            "abbreviation": "TK",
+            "displayValue": "6",
+            "label": "Takeaways",
+            "name": "takeaways"
+          },
+          {
+            "abbreviation": "S",
+            "displayValue": "32",
+            "label": "Shots",
+            "name": "shotsTotal"
+          },
+          {
+            "abbreviation": "PPG",
+            "displayValue": "1",
+            "label": "Power Play Goals",
+            "name": "powerPlayGoals"
+          },
+          {
+            "abbreviation": "PPO",
+            "displayValue": "1",
+            "label": "Power Play Opportunities",
+            "name": "powerPlayOpportunities"
+          },
+          {
+            "abbreviation": "PCT",
+            "displayValue": "100.0",
+            "label": "Power Play Percentage",
+            "name": "powerPlayPct"
+          },
+          {
+            "abbreviation": "SHG",
+            "displayValue": "0",
+            "label": "Short Handed Goals",
+            "name": "shortHandedGoals"
+          },
+          {
+            "abbreviation": "SOG",
+            "displayValue": "0",
+            "label": "Shootout Goals",
+            "name": "shootoutGoals"
+          },
+          {
+            "abbreviation": "FW",
+            "displayValue": "29",
+            "label": "Faceoffs Won",
+            "name": "faceoffsWon"
+          },
+          {
+            "abbreviation": "FO%",
+            "displayValue": "48.3",
+            "label": "Faceoff Win Percent",
+            "name": "faceoffPercent"
+          },
+          {
+            "abbreviation": "GV",
+            "displayValue": "12",
+            "label": "Giveaways",
+            "name": "giveaways"
+          },
+          {
+            "abbreviation": "PN",
+            "displayValue": "3",
+            "label": "Total Penalties",
+            "name": "penalties"
+          },
+          {
+            "abbreviation": "PIM",
+            "displayValue": "9",
+            "label": "Penalty Minutes",
+            "name": "penaltyMinutes"
+          }
+        ],
+        "team": {
+          "abbreviation": "FLA",
+          "displayName": "Florida Panthers"
+        }
+      },
+      {
+        "homeAway": "home",
+        "statistics": [
+          {
+            "abbreviation": "BS",
+            "displayValue": "19",
+            "label": "Blocked Shots",
+            "name": "blockedShots"
+          },
+          {
+            "abbreviation": "HT",
+            "displayValue": "22",
+            "label": "Hits",
+            "name": "hits"
+          },
+          {
+            "abbreviation": "TK",
+            "displayValue": "4",
+            "label": "Takeaways",
+            "name": "takeaways"
+          },
+          {
+            "abbreviation": "S",
+            "displayValue": "23",
+            "label": "Shots",
+            "name": "shotsTotal"
+          },
+          {
+            "abbreviation": "PPG",
+            "displayValue": "0",
+            "label": "Power Play Goals",
+            "name": "powerPlayGoals"
+          },
+          {
+            "abbreviation": "PPO",
+            "displayValue": "2",
+            "label": "Power Play Opportunities",
+            "name": "powerPlayOpportunities"
+          },
+          {
+            "abbreviation": "PCT",
+            "displayValue": "0.0",
+            "label": "Power Play Percentage",
+            "name": "powerPlayPct"
+          },
+          {
+            "abbreviation": "SHG",
+            "displayValue": "0",
+            "label": "Short Handed Goals",
+            "name": "shortHandedGoals"
+          },
+          {
+            "abbreviation": "SOG",
+            "displayValue": "0",
+            "label": "Shootout Goals",
+            "name": "shootoutGoals"
+          },
+          {
+            "abbreviation": "FW",
+            "displayValue": "31",
+            "label": "Faceoffs Won",
+            "name": "faceoffsWon"
+          },
+          {
+            "abbreviation": "FO%",
+            "displayValue": "51.7",
+            "label": "Faceoff Win Percent",
+            "name": "faceoffPercent"
+          },
+          {
+            "abbreviation": "GV",
+            "displayValue": "24",
+            "label": "Giveaways",
+            "name": "giveaways"
+          },
+          {
+            "abbreviation": "PN",
+            "displayValue": "2",
+            "label": "Total Penalties",
+            "name": "penalties"
+          },
+          {
+            "abbreviation": "PIM",
+            "displayValue": "7",
+            "label": "Penalty Minutes",
+            "name": "penaltyMinutes"
+          }
+        ],
+        "team": {
+          "abbreviation": "BUF",
+          "displayName": "Buffalo Sabres"
+        }
+      }
+    ]
+  },
+  "header": {
+    "competitions": [
+      {
+        "date": "2026-01-13T00:00Z",
+        "id": "401803067"
+      }
+    ],
+    "id": "401803067"
+  }
+}
