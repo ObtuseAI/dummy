@@ -36,16 +36,29 @@ async def test_orchestrator_wraps_generators_in_wait_for(tmp_path, monkeypatch):
     # Use a short timeout so the test proves the path without waiting 90s.
     monkeypatch.setattr(orchestrator, "ORCHESTRATOR_TIMEOUT_SECONDS", 2)
 
+    # A generator that hangs far longer than the orchestrator timeout. If the
+    # orchestrator wraps it in asyncio.wait_for, the timeout cancels this
+    # coroutine and CancelledError propagates in here, flipping the sentinel.
+    # That cancellation is the deterministic proof the wrap fired — the old
+    # `elapsed < 20s` wall-clock bound flaked on loaded CI runners (a run once
+    # measured 21.9s while the timeout path worked perfectly).
+    cancelled = {"hit": False}
+
     async def _stall(*args, **kwargs):
-        await asyncio.sleep(120)
+        try:
+            await asyncio.sleep(120)
+        except asyncio.CancelledError:
+            cancelled["hit"] = True
+            raise
         return {}
 
-    start = asyncio.get_event_loop().time()
     with patch.object(model_reports, "main", new=_stall):
         result = await orchestrator_main(run_tests=False)
-    elapsed = asyncio.get_event_loop().time() - start
 
-    assert elapsed < 20, f"Orchestrator blocked for {elapsed:.1f}s"
+    # The stalled 120s generator must have been cancelled by the orchestrator's
+    # per-generator timeout, not awaited to completion. If the wait_for wrap
+    # were removed, this coroutine would never receive CancelledError.
+    assert cancelled["hit"], "orchestrator did not apply a timeout to the generator"
     assert result["verdict"] in ("PASS", "PARTIAL", "FAIL")
     assert (artifacts / "tests_summary.json").exists()
     assert (artifacts / "final_report.json").exists()
