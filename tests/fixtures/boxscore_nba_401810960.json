@@ -1,0 +1,327 @@
+{
+  "boxscore": {
+    "teams": [
+      {
+        "homeAway": "away",
+        "statistics": [
+          {
+            "displayValue": "61-99",
+            "label": "FG",
+            "name": "fieldGoalsMade-fieldGoalsAttempted"
+          },
+          {
+            "abbreviation": "FG%",
+            "displayValue": "62",
+            "label": "Field Goal %",
+            "name": "fieldGoalPct"
+          },
+          {
+            "displayValue": "17-35",
+            "label": "3PT",
+            "name": "threePointFieldGoalsMade-threePointFieldGoalsAttempted"
+          },
+          {
+            "abbreviation": "3P%",
+            "displayValue": "49",
+            "label": "Three Point %",
+            "name": "threePointFieldGoalPct"
+          },
+          {
+            "displayValue": "14-16",
+            "label": "FT",
+            "name": "freeThrowsMade-freeThrowsAttempted"
+          },
+          {
+            "abbreviation": "FT%",
+            "displayValue": "88",
+            "label": "Free Throw %",
+            "name": "freeThrowPct"
+          },
+          {
+            "abbreviation": "REB",
+            "displayValue": "41",
+            "label": "Rebounds",
+            "name": "totalRebounds"
+          },
+          {
+            "abbreviation": "OR",
+            "displayValue": "10",
+            "label": "Offensive Rebounds",
+            "name": "offensiveRebounds"
+          },
+          {
+            "abbreviation": "DR",
+            "displayValue": "31",
+            "label": "Defensive Rebounds",
+            "name": "defensiveRebounds"
+          },
+          {
+            "abbreviation": "AST",
+            "displayValue": "37",
+            "label": "Assists",
+            "name": "assists"
+          },
+          {
+            "abbreviation": "STL",
+            "displayValue": "9",
+            "label": "Steals",
+            "name": "steals"
+          },
+          {
+            "abbreviation": "BLK",
+            "displayValue": "2",
+            "label": "Blocks",
+            "name": "blocks"
+          },
+          {
+            "abbreviation": "TO",
+            "displayValue": "10",
+            "label": "Turnovers",
+            "name": "turnovers"
+          },
+          {
+            "abbreviation": "TTO",
+            "displayValue": "1",
+            "label": "Team Turnovers",
+            "name": "teamTurnovers"
+          },
+          {
+            "abbreviation": "ToTO",
+            "displayValue": "11",
+            "label": "Total Turnovers",
+            "name": "totalTurnovers"
+          },
+          {
+            "abbreviation": "TECH",
+            "displayValue": "0",
+            "label": "Technical Fouls",
+            "name": "technicalFouls"
+          },
+          {
+            "abbreviation": "TECH",
+            "displayValue": "0",
+            "label": "Total Technical Fouls",
+            "name": "totalTechnicalFouls"
+          },
+          {
+            "abbreviation": "FLAG",
+            "displayValue": "0",
+            "label": "Flagrant Fouls",
+            "name": "flagrantFouls"
+          },
+          {
+            "abbreviation": "Points Conceded Off Turnovers",
+            "displayValue": "12",
+            "label": "Points Conceded Off Turnovers",
+            "name": "turnoverPoints"
+          },
+          {
+            "abbreviation": "FBPs",
+            "displayValue": "26",
+            "label": "Fast Break Points",
+            "name": "fastBreakPoints"
+          },
+          {
+            "abbreviation": "PIP",
+            "displayValue": "76",
+            "label": "Points in Paint",
+            "name": "pointsInPaint"
+          },
+          {
+            "abbreviation": "PF",
+            "displayValue": "18",
+            "label": "Fouls",
+            "name": "fouls"
+          },
+          {
+            "abbreviation": "LL",
+            "displayValue": "24",
+            "label": "Largest Lead",
+            "name": "largestLead"
+          },
+          {
+            "abbreviation": "LC",
+            "displayValue": "4",
+            "label": "Lead Changes",
+            "name": "leadChanges"
+          },
+          {
+            "abbreviation": "LPCT",
+            "displayValue": "80",
+            "label": "Percent Led",
+            "name": "leadPercentage"
+          }
+        ],
+        "team": {
+          "abbreviation": "PHI",
+          "displayName": "Philadelphia 76ers"
+        }
+      },
+      {
+        "homeAway": "home",
+        "statistics": [
+          {
+            "displayValue": "50-96",
+            "label": "FG",
+            "name": "fieldGoalsMade-fieldGoalsAttempted"
+          },
+          {
+            "abbreviation": "FG%",
+            "displayValue": "52",
+            "label": "Field Goal %",
+            "name": "fieldGoalPct"
+          },
+          {
+            "displayValue": "16-40",
+            "label": "3PT",
+            "name": "threePointFieldGoalsMade-threePointFieldGoalsAttempted"
+          },
+          {
+            "abbreviation": "3P%",
+            "displayValue": "40",
+            "label": "Three Point %",
+            "name": "threePointFieldGoalPct"
+          },
+          {
+            "displayValue": "15-17",
+            "label": "FT",
+            "name": "freeThrowsMade-freeThrowsAttempted"
+          },
+          {
+            "abbreviation": "FT%",
+            "displayValue": "88",
+            "label": "Free Throw %",
+            "name": "freeThrowPct"
+          },
+          {
+            "abbreviation": "REB",
+            "displayValue": "32",
+            "label": "Rebounds",
+            "name": "totalRebounds"
+          },
+          {
+            "abbreviation": "OR",
+            "displayValue": "7",
+            "label": "Offensive Rebounds",
+            "name": "offensiveRebounds"
+          },
+          {
+            "abbreviation": "DR",
+            "displayValue": "25",
+            "label": "Defensive Rebounds",
+            "name": "defensiveRebounds"
+          },
+          {
+            "abbreviation": "AST",
+            "displayValue": "32",
+            "label": "Assists",
+            "name": "assists"
+          },
+          {
+            "abbreviation": "STL",
+            "displayValue": "4",
+            "label": "Steals",
+            "name": "steals"
+          },
+          {
+            "abbreviation": "BLK",
+            "displayValue": "3",
+            "label": "Blocks",
+            "name": "blocks"
+          },
+          {
+            "abbreviation": "TO",
+            "displayValue": "11",
+            "label": "Turnovers",
+            "name": "turnovers"
+          },
+          {
+            "abbreviation": "TTO",
+            "displayValue": "1",
+            "label": "Team Turnovers",
+            "name": "teamTurnovers"
+          },
+          {
+            "abbreviation": "ToTO",
+            "displayValue": "12",
+            "label": "Total Turnovers",
+            "name": "totalTurnovers"
+          },
+          {
+            "abbreviation": "TECH",
+            "displayValue": "1",
+            "label": "Technical Fouls",
+            "name": "technicalFouls"
+          },
+          {
+            "abbreviation": "TECH",
+            "displayValue": "1",
+            "label": "Total Technical Fouls",
+            "name": "totalTechnicalFouls"
+          },
+          {
+            "abbreviation": "FLAG",
+            "displayValue": "0",
+            "label": "Flagrant Fouls",
+            "name": "flagrantFouls"
+          },
+          {
+            "abbreviation": "Points Conceded Off Turnovers",
+            "displayValue": "26",
+            "label": "Points Conceded Off Turnovers",
+            "name": "turnoverPoints"
+          },
+          {
+            "abbreviation": "FBPs",
+            "displayValue": "8",
+            "label": "Fast Break Points",
+            "name": "fastBreakPoints"
+          },
+          {
+            "abbreviation": "PIP",
+            "displayValue": "62",
+            "label": "Points in Paint",
+            "name": "pointsInPaint"
+          },
+          {
+            "abbreviation": "PF",
+            "displayValue": "14",
+            "label": "Fouls",
+            "name": "fouls"
+          },
+          {
+            "abbreviation": "LL",
+            "displayValue": "10",
+            "label": "Largest Lead",
+            "name": "largestLead"
+          },
+          {
+            "abbreviation": "LC",
+            "displayValue": "4",
+            "label": "Lead Changes",
+            "name": "leadChanges"
+          },
+          {
+            "abbreviation": "LPCT",
+            "displayValue": "15",
+            "label": "Percent Led",
+            "name": "leadPercentage"
+          }
+        ],
+        "team": {
+          "abbreviation": "WSH",
+          "displayName": "Washington Wizards"
+        }
+      }
+    ]
+  },
+  "header": {
+    "competitions": [
+      {
+        "date": "2026-04-01T23:00Z",
+        "id": "401810960"
+      }
+    ],
+    "id": "401810960"
+  }
+}
