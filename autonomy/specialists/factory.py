@@ -41,11 +41,19 @@ def build_specialist_registry(source_registry: Any) -> SpecialistRegistry:
 
         implied_book = CryptoImpliedBook(fetch_state)
 
+    # One shared season monitor for council health truth ("dormant" vs
+    # "ok"); the warmup-gating monitors live inside the signals themselves
+    # and share the same persisted state file, so verdicts agree.
+    from autonomy.specialists.seasons import SeasonMonitor
+
+    seasons = getattr(team_signal, "seasons", None) or SeasonMonitor()
+
     registry = SpecialistRegistry()
     registry.register(MlbSpecialist(intelligence=mlb_signal, sportsbook=sportsbook))
     for league in TEAM_LEAGUES:
         registry.register(TeamLeagueSpecialist(
             league=league, intelligence=team_signal, sportsbook=sportsbook,
+            seasons=seasons,
         ))
     registry.register(CryptoSpecialist(
         champion=crypto_champion, implied_book=implied_book,

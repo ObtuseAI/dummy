@@ -172,11 +172,15 @@ class BaseballIntelligenceSignal:
         model: BaseballRunModel | None = None,
         model_path: Path | None = None,
         injuries: "InjuryBook | None" = None,
+        seasons: Any = None,
     ) -> None:
+        from autonomy.specialists.seasons import SeasonMonitor
+
         self.espn = espn or EspnClient()
         self.model_path = model_path or MODEL_DIR / "mlb_runs_model.json"
         self.model = model or BaseballRunModel.load(self.model_path)
         self.injuries = injuries or InjuryBook()
+        self.seasons = seasons or SeasonMonitor(espn=self.espn)
 
     def warmup(self, date_ranges: list[str]) -> int:
         updated = 0
@@ -190,6 +194,12 @@ class BaseballIntelligenceSignal:
         return updated
 
     def on_cycle_start(self) -> None:
+        # Season gate: MLB sleeps Nov-Feb. No wake backfill needed -- a
+        # genuine wake follows an offseason with no games behind it, and a
+        # false-dormant blip (bounded by the gate's TTL) is covered by this
+        # recent-days warmup window on the next active cycle.
+        if not self.seasons.active("mlb"):
+            return
         self.espn.clear_cache()
         self.warmup([_date_range()])
         self.espn.clear_cache()
@@ -349,9 +359,16 @@ class TeamSportsIntelligenceSignal:
         espn: EspnClient | None = None,
         models: dict[str, TeamScoreModel] | None = None,
         model_dir: Path | None = None,
+        seasons: Any = None,
     ) -> None:
+        from autonomy.specialists.seasons import SeasonMonitor
+
         self.espn = espn or EspnClient()
         self.model_dir = model_dir or MODEL_DIR
+        # Season gate shares this signal's ESPN client (and its cache), so
+        # an activity check costs at most one scoreboard read per league
+        # per TTL window.
+        self.seasons = seasons or SeasonMonitor(espn=self.espn)
         self.models = models or {
             league: TeamScoreModel.load(
                 league, self.model_dir / f"team_scores_{league}.json",
@@ -376,6 +393,12 @@ class TeamSportsIntelligenceSignal:
         recent = _date_range()
         for league in LEAGUE_SCORE_CONFIGS:
             try:
+                # Season gate: a dormant league (no games in the detection
+                # window) skips its warmup fetch entirely. No wake backfill:
+                # a genuine wake has an empty offseason behind it, and a
+                # false-dormant blip is covered by this recent-days window.
+                if not self.seasons.active(league):
+                    continue
                 self.warmup(league, [recent])
             except Exception:
                 continue

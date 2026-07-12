@@ -286,6 +286,27 @@ class EspnClient:
         self._cache[key] = games
         return games
 
+    def games_or_raise(self, league: str, dates: str | None = None) -> list[Game]:
+        """Like ``games`` but a fetch failure RAISES instead of returning [].
+
+        Callers that must distinguish "no games" from "feed down" (the
+        season gate: an empty scoreboard means offseason, a dead feed means
+        keep the last verdict) need the exception. ``games``'s swallow-to-
+        empty contract stays untouched for every forecasting path.
+
+        Cache caveat: the two methods share the cache, so a [] cached by a
+        FAILED ``games`` call would be returned here without raising. Today
+        no caller shares a (league, dates) key across both paths (the gate
+        uses its own -7/+21 window), and cycle starts clear the cache.
+        """
+        key = (league, dates)
+        if key in self._cache:
+            return self._cache[key]
+        payload = self.fetch_scoreboard(league, dates)
+        games = parse_scoreboard(league, payload)
+        self._cache[key] = games
+        return games
+
     def find_matchup(self, league: str, team_a: str, team_b: str, dates: str | None = None) -> Game | None:
         teams = {canonical_team(league, team_a), canonical_team(league, team_b)}
         for game in self.games(league, dates):

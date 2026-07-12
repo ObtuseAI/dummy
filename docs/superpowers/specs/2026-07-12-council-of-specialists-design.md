@@ -36,6 +36,22 @@ class Specialist(Protocol):
 
 ## 3. Cross-cutting novel layers (the "second to none" edge)
 
+### 3.0 The 3x3 conviction lattice (operator directive, 2026-07-12)
+Every game, every sport, gets a nine-cell lattice: **three estimators**
+(our sport-native model, the de-vigged sharp book, the Kalshi crowd) **x
+three market families** (winner, spread ladder, total ladder). Triangulation
+ties the lattice vertically (model+book vs Kalshi per family, section 3.1's
+predecessor engine); coherence ties it horizontally (one joint score
+distribution must price all three families consistently, section 3.1).
+**Cross-cell confirmation is the top conviction tier:** an edge visible in
+the winner cell whose direction is independently implied by the spread-
+ladder cells, with book agreement in both, is the strongest signal the
+system can emit. Each sport fills its lattice natively -- key-number kernel
+cells (NFL/NCAAF), Skellam+OT cells (NHL), heteroskedastic pace cells
+(NBA/NCAAMB), PA-sim cells (MLB), DVOL-implied strike-ladder cells (crypto,
+where the "families" are the threshold/range/direction contract shapes).
+Custom-tailored per sport, one shared conviction algebra.
+
 ### 3.1 Cross-market coherence engine (`autonomy/coherence.py`)
 Each specialist prices winner + spread + total for a game from **one joint score distribution**. Kalshi prices them as three independent markets set by three independent crowds. When Kalshi's spread price implies a win probability inconsistent with its own winner market (beyond fees/spread), that is a **structural incoherence** — an edge requiring no model opinion, only internal-consistency math. Feeds the opportunist as a confidence tier **above** `model+book`. Seeded on MLB (live now), inherited free by every later specialist because the protocol already demands joint pricing.
 

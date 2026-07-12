@@ -17,11 +17,13 @@ from autonomy.specialists.base import SpecialistHealth
 class TeamLeagueSpecialist:
     """One pro/college team league wrapped behind the specialist protocol."""
 
-    def __init__(self, league: str, intelligence: Any, sportsbook: Any) -> None:
+    def __init__(self, league: str, intelligence: Any, sportsbook: Any,
+                 seasons: Any = None) -> None:
         self.name = league
         self.league = league
         self.intelligence = intelligence
         self.sportsbook = sportsbook
+        self.seasons = seasons  # optional SeasonMonitor for health truth
 
     def _parsed(self, market: MarketView):
         from autonomy.signals.sports_intelligence import parse_sports_contract
@@ -69,4 +71,12 @@ class TeamLeagueSpecialist:
         if isinstance(models, dict) and self.league in models:
             details["score_games_seen"] = getattr(models[self.league], "games_seen", None)
         status = "ok" if self.intelligence is not None else "cold"
+        if self.seasons is not None:
+            try:
+                in_season = bool(self.seasons.active(self.league))
+            except Exception:
+                in_season = True  # health must never break on a feed error
+            details["in_season"] = in_season
+            if not in_season:
+                status = "dormant"
         return SpecialistHealth(name=self.name, status=status, details=details)
