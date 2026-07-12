@@ -248,8 +248,9 @@ class BaseballIntelligenceSignal:
             if subject not in {home, canonical_team("mlb", game.away)}:
                 return None
             if live:
-                if game.home_score is None or game.away_score is None or not game.current_period:
-                    return None  # in-progress but missing live state -> fail-closed
+                if (game.home_score is None or game.away_score is None
+                        or game.current_period is None or game.current_period < 1):
+                    return None  # in-progress but missing/invalid live state -> fail-closed
                 home_win = self.model.live_win_probability(
                     prediction, game.home_score, game.away_score,
                     remaining_innings(game.current_period),

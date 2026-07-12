@@ -316,6 +316,34 @@ def test_live_winner_signal_reprices_an_in_progress_game(tmp_path):
     assert sig.features["challenger_only"] is True
 
 
+def test_live_winner_away_subject_is_inverted(tmp_path):
+    client = EspnClient(fetch_scoreboard=lambda _l, _d: {"events": []})
+    # Home (TEX) up 5-2 in the 7th -> the AWAY subject (HOU) should be the
+    # complement and well below 0.5.
+    client._cache[("mlb", "20260710")] = [
+        _mlb_game(status="in", home_score=5, away_score=2, current_period=7)
+    ]
+    source = BaseballIntelligenceSignal(
+        espn=client, model=BaseballRunModel(), model_path=tmp_path / "mlb.json",
+    )
+    home_sig = source.generate(_market("KXMLBGAME-26JUL102005HOUTEX-TEX", "Winner?"))
+    away_sig = source.generate(_market("KXMLBGAME-26JUL102005HOUTEX-HOU", "Winner?"))
+    assert away_sig.source == "mlb_live_winner"
+    assert away_sig.probability_yes < 0.15
+    assert abs((home_sig.probability_yes + away_sig.probability_yes) - 1.0) < 1e-9
+
+
+def test_live_winner_abstains_on_invalid_period(tmp_path):
+    client = EspnClient(fetch_scoreboard=lambda _l, _d: {"events": []})
+    client._cache[("mlb", "20260710")] = [
+        _mlb_game(status="in", home_score=5, away_score=2, current_period=0)
+    ]
+    source = BaseballIntelligenceSignal(
+        espn=client, model=BaseballRunModel(), model_path=tmp_path / "mlb.json",
+    )
+    assert source.generate(_market("KXMLBGAME-26JUL102005HOUTEX-TEX", "Winner?")) is None
+
+
 def test_live_winner_fails_closed_without_live_state(tmp_path):
     client = EspnClient(fetch_scoreboard=lambda _l, _d: {"events": []})
     # In-progress but the payload lacks the inning -> abstain, never guess.
