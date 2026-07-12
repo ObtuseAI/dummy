@@ -227,6 +227,15 @@ class CryptoDataHub:
             # Coinbase spot (and no cross-venue divergence) rather than a
             # mislabeled one. The internal spot median still uses the price.
             coinbase_spot_genuine = bool(minute) or hourly_source == "coinbase"
+            # Daily candles feed long-horizon market structure (multi-month
+            # support/resistance and trend channels); best-effort, and an
+            # empty list simply drops the 1d timeframe from structure.
+            try:
+                daily = self._candle_rows(client, product, 86400)
+                if daily and now_s - int(daily[-1][0]) > 3 * 86400:
+                    daily = []
+            except Exception:
+                daily = []
             book_bid = book_ask = bid_size = ask_size = None
             try:
                 response = client.get(
@@ -304,6 +313,7 @@ class CryptoDataHub:
             "venue_divergence_bps": venue_divergence,
             "hourly_source": hourly_source,
             "hourly_closes": [float(row[4]) for row in hourly],
+            "daily_closes": [float(row[4]) for row in daily],
             "minute_closes": [float(row[4]) for row in minute],
             "minute_volumes": [float(row[5]) for row in minute],
             "book_imbalance": book_imbalance,
