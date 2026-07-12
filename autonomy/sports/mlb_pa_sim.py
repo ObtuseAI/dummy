@@ -38,27 +38,26 @@ LEAGUE: dict[str, float] = {
 # set to a realistic 0.23 (a 0.15-ISO average batter -> ~0.033 HR/PA after the log5
 # pitcher combination, matching real; HR is ~0.13 of hits, near real ~0.15). The neutral
 # matchup (`_context(home_batter_iso=0.15, away_batter_iso=0.15)`, seed=2026, sims=3000)
-# now lands: expected_total_runs ~8.72 (band [8.0, 9.2], real ~8.5), home_win ~0.53
+# now lands: expected_total_runs ~8.75 (band [8.0, 9.2], real ~8.5), home_win ~0.53
 # (band [0.51, 0.575], home edge ~0.54), with REALISTIC composition -- HR/PA <= 0.045
 # and HR share of hits <= 0.22 (guard-tested).
 #
-# YRFI CAVEAT (important): with composition held realistic, yrfi lands ~0.41, BELOW real
-# MLB's ~0.55 and below the review's requested [0.50, 0.62] / fallback [0.46, 0.62]
-# bands. This is a genuine, structural limitation, not a tuning miss: an exhaustive
-# search (HIT_SHARE_BASE x HR_ISO_MULT x hit-mix x TTO x HFA) found the max in-band yrfi
-# achievable with realistic composition is ~0.44 -- and only by pushing HR to the cap
-# (1.35x real) and doubles to 1.25x real, i.e. re-committing the very distortion this
-# task removes. The real cause is the station-to-station single advancement in _advance
-# (a documented deferred S4/S5 limitation): a single moves each runner exactly one base,
-# so runners pile up and are stranded unless a cluster or extra-base hit arrives. That
-# depresses the FRACTION of innings that score >=1 run (yrfi) relative to the mean run
-# rate. Per the review's stated priority -- "realistic composition is the priority ...
-# rather than re-distorting composition" -- yrfi is left at its honest realistic-
-# composition value and its calibration-lock band is loosened accordingly (see the test).
-# The proper fix for yrfi is the deferred _advance improvement, out of scope for a
-# constants-only calibration. See mlb_pa_sim_demo.py and the composition-guard tests.
+# YRFI NOTE: probabilistic baserunning (see _advance) replaced the old
+# station-to-station single advancement, raising neutral yrfi from ~0.40 to ~0.43
+# at the SAME realistic run environment and composition -- runners now convert to
+# runs at real-MLB rates (score from 2B on a single ~62%, first-to-third ~28%,
+# score from 1B on a double ~42%) instead of piling up one base at a time. Because
+# more efficient baserunning also lifts the run total, HIT_SHARE_BASE was
+# re-calibrated 0.28 -> 0.244 to hold the total in band. yrfi ~0.43 is still
+# modestly below real MLB's ~0.55; the residual gap is a smaller, subtler artifact
+# of the independent per-PA run process (runs remain a touch over-clustered, since
+# the model has no situational contact-vs-strikeout shift), NOT the station-to-
+# station advancement, which is now fixed. Forcing yrfi to ~0.55 still requires
+# re-distorting composition (HR/doubles inflation), so composition stays the
+# priority and yrfi is locked at its honest value (see the test band).
 HR_ISO_MULT = 0.23  # batter HR prob = iso * HR_ISO_MULT, clamped to [0.004, 0.14]
-HIT_SHARE_BASE = 0.28  # baseline share of a non-KBBHBPHR PA that becomes a hit
+HIT_SHARE_BASE = 0.244  # baseline hit share; re-calibrated down from 0.28 when
+#                         probabilistic _advance raised run-conversion efficiency
 HIT_SHARE_CAP = 0.55  # upper clamp so elite sluggers keep differentiating past 0.44
 
 HOME_FIELD_BOOST = 1.045  # home lineups score slightly more (finalized in calibration)
@@ -128,10 +127,8 @@ def plate_appearance_distribution(
     # Split non-HR hits into single/double/triple, tilting toward doubles with ISO.
     # Base weights target real MLB's non-HR hit mix (~0.735 singles / ~0.235 doubles /
     # ~0.03 triples): the previous 0.78/0.19 under-represented doubles (0.19 share vs
-    # real ~0.235), an off-theme inaccuracy for a "realistic run composition" model and
-    # one that also worsened run-scoring efficiency (doubles clear the bases far better
-    # than the station-to-station single advance in _advance, so too few doubles depress
-    # the fraction of innings that score at least one run).
+    # real ~0.235), an off-theme inaccuracy for a "realistic run composition" model.
+    # (Doubles clear the bases well; _advance now converts baserunners at real rates.)
     iso_tilt = 1.0 + (0.0 if iso is None else min(1.0, max(-0.5, (iso - 0.150) * 2.0)))
     s_w, d_w, t_w = 0.735, 0.235 * iso_tilt, 0.03
     wsum = s_w + d_w + t_w
@@ -160,8 +157,24 @@ def sample_outcome(dist: dict[str, float], rng: random.Random) -> str:
     return "out"
 
 
-def _advance(bases: list[bool], outcome: str) -> int:
-    """Advance runners for a hit/walk; return runs scored. bases = [1B,2B,3B]."""
+# Probabilistic baserunning: real runners take the extra base only some of the
+# time, so they don't pile up station-to-station (the previous model advanced
+# every runner exactly one base per single, stranding runners and depressing
+# yrfi -- the fraction of innings that score -- well below real MLB's ~0.55).
+# Values are league-typical baserunning conversion rates (Retrosheet-era norms):
+SINGLE_SCORE_FROM_SECOND = 0.62   # runner on 2B scores on a single (else holds 3B)
+SINGLE_FIRST_TO_THIRD = 0.28      # runner on 1B reaches 3B on a single (else 2B)
+DOUBLE_SCORE_FROM_FIRST = 0.42    # runner on 1B scores on a double (else to 3B)
+
+
+def _advance(bases: list[bool], outcome: str, rng: random.Random) -> int:
+    """Advance runners for a hit/walk; return runs scored. bases = [1B,2B,3B].
+
+    Extra-base advancement on singles and doubles is probabilistic (seeded via
+    ``rng``) rather than station-to-station, so runners convert to runs at
+    real-MLB rates. A trailing runner never passes a lead runner who stops
+    ahead of them (the 3B-occupancy guard on the first-to-third path).
+    """
     runs = 0
     if outcome in ("bb", "hbp"):
         # Force only: fill first empty base, push forced runners.
@@ -174,21 +187,42 @@ def _advance(bases: list[bool], outcome: str) -> int:
         else:
             runs += 1  # bases loaded -> forced run, all stay
         return runs
-    advance = {"single": 1, "double": 2, "triple": 3, "hr": 4}[outcome]
-    # Move existing runners.
+    r1, r2, r3 = bases[0], bases[1], bases[2]
+    if outcome == "hr":
+        bases[:] = [False, False, False]
+        return int(r1) + int(r2) + int(r3) + 1  # everyone on + the batter
+    if outcome == "triple":
+        bases[:] = [False, False, True]  # batter to 3B, everyone ahead scores
+        return int(r1) + int(r2) + int(r3)
     new_bases = [False, False, False]
-    for base_index in (2, 1, 0):
-        if bases[base_index]:
-            dest = base_index + advance
-            if dest >= 3:
+    if outcome == "double":
+        if r3:
+            runs += 1
+        if r2:
+            runs += 1
+        if r1:
+            if rng.random() < DOUBLE_SCORE_FROM_FIRST:
                 runs += 1
             else:
-                new_bases[dest] = True
-    # Place the batter.
-    if advance >= 4:
-        runs += 1
-    else:
-        new_bases[advance - 1] = True
+                new_bases[2] = True  # runner on 1B pulls up at 3B
+        new_bases[1] = True  # batter to 2B
+        bases[:] = new_bases
+        return runs
+    # single
+    if r3:
+        runs += 1  # runner on 3B always scores
+    if r2:
+        if rng.random() < SINGLE_SCORE_FROM_SECOND:
+            runs += 1
+        else:
+            new_bases[2] = True  # runner on 2B holds at 3B
+    if r1:
+        # First-to-third only if 3B is open (can't pass a runner who held there).
+        if not new_bases[2] and rng.random() < SINGLE_FIRST_TO_THIRD:
+            new_bases[2] = True
+        else:
+            new_bases[1] = True
+    new_bases[0] = True  # batter to 1B
     bases[:] = new_bases
     return runs
 
@@ -210,7 +244,7 @@ def simulate_half_inning(
         if outcome in ("k", "out"):
             outs += 1
         else:
-            runs += _advance(bases, outcome)
+            runs += _advance(bases, outcome, rng)
     return runs, cursor
 
 
