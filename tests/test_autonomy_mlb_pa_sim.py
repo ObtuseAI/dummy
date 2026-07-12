@@ -561,3 +561,51 @@ def test_pitcher_only_split_is_used_when_batter_has_no_split():
     tough = sum(simulate_one_game(ctx(split_pitcher), _random.Random(s)).home_runs for s in range(60))
     neutral = sum(simulate_one_game(ctx(neutral_pitcher), _random.Random(s)).home_runs for s in range(60))
     assert tough < neutral  # the pitcher's tough vs-RHB split suppresses the R lineup
+
+
+def test_all_intelligence_absent_equals_baseline():
+    """Task 6 guard: the entire Tasks 1-5 intelligence layer (handedness
+    splits, per-team bullpen quality, divisional/rivalry awareness) must be a
+    complete no-op when its inputs are absent. A neutral context with every
+    vs_* split None, no team bullpen rates, and no divisional flag must
+    reproduce EXACTLY today's pre-intelligence calibrated behavior.
+
+    This makes explicit, in one place, the "all intelligence absent ==
+    baseline" contract that the individual byte-identical guards
+    (test_team_bullpen_rates_none_is_byte_identical_across_calibration_lock,
+    test_divisional_false_is_byte_identical_to_default) and the calibration
+    locks (test_neutral_matchup_is_calibrated_to_real_mlb,
+    test_neutral_run_composition_is_realistic) already cover individually.
+    """
+    ctx = _context(home_batter_iso=0.15, away_batter_iso=0.15)
+
+    # No splits: every batter and both starters carry vs_* = None.
+    assert ctx.batter_rates  # sanity: the context actually has batters
+    for rates in ctx.batter_rates.values():
+        assert rates.vs_lhp is None and rates.vs_rhp is None
+    assert ctx.home_pitcher.vs_lhb is None and ctx.home_pitcher.vs_rhb is None
+    assert ctx.away_pitcher.vs_lhb is None and ctx.away_pitcher.vs_rhb is None
+    # No team bullpen quality.
+    assert ctx.home_bullpen_rates is None and ctx.away_bullpen_rates is None
+
+    # The whole intelligence layer is inert: omitting `divisional` must be
+    # byte-identical to passing divisional=False explicitly.
+    baseline = simulate_game_markets(ctx, seed=2026, sims=3000)
+    explicit_false = simulate_game_markets(ctx, seed=2026, sims=3000, divisional=False)
+    assert baseline == explicit_false
+
+    # And the baseline itself still lands in today's calibrated bands (same
+    # guards as test_neutral_matchup_is_calibrated_to_real_mlb).
+    assert 8.0 <= baseline["expected_total_runs"] <= 9.2    # real MLB ~8.5
+    assert 0.38 <= baseline["yrfi"] <= 0.55                 # see that test's docstring
+    assert 0.51 <= baseline["home_win"] <= 0.575             # home edge ~0.54
+
+    # ...with realistic run composition (same guards as
+    # test_neutral_run_composition_is_realistic), reusing the same helper.
+    b = BatterRates(player_id=1, k_pct=0.20, bb_pct=0.09, obp=0.340, slg=0.450, iso=0.15)
+    p = PitcherRates(player_id=2, k_pct=0.22, bb_pct=0.08, hr9=1.2)
+    from autonomy.sports.mlb_pa_sim import plate_appearance_distribution as _pa_dist
+    d = _pa_dist(b, p)
+    hits = d["single"] + d["double"] + d["triple"] + d["hr"]
+    assert d["hr"] <= 0.045                    # HR/PA near real ~0.033, not 2x
+    assert d["hr"] / hits <= 0.22              # HR share of hits near real ~0.15
