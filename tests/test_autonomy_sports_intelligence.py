@@ -15,7 +15,7 @@ from autonomy.signals.sports_intelligence import (
     parse_sports_contract,
 )
 from autonomy.sports.baseball import BaseballRunModel, poisson_over_probability
-from autonomy.sports.espn import EspnClient, Game, parse_scoreboard
+from autonomy.sports.espn import EspnClient, Game, canonical_team, parse_scoreboard
 from autonomy.sports.formula_one import F1Model, parse_f1_scoreboard
 from autonomy.sports.simulation import (
     DESIGNATED_SPORTS_PREDICTION_TYPES,
@@ -96,7 +96,7 @@ def test_real_kalshi_mlb_contract_families_parse():
 
 def test_exact_requested_sports_series_are_in_public_scanner_watchlist():
     required = {
-        "KXMLBGAME", "KXMLBTOTAL", "KXMLBRFI",
+        "KXMLBGAME", "KXMLBTOTAL", "KXMLBRFI", "KXMLBSPREAD",
         "KXNBAGAME", "KXNBATOTAL", "KXNFLGAME", "KXNFLTOTAL",
         "KXNCAAFGAME", "KXNCAAFTOTAL", "KXNHLGAME", "KXNHLTOTAL",
         "KXNCAAMBGAME", "KXNCAAMBTOTAL", "KXUFCFIGHT", "KXUFCROUNDS",
@@ -104,6 +104,7 @@ def test_exact_requested_sports_series_are_in_public_scanner_watchlist():
     }
     assert required <= set(WATCHLIST_SERIES)
     assert classify_vertical("KXF1RACE-BELGP26-VER") is Vertical.SPORTS
+    assert classify_vertical("KXMLBSPREAD-26JUL112110AZLAD-AZ8") is Vertical.SPORTS
 
 
 def test_scoreboard_retains_final_scores_and_first_inning():
@@ -156,6 +157,77 @@ def test_baseball_signal_emits_isolated_winner_total_and_yrfi_challengers(tmp_pa
     ]
     assert all(signal.features["challenger_only"] is True for signal in signals)
     assert all(signal.features["promotion_eligible"] is False for signal in signals)
+
+
+def test_kxmlbspread_parses_to_a_run_spread_contract():
+    parsed = parse_sports_contract(_market(
+        "KXMLBSPREAD-26JUL102005HOUTEX-TEX2", "Texas wins by over 1.5 runs?",
+        floor_strike=1.5, strike_type="greater",
+    ))
+    assert parsed is not None
+    assert parsed.sport == "mlb"
+    assert parsed.market_type == "spread"
+    assert parsed.subject == canonical_team("mlb", "TEX")
+    assert parsed.threshold == 1.5
+
+
+def test_poisson_spread_probability_is_monotone_and_bounded():
+    from autonomy.sports.baseball import poisson_spread_probability
+    # Strictly decreasing in the margin line for a fixed matchup.
+    p_neg = poisson_spread_probability(4.8, 4.2, -1.5)   # win by over -1.5 (i.e. lose by <1.5)
+    p_half = poisson_spread_probability(4.8, 4.2, 0.5)   # win outright by 1+
+    p_one = poisson_spread_probability(4.8, 4.2, 1.5)    # win by 2+
+    p_big = poisson_spread_probability(4.8, 4.2, 6.5)    # win by 7+
+    assert p_neg > p_half > p_one > p_big
+    assert all(0.005 <= p <= 0.995 for p in (p_neg, p_half, p_one, p_big))
+    # A bigger favorite covers a given line more often than a coin-flip matchup.
+    assert poisson_spread_probability(6.0, 3.0, 1.5) > poisson_spread_probability(4.5, 4.5, 1.5)
+    # Pin the exact need=floor(margin)+1 mapping around zero via tie mass: for an
+    # even matchup, P(win by >-0.5) counts wins+ties (need=0) and sits ABOVE 0.5,
+    # while P(win by >0.5) is the strict win (need=1) and sits BELOW 0.5. An
+    # off-by-one in `need` (floor(margin) or +2) breaks this.
+    even_ge0 = poisson_spread_probability(4.5, 4.5, -0.5)  # need=0 -> win or tie
+    even_gt0 = poisson_spread_probability(4.5, 4.5, 0.5)   # need=1 -> strict win
+    assert even_gt0 < 0.5 < even_ge0
+    assert even_ge0 - even_gt0 > 0.02  # the regulation tie mass, a real gap
+
+
+def test_baseball_spread_probability_sides_are_coherent(tmp_path):
+    model = BaseballRunModel()
+    game = _mlb_game()  # home TEX, away HOU
+    prediction = model.predict(game)
+    home_cover = model.spread_probability(prediction, subject_is_home=True, margin=1.5)
+    away_cover = model.spread_probability(prediction, subject_is_home=False, margin=1.5)
+    # Both are valid probabilities and cannot both exceed 0.5 (only one side can
+    # win by 2+ in a game); the stronger expected side covers more often.
+    assert 0.005 <= home_cover <= 0.995 and 0.005 <= away_cover <= 0.995
+    stronger_home = prediction.expected_home_runs >= prediction.expected_away_runs
+    assert (home_cover >= away_cover) == stronger_home
+
+
+def test_baseball_signal_emits_run_spread_challenger(tmp_path):
+    client = EspnClient(fetch_scoreboard=lambda _league, _dates: {"events": []})
+    client._cache[("mlb", "20260710")] = [_mlb_game()]
+    source = BaseballIntelligenceSignal(
+        espn=client, model=BaseballRunModel(), model_path=tmp_path / "mlb.json",
+    )
+    home_spread = source.generate(_market(
+        "KXMLBSPREAD-26JUL102005HOUTEX-TEX2", "Texas wins by over 1.5 runs?",
+        floor_strike=1.5, strike_type="greater"))
+    away_spread = source.generate(_market(
+        "KXMLBSPREAD-26JUL102005HOUTEX-HOU2", "Houston wins by over 1.5 runs?",
+        floor_strike=1.5, strike_type="greater"))
+    assert home_spread.source == "mlb_run_spread"
+    assert away_spread.source == "mlb_run_spread"
+    assert home_spread.features["challenger_only"] is True
+    assert home_spread.features["promotion_eligible"] is False
+    assert home_spread.features["market_type"] == "spread"
+    assert 0.005 <= home_spread.probability_yes <= 0.995
+    # The away pitcher (2.5 ERA) is far better than the home pitcher (5.2), so the
+    # away side is expected stronger and covers the same +1.5 line more often.
+    assert away_spread.probability_yes > home_spread.probability_yes
+    # Only one side can win by 2+, so the two YES probabilities cannot sum above 1.
+    assert home_spread.probability_yes + away_spread.probability_yes <= 1.0
 
 
 def _ufc_payload(state: str = "pre", decision: bool = False):

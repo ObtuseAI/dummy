@@ -117,7 +117,7 @@ def parse_sports_contract(market: MarketView) -> SportsContract | None:
             (names[0].strip(), names[1].strip()), threshold=parsed_threshold,
         )
 
-    if series in {"KXMLBGAME", "KXMLBTOTAL", "KXMLBRFI"}:
+    if series in {"KXMLBGAME", "KXMLBTOTAL", "KXMLBRFI", "KXMLBSPREAD"}:
         teams = _split_mlb_teams(_strip_start_time(remainder))
         if teams is None:
             return None
@@ -136,6 +136,25 @@ def parse_sports_contract(market: MarketView) -> SportsContract | None:
                 return None
             return SportsContract(
                 "mlb", "total_runs", date_yyyymmdd, teams, threshold=parsed_threshold,
+            )
+        if series == "KXMLBSPREAD":
+            # e.g. KXMLBSPREAD-26JUL112110AZLAD-AZ8 -> subject "AZ", floor 7.5
+            # ("wins by over 7.5 runs"). The ticker suffix is TEAM + strike index;
+            # the real margin line is the market's floor_strike.
+            if len(parts) < 3:
+                return None
+            subject_match = re.match(r"^([A-Z]+?)\d+$", parts[2])
+            if subject_match is None:
+                return None
+            threshold = market.raw.get("floor_strike")
+            try:
+                parsed_threshold = float(threshold)
+            except (TypeError, ValueError):
+                return None
+            return SportsContract(
+                "mlb", "spread", date_yyyymmdd, teams,
+                subject=canonical_team("mlb", subject_match.group(1)),
+                threshold=parsed_threshold,
             )
         return SportsContract("mlb", "yrfi", date_yyyymmdd, teams)
 
@@ -235,6 +254,22 @@ class BaseballIntelligenceSignal:
             uncertainty = prediction.total_uncertainty
             source = "mlb_total_runs"
             market_detail = f"over {parsed.threshold:g} runs"
+        elif parsed.market_type == "spread" and parsed.threshold is not None and parsed.subject:
+            subject = canonical_team("mlb", parsed.subject)
+            home = canonical_team("mlb", game.home)
+            away = canonical_team("mlb", game.away)
+            if subject == home:
+                probability = self.model.spread_probability(
+                    prediction, subject_is_home=True, margin=parsed.threshold)
+            elif subject == away:
+                probability = self.model.spread_probability(
+                    prediction, subject_is_home=False, margin=parsed.threshold)
+            else:
+                return None
+            # Run-margin tails are higher-variance than the moneyline; widen a touch.
+            uncertainty = min(0.45, prediction.winner_uncertainty + 0.06)
+            source = "mlb_run_spread"
+            market_detail = f"{subject} by >{parsed.threshold:g}"
         elif parsed.market_type == "yrfi":
             probability = prediction.yrfi_probability
             uncertainty = prediction.first_inning_uncertainty

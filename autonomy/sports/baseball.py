@@ -102,6 +102,44 @@ def poisson_win_probability(subject_mean: float, opponent_mean: float) -> float:
     return min(0.995, max(0.005, probability))
 
 
+def poisson_spread_probability(
+    subject_mean: float, opponent_mean: float, margin: float
+) -> float:
+    """P(subject - opponent > margin): subject wins by MORE than `margin` runs.
+
+    The run margin of two independent Poisson scores is Skellam-distributed;
+    convolve the PMFs like ``poisson_win_probability``. Runline markets use a
+    half-run line (e.g. "win by over 1.5"), so the event is the integer
+    ``subject - opponent >= floor(margin) + 1``. Handles negative margins (an
+    underdog +line) too: ``floor(margin) + 1`` can be <= 0, where the subject
+    tail is the full mass.
+    """
+    need = math.floor(margin) + 1  # integer run margin strictly above the line
+    limit = max(25, int(math.ceil(max(subject_mean, opponent_mean) + 8.0)))
+    subject = [math.exp(-subject_mean)]
+    opponent = [math.exp(-opponent_mean)]
+    for runs in range(1, limit + 1):
+        subject.append(subject[-1] * subject_mean / runs)
+        opponent.append(opponent[-1] * opponent_mean / runs)
+    # subject_tail[k] = P(subject >= k), for k in [0, limit].
+    subject_tail = [0.0] * (limit + 2)
+    running = 0.0
+    for k in range(limit, -1, -1):
+        running += subject[k]
+        subject_tail[k] = running
+    probability = 0.0
+    for opponent_runs, opponent_mass in enumerate(opponent):
+        k = opponent_runs + need
+        if k <= 0:
+            tail = 1.0
+        elif k > limit:
+            tail = 0.0
+        else:
+            tail = subject_tail[k]
+        probability += opponent_mass * tail
+    return min(0.995, max(0.005, probability))
+
+
 @dataclass
 class BaseballRunModel:
     teams: dict[str, TeamRunState] = field(default_factory=dict)
@@ -237,6 +275,18 @@ class BaseballRunModel:
 
     def total_probability(self, prediction: BaseballPrediction, threshold: float) -> float:
         return poisson_over_probability(prediction.expected_total_runs, threshold)
+
+    def spread_probability(
+        self, prediction: BaseballPrediction, subject_is_home: bool, margin: float
+    ) -> float:
+        """P(subject wins by more than `margin` runs) via the run-margin Skellam."""
+        if subject_is_home:
+            return poisson_spread_probability(
+                prediction.expected_home_runs, prediction.expected_away_runs, margin
+            )
+        return poisson_spread_probability(
+            prediction.expected_away_runs, prediction.expected_home_runs, margin
+        )
 
     def to_dict(self) -> dict[str, Any]:
         variance = (
