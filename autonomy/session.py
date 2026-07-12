@@ -263,6 +263,11 @@ def build_brain(mode: SessionMode):
 
     registry.register(CryptoBlendSigmaSignal(fetch_state=crypto_hub.state))
     registry.register(CryptoVrpRegimeSignal(fetch_state=crypto_hub.state))
+    # BTC-to-alt lead-lag (spot only; NO perpetuals per operator directive):
+    # an un-followed BTC move predicts ETH/SOL catch-up on short horizons.
+    from autonomy.signals.crypto_flows import CryptoBtcLeadlagSignal
+
+    registry.register(CryptoBtcLeadlagSignal(fetch_state=crypto_hub.state))
     # CommoditiesSpotVolSignal is retained only as challenger evidence: with
     # COMMODITIES dropped from the scanner's trading verticals it no longer
     # receives tradable markets, but keeping it registered is harmless and
