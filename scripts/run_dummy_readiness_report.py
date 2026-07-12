@@ -32,6 +32,10 @@ from autonomy.promotion import (  # noqa: E402
     build_readiness,
     utc_now,
 )
+from autonomy.reliability import (  # noqa: E402
+    DEFAULT_MAPS_PATH,
+    fit_maps_from_rows,
+)
 from autonomy.strategy_miner import _brier_edge, load_settled_rows  # noqa: E402
 
 DEFAULT_DB = Path("runtime/autonomy/ledger.db")
@@ -118,6 +122,12 @@ def main() -> int:
     merged_demotions = _merge_demotions(DEFAULT_DEMOTIONS_PATH, built["demotions"], now_iso)
     _write_json(DEFAULT_DEMOTIONS_PATH, merged_demotions)
 
+    # Reliability calibration maps (WS-18): fit per-scope isotonic corrections
+    # for the curated sources and write the reviewable artifact the calibrated
+    # challenger wrappers consume.
+    maps = fit_maps_from_rows(rows)
+    _write_json(DEFAULT_MAPS_PATH, {"maps": maps, "generated_at": now_iso})
+
     report = built["report"]
     print(json.dumps({
         "status": "OK",
@@ -125,6 +135,7 @@ def main() -> int:
         "promotion_candidates": report["promotion_candidates"],
         "new_auto_demotions": report["auto_demotions"],
         "total_auto_demotions": len(merged_demotions["demotions"]),
+        "reliability_maps": len(maps),
         "report": str(REPORT_PATH),
     }))
     return 0

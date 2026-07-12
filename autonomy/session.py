@@ -290,6 +290,20 @@ def build_brain(mode: SessionMode):
     # Empirical price->outcome curve mined from settled-market history; no
     # curve artifact on disk means the source simply never opines.
     registry.register(MarketDebiasSignal())
+    # Reliability calibration wrappers (WS-18): re-emit curated sources'
+    # forecasts isotonically recalibrated, challenger-only, at scopes with a
+    # learned map. They wrap already-registered parent instances; a wrapper
+    # abstains wherever no map exists, so parents are untouched. The corrected
+    # view reaches execution only via a WS-14 promotion.
+    from autonomy.reliability import CALIBRATED_SOURCES, CalibratedSignal, ReliabilityMaps
+
+    reliability_maps = ReliabilityMaps()
+    _by_name = {getattr(s, "name", ""): s for s in registry.sources()}
+    for _parent_name in ("crypto_spot_vol", "crypto_ewma_t", "mlb_intelligence"):
+        _parent = _by_name.get(_parent_name)
+        if _parent is not None:
+            registry.register(CalibratedSignal(
+                _parent, maps=reliability_maps, sources=CALIBRATED_SOURCES))
     # The LLM panel (debate.py) supersedes the single-model analyst and runs as
     # a post-forecast adjudicator on top-K markets inside the brain, not as a
     # per-market source (it must await the router from the async loop).
