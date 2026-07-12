@@ -14,9 +14,7 @@ if str(ROOT) not in sys.path:
 from autonomy.signals.sports_elo import SportsEloSignal  # noqa: E402
 from autonomy.signals.sports_intelligence import (  # noqa: E402
     BaseballIntelligenceSignal,
-    FormulaOneIntelligenceSignal,
     TeamSportsIntelligenceSignal,
-    UfcIntelligenceSignal,
 )
 
 
@@ -68,25 +66,6 @@ def main() -> int:
             }
         except Exception as exc:
             report["errors"].append(f"{league}:{type(exc).__name__}")
-
-    ufc = UfcIntelligenceSignal()
-    try:
-        report["models"]["ufc"] = {
-            "new_fights": ufc.warmup(ranges),
-            "fights_seen": ufc.model.fights_seen,
-        }
-    except Exception as exc:
-        report["errors"].append(f"ufc:{type(exc).__name__}")
-
-    f1 = FormulaOneIntelligenceSignal()
-    try:
-        year = datetime.now(timezone.utc).year
-        report["models"]["formula_one"] = {
-            "new_races": f1.warmup(year),
-            "races_seen": f1.model.races_seen,
-        }
-    except Exception as exc:
-        report["errors"].append(f"formula_one:{type(exc).__name__}")
 
     print(json.dumps(report, indent=2, sort_keys=True))
     return 0 if not report["errors"] else 1

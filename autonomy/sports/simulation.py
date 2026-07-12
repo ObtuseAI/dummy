@@ -39,10 +39,6 @@ DESIGNATED_SPORTS_PREDICTION_TYPES: tuple[tuple[str, str], ...] = (
     ("nhl", "total"),
     ("ncaamb", "winner"),
     ("ncaamb", "total"),
-    ("ufc", "winner"),
-    ("ufc", "before_round"),
-    ("ufc", "distance"),
-    ("f1", "winner"),
 )
 DECLARED_SPORTS_COVERAGE_GAPS: dict[tuple[str, str], str] = {
     ("nfl", "winner"): (
@@ -276,7 +272,7 @@ def paper_action(row: SportsObservation, genome: SportsGenome) -> dict[str, Any]
         ("yes", row.yes_ask, yes_fee, yes_ev)
         if yes_ev >= no_ev else ("no", row.no_ask, no_fee, no_ev)
     )
-    minimum_sample = 3 if row.sport in {"ufc", "f1"} else 10
+    minimum_sample = 10
     sample_ready = row.sample_size >= minimum_sample
     blockers = []
     if not sample_ready:

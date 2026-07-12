@@ -38,44 +38,30 @@ def _atomic_json(path: Path, value: dict) -> None:
 
 
 def _build():
-    """Assemble the read-only forecast + book providers from the shadow brain."""
-    from autonomy.live_odds import EspnSummaryBook
-    from autonomy.signals.sports_intelligence import parse_sports_contract
-    from autonomy.sports.espn import EspnClient, canonical_team
+    """Assemble the read-only forecast + book providers from the shadow brain.
+
+    Council routing (autonomy/specialists): each market is dispatched to its
+    vertical's specialist for the live view and the sharp book, with the
+    pre-council sportsbook-consensus path kept as a fallback for markets no
+    specialist claims (e.g. WNBA) -- byte-identical behavior to the
+    hand-wired closures this replaces.
+    """
+    from autonomy.specialists import build_specialist_registry
 
     brain = build_brain(SessionMode.SHADOW)
     forecaster = EnsembleForecaster(brain.ledger)
-    book_signal = SportsbookConsensusSignal()
-    espn = EspnClient()
-    live_book = EspnSummaryBook(league="mlb")
-    # The live MLB challenger already prices in-progress games (mlb_live_winner);
-    # the monitor is paper/evidence, so it may consume that live view directly.
-    mlb_signal = next(
-        (s for s in brain.registry.sources() if getattr(s, "name", "") == "mlb_intelligence"),
-        None,
-    )
-
-    def _live_mlb_game(market):
-        """Resolve an in-progress MLB game for a winner market, else None."""
-        parsed = parse_sports_contract(market)
-        if parsed is None or parsed.sport != "mlb" or parsed.market_type != "winner":
-            return None
-        if not parsed.competitors:
-            return None
-        game = espn.find_matchup(
-            "mlb", parsed.competitors[0], parsed.competitors[1], parsed.date_yyyymmdd)
-        if game is None or game.status != "in":
-            return None
-        return parsed, game
+    council = build_specialist_registry(brain.registry)
+    fallback_book = SportsbookConsensusSignal()
 
     def forecast_fn(market):
         try:
-            # For an in-progress MLB winner, prefer the live challenger view (the
+            # For an in-progress game, prefer the specialist's live view (the
             # monitor never trades, so live evidence is fair game); else the
             # execution-grade fused model (fuse() excludes challenger_only).
-            if mlb_signal is not None and _live_mlb_game(market) is not None:
-                live = mlb_signal.generate(market)
-                if live is not None and live.features.get("live"):
+            specialist = council.route(market)
+            if specialist is not None:
+                live = specialist.live_forecast(market)
+                if live is not None:
                     return live.probability_yes
             signals = list(brain.registry.signals_for(market))
             forecast = forecaster.fuse(market, signals)
@@ -84,29 +70,26 @@ def _build():
             return None
 
     def book_fn(market):
-        # De-vigged sportsbook consensus. For an in-progress MLB winner, the live
-        # ESPN-summary book overrides the pre-game scoreboard line.
+        # The specialist's book (live ESPN-summary de-vig in play, sportsbook
+        # consensus pre-game); a routed specialist owns the book decision, so
+        # only unrouted sports markets (e.g. WNBA) keep the consensus book.
         try:
-            resolved = _live_mlb_game(market)
-            if resolved is not None:
-                parsed, game = resolved
-                home_prob = live_book.home_win_probability(game.game_id)
-                if home_prob is not None:
-                    subject = canonical_team("mlb", parsed.subject or "")
-                    yes_is_home = subject == canonical_team("mlb", game.home)
-                    return home_prob if yes_is_home else 1.0 - home_prob
-            if book_signal.applicable(market):
-                signal = book_signal.generate(market)
+            specialist = council.route(market)
+            if specialist is not None:
+                return specialist.book(market)
+            if fallback_book.applicable(market):
+                signal = fallback_book.generate(market)
                 return signal.probability_yes if signal else None
             return None
         except Exception:
             return None
 
-    return brain, forecast_fn, book_fn
+    return brain, council, forecast_fn, book_fn
 
 
-def _one_pass(brain, forecast_fn, book_fn, opportunist) -> dict:
+def _one_pass(brain, council, forecast_fn, book_fn, opportunist) -> dict:
     brain.registry.on_cycle_start()  # warm/refresh source caches for this pass
+    council.on_cycle_start()  # per-specialist warmup (isolated; failures skip)
     markets = brain.scanner.scan()
     now_iso = datetime.now(timezone.utc).isoformat()
     report = run_mispricing_sweep(
@@ -122,12 +105,12 @@ def main() -> int:
     parser.add_argument("--interval", type=int, default=90, help="seconds between passes in --loop")
     args = parser.parse_args()
 
-    brain, forecast_fn, book_fn = _build()
+    brain, council, forecast_fn, book_fn = _build()
     opportunist = OpportunistEngine()  # stateful across passes within this process
 
     def _tick() -> None:
         try:
-            report = _one_pass(brain, forecast_fn, book_fn, opportunist)
+            report = _one_pass(brain, council, forecast_fn, book_fn, opportunist)
             print(json.dumps({
                 "status": "OK",
                 "scanned": report["scanned"],

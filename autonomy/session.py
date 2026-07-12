@@ -218,9 +218,7 @@ def build_brain(mode: SessionMode):
     from autonomy.signals.sportsbook import SportsbookConsensusSignal
     from autonomy.signals.sports_intelligence import (
         BaseballIntelligenceSignal,
-        FormulaOneIntelligenceSignal,
         TeamSportsIntelligenceSignal,
-        UfcIntelligenceSignal,
     )
 
     ledger = AutonomyLedger()
@@ -252,13 +250,13 @@ def build_brain(mode: SessionMode):
     # De-vigged sportsbook moneyline + open->close steam: the sharpest public
     # game forecast, and the trap detector when Elo fights the book.
     registry.register(SportsbookConsensusSignal())
-    # New totals/first-inning/UFC models are recorded as challenger-only
+    # New totals/first-inning models are recorded as challenger-only
     # point-in-time evidence. Their own feature gate keeps them out of the
     # execution ensemble until a settlement-backed promotion review.
+    # UFC and Formula One intelligence retired 2026-07-12 (operator directive):
+    # their markets route to no sports model and are simply never forecast.
     registry.register(BaseballIntelligenceSignal())
     registry.register(TeamSportsIntelligenceSignal())
-    registry.register(UfcIntelligenceSignal())
-    registry.register(FormulaOneIntelligenceSignal())
     registry.register(CrossVenueSignal())
     # Empirical price->outcome curve mined from settled-market history; no
     # curve artifact on disk means the source simply never opines.
