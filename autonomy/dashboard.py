@@ -19,6 +19,7 @@ RUNTIME_DIR = Path("runtime/autonomy")
 SHADOW_TASK_NAME = "DummyShadowPredator"
 TRAINER_TASK_NAME = "DummySimulationTrainer"
 DASHBOARD_TASK_NAME = "DummyDashboard"
+MISPRICING_TASK_NAME = "DummyMispricingMonitor"
 
 
 def _load_json(path: Path) -> Any:
@@ -98,6 +99,7 @@ def assemble_dashboard_state(runtime_dir: Path | None = None) -> dict[str, Any]:
     risk_state = _load_json(rd / "risk_state.json")
     simulation_training = _load_json(rd / "simulation_training_latest.json") or {}
     crypto_paper_twin = _load_json(rd / "crypto_paper_twin_latest.json") or {}
+    mispricing_monitor = _load_json(rd / "mispricing_monitor_latest.json") or {}
     from autonomy.paper_dashboard import assemble_paper_dashboard, scheduled_task_status
     from autonomy.sports.dashboard import SPORTS_TASK_NAME, assemble_sports_dashboard
 
@@ -122,6 +124,7 @@ def assemble_dashboard_state(runtime_dir: Path | None = None) -> dict[str, Any]:
         {"role": "crypto paper twin", **paper_scheduler},
         {"role": "sports paper twin", **sports_scheduler},
         {"role": "simulation trainer", **_task_status(TRAINER_TASK_NAME)},
+        {"role": "mispricing monitor", **_task_status(MISPRICING_TASK_NAME)},
         {"role": "dashboard", **_task_status(DASHBOARD_TASK_NAME)},
     ]
     session = session_authorization_state(rd)
@@ -185,6 +188,7 @@ def assemble_dashboard_state(runtime_dir: Path | None = None) -> dict[str, Any]:
         "statistics_intake": statistics_intake,
         "simulation_training": simulation_training,
         "crypto_paper_twin": crypto_paper_twin,
+        "mispricing_monitor": mispricing_monitor,
         "paper_operation": paper_operation,
         "paper_scheduler": paper_scheduler,
         "sports_operation": sports_operation,
