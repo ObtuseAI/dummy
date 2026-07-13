@@ -40,6 +40,17 @@ from autonomy.sports.nhl_model import (
     parse_goalie_boxscores,
     parse_probable_goalies,
 )
+from autonomy.sports.players import (
+    LEAGUE_POINT_SCALE,
+    LeagueInjuryBook,
+    RookieBook,
+    TeamAvailability,
+    apply_margin_shift_to_scores,
+    availability_effect,
+    bounded_mismatch_score,
+    mismatch_margin_shift,
+    shift_probability_by_margin,
+)
 from autonomy.sports.team_scores import LEAGUE_SCORE_CONFIGS, TeamScoreModel
 
 # WS-1's fetch-budget guidance ("~16/day/league"), applied here since WS-2's
@@ -510,6 +521,8 @@ class TeamSportsIntelligenceSignal:
         ncaaf_elo: EloModel | None = None,
         ncaaf_elo_path: Path | None = None,
         fetch_college_scoreboard: Any = None,
+        injury_books: dict[str, LeagueInjuryBook] | None = None,
+        rookie_book: RookieBook | None = None,
     ) -> None:
         from autonomy.specialists.seasons import SeasonMonitor
 
@@ -580,6 +593,17 @@ class TeamSportsIntelligenceSignal:
         # generic; cached per (league, date) within a cycle.
         self._fetch_college_scoreboard = fetch_college_scoreboard or default_fetch_scoreboard
         self._neutral_site_cache: dict[tuple[str, str], dict[str, bool]] = {}
+        # WS-6: per-league HARD/SOFT availability books (independent of
+        # injuries.py's MLB-only InjuryBook -- see players.py's module
+        # docstring). One book per league in LEAGUE_SCORE_CONFIGS, refreshed
+        # once per cycle exactly like MLB's own injuries.refresh() pattern.
+        self.injury_books = injury_books or {
+            league: LeagueInjuryBook(league) for league in LEAGUE_SCORE_CONFIGS
+        }
+        # WS-6: NFL QB rookie-start probe only (NHL's starting-goalie rookie
+        # flag is already shipped by WS-3's is_rookie_goalie -- see
+        # players.py's module docstring for why this isn't duplicated here).
+        self.rookie_book = rookie_book or RookieBook("nfl")
 
     def _warmup_nba(self, date_ranges: list[str]) -> int:
         """Ingest WS-1 boxscores + update the NBA pace model for newly-final
@@ -763,12 +787,25 @@ class TeamSportsIntelligenceSignal:
                 if not self.seasons.active(league):
                     continue
                 self.warmup(league, [recent])
+                # WS-6: HARD/SOFT availability, once per cycle (mirrors
+                # BaseballIntelligenceSignal.on_cycle_start's own
+                # self.injuries.refresh()). Internally fail-closed already
+                # (see LeagueInjuryBook.refresh), so a dead feed just leaves
+                # this league's book empty rather than aborting the loop.
+                self.injury_books[league].refresh()
                 if league == "nba":
                     self._warmup_nba([recent])
                 elif league == "nhl":
                     self._warmup_nhl([recent])
                 elif league == "ncaamb":
                     self._warmup_ncaamb([recent])
+                elif league == "nfl":
+                    # WS-6: NFL QB rookie-start probe, budget-capped, for
+                    # today's slate only -- `self.espn.games` is a cache hit
+                    # here (the warmup() call above already fetched it).
+                    nfl_games = self.espn.games("nfl", recent)
+                    nfl_teams = sorted({g.home for g in nfl_games} | {g.away for g in nfl_games})
+                    self.rookie_book.refresh(nfl_teams)
             except Exception:
                 continue
         self.espn.clear_cache()
@@ -801,6 +838,38 @@ class TeamSportsIntelligenceSignal:
             )
         if game is None:
             return None
+        # WS-6: player availability (HARD margin-shift + SOFT/rookie
+        # uncertainty widen) computed once per game, before market-type
+        # branching, so NFL/NCAAF can bake the HARD delta straight into
+        # their margin kernel's inputs below (an EXACT shift, not the
+        # logit-space approximation NBA/NHL/NCAAMB use further down).
+        # Fail-closed throughout: an unrefreshed/dead injury_books entry has
+        # an empty book (LeagueInjuryBook.refresh's own contract), so
+        # `home_availability`/`away_availability` are the zero-value
+        # TeamAvailability() default and every effect below is 0.0/None --
+        # byte-identical to this whole layer being disabled.
+        injury_book = self.injury_books.get(parsed.sport)
+        home_availability = injury_book.for_team(game.home_name) if injury_book else TeamAvailability()
+        away_availability = injury_book.for_team(game.away_name) if injury_book else TeamAvailability()
+        rookie_home = self.rookie_book.rookie_start(game.home) if parsed.sport == "nfl" else None
+        rookie_away = self.rookie_book.rookie_start(game.away) if parsed.sport == "nfl" else None
+        player_effect = availability_effect(
+            parsed.sport, home_availability, away_availability, rookie_home, rookie_away)
+        hard_margin_delta = player_effect.hard_margin_delta
+        # Mismatch finder: bounded [-1,1], sourced from already-shipped
+        # per-team split metrics (NBA/NCAAMB rest gap, NHL special-teams
+        # gap -- populated in their own blocks below once warm). NFL/NCAAF
+        # have no per-team split metric wired into this signal at all (no
+        # BoxscoreStore instance exists for either league here -- see
+        # players.py's module docstring probe #3), so their score stays
+        # unavailable/None -- fail-closed, not fabricated.
+        mismatch_score: float | None = None
+        mismatch_delta = 0.0
+        # Flipped to False only once a warm per-league engine below actually
+        # computes a real mismatch_score; NFL/NCAAF never flip it (no
+        # source metric wired), and a COLD nba/nhl/ncaamb game (no warm
+        # engine yet) correctly stays "unavailable" too.
+        mismatch_unavailable = True
         # NBA and NHL alone carry an in-play branch (WS-2/WS-3); every other
         # league in this signal stays pre-game only, unchanged from before WS-2.
         nba_live = parsed.sport == "nba" and game.status == "in"
@@ -820,8 +889,15 @@ class TeamSportsIntelligenceSignal:
         if parsed.sport == "nfl" and parsed.market_type in ("winner", "spread"):
             from autonomy.sports.nfl_margin import NflMarginModel
 
-            nfl_kernel = NflMarginModel(
-                prediction.expected_home_score, prediction.expected_away_score)
+            # WS-6: HARD availability bakes into the kernel's own input
+            # scores -- symmetric split so the margin shifts by EXACTLY
+            # hard_margin_delta while the total stays untouched (the brief's
+            # own key test: QB-Out shifts NFL expected margin by exactly
+            # -4.5). delta_margin == 0.0 is a literal no-op (both scores
+            # unchanged), so a healthy roster is byte-identical to before WS-6.
+            adj_home_score, adj_away_score = apply_margin_shift_to_scores(
+                prediction.expected_home_score, prediction.expected_away_score, hard_margin_delta)
+            nfl_kernel = NflMarginModel(adj_home_score, adj_away_score)
             margin_model_version = "nfl_key_number_kernel_v1"
 
         # NCAAF winner/spread price from the college key-number kernel
@@ -843,6 +919,21 @@ class TeamSportsIntelligenceSignal:
             ncaaf_kernel, ncaaf_prediction = ncaaf_college(
                 prediction, home_elo, away_elo, prediction.sample_games, neutral_site)
             margin_model_version = NCAAF_MODEL_VERSION
+            # WS-6: same HARD-availability margin shift as NFL above, but
+            # NcaafCollegeModel takes an already-blended expected_margin
+            # directly (not raw home/away scores) -- rebuild the kernel with
+            # margin + hard_margin_delta; expected_total is untouched, so
+            # this is an exact shift of the margin only, same as NFL's.
+            # `ncaaf_prediction` (used for reporting/uncertainty) is left
+            # pointing at the pre-shift kernel's numbers on purpose -- the
+            # shift itself is separately logged via hard_margin_delta.
+            if hard_margin_delta != 0.0:
+                from autonomy.sports.college import NcaafCollegeModel
+
+                ncaaf_kernel = NcaafCollegeModel(
+                    ncaaf_kernel.expected_margin + hard_margin_delta,
+                    ncaaf_kernel.expected_total, ncaaf_kernel.total_sigma,
+                )
 
         # NBA winner/spread/total price from the pace x efficiency engine
         # (WS-2) once WS-1's BoxscoreStore has >= MIN_GAMES_FOR_ENGINE games
@@ -869,6 +960,18 @@ class TeamSportsIntelligenceSignal:
                 nba_engine = self.nba_model
                 nba_prediction = nba_engine.predict(game)
                 margin_model_version = NBA_MODEL_VERSION
+                # WS-6 mismatch: rest gap (points) between the two teams'
+                # own rest adjustments -- already-shipped WS-2 per-team
+                # fields, bounded/symmetric via bounded_mismatch_score.
+                # (Pace gap is NOT included: WS-1's BoxscoreStore has no
+                # per-team-vs-league-average pace split wired into this
+                # signal -- see players.py's module docstring probe #3.)
+                mismatch_score = bounded_mismatch_score(
+                    nba_prediction.rest_adjustment_home, nba_prediction.rest_adjustment_away,
+                    LEAGUE_POINT_SCALE["nba"],
+                )
+                mismatch_delta = mismatch_margin_shift(mismatch_score, LEAGUE_POINT_SCALE["nba"])
+                mismatch_unavailable = False
                 if nba_live:
                     minutes_remaining = nba_minutes_remaining(game.current_period, game.current_clock)
                     if minutes_remaining is None:
@@ -901,6 +1004,15 @@ class TeamSportsIntelligenceSignal:
                 home_goalie, away_goalie = probables.get(game.game_id, (None, None))
                 nhl_prediction = nhl_engine.predict(game, home_goalie, away_goalie)
                 margin_model_version = NHL_MODEL_VERSION
+                # WS-6 mismatch: NHL special-teams gap (WS-3's own per-team
+                # special_teams_shift_home/away, already in expected-goal
+                # units) -- bounded/symmetric via bounded_mismatch_score.
+                mismatch_score = bounded_mismatch_score(
+                    nhl_prediction.special_teams_shift_home, nhl_prediction.special_teams_shift_away,
+                    LEAGUE_POINT_SCALE["nhl"],
+                )
+                mismatch_delta = mismatch_margin_shift(mismatch_score, LEAGUE_POINT_SCALE["nhl"])
+                mismatch_unavailable = False
                 if nhl_live:
                     minutes_remaining = nhl_minutes_remaining(game.current_period, game.current_clock)
                     if minutes_remaining is None:
@@ -927,6 +1039,14 @@ class TeamSportsIntelligenceSignal:
                 ncaamb_neutral_site = neutral_lookup.get(game.game_id, False)
                 ncaamb_prediction = ncaamb_engine.predict(game, neutral=ncaamb_neutral_site)
                 margin_model_version = NCAAMB_PARAMS.version
+                # WS-6 mismatch: same rest-gap treatment as NBA above (same
+                # NbaPrediction dataclass, NCAAMB_PARAMS-parameterized).
+                mismatch_score = bounded_mismatch_score(
+                    ncaamb_prediction.rest_adjustment_home, ncaamb_prediction.rest_adjustment_away,
+                    LEAGUE_POINT_SCALE["ncaamb"],
+                )
+                mismatch_delta = mismatch_margin_shift(mismatch_score, LEAGUE_POINT_SCALE["ncaamb"])
+                mismatch_unavailable = False
 
         # Report numbers from whichever model actually priced this signal
         # (NbaModel/NhlModel/NCAAMB's NbaModel when warm, the college NCAAF
@@ -997,6 +1117,17 @@ class TeamSportsIntelligenceSignal:
                 else:
                     uncertainty = prediction.winner_uncertainty
             probability = home_win if subject_is_home else 1.0 - home_win
+            # WS-6: NFL/NCAAF already baked their HARD-availability shift
+            # into their kernel's input margin above (an EXACT shift); NBA/
+            # NHL/NCAAMB have no raw-margin-input kernel to inject into, so
+            # nudge the already-computed probability via a bounded logit-
+            # space shift instead (see players.shift_probability_by_margin
+            # -- an exact no-op when the combined delta is 0.0).
+            if parsed.sport in ("nba", "nhl", "ncaamb"):
+                probability = shift_probability_by_margin(
+                    probability, hard_margin_delta + mismatch_delta,
+                    LEAGUE_POINT_SCALE[parsed.sport], subject_is_home,
+                )
         elif parsed.market_type == "spread" and parsed.subject and parsed.threshold is not None:
             subject = parsed.subject.upper()
             if subject == game.home.upper():
@@ -1064,6 +1195,15 @@ class TeamSportsIntelligenceSignal:
                     uncertainty = min(0.44, prediction.winner_uncertainty + 0.02)
                 source = f"{parsed.sport}_spread"
                 detail = f"{subject} covers {parsed.threshold:g}"
+            # WS-6: same post-hoc logit shift as the winner branch above --
+            # NFL/NCAAF are exact via their kernel (nfl_kernel/ncaaf_kernel
+            # already reflect hard_margin_delta), NBA/NHL/NCAAMB get the
+            # bounded approximation.
+            if parsed.sport in ("nba", "nhl", "ncaamb"):
+                probability = shift_probability_by_margin(
+                    probability, hard_margin_delta + mismatch_delta,
+                    LEAGUE_POINT_SCALE[parsed.sport], subject_is_home,
+                )
         elif parsed.market_type == "total" and parsed.threshold is not None:
             if nba_engine is not None and nba_live_state is not None:
                 home_score, away_score, minutes_remaining = nba_live_state
@@ -1115,6 +1255,16 @@ class TeamSportsIntelligenceSignal:
                 detail = f"over {parsed.threshold:g}"
         else:
             return None
+        # WS-6: SOFT (Questionable/DTD/Probable) + rookie effects widen
+        # uncertainty ONLY, uniformly across every market type (mirrors
+        # BaseballIntelligenceSignal's own injury_burden/rest_bump pattern
+        # -- a single additive bump right before Signal construction, never
+        # touching the mean). A healthy/rookie-free/feed-absent game adds
+        # exactly 0.0, so the clip is a no-op and `uncertainty` is
+        # byte-identical to before WS-6.
+        uncertainty = min(
+            0.45, uncertainty + player_effect.soft_uncertainty_add + player_effect.rookie_uncertainty_add,
+        )
         return Signal(
             source=source,
             market_ticker=market.ticker,
@@ -1140,6 +1290,12 @@ class TeamSportsIntelligenceSignal:
                 "expected_away_score": report.expected_away_score,
                 "expected_total": report.expected_total,
                 "threshold": parsed.threshold,
+                # WS-6: player availability / rookie / mismatch layer.
+                **player_effect.features,
+                "mismatch_score": round(mismatch_score, 4) if mismatch_score is not None else None,
+                "mismatch_margin_delta": round(mismatch_delta, 4),
+                **({f"{parsed.sport}_mismatch_unavailable": True} if mismatch_unavailable else {}),
+                **({"nba_minutes_scaling_unavailable": True} if parsed.sport == "nba" else {}),
                 "sample_games": report.sample_games,
                 **(
                     {"margin_model_version": margin_model_version}
