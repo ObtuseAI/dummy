@@ -22,6 +22,7 @@ from autonomy.signals.sports_intelligence import (
     POWER_RATINGS_MODEL_VERSION,
     PowerRatingsSignal,
 )
+from autonomy.sports.college import BASE_ABS_MARGIN_PMF_COLLEGE
 from autonomy.sports.espn import EspnClient, Game
 from autonomy.sports.nfl_margin import margin_distribution, spread_cover_probability, win_probability
 from autonomy.sports.power_ratings import ConsensusMargin
@@ -108,6 +109,51 @@ def test_challenger_winner_and_spread_hand_computed_via_margin_distribution(tmp_
 
     # Lattice coherence: home favored -> home spread cover < home winner prob.
     assert spread.probability_yes < winner.probability_yes
+
+
+def test_ncaaf_uses_college_key_number_table_not_nfl(tmp_path):
+    """WS-C routing doctrine: NCAAF prices off the shallower college
+    key-number table (BASE_ABS_MARGIN_PMF_COLLEGE), not NFL's -- the two
+    tables diverge, so this pins the college-table ladder exactly and
+    proves it is NOT byte-identical to the NFL-table ladder for the same
+    ensemble margin."""
+    signal = _signal(
+        "ncaaf", "TEX", "OU", _fixed_consensus(ensemble_margin=6.0, dispersion=1.0), tmp_path,
+        home_name="Texas Longhorns", away_name="Oklahoma Sooners")
+
+    winner = signal.generate(_market("KXNCAAFGAME-26SEP132025TEXOU-TEX", "Texas vs Oklahoma Winner?"))
+    assert winner is not None
+    assert winner.source == "power_ratings_ncaaf"
+
+    college_dist = margin_distribution(6.0, base_pmf=BASE_ABS_MARGIN_PMF_COLLEGE)
+    expected_winner_prob = min(0.995, max(0.005, win_probability(college_dist)))
+    assert winner.probability_yes == pytest.approx(expected_winner_prob, abs=1e-9)
+
+    # Proof the college table is actually in effect: the NFL-table ladder
+    # for the identical ensemble margin gives a DIFFERENT probability.
+    nfl_dist = margin_distribution(6.0)
+    nfl_winner_prob = min(0.995, max(0.005, win_probability(nfl_dist)))
+    assert winner.probability_yes != pytest.approx(nfl_winner_prob, abs=1e-9)
+
+    spread = signal.generate(_market(
+        "KXNCAAFSPREAD-26SEP132025TEXOU-TEX3",
+        "Texas Longhorns vs Oklahoma Sooners Spread", floor_strike=2.5))
+    assert spread is not None
+    expected_cover_prob = min(0.995, max(0.005, spread_cover_probability(college_dist, 2.5)))
+    assert spread.probability_yes == pytest.approx(expected_cover_prob, abs=1e-9)
+
+
+def test_nfl_unaffected_stays_on_default_nfl_table(tmp_path):
+    """NFL keeps the module default (base_pmf=None -> BASE_ABS_MARGIN_PMF);
+    only NCAAF is redirected to the college table."""
+    signal = _signal(
+        "nfl", "KC", "BUF", _fixed_consensus(ensemble_margin=6.0, dispersion=1.0), tmp_path,
+        home_name="Kansas City Chiefs", away_name="Buffalo Bills")
+    winner = signal.generate(_market("KXNFLGAME-26SEP132025KCBUF-KC", "Chiefs vs Bills Winner?"))
+    assert winner is not None
+    nfl_dist = margin_distribution(6.0)
+    expected = min(0.995, max(0.005, win_probability(nfl_dist)))
+    assert winner.probability_yes == pytest.approx(expected, abs=1e-9)
 
 
 def test_challenger_basketball_uses_normal_margin_helper(tmp_path):

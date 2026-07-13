@@ -18,6 +18,7 @@ from autonomy.sports.baseball import (
 )
 from autonomy.sports.boxscores import BoxscoreStore, parse_team_boxscores
 from autonomy.sports.college import (
+    BASE_ABS_MARGIN_PMF_COLLEGE,
     NCAAF_MODEL_VERSION,
     NCAAMB_PARAMS,
     ncaaf_college,
@@ -1764,7 +1765,16 @@ class PowerRatingsSignal:
 
         is_football = parsed.sport in FOOTBALL_POWER_LEAGUES
         if is_football:
-            distribution = power_ratings_margin_distribution(consensus.ensemble_margin)
+            # WS-C routing doctrine: college engines price off the shallower
+            # college key-number table (BASE_ABS_MARGIN_PMF_COLLEGE), not
+            # NFL's -- college margins spike less hard on 3/7 and run a
+            # longer tail (see autonomy/sports/college.py). NFL keeps the
+            # module default (base_pmf=None -> BASE_ABS_MARGIN_PMF).
+            football_base_pmf = (
+                BASE_ABS_MARGIN_PMF_COLLEGE if parsed.sport == "ncaaf" else None
+            )
+            distribution = power_ratings_margin_distribution(
+                consensus.ensemble_margin, base_pmf=football_base_pmf)
             home_win = power_ratings_nfl_win_probability(distribution)
             if parsed.market_type == "spread":
                 if parsed.threshold is None:

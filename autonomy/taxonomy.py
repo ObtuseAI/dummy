@@ -78,6 +78,12 @@ SOURCE_TAXONOMY: dict[str, str] = {
     "power_ratings_ncaaf": "ncaaf",
     "power_ratings_nba": "nba",
     "power_ratings_ncaamb": "ncaamb",
+    # The REGISTERED signal object's own name (PowerRatingsSignal.name ==
+    # "power_ratings", no league suffix -- the league only appears on the
+    # emitted Signal.source strings mapped just above). Kept for the same
+    # reason as "mlb_intelligence"/"team_sports_intelligence": so the
+    # registry-completeness tripwire resolves the bare registry name too.
+    "power_ratings": "power_ratings",
 }
 
 # (prefix, specialist) resolved in order; the first match wins. Ordering only
