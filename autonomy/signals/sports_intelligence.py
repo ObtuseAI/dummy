@@ -10,14 +10,29 @@ from typing import Any
 
 from autonomy.live_odds import EspnSummaryBook
 from autonomy.ontology import MarketView, Signal, Vertical
+from autonomy.sports import boxscores as boxscores_module
 from autonomy.sports.baseball import (
     BaseballRunModel,
     remaining_innings,
     rest_travel_uncertainty_bump,
 )
-from autonomy.sports.espn import EspnClient, canonical_team
+from autonomy.sports.boxscores import BoxscoreStore, parse_team_boxscores
+from autonomy.sports.espn import EspnClient, Game, canonical_team
 from autonomy.sports.injuries import InjuryBook
+from autonomy.sports.nba_model import (
+    MODEL_VERSION as NBA_MODEL_VERSION,
+    NbaModel,
+    is_warm as nba_is_warm,
+    minutes_remaining_in_game as nba_minutes_remaining,
+)
 from autonomy.sports.team_scores import LEAGUE_SCORE_CONFIGS, TeamScoreModel
+
+# WS-1's fetch-budget guidance ("~16/day/league"), applied here since WS-2's
+# NBA engine is BoxscoreStore's first consumer (see boxscores.py's WS-1
+# report: "the fetch-budget/try-except-continue loop ... belongs to
+# whichever later workstream wires BoxscoreStore into a daemon/warmup
+# script -- WS-2 is the first consumer").
+NBA_BOXSCORE_FETCH_BUDGET = 16
 
 MODEL_DIR = Path("runtime/autonomy")
 _MONTHS = {month: index for index, month in enumerate(
@@ -456,6 +471,10 @@ class TeamSportsIntelligenceSignal:
         models: dict[str, TeamScoreModel] | None = None,
         model_dir: Path | None = None,
         seasons: Any = None,
+        nba_boxscores: BoxscoreStore | None = None,
+        nba_model: NbaModel | None = None,
+        nba_model_path: Path | None = None,
+        fetch_nba_summary: Any = None,
     ) -> None:
         from autonomy.specialists.seasons import SeasonMonitor
 
@@ -471,6 +490,57 @@ class TeamSportsIntelligenceSignal:
             )
             for league in LEAGUE_SCORE_CONFIGS
         }
+        # WS-2: NBA's own pace x efficiency engine + the WS-1 boxscore store
+        # it learns from. Both default to on-disk state under this signal's
+        # model_dir, exactly like `self.models` above; a fresh/empty store
+        # (e.g. in tests using tmp_path) means every NBA matchup starts cold
+        # and falls back to the generic `self.models["nba"]` wholesale.
+        self.nba_boxscores = nba_boxscores or BoxscoreStore(
+            "nba", path=self.model_dir / "boxscores_nba.json")
+        self.nba_model_path = nba_model_path or self.model_dir / "nba_pace_model.json"
+        self.nba_model = nba_model or NbaModel.load(self.nba_model_path)
+        # Injectable for tests; defaults to the real keyless ESPN summary
+        # fetch (autonomy/sports/boxscores.py::fetch_summary). Only ever
+        # called from `_warmup_nba`, never from `generate`.
+        self._fetch_nba_summary = fetch_nba_summary or boxscores_module.fetch_summary
+
+    def _warmup_nba(self, date_ranges: list[str]) -> int:
+        """Ingest WS-1 boxscores + update the NBA pace model for newly-final
+        games (fetch-budget-capped, try/except-continue per game -- one bad
+        fetch never blocks the rest, mirroring WS-1's documented contract).
+        """
+        games: list[Game] = []
+        for dates in date_ranges:
+            games.extend(self.espn.games("nba", dates))
+        finals = sorted(
+            (
+                g for g in games
+                if g.status == "post" and g.game_id not in self.nba_model.processed_game_ids
+            ),
+            key=lambda g: g.date,
+        )
+        updated = 0
+        fetched = 0
+        for game in finals:
+            if fetched >= NBA_BOXSCORE_FETCH_BUDGET:
+                break
+            fetched += 1
+            try:
+                summary = self._fetch_nba_summary("nba", game.game_id)
+            except Exception:
+                continue
+            boxes = parse_team_boxscores("nba", summary)
+            if len(boxes) != 2:
+                continue
+            self.nba_boxscores.ingest(boxes)
+            by_team = {b.team: b for b in boxes}
+            home_box = by_team.get(canonical_team("nba", game.home))
+            away_box = by_team.get(canonical_team("nba", game.away))
+            if self.nba_model.update(game, home_box, away_box):
+                updated += 1
+        if updated:
+            self.nba_model.save(self.nba_model_path)
+        return updated
 
     def warmup(self, league: str, date_ranges: list[str]) -> int:
         model = self.models[league]
@@ -496,6 +566,8 @@ class TeamSportsIntelligenceSignal:
                 if not self.seasons.active(league):
                     continue
                 self.warmup(league, [recent])
+                if league == "nba":
+                    self._warmup_nba([recent])
             except Exception:
                 continue
         self.espn.clear_cache()
@@ -526,7 +598,15 @@ class TeamSportsIntelligenceSignal:
                 parsed.sport, parsed.competitors[0], parsed.competitors[1],
                 parsed.date_yyyymmdd,
             )
-        if game is None or game.status != "pre":
+        if game is None:
+            return None
+        # NBA alone carries an in-play branch (WS-2); every other league in
+        # this signal stays pre-game only, unchanged from before WS-2.
+        nba_live = parsed.sport == "nba" and game.status == "in"
+        if parsed.sport == "nba":
+            if game.status not in ("pre", "in"):
+                return None
+        elif game.status != "pre":
             return None
         prediction = self.models[parsed.sport].predict(game)
         # NFL winner/spread price from the key-number margin kernel (mass at
@@ -541,23 +621,69 @@ class TeamSportsIntelligenceSignal:
             nfl_kernel = NflMarginModel(
                 prediction.expected_home_score, prediction.expected_away_score)
             margin_model_version = "nfl_key_number_kernel_v1"
+
+        # NBA winner/spread/total price from the pace x efficiency engine
+        # (WS-2) once WS-1's BoxscoreStore has >= MIN_GAMES_FOR_ENGINE games
+        # for BOTH teams; below that, every branch below falls straight
+        # through to the generic `prediction` (TeamScoreModel) computed
+        # above -- WHOLESALE, never half-blended (nba_model_fallback logs
+        # which path fired). A live NBA market with no warm engine has no
+        # fallback pricing path at all (TeamScoreModel is pre-game only), so
+        # it abstains rather than guess.
+        nba_engine = None
+        nba_prediction = None
+        nba_live_state: tuple[int, int, float] | None = None
+        if parsed.sport == "nba":
+            if nba_live and (
+                game.home_score is None or game.away_score is None
+                or game.current_period is None or game.current_period < 1
+            ):
+                return None
+            home_abbr, away_abbr = game.home.upper(), game.away.upper()
+            warm = nba_is_warm(self.nba_boxscores, home_abbr, away_abbr)
+            if nba_live and not warm:
+                return None
+            if warm:
+                nba_engine = self.nba_model
+                nba_prediction = nba_engine.predict(game)
+                margin_model_version = NBA_MODEL_VERSION
+                if nba_live:
+                    minutes_remaining = nba_minutes_remaining(game.current_period, game.current_clock)
+                    if minutes_remaining is None:
+                        return None
+                    nba_live_state = (game.home_score, game.away_score, minutes_remaining)
+        # Report numbers from whichever model actually priced this signal
+        # (NbaModel when warm, the generic TeamScoreModel otherwise/always
+        # for every other league) -- keeps the rationale/features numbers
+        # consistent with `probability` instead of silently mixing models.
+        report = nba_prediction if nba_prediction is not None else prediction
+
         if parsed.market_type == "winner" and parsed.subject:
             subject = parsed.subject.upper()
             if subject == game.home.upper():
-                probability = (
-                    nfl_kernel.home_win_probability() if nfl_kernel is not None
-                    else prediction.home_win_probability
-                )
+                subject_is_home = True
             elif subject == game.away.upper():
-                probability = (
-                    1.0 - nfl_kernel.home_win_probability() if nfl_kernel is not None
-                    else 1.0 - prediction.home_win_probability
-                )
+                subject_is_home = False
             else:
                 return None
-            uncertainty = prediction.winner_uncertainty
-            source = f"{parsed.sport}_structural_winner"
-            detail = f"{subject} win"
+            if nba_engine is not None and nba_live_state is not None:
+                home_score, away_score, minutes_remaining = nba_live_state
+                home_win = nba_engine.live_win_probability_for(
+                    nba_prediction, home_score, away_score, minutes_remaining)
+                source = "nba_live_winner"
+                detail = f"{subject} live win ({away_score}-{home_score}, period {game.current_period})"
+                uncertainty = min(0.45, prediction.winner_uncertainty + 0.05)
+            else:
+                if nba_engine is not None:
+                    home_win = nba_prediction.home_win_probability
+                elif nfl_kernel is not None:
+                    home_win = nfl_kernel.home_win_probability()
+                else:
+                    home_win = prediction.home_win_probability
+                source = f"{parsed.sport}_structural_winner"
+                detail = f"{subject} win"
+                uncertainty = prediction.winner_uncertainty
+            probability = home_win if subject_is_home else 1.0 - home_win
         elif parsed.market_type == "spread" and parsed.subject and parsed.threshold is not None:
             subject = parsed.subject.upper()
             if subject == game.home.upper():
@@ -566,33 +692,61 @@ class TeamSportsIntelligenceSignal:
                 subject_is_home = False
             else:
                 return None
-            if nfl_kernel is not None:
-                probability = (
-                    nfl_kernel.home_cover_probability(parsed.threshold)
-                    if subject_is_home
-                    else nfl_kernel.away_cover_probability(parsed.threshold)
-                )
+            if nba_engine is not None and nba_live_state is not None:
+                home_score, away_score, minutes_remaining = nba_live_state
+                probability = nba_engine.live_spread_probability_for(
+                    nba_prediction, subject_is_home, parsed.threshold,
+                    home_score, away_score, minutes_remaining)
+                source = "nba_live_spread"
+                detail = f"{subject} live by >{parsed.threshold:g} (period {game.current_period})"
+                uncertainty = min(0.45, prediction.winner_uncertainty + 0.07)
             else:
-                # Generic leagues: normal margin over the model's own sigma
-                # (NBA/NHL/college kernels arrive with their engines).
-                subject_margin = (
-                    prediction.expected_home_score - prediction.expected_away_score
-                    if subject_is_home
-                    else prediction.expected_away_score - prediction.expected_home_score
-                )
-                sigma = LEAGUE_SCORE_CONFIGS[parsed.sport].margin_sigma
-                z = (parsed.threshold - subject_margin) / max(0.25, sigma)
-                probability = min(0.995, max(0.005, 1.0 - 0.5 * (1.0 + math.erf(z / math.sqrt(2.0)))))
-            uncertainty = min(0.44, prediction.winner_uncertainty + 0.02)
-            source = f"{parsed.sport}_spread"
-            detail = f"{subject} covers {parsed.threshold:g}"
+                if nba_engine is not None:
+                    probability = nba_engine.cover_probability(
+                        nba_prediction, subject_is_home, parsed.threshold)
+                elif nfl_kernel is not None:
+                    probability = (
+                        nfl_kernel.home_cover_probability(parsed.threshold)
+                        if subject_is_home
+                        else nfl_kernel.away_cover_probability(parsed.threshold)
+                    )
+                else:
+                    # Generic leagues: normal margin over the model's own
+                    # sigma (NBA below MIN_GAMES_FOR_ENGINE lands here too).
+                    subject_margin = (
+                        prediction.expected_home_score - prediction.expected_away_score
+                        if subject_is_home
+                        else prediction.expected_away_score - prediction.expected_home_score
+                    )
+                    sigma = LEAGUE_SCORE_CONFIGS[parsed.sport].margin_sigma
+                    z = (parsed.threshold - subject_margin) / max(0.25, sigma)
+                    probability = min(0.995, max(0.005, 1.0 - 0.5 * (1.0 + math.erf(z / math.sqrt(2.0)))))
+                uncertainty = min(0.44, prediction.winner_uncertainty + 0.02)
+                source = f"{parsed.sport}_spread"
+                detail = f"{subject} covers {parsed.threshold:g}"
         elif parsed.market_type == "total" and parsed.threshold is not None:
-            probability = self.models[parsed.sport].total_probability(
-                prediction, parsed.threshold,
-            )
-            uncertainty = prediction.total_uncertainty
-            source = f"{parsed.sport}_game_total"
-            detail = f"over {parsed.threshold:g}"
+            if nba_engine is not None and nba_live_state is not None:
+                home_score, away_score, minutes_remaining = nba_live_state
+                probability = nba_engine.live_total_probability_for(
+                    nba_prediction, home_score + away_score, parsed.threshold, minutes_remaining)
+                source = "nba_live_total"
+                detail = (
+                    f"live over {parsed.threshold:g} ({home_score + away_score} so far, "
+                    f"period {game.current_period})"
+                )
+                uncertainty = min(0.45, prediction.total_uncertainty + 0.05)
+            elif nba_engine is not None:
+                probability = nba_engine.total_probability(nba_prediction, parsed.threshold)
+                uncertainty = prediction.total_uncertainty
+                source = "nba_game_total"
+                detail = f"over {parsed.threshold:g}"
+            else:
+                probability = self.models[parsed.sport].total_probability(
+                    prediction, parsed.threshold,
+                )
+                uncertainty = prediction.total_uncertainty
+                source = f"{parsed.sport}_game_total"
+                detail = f"over {parsed.threshold:g}"
         else:
             return None
         return Signal(
@@ -602,8 +756,8 @@ class TeamSportsIntelligenceSignal:
             uncertainty=uncertainty,
             rationale=(
                 f"{parsed.sport.upper()} {detail}: {game.away}@{game.home}; expected "
-                f"{prediction.expected_away_score:.2f}+{prediction.expected_home_score:.2f}="
-                f"{prediction.expected_total:.2f}; paired sample={prediction.sample_games}"
+                f"{report.expected_away_score:.2f}+{report.expected_home_score:.2f}="
+                f"{report.expected_total:.2f}; paired sample={report.sample_games}"
             ),
             features={
                 "challenger_only": True,
@@ -616,14 +770,31 @@ class TeamSportsIntelligenceSignal:
                 "event_start": game.date,
                 "home": game.home,
                 "away": game.away,
-                "expected_home_score": prediction.expected_home_score,
-                "expected_away_score": prediction.expected_away_score,
-                "expected_total": prediction.expected_total,
+                "expected_home_score": report.expected_home_score,
+                "expected_away_score": report.expected_away_score,
+                "expected_total": report.expected_total,
                 "threshold": parsed.threshold,
-                "sample_games": prediction.sample_games,
+                "sample_games": report.sample_games,
                 **(
                     {"margin_model_version": margin_model_version}
                     if margin_model_version else {}
+                ),
+                **(
+                    {
+                        "nba_model_fallback": nba_engine is None,
+                        "live": nba_live,
+                        "expected_pace": nba_prediction.expected_pace if nba_prediction else None,
+                        "rest_days_home": nba_prediction.rest_days_home if nba_prediction else None,
+                        "rest_days_away": nba_prediction.rest_days_away if nba_prediction else None,
+                        "rest_adjustment": (
+                            (nba_prediction.rest_adjustment_home - nba_prediction.rest_adjustment_away)
+                            if nba_prediction else None
+                        ),
+                        "current_period": game.current_period if nba_live else None,
+                        "home_score": game.home_score if nba_live else None,
+                        "away_score": game.away_score if nba_live else None,
+                    }
+                    if parsed.sport == "nba" else {}
                 ),
             },
         )

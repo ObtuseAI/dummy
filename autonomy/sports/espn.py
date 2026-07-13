@@ -68,6 +68,13 @@ class Game:
     weather_condition: str | None = None
     home_name: str | None = None
     away_name: str | None = None
+    # Live clock (in-progress only), raw ESPN "status.displayClock" string
+    # (e.g. "5:23"; "0.0" once a period ends). Added for WS-2's NBA live
+    # Brownian diffusion -- see autonomy/sports/nba_model.py's build-time
+    # probe comment for the exact field name/shape confirmed on a real
+    # scoreboard payload. None pre-game and post-game, same gating as
+    # current_period.
+    current_clock: str | None = None
 
 
 def _american(value: Any) -> int | None:
@@ -231,6 +238,8 @@ def parse_scoreboard(league: str, payload: dict[str, Any]) -> list[Game]:
             current_period = int(period_raw) if state == "in" and period_raw is not None else None
         except (TypeError, ValueError):
             current_period = None
+        clock_raw = comp.get("status", {}).get("displayClock")
+        current_clock = str(clock_raw) if state == "in" and clock_raw is not None else None
         venue = comp.get("venue") or {}
         weather = comp.get("weather") or {}
         try:
@@ -255,6 +264,7 @@ def parse_scoreboard(league: str, payload: dict[str, Any]) -> list[Game]:
                 _inning_runs(away_competitor or {}) if state == "post" else None
             ),
             current_period=current_period,
+            current_clock=current_clock,
             venue=venue.get("fullName"),
             indoor=venue.get("indoor") if isinstance(venue.get("indoor"), bool) else None,
             weather_temperature_f=temperature,
