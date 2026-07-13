@@ -14,7 +14,8 @@ from pathlib import Path
 
 from autonomy.sports.nba_model import MODEL_VERSION as NBA_MODEL_VERSION
 from autonomy.sports.nba_model import total_over_probability
-from autonomy.tuner import MIN_CLUSTERS, TUNABLES, tuning_report, write_report
+from autonomy.strategy_miner import MinedRow, _purged_split
+from autonomy.tuner import MIN_CLUSTERS, TUNABLES, _fit_tunable, _TunableSpec, tuning_report, write_report
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 START = datetime(2026, 1, 1, tzinfo=timezone.utc)
@@ -181,6 +182,50 @@ def test_insufficient_clusters_no_crash():
     proposal = _proposal(report, "nba_total_sigma_base")
     assert proposal["verdict"] == "insufficient_data"
     assert proposal["n_clusters"] < MIN_CLUSTERS
+
+
+def test_fit_tunable_empty_test_fold_no_crash():
+    """Regression for the WS-9 review finding: `_fit_tunable`'s `not train or
+    not test` guard (hit when `_purged_split` purges every straddling
+    test-side cluster) referenced an undefined `clusters` name, raising
+    `NameError` and aborting the entire nightly tuner pass. This reaches that
+    branch directly -- MIN_CLUSTERS distinct event clusters (clearing the
+    earlier `usable_clusters >= MIN_CLUSTERS` gate at line ~393) each placed
+    so every cluster already appears in TRAIN before its second occurrence
+    lands in what would be TEST, so `_purged_split`'s purge empties TEST
+    entirely -- and asserts the tuner returns a verdict without raising, with
+    `n_clusters` correctly populated from `usable_clusters` (not a NameError).
+    """
+    n = MIN_CLUSTERS
+    rows: list[MinedRow] = []
+    for block in range(2):
+        for cluster_index in range(n):
+            when = START + timedelta(hours=block * n + cluster_index)
+            rows.append(MinedRow(
+                source="synthetic", ticker=f"SYN-{block}-{cluster_index}",
+                event_cluster=f"cluster-{cluster_index}", created_at=when.isoformat(),
+                probability_yes=0.5, market_probability=0.5, result_yes=True,
+                features={"sport": "synthetic", "market_type": "synthetic_type"},
+            ))
+
+    # Precondition: confirm the split this test relies on actually produces
+    # a non-empty TRAIN and an empty TEST (i.e. the bug's branch is reached),
+    # independent of any internal change to `_purged_split`'s fraction.
+    train, test = _purged_split(rows)
+    assert train, "expected a non-empty train fold from the constructed rows"
+    assert not test, "expected the purge to empty test -- fixture no longer reaches the bug"
+
+    spec = _TunableSpec(
+        name="synthetic_tunable", current=1.0, grid=(1.0, 2.0),
+        applies_to="synthetic", market_type="synthetic_type",
+        market_types=("synthetic_type",),
+        reprice=lambda row, candidate: 0.5,  # noqa: ARG005
+    )
+
+    result = _fit_tunable(spec, rows)  # must not raise NameError
+
+    assert result["verdict"] == "insufficient_data"
+    assert result["n_clusters"] == n
 
 
 def test_not_repriceable_tunable_is_disclosed():

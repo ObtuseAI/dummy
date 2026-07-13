@@ -397,7 +397,7 @@ def _fit_tunable(spec: _TunableSpec, rows: list[MinedRow]) -> dict[str, Any]:
 
     train, test = _purged_split(usable)
     if not train or not test:
-        base["n_clusters"] = len(clusters)
+        base["n_clusters"] = len(usable_clusters)
         base["verdict"] = "insufficient_data"
         return base
 
