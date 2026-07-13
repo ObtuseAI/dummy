@@ -40,6 +40,34 @@ from autonomy.strategy_miner import _brier_edge, load_settled_rows  # noqa: E402
 
 DEFAULT_DB = Path("runtime/autonomy/ledger.db")
 REPORT_PATH = Path("runtime/autonomy/readiness_report.json")
+LOSS_ATTRIBUTION_PATH = Path("runtime/autonomy/loss_attribution.json")
+
+
+def _where_we_bleed(path: Path = LOSS_ATTRIBUTION_PATH) -> str | None:
+    """WS-B: one-line summary of the worst bleeding grading scope, read
+    fail-closed from the loss engine's artifact. Missing/malformed artifact
+    or no bleeding scope -> None (the caller omits the key entirely, so the
+    printed summary has no line at all rather than a fabricated one)."""
+    try:
+        if not path.exists():
+            return None
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return None
+    bleeding = [
+        entry for entry in (data.get("scopes") or [])
+        if isinstance(entry, dict) and entry.get("verdict") == "bleeding"
+    ]
+    if not bleeding:
+        return None
+    try:
+        worst = min(bleeding, key=lambda entry: float(entry.get("cluster_edge") or 0.0))
+        return (
+            f"{worst['scope']} edge {worst['cluster_edge']}"
+            f" ({worst['n_clusters']} clusters)"
+        )
+    except Exception:
+        return None
 
 
 def _epoch(text: str) -> float | None:
@@ -129,7 +157,7 @@ def main() -> int:
     _write_json(DEFAULT_MAPS_PATH, {"maps": maps, "generated_at": now_iso})
 
     report = built["report"]
-    print(json.dumps({
+    summary = {
         "status": "OK",
         "scopes_evaluated": report["scopes_evaluated"],
         "promotion_candidates": report["promotion_candidates"],
@@ -137,7 +165,13 @@ def main() -> int:
         "total_auto_demotions": len(merged_demotions["demotions"]),
         "reliability_maps": len(maps),
         "report": str(REPORT_PATH),
-    }))
+    }
+    # WS-B: "where we bleed" line, fail-closed -- absent artifact/no bleeding
+    # scope means the key is omitted entirely, never a fabricated line.
+    where_we_bleed = _where_we_bleed()
+    if where_we_bleed:
+        summary["where_we_bleed"] = where_we_bleed
+    print(json.dumps(summary))
     return 0
 
 
