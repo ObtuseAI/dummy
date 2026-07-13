@@ -97,6 +97,44 @@ TOTAL_SIGMA_BASE = 19.5
 MARGIN_SIGMA_BASE = 11.5
 SIGMA_PACE_REFERENCE = 99.5
 
+
+@dataclass(frozen=True)
+class PaceParams:
+    """Frozen per-league constants for the pace x efficiency engine (see the
+    module docstring). ``NbaModel`` reads ALL of these from ``self.params``
+    instead of the module-level globals above, so a second league (WS-4's
+    NCAAMB) can reuse the identical pace/efficiency/sigma arithmetic with its
+    own numbers threaded through ``__init__`` rather than forking the class.
+
+    ``sigma_pace_reference`` is deliberately its own field, not silently
+    derived from ``prior_pace`` -- NBA's is calibrated at its own league-
+    average pace (99.5) so a normal-paced NBA game gets the unscaled base
+    sigma; NCAAMB's reference must likewise be ITS OWN league-average pace
+    (68, not 99.5) or every normal-tempo college game would be mismodeled as
+    "slow" and get a shrunk sigma. NBA_PARAMS below carries today's exact
+    values -- byte-identical default, existing NBA construction/tests
+    unaffected. NCAAMB_PARAMS lives in autonomy/sports/college.py.
+    """
+
+    prior_pace: float
+    prior_rating: float
+    home_edge_points: float
+    total_sigma_base: float
+    margin_sigma_base: float
+    sigma_pace_reference: float
+    version: str
+
+
+NBA_PARAMS = PaceParams(
+    prior_pace=PRIOR_PACE,
+    prior_rating=PRIOR_RATING,
+    home_edge_points=HOME_EDGE_POINTS,
+    total_sigma_base=TOTAL_SIGMA_BASE,
+    margin_sigma_base=MARGIN_SIGMA_BASE,
+    sigma_pace_reference=SIGMA_PACE_REFERENCE,
+    version=MODEL_VERSION,
+)
+
 # -- garbage time --------------------------------------------------------------
 # Blowout tails lie about true team strength; cap the margin BEFORE it
 # teaches the ORTG/DRTG EWMAs anything past this.
@@ -173,10 +211,16 @@ def normal_cdf(z: float) -> float:
     return 0.5 * (1.0 + math.erf(z / math.sqrt(2.0)))
 
 
-def heteroskedastic_sigmas(expected_pace: float) -> tuple[float, float]:
-    """(total_sigma, margin_sigma) for a matchup at this expected pace."""
-    ratio = math.sqrt(max(0.0, float(expected_pace)) / SIGMA_PACE_REFERENCE)
-    return TOTAL_SIGMA_BASE * ratio, MARGIN_SIGMA_BASE * ratio
+def heteroskedastic_sigmas(
+    expected_pace: float, params: PaceParams = NBA_PARAMS,
+) -> tuple[float, float]:
+    """(total_sigma, margin_sigma) for a matchup at this expected pace.
+
+    ``params`` defaults to ``NBA_PARAMS`` (byte-identical for every existing
+    single-arg caller); NCAAMB threads ``NCAAMB_PARAMS`` through instead.
+    """
+    ratio = math.sqrt(max(0.0, float(expected_pace)) / params.sigma_pace_reference)
+    return params.total_sigma_base * ratio, params.margin_sigma_base * ratio
 
 
 def win_probability_from_margin(margin: float, margin_sigma: float) -> float:
@@ -368,6 +412,14 @@ class NbaPrediction:
     rest_adjustment_home: float
     rest_adjustment_away: float
     sample_games: int
+    # Added for WS-4 (NCAAMB reuses this class verbatim -- see PaceParams):
+    # a cold-start uncertainty pair in the same shape team_scores.py's
+    # TeamScorePrediction already carries. Purely additive -- NBA's own
+    # sports_intelligence.py branches don't reference these (they use the
+    # generic TeamScoreModel prediction's uncertainty instead, unchanged),
+    # so this field existing changes nothing about NBA's emitted signals.
+    winner_uncertainty: float = 0.20
+    total_uncertainty: float = 0.20
     model_version: str = MODEL_VERSION
 
 
@@ -379,9 +431,21 @@ class NbaModel:
     teams: dict[str, NbaTeamState] = field(default_factory=dict)
     processed_game_ids: set[str] = field(default_factory=set)
     games_seen: int = 0
+    # Reparameterization hook (see PaceParams above): defaults to today's
+    # exact NBA constants, so every existing NBA construction (`NbaModel()`)
+    # is byte-identical. WS-4's NCAAMB threads NCAAMB_PARAMS through here.
+    params: PaceParams = field(default_factory=lambda: NBA_PARAMS)
 
     def _team(self, abbreviation: str) -> NbaTeamState:
-        return self.teams.setdefault(abbreviation.upper(), NbaTeamState())
+        # Cold-start priors come from self.params, NOT NbaTeamState's own
+        # dataclass field defaults (those stay NBA-valued for the shared
+        # class definition) -- otherwise a fresh NCAAMB team would wrongly
+        # cold-start at NBA's pace/rating priors.
+        return self.teams.setdefault(abbreviation.upper(), NbaTeamState(
+            pace_ewma=self.params.prior_pace,
+            ortg_ewma=self.params.prior_rating,
+            drtg_ewma=self.params.prior_rating,
+        ))
 
     def _metric(self, state: NbaTeamState, field_name: str, prior: float) -> float:
         weight = min(COLD_WEIGHT_CAP, state.games / COLD_FULL_WEIGHT_GAMES)
@@ -429,17 +493,23 @@ class NbaModel:
         self.processed_game_ids.add(game.game_id)
         return True
 
-    def predict(self, game: Game) -> NbaPrediction:
+    def predict(self, game: Game, neutral: bool = False) -> NbaPrediction:
+        """``neutral=True`` (tournament/neutral-site college games) drops the
+        home-court edge entirely -- a HARD, verifiable state (ESPN's own
+        ``competitions[].neutralSite`` flag), so it's a bounded MEAN
+        adjustment, never an uncertainty widen. NBA callers never pass it
+        (default False -- byte-identical to before this parameter existed).
+        """
         home = self._team(game.home)
         away = self._team(game.away)
-        pace_home = self._metric(home, "pace_ewma", PRIOR_PACE)
-        pace_away = self._metric(away, "pace_ewma", PRIOR_PACE)
+        pace_home = self._metric(home, "pace_ewma", self.params.prior_pace)
+        pace_away = self._metric(away, "pace_ewma", self.params.prior_pace)
         expected_pace = (pace_home + pace_away) / 2.0
 
-        ortg_home = self._metric(home, "ortg_ewma", PRIOR_RATING)
-        drtg_home = self._metric(home, "drtg_ewma", PRIOR_RATING)
-        ortg_away = self._metric(away, "ortg_ewma", PRIOR_RATING)
-        drtg_away = self._metric(away, "drtg_ewma", PRIOR_RATING)
+        ortg_home = self._metric(home, "ortg_ewma", self.params.prior_rating)
+        drtg_home = self._metric(home, "drtg_ewma", self.params.prior_rating)
+        ortg_away = self._metric(away, "ortg_ewma", self.params.prior_rating)
+        drtg_away = self._metric(away, "drtg_ewma", self.params.prior_rating)
         eff_home = (ortg_home + drtg_away) / 2.0
         eff_away = (ortg_away + drtg_home) / 2.0
 
@@ -451,14 +521,21 @@ class NbaModel:
             rest_adj_home, rest_days_home = 0.0, None
             rest_adj_away, rest_days_away = 0.0, None
 
-        expected_home = expected_pace * eff_home / 100.0 + HOME_EDGE_POINTS / 2.0 + rest_adj_home
-        expected_away = expected_pace * eff_away / 100.0 - HOME_EDGE_POINTS / 2.0 + rest_adj_away
+        home_edge = 0.0 if neutral else self.params.home_edge_points
+        expected_home = expected_pace * eff_home / 100.0 + home_edge / 2.0 + rest_adj_home
+        expected_away = expected_pace * eff_away / 100.0 - home_edge / 2.0 + rest_adj_away
         expected_home = max(MIN_SANE_TEAM_SCORE, expected_home)
         expected_away = max(MIN_SANE_TEAM_SCORE, expected_away)
 
-        total_sigma, margin_sigma = heteroskedastic_sigmas(expected_pace)
+        total_sigma, margin_sigma = heteroskedastic_sigmas(expected_pace, self.params)
         expected_margin = expected_home - expected_away
         sample = min(home.games, away.games)
+        # Same cold-start uncertainty shape as team_scores.py::TeamScoreModel
+        # (and college.py's NCAAF wrapper) -- see NbaPrediction's docstring
+        # note on why this field is new but inert for NBA's own signal path.
+        cold = 1.0 / math.sqrt(1.0 + sample / 8.0)
+        winner_uncertainty = min(0.42, 0.09 + 0.22 * cold)
+        total_uncertainty = min(0.44, 0.12 + 0.22 * cold)
         return NbaPrediction(
             home_win_probability=win_probability_from_margin(expected_margin, margin_sigma),
             expected_home_score=expected_home,
@@ -473,6 +550,9 @@ class NbaModel:
             rest_adjustment_home=rest_adj_home,
             rest_adjustment_away=rest_adj_away,
             sample_games=sample,
+            winner_uncertainty=winner_uncertainty,
+            total_uncertainty=total_uncertainty,
+            model_version=self.params.version,
         )
 
     # -- pre-game -------------------------------------------------------
@@ -520,18 +600,19 @@ class NbaModel:
 
     def to_dict(self) -> dict[str, Any]:
         return {
-            "model_version": MODEL_VERSION,
+            "model_version": self.params.version,
             "teams": {key: asdict(value) for key, value in self.teams.items()},
             "processed_game_ids": sorted(self.processed_game_ids),
             "games_seen": self.games_seen,
         }
 
     @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> "NbaModel":
+    def from_dict(cls, data: dict[str, Any], params: PaceParams = NBA_PARAMS) -> "NbaModel":
         return cls(
             teams={key: NbaTeamState(**value) for key, value in data.get("teams", {}).items()},
             processed_game_ids=set(data.get("processed_game_ids", [])),
             games_seen=int(data.get("games_seen", 0)),
+            params=params,
         )
 
     def save(self, path: Path) -> None:
@@ -541,13 +622,17 @@ class NbaModel:
         temporary.replace(path)
 
     @classmethod
-    def load(cls, path: Path) -> "NbaModel":
+    def load(cls, path: Path, params: PaceParams = NBA_PARAMS) -> "NbaModel":
+        """``params`` defaults to ``NBA_PARAMS`` (byte-identical for every
+        existing single-arg caller); NCAAMB threads ``NCAAMB_PARAMS`` through
+        (its own on-disk state lives at a separate path, so this is never a
+        cross-league mix-up)."""
         if path.exists():
             try:
-                return cls.from_dict(json.loads(path.read_text(encoding="utf-8")))
+                return cls.from_dict(json.loads(path.read_text(encoding="utf-8")), params=params)
             except (OSError, TypeError, ValueError, json.JSONDecodeError):
                 pass
-        return cls()
+        return cls(params=params)
 
 
 # ================================================================ warm gate

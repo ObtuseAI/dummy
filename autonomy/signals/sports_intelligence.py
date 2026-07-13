@@ -17,6 +17,13 @@ from autonomy.sports.baseball import (
     rest_travel_uncertainty_bump,
 )
 from autonomy.sports.boxscores import BoxscoreStore, parse_team_boxscores
+from autonomy.sports.college import (
+    NCAAF_MODEL_VERSION,
+    NCAAMB_PARAMS,
+    ncaaf_college,
+    parse_neutral_site,
+)
+from autonomy.sports.elo import EloModel
 from autonomy.sports.espn import EspnClient, Game, canonical_team, default_fetch_scoreboard
 from autonomy.sports.injuries import InjuryBook
 from autonomy.sports.nba_model import (
@@ -43,8 +50,14 @@ from autonomy.sports.team_scores import LEAGUE_SCORE_CONFIGS, TeamScoreModel
 # budget for its own boxscore+goalie fetch.
 NBA_BOXSCORE_FETCH_BUDGET = 16
 NHL_BOXSCORE_FETCH_BUDGET = 16
+NCAAMB_BOXSCORE_FETCH_BUDGET = 16
 
 MODEL_DIR = Path("runtime/autonomy")
+# WS-4: shared with autonomy/signals/sports_elo.py's own ELO_DIR -- this
+# signal reads the ncaaf Elo ratings that signal already trains every cycle
+# (registered together in the same session, see autonomy/session.py) rather
+# than retraining a second copy here.
+ELO_DIR = Path("runtime/autonomy")
 _MONTHS = {month: index for index, month in enumerate(
     ("JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"),
     start=1,
@@ -490,6 +503,13 @@ class TeamSportsIntelligenceSignal:
         nhl_model_path: Path | None = None,
         fetch_nhl_summary: Any = None,
         fetch_nhl_scoreboard: Any = None,
+        ncaamb_boxscores: BoxscoreStore | None = None,
+        ncaamb_model: NbaModel | None = None,
+        ncaamb_model_path: Path | None = None,
+        fetch_ncaamb_summary: Any = None,
+        ncaaf_elo: EloModel | None = None,
+        ncaaf_elo_path: Path | None = None,
+        fetch_college_scoreboard: Any = None,
     ) -> None:
         from autonomy.specialists.seasons import SeasonMonitor
 
@@ -533,6 +553,33 @@ class TeamSportsIntelligenceSignal:
         # cycle so N markets on the same game/day cost one extra fetch, not N.
         self._fetch_nhl_scoreboard = fetch_nhl_scoreboard or default_fetch_scoreboard
         self._nhl_probables_cache: dict[str, dict[str, tuple[str | None, str | None]]] = {}
+        # WS-4: NCAAMB's own pace x efficiency engine, same class as NBA's
+        # (autonomy/sports/nba_model.py::NbaModel) but parameterized with
+        # NCAAMB_PARAMS (see autonomy/sports/college.py) and its own on-disk
+        # boxscore store/model path -- never shares state with the NBA
+        # instances above. Same cold-fallback discipline: below
+        # MIN_GAMES_FOR_ENGINE for either team, every NCAAMB branch below
+        # falls through to the generic `self.models["ncaamb"]` wholesale.
+        self.ncaamb_boxscores = ncaamb_boxscores or BoxscoreStore(
+            "ncaamb", path=self.model_dir / "boxscores_ncaamb.json")
+        self.ncaamb_model_path = ncaamb_model_path or self.model_dir / "ncaamb_pace_model.json"
+        self.ncaamb_model = ncaamb_model or NbaModel.load(self.ncaamb_model_path, params=NCAAMB_PARAMS)
+        self._fetch_ncaamb_summary = fetch_ncaamb_summary or boxscores_module.fetch_summary
+        # WS-4: NCAAF's talent-gap blend reads (never retrains) the ncaaf Elo
+        # ratings autonomy/signals/sports_elo.py::SportsEloSignal already
+        # keeps warm every cycle (registered alongside this signal in
+        # autonomy/session.py) -- reloaded fresh each `on_cycle_start` below
+        # so this signal never runs on stale ratings from its own long-lived
+        # in-memory copy.
+        self.ncaaf_elo_path = ncaaf_elo_path or ELO_DIR / "elo_ncaaf.json"
+        self.ncaaf_elo = ncaaf_elo or EloModel.load("ncaaf", self.ncaaf_elo_path)
+        # Raw-scoreboard fetch for the neutralSite flag (see
+        # college.py::parse_neutral_site -- Game itself doesn't carry it,
+        # same reasoning as the NHL probable-goalie raw read above). Shared
+        # across ncaaf/ncaamb since `default_fetch_scoreboard` is league-
+        # generic; cached per (league, date) within a cycle.
+        self._fetch_college_scoreboard = fetch_college_scoreboard or default_fetch_scoreboard
+        self._neutral_site_cache: dict[tuple[str, str], dict[str, bool]] = {}
 
     def _warmup_nba(self, date_ranges: list[str]) -> int:
         """Ingest WS-1 boxscores + update the NBA pace model for newly-final
@@ -630,6 +677,60 @@ class TeamSportsIntelligenceSignal:
         self._nhl_probables_cache[dates] = parsed
         return parsed
 
+    def _warmup_ncaamb(self, date_ranges: list[str]) -> int:
+        """Ingest boxscores + update the NCAAMB pace model for newly-final
+        games -- identical shape to `_warmup_nba`, just pointed at the
+        ncaamb-specific store/model/fetch (see college.py's PROBE 3 for why
+        the boxscore schema is safe to reuse verbatim)."""
+        games: list[Game] = []
+        for dates in date_ranges:
+            games.extend(self.espn.games("ncaamb", dates))
+        finals = sorted(
+            (
+                g for g in games
+                if g.status == "post" and g.game_id not in self.ncaamb_model.processed_game_ids
+            ),
+            key=lambda g: g.date,
+        )
+        updated = 0
+        fetched = 0
+        for game in finals:
+            if fetched >= NCAAMB_BOXSCORE_FETCH_BUDGET:
+                break
+            fetched += 1
+            try:
+                summary = self._fetch_ncaamb_summary("ncaamb", game.game_id)
+            except Exception:
+                continue
+            boxes = parse_team_boxscores("ncaamb", summary)
+            if len(boxes) != 2:
+                continue
+            self.ncaamb_boxscores.ingest(boxes)
+            by_team = {b.team: b for b in boxes}
+            home_box = by_team.get(canonical_team("ncaamb", game.home))
+            away_box = by_team.get(canonical_team("ncaamb", game.away))
+            if self.ncaamb_model.update(game, home_box, away_box):
+                updated += 1
+        if updated:
+            self.ncaamb_model.save(self.ncaamb_model_path)
+        return updated
+
+    def _neutral_site_for(self, league: str, dates: str) -> dict[str, bool]:
+        """game_id -> neutralSite for one (league, YYYYMMDD) pair, cached for
+        the rest of this cycle (see `on_cycle_start`'s cache clear) -- same
+        one-fetch-per-game-day-not-per-market discipline as
+        `_nhl_probables_for`."""
+        key = (league, dates)
+        if key in self._neutral_site_cache:
+            return self._neutral_site_cache[key]
+        try:
+            payload = self._fetch_college_scoreboard(league, dates)
+        except Exception:
+            payload = {}
+        parsed = parse_neutral_site(payload)
+        self._neutral_site_cache[key] = parsed
+        return parsed
+
     def warmup(self, league: str, date_ranges: list[str]) -> int:
         model = self.models[league]
         updated = 0
@@ -645,6 +746,13 @@ class TeamSportsIntelligenceSignal:
     def on_cycle_start(self) -> None:
         self.espn.clear_cache()
         self._nhl_probables_cache = {}  # probables/lineups can change day to day
+        self._neutral_site_cache = {}  # same -- a schedule's neutral-site flag can change
+        # Reload (never retrain) the ncaaf Elo ratings SportsEloSignal keeps
+        # warm every cycle -- see this signal's __init__ docstring note.
+        try:
+            self.ncaaf_elo = EloModel.load("ncaaf", self.ncaaf_elo_path)
+        except Exception:
+            pass  # keep the last-loaded ratings rather than go cold on a blip
         recent = _date_range()
         for league in LEAGUE_SCORE_CONFIGS:
             try:
@@ -659,6 +767,8 @@ class TeamSportsIntelligenceSignal:
                     self._warmup_nba([recent])
                 elif league == "nhl":
                     self._warmup_nhl([recent])
+                elif league == "ncaamb":
+                    self._warmup_ncaamb([recent])
             except Exception:
                 continue
         self.espn.clear_cache()
@@ -713,6 +823,26 @@ class TeamSportsIntelligenceSignal:
             nfl_kernel = NflMarginModel(
                 prediction.expected_home_score, prediction.expected_away_score)
             margin_model_version = "nfl_key_number_kernel_v1"
+
+        # NCAAF winner/spread price from the college key-number kernel
+        # (WS-4) -- reuses nfl_margin.py's tilted-PMF machinery wholesale
+        # (autonomy/sports/college.py::NcaafCollegeModel) with a shallower
+        # college base table and an expected margin blended with a talent-
+        # gap Elo prior early in the season. Unlike NBA/NHL/NCAAMB below,
+        # this never wholesale-falls-back to the generic prediction -- the
+        # blend is DESIGNED to degrade gracefully to pure Elo at games=0
+        # rather than needing a cold gate (see college.py::talent_gap_margin).
+        ncaaf_kernel = None
+        ncaaf_prediction = None
+        if parsed.sport == "ncaaf":
+            dates = (game.date or "")[:10].replace("-", "")
+            neutral_lookup = self._neutral_site_for("ncaaf", dates) if dates else {}
+            neutral_site = neutral_lookup.get(game.game_id, False)
+            home_elo = self.ncaaf_elo.rating(canonical_team("ncaaf", game.home))
+            away_elo = self.ncaaf_elo.rating(canonical_team("ncaaf", game.away))
+            ncaaf_kernel, ncaaf_prediction = ncaaf_college(
+                prediction, home_elo, away_elo, prediction.sample_games, neutral_site)
+            margin_model_version = NCAAF_MODEL_VERSION
 
         # NBA winner/spread/total price from the pace x efficiency engine
         # (WS-2) once WS-1's BoxscoreStore has >= MIN_GAMES_FOR_ENGINE games
@@ -777,8 +907,30 @@ class TeamSportsIntelligenceSignal:
                         return None
                     nhl_live_state = (game.home_score, game.away_score, minutes_remaining)
 
+        # NCAAMB winner/spread/total price from its own pace x efficiency
+        # engine (WS-4: NbaModel parameterized with NCAAMB_PARAMS -- same
+        # class, same arithmetic, different cold-start/sigma constants; see
+        # autonomy/sports/nba_model.py::PaceParams) once warm, same
+        # wholesale-fallback discipline as NBA/NHL above -- never a half-
+        # blend. Neutral site (tournament/showcase games) drops the home
+        # edge via the same neutralSite flag lookup as NCAAF above.
+        ncaamb_engine = None
+        ncaamb_prediction = None
+        ncaamb_neutral_site = None
+        if parsed.sport == "ncaamb":
+            home_abbr, away_abbr = game.home.upper(), game.away.upper()
+            warm = nba_is_warm(self.ncaamb_boxscores, home_abbr, away_abbr)
+            if warm:
+                ncaamb_engine = self.ncaamb_model
+                dates = (game.date or "")[:10].replace("-", "")
+                neutral_lookup = self._neutral_site_for("ncaamb", dates) if dates else {}
+                ncaamb_neutral_site = neutral_lookup.get(game.game_id, False)
+                ncaamb_prediction = ncaamb_engine.predict(game, neutral=ncaamb_neutral_site)
+                margin_model_version = NCAAMB_PARAMS.version
+
         # Report numbers from whichever model actually priced this signal
-        # (NbaModel/NhlModel when warm, the generic TeamScoreModel otherwise/
+        # (NbaModel/NhlModel/NCAAMB's NbaModel when warm, the college NCAAF
+        # kernel prediction for ncaaf, the generic TeamScoreModel otherwise/
         # always for every other league) -- keeps the rationale/features
         # numbers consistent with `probability` instead of silently mixing
         # models.
@@ -786,6 +938,10 @@ class TeamSportsIntelligenceSignal:
             report = nba_prediction
         elif nhl_prediction is not None:
             report = nhl_prediction
+        elif ncaamb_prediction is not None:
+            report = ncaamb_prediction
+        elif ncaaf_prediction is not None:
+            report = ncaaf_prediction
         else:
             report = prediction
 
@@ -816,17 +972,30 @@ class TeamSportsIntelligenceSignal:
                     home_win = nba_prediction.home_win_probability
                 elif nhl_engine is not None:
                     home_win = nhl_prediction.home_win_probability
+                elif ncaamb_engine is not None:
+                    home_win = ncaamb_prediction.home_win_probability
+                elif ncaaf_kernel is not None:
+                    home_win = ncaaf_kernel.home_win_probability()
                 elif nfl_kernel is not None:
                     home_win = nfl_kernel.home_win_probability()
                 else:
                     home_win = prediction.home_win_probability
                 source = f"{parsed.sport}_structural_winner"
                 detail = f"{subject} win"
-                uncertainty = (
-                    nhl_prediction.winner_uncertainty
-                    if nhl_engine is not None
-                    else prediction.winner_uncertainty
-                )
+                # Own-prediction uncertainty on every WARM college/NHL path
+                # (the WS-3 lesson: never fall back to the generic
+                # `prediction.winner_uncertainty` once a more specific engine
+                # actually priced this signal); ncaaf's kernel is never
+                # "cold" the way NBA/NHL/NCAAMB can be (see the talent-gap
+                # blend above), so it always reports its own uncertainty.
+                if nhl_engine is not None:
+                    uncertainty = nhl_prediction.winner_uncertainty
+                elif ncaamb_engine is not None:
+                    uncertainty = ncaamb_prediction.winner_uncertainty
+                elif ncaaf_kernel is not None:
+                    uncertainty = ncaaf_prediction.winner_uncertainty
+                else:
+                    uncertainty = prediction.winner_uncertainty
             probability = home_win if subject_is_home else 1.0 - home_win
         elif parsed.market_type == "spread" and parsed.subject and parsed.threshold is not None:
             subject = parsed.subject.upper()
@@ -859,6 +1028,15 @@ class TeamSportsIntelligenceSignal:
                 elif nhl_engine is not None:
                     probability = nhl_engine.cover_probability(
                         nhl_prediction, subject_is_home, parsed.threshold)
+                elif ncaamb_engine is not None:
+                    probability = ncaamb_engine.cover_probability(
+                        ncaamb_prediction, subject_is_home, parsed.threshold)
+                elif ncaaf_kernel is not None:
+                    probability = (
+                        ncaaf_kernel.home_cover_probability(parsed.threshold)
+                        if subject_is_home
+                        else ncaaf_kernel.away_cover_probability(parsed.threshold)
+                    )
                 elif nfl_kernel is not None:
                     probability = (
                         nfl_kernel.home_cover_probability(parsed.threshold)
@@ -876,11 +1054,14 @@ class TeamSportsIntelligenceSignal:
                     sigma = LEAGUE_SCORE_CONFIGS[parsed.sport].margin_sigma
                     z = (parsed.threshold - subject_margin) / max(0.25, sigma)
                     probability = min(0.995, max(0.005, 1.0 - 0.5 * (1.0 + math.erf(z / math.sqrt(2.0)))))
-                uncertainty = (
-                    min(0.44, nhl_prediction.winner_uncertainty + 0.02)
-                    if nhl_engine is not None
-                    else min(0.44, prediction.winner_uncertainty + 0.02)
-                )
+                if nhl_engine is not None:
+                    uncertainty = min(0.44, nhl_prediction.winner_uncertainty + 0.02)
+                elif ncaamb_engine is not None:
+                    uncertainty = min(0.44, ncaamb_prediction.winner_uncertainty + 0.02)
+                elif ncaaf_kernel is not None:
+                    uncertainty = min(0.44, ncaaf_prediction.winner_uncertainty + 0.02)
+                else:
+                    uncertainty = min(0.44, prediction.winner_uncertainty + 0.02)
                 source = f"{parsed.sport}_spread"
                 detail = f"{subject} covers {parsed.threshold:g}"
         elif parsed.market_type == "total" and parsed.threshold is not None:
@@ -914,6 +1095,16 @@ class TeamSportsIntelligenceSignal:
                 probability = nhl_engine.total_probability(nhl_prediction, parsed.threshold)
                 uncertainty = nhl_prediction.total_uncertainty
                 source = "nhl_game_total"
+                detail = f"over {parsed.threshold:g}"
+            elif ncaamb_engine is not None:
+                probability = ncaamb_engine.total_probability(ncaamb_prediction, parsed.threshold)
+                uncertainty = ncaamb_prediction.total_uncertainty
+                source = "ncaamb_game_total"
+                detail = f"over {parsed.threshold:g}"
+            elif ncaaf_kernel is not None:
+                probability = ncaaf_kernel.total_over_probability(parsed.threshold)
+                uncertainty = ncaaf_prediction.total_uncertainty
+                source = "ncaaf_game_total"
                 detail = f"over {parsed.threshold:g}"
             else:
                 probability = self.models[parsed.sport].total_probability(
@@ -992,6 +1183,28 @@ class TeamSportsIntelligenceSignal:
                         "away_score": game.away_score if nhl_live else None,
                     }
                     if parsed.sport == "nhl" else {}
+                ),
+                **(
+                    {
+                        "neutral_site": ncaaf_prediction.neutral_site if ncaaf_prediction else None,
+                        "talent_gap_weight": (
+                            ncaaf_prediction.talent_gap_weight if ncaaf_prediction else None
+                        ),
+                        "expected_margin": (
+                            ncaaf_prediction.expected_margin if ncaaf_prediction else None
+                        ),
+                    }
+                    if parsed.sport == "ncaaf" else {}
+                ),
+                **(
+                    {
+                        "ncaamb_model_fallback": ncaamb_engine is None,
+                        "neutral_site": ncaamb_neutral_site,
+                        "expected_pace": ncaamb_prediction.expected_pace if ncaamb_prediction else None,
+                        "rest_days_home": ncaamb_prediction.rest_days_home if ncaamb_prediction else None,
+                        "rest_days_away": ncaamb_prediction.rest_days_away if ncaamb_prediction else None,
+                    }
+                    if parsed.sport == "ncaamb" else {}
                 ),
             },
         )
