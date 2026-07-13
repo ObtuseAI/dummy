@@ -17,7 +17,7 @@ from autonomy.sports.baseball import (
     rest_travel_uncertainty_bump,
 )
 from autonomy.sports.boxscores import BoxscoreStore, parse_team_boxscores
-from autonomy.sports.espn import EspnClient, Game, canonical_team
+from autonomy.sports.espn import EspnClient, Game, canonical_team, default_fetch_scoreboard
 from autonomy.sports.injuries import InjuryBook
 from autonomy.sports.nba_model import (
     MODEL_VERSION as NBA_MODEL_VERSION,
@@ -25,14 +25,24 @@ from autonomy.sports.nba_model import (
     is_warm as nba_is_warm,
     minutes_remaining_in_game as nba_minutes_remaining,
 )
+from autonomy.sports.nhl_model import (
+    MODEL_VERSION as NHL_MODEL_VERSION,
+    NhlModel,
+    is_warm as nhl_is_warm,
+    minutes_remaining_in_game as nhl_minutes_remaining,
+    parse_goalie_boxscores,
+    parse_probable_goalies,
+)
 from autonomy.sports.team_scores import LEAGUE_SCORE_CONFIGS, TeamScoreModel
 
 # WS-1's fetch-budget guidance ("~16/day/league"), applied here since WS-2's
 # NBA engine is BoxscoreStore's first consumer (see boxscores.py's WS-1
 # report: "the fetch-budget/try-except-continue loop ... belongs to
 # whichever later workstream wires BoxscoreStore into a daemon/warmup
-# script -- WS-2 is the first consumer").
+# script -- WS-2 is the first consumer"). WS-3's NHL engine reuses the same
+# budget for its own boxscore+goalie fetch.
 NBA_BOXSCORE_FETCH_BUDGET = 16
+NHL_BOXSCORE_FETCH_BUDGET = 16
 
 MODEL_DIR = Path("runtime/autonomy")
 _MONTHS = {month: index for index, month in enumerate(
@@ -475,6 +485,11 @@ class TeamSportsIntelligenceSignal:
         nba_model: NbaModel | None = None,
         nba_model_path: Path | None = None,
         fetch_nba_summary: Any = None,
+        nhl_boxscores: BoxscoreStore | None = None,
+        nhl_model: NhlModel | None = None,
+        nhl_model_path: Path | None = None,
+        fetch_nhl_summary: Any = None,
+        fetch_nhl_scoreboard: Any = None,
     ) -> None:
         from autonomy.specialists.seasons import SeasonMonitor
 
@@ -503,6 +518,21 @@ class TeamSportsIntelligenceSignal:
         # fetch (autonomy/sports/boxscores.py::fetch_summary). Only ever
         # called from `_warmup_nba`, never from `generate`.
         self._fetch_nba_summary = fetch_nba_summary or boxscores_module.fetch_summary
+        # WS-3: NHL's bivariate-Poisson + OT/SO engine, same on-disk/cold-
+        # fallback discipline as NBA above.
+        self.nhl_boxscores = nhl_boxscores or BoxscoreStore(
+            "nhl", path=self.model_dir / "boxscores_nhl.json")
+        self.nhl_model_path = nhl_model_path or self.model_dir / "nhl_bipoisson_model.json"
+        self.nhl_model = nhl_model or NhlModel.load(self.nhl_model_path)
+        self._fetch_nhl_summary = fetch_nhl_summary or boxscores_module.fetch_summary
+        # Raw-scoreboard fetch for probable-goalie identity (see
+        # nhl_model.py::parse_probable_goalies -- this is deliberately NOT
+        # routed through `self.espn`, which discards the raw payload after
+        # parsing into `Game`). Injectable for tests; defaults to the real
+        # keyless ESPN scoreboard fetch. Cached per date string within a
+        # cycle so N markets on the same game/day cost one extra fetch, not N.
+        self._fetch_nhl_scoreboard = fetch_nhl_scoreboard or default_fetch_scoreboard
+        self._nhl_probables_cache: dict[str, dict[str, tuple[str | None, str | None]]] = {}
 
     def _warmup_nba(self, date_ranges: list[str]) -> int:
         """Ingest WS-1 boxscores + update the NBA pace model for newly-final
@@ -542,6 +572,64 @@ class TeamSportsIntelligenceSignal:
             self.nba_model.save(self.nba_model_path)
         return updated
 
+    def _warmup_nhl(self, date_ranges: list[str]) -> int:
+        """Ingest WS-1 boxscores + goalie rows and update the NHL engine for
+        newly-final games (same fetch-budget-capped, try/except-continue
+        shape as `_warmup_nba` -- ONE summary fetch per game feeds both the
+        team-level boxscore store and the goalie layer, see
+        nhl_model.py::parse_goalie_boxscores).
+        """
+        games: list[Game] = []
+        for dates in date_ranges:
+            games.extend(self.espn.games("nhl", dates))
+        finals = sorted(
+            (
+                g for g in games
+                if g.status == "post" and g.game_id not in self.nhl_model.processed_game_ids
+            ),
+            key=lambda g: g.date,
+        )
+        updated = 0
+        fetched = 0
+        for game in finals:
+            if fetched >= NHL_BOXSCORE_FETCH_BUDGET:
+                break
+            fetched += 1
+            try:
+                summary = self._fetch_nhl_summary("nhl", game.game_id)
+            except Exception:
+                continue
+            boxes = parse_team_boxscores("nhl", summary)
+            if len(boxes) != 2:
+                continue
+            self.nhl_boxscores.ingest(boxes)
+            by_team = {b.team: b for b in boxes}
+            home_box = by_team.get(canonical_team("nhl", game.home))
+            away_box = by_team.get(canonical_team("nhl", game.away))
+            goalie_rows = parse_goalie_boxscores(summary)
+            home_goalies = [r for r in goalie_rows if r.team == canonical_team("nhl", game.home)]
+            away_goalies = [r for r in goalie_rows if r.team == canonical_team("nhl", game.away)]
+            if self.nhl_model.update(game, home_box, away_box, home_goalies, away_goalies):
+                updated += 1
+        if updated:
+            self.nhl_model.save(self.nhl_model_path)
+        return updated
+
+    def _nhl_probables_for(self, dates: str) -> dict[str, tuple[str | None, str | None]]:
+        """game_id -> (home_goalie, away_goalie) for one YYYYMMDD date,
+        cached for the rest of this cycle (see `on_cycle_start`'s cache
+        clear) so every market on the same game costs one extra raw
+        scoreboard fetch, not one per market."""
+        if dates in self._nhl_probables_cache:
+            return self._nhl_probables_cache[dates]
+        try:
+            payload = self._fetch_nhl_scoreboard("nhl", dates)
+        except Exception:
+            payload = {}
+        parsed = parse_probable_goalies(payload)
+        self._nhl_probables_cache[dates] = parsed
+        return parsed
+
     def warmup(self, league: str, date_ranges: list[str]) -> int:
         model = self.models[league]
         updated = 0
@@ -556,6 +644,7 @@ class TeamSportsIntelligenceSignal:
 
     def on_cycle_start(self) -> None:
         self.espn.clear_cache()
+        self._nhl_probables_cache = {}  # probables/lineups can change day to day
         recent = _date_range()
         for league in LEAGUE_SCORE_CONFIGS:
             try:
@@ -568,6 +657,8 @@ class TeamSportsIntelligenceSignal:
                 self.warmup(league, [recent])
                 if league == "nba":
                     self._warmup_nba([recent])
+                elif league == "nhl":
+                    self._warmup_nhl([recent])
             except Exception:
                 continue
         self.espn.clear_cache()
@@ -600,10 +691,11 @@ class TeamSportsIntelligenceSignal:
             )
         if game is None:
             return None
-        # NBA alone carries an in-play branch (WS-2); every other league in
-        # this signal stays pre-game only, unchanged from before WS-2.
+        # NBA and NHL alone carry an in-play branch (WS-2/WS-3); every other
+        # league in this signal stays pre-game only, unchanged from before WS-2.
         nba_live = parsed.sport == "nba" and game.status == "in"
-        if parsed.sport == "nba":
+        nhl_live = parsed.sport == "nhl" and game.status == "in"
+        if parsed.sport in ("nba", "nhl"):
             if game.status not in ("pre", "in"):
                 return None
         elif game.status != "pre":
@@ -652,11 +744,50 @@ class TeamSportsIntelligenceSignal:
                     if minutes_remaining is None:
                         return None
                     nba_live_state = (game.home_score, game.away_score, minutes_remaining)
+
+        # NHL winner/spread/total price from the bivariate-Poisson + OT/SO
+        # engine (WS-3) once warm, same wholesale-fallback discipline as NBA
+        # above. Goalie identity is looked up from the raw scoreboard
+        # payload for this game's own date (see `_nhl_probables_for`) --
+        # absent probables degrade to the unknown-goalie branch inside
+        # `NhlModel.predict` rather than block pricing.
+        nhl_engine = None
+        nhl_prediction = None
+        nhl_live_state: tuple[int, int, float] | None = None
+        if parsed.sport == "nhl":
+            if nhl_live and (
+                game.home_score is None or game.away_score is None
+                or game.current_period is None or game.current_period < 1
+            ):
+                return None
+            home_abbr, away_abbr = game.home.upper(), game.away.upper()
+            warm = nhl_is_warm(self.nhl_boxscores, home_abbr, away_abbr)
+            if nhl_live and not warm:
+                return None
+            if warm:
+                nhl_engine = self.nhl_model
+                dates = (game.date or "")[:10].replace("-", "")
+                probables = self._nhl_probables_for(dates) if dates else {}
+                home_goalie, away_goalie = probables.get(game.game_id, (None, None))
+                nhl_prediction = nhl_engine.predict(game, home_goalie, away_goalie)
+                margin_model_version = NHL_MODEL_VERSION
+                if nhl_live:
+                    minutes_remaining = nhl_minutes_remaining(game.current_period, game.current_clock)
+                    if minutes_remaining is None:
+                        return None
+                    nhl_live_state = (game.home_score, game.away_score, minutes_remaining)
+
         # Report numbers from whichever model actually priced this signal
-        # (NbaModel when warm, the generic TeamScoreModel otherwise/always
-        # for every other league) -- keeps the rationale/features numbers
-        # consistent with `probability` instead of silently mixing models.
-        report = nba_prediction if nba_prediction is not None else prediction
+        # (NbaModel/NhlModel when warm, the generic TeamScoreModel otherwise/
+        # always for every other league) -- keeps the rationale/features
+        # numbers consistent with `probability` instead of silently mixing
+        # models.
+        if nba_prediction is not None:
+            report = nba_prediction
+        elif nhl_prediction is not None:
+            report = nhl_prediction
+        else:
+            report = prediction
 
         if parsed.market_type == "winner" and parsed.subject:
             subject = parsed.subject.upper()
@@ -673,16 +804,29 @@ class TeamSportsIntelligenceSignal:
                 source = "nba_live_winner"
                 detail = f"{subject} live win ({away_score}-{home_score}, period {game.current_period})"
                 uncertainty = min(0.45, prediction.winner_uncertainty + 0.05)
+            elif nhl_engine is not None and nhl_live_state is not None:
+                home_score, away_score, minutes_remaining = nhl_live_state
+                home_win = nhl_engine.live_win_probability_for(
+                    nhl_prediction, home_score, away_score, minutes_remaining)
+                source = "nhl_live_winner"
+                detail = f"{subject} live win ({away_score}-{home_score}, period {game.current_period})"
+                uncertainty = min(0.45, nhl_prediction.winner_uncertainty + 0.05)
             else:
                 if nba_engine is not None:
                     home_win = nba_prediction.home_win_probability
+                elif nhl_engine is not None:
+                    home_win = nhl_prediction.home_win_probability
                 elif nfl_kernel is not None:
                     home_win = nfl_kernel.home_win_probability()
                 else:
                     home_win = prediction.home_win_probability
                 source = f"{parsed.sport}_structural_winner"
                 detail = f"{subject} win"
-                uncertainty = prediction.winner_uncertainty
+                uncertainty = (
+                    nhl_prediction.winner_uncertainty
+                    if nhl_engine is not None
+                    else prediction.winner_uncertainty
+                )
             probability = home_win if subject_is_home else 1.0 - home_win
         elif parsed.market_type == "spread" and parsed.subject and parsed.threshold is not None:
             subject = parsed.subject.upper()
@@ -700,10 +844,21 @@ class TeamSportsIntelligenceSignal:
                 source = "nba_live_spread"
                 detail = f"{subject} live by >{parsed.threshold:g} (period {game.current_period})"
                 uncertainty = min(0.45, prediction.winner_uncertainty + 0.07)
+            elif nhl_engine is not None and nhl_live_state is not None:
+                home_score, away_score, minutes_remaining = nhl_live_state
+                probability = nhl_engine.live_spread_probability_for(
+                    nhl_prediction, subject_is_home, parsed.threshold,
+                    home_score, away_score, minutes_remaining)
+                source = "nhl_live_spread"
+                detail = f"{subject} live by >{parsed.threshold:g} (period {game.current_period})"
+                uncertainty = min(0.45, nhl_prediction.winner_uncertainty + 0.07)
             else:
                 if nba_engine is not None:
                     probability = nba_engine.cover_probability(
                         nba_prediction, subject_is_home, parsed.threshold)
+                elif nhl_engine is not None:
+                    probability = nhl_engine.cover_probability(
+                        nhl_prediction, subject_is_home, parsed.threshold)
                 elif nfl_kernel is not None:
                     probability = (
                         nfl_kernel.home_cover_probability(parsed.threshold)
@@ -721,7 +876,11 @@ class TeamSportsIntelligenceSignal:
                     sigma = LEAGUE_SCORE_CONFIGS[parsed.sport].margin_sigma
                     z = (parsed.threshold - subject_margin) / max(0.25, sigma)
                     probability = min(0.995, max(0.005, 1.0 - 0.5 * (1.0 + math.erf(z / math.sqrt(2.0)))))
-                uncertainty = min(0.44, prediction.winner_uncertainty + 0.02)
+                uncertainty = (
+                    min(0.44, nhl_prediction.winner_uncertainty + 0.02)
+                    if nhl_engine is not None
+                    else min(0.44, prediction.winner_uncertainty + 0.02)
+                )
                 source = f"{parsed.sport}_spread"
                 detail = f"{subject} covers {parsed.threshold:g}"
         elif parsed.market_type == "total" and parsed.threshold is not None:
@@ -735,10 +894,26 @@ class TeamSportsIntelligenceSignal:
                     f"period {game.current_period})"
                 )
                 uncertainty = min(0.45, prediction.total_uncertainty + 0.05)
+            elif nhl_engine is not None and nhl_live_state is not None:
+                home_score, away_score, minutes_remaining = nhl_live_state
+                probability = nhl_engine.live_total_probability_for(
+                    nhl_prediction, home_score + away_score, parsed.threshold,
+                    home_score, away_score, minutes_remaining)
+                source = "nhl_live_total"
+                detail = (
+                    f"live over {parsed.threshold:g} ({home_score + away_score} so far, "
+                    f"period {game.current_period})"
+                )
+                uncertainty = min(0.45, nhl_prediction.total_uncertainty + 0.05)
             elif nba_engine is not None:
                 probability = nba_engine.total_probability(nba_prediction, parsed.threshold)
                 uncertainty = prediction.total_uncertainty
                 source = "nba_game_total"
+                detail = f"over {parsed.threshold:g}"
+            elif nhl_engine is not None:
+                probability = nhl_engine.total_probability(nhl_prediction, parsed.threshold)
+                uncertainty = nhl_prediction.total_uncertainty
+                source = "nhl_game_total"
                 detail = f"over {parsed.threshold:g}"
             else:
                 probability = self.models[parsed.sport].total_probability(
@@ -795,6 +970,28 @@ class TeamSportsIntelligenceSignal:
                         "away_score": game.away_score if nba_live else None,
                     }
                     if parsed.sport == "nba" else {}
+                ),
+                **(
+                    {
+                        "nhl_model_fallback": nhl_engine is None,
+                        "live": nhl_live,
+                        "goalie_known_home": nhl_prediction.goalie_known_home if nhl_prediction else None,
+                        "goalie_known_away": nhl_prediction.goalie_known_away if nhl_prediction else None,
+                        "rookie_goalie_home": nhl_prediction.rookie_goalie_home if nhl_prediction else None,
+                        "rookie_goalie_away": nhl_prediction.rookie_goalie_away if nhl_prediction else None,
+                        "goalie_delta_home": nhl_prediction.goalie_delta_home if nhl_prediction else None,
+                        "goalie_delta_away": nhl_prediction.goalie_delta_away if nhl_prediction else None,
+                        "special_teams_shift_home": (
+                            nhl_prediction.special_teams_shift_home if nhl_prediction else None
+                        ),
+                        "special_teams_shift_away": (
+                            nhl_prediction.special_teams_shift_away if nhl_prediction else None
+                        ),
+                        "current_period": game.current_period if nhl_live else None,
+                        "home_score": game.home_score if nhl_live else None,
+                        "away_score": game.away_score if nhl_live else None,
+                    }
+                    if parsed.sport == "nhl" else {}
                 ),
             },
         )
