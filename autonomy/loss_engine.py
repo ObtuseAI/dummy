@@ -293,7 +293,15 @@ def narrate_losses(attribution: dict[str, Any], router: Any) -> dict[str, Any]:
         # asyncio.run (same guard LlmAnalystSignal.generate uses).
         return {}
 
-    from model_router.tasks import ModelTask
+    try:
+        # Imported inside the try (not at module scope) so a missing/broken
+        # model_router package -- or anything else that goes wrong while
+        # wiring up the call -- degrades to the same fail-closed {} as a
+        # router/provider trouble, instead of raising out of this function
+        # and skipping the write_report() call in scripts/run_dummy_loss_engine.py.
+        from model_router.tasks import ModelTask
+    except Exception:
+        return {}
 
     narration: dict[str, str] = {}
     for entry in bleeding:
@@ -310,13 +318,25 @@ def narrate_losses(attribution: dict[str, Any], router: Any) -> dict[str, Any]:
             " automatically."
         )
         try:
+            # CALIBRATION_NOTE is the one task whose provider schema
+            # (`{"note": ...}`, see model_router/providers.py::_TASK_SCHEMAS)
+            # is a single free-text field rather than a probability/verdict
+            # envelope -- FORECAST_OPINION returns dummy_probability/
+            # confidence_score/reasoning, which is the wrong shape for prose
+            # commentary. Extract the "note" prose string, never the raw
+            # JSON envelope.
             envelope = asyncio.run(
-                router.call(ModelTask.FORECAST_OPINION, prompt, context={"scope": scope})
+                router.call(ModelTask.CALIBRATION_NOTE, prompt, context={"scope": scope})
             )
-            text = str(getattr(envelope, "content", "") or "")
+            data = json.loads(envelope.content)
+            text = str(data.get("note", "") or "").strip()
+            if not text:
+                raise ValueError("empty narration note")
         except Exception:
-            # Fail-closed: ANY router trouble blanks the whole narration pass
-            # rather than a partially-filled, possibly-misleading one.
+            # Fail-closed: ANY router trouble (including import errors above,
+            # a raise from router.call, a timeout, or a malformed/non-JSON
+            # response) blanks the whole narration pass rather than a
+            # partially-filled, possibly-misleading one.
             return {}
         narration[scope] = text[:800]
     return narration

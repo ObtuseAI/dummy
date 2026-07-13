@@ -7,6 +7,7 @@ promotions.json is ever mutated by a full engine run."""
 from __future__ import annotations
 
 import hashlib
+import importlib.util
 import json
 import random
 import sqlite3
@@ -165,12 +166,38 @@ def test_llm_down_narration_empty_deterministic_artifact_intact():
     assert any(s["verdict"] == "bleeding" for s in attribution["scopes"])
 
 
+def test_narration_fails_closed_when_model_router_import_broken(monkeypatch):
+    """The ``from model_router.tasks import ModelTask`` import lives inside a
+    try/except in narrate_losses(): if model_router is present but broken
+    (import raises) with a non-None router, narration must still degrade to
+    {} rather than propagating the ImportError out of this function (which
+    would otherwise crash scripts/run_dummy_loss_engine.py::main() before it
+    reaches write_report())."""
+    rows = _planted_rows()
+    attribution = build_loss_attribution(rows, now_iso="2026-07-13T00:00:00+00:00")
+
+    class _NeverCalledRouter:
+        async def call(self, *args, **kwargs):  # pragma: no cover
+            raise AssertionError("router.call must not be reached if the import breaks first")
+
+    # sys.modules[name] = None is the standard way to force `import name` to
+    # raise ImportError without needing an actually-broken package on disk.
+    monkeypatch.setitem(sys.modules, "model_router.tasks", None)
+    assert narrate_losses(attribution, _NeverCalledRouter()) == {}
+
+
 def test_narration_fills_field_when_router_succeeds():
     rows = _planted_rows()
     attribution = build_loss_attribution(rows, now_iso="2026-07-13T00:00:00+00:00")
 
     class _Envelope:
-        content = "setup_score looks like the culprit; try repricing low-setup games."
+        # CALIBRATION_NOTE's provider schema is {"note": <prose>} (see
+        # model_router/providers.py::_TASK_SCHEMAS) -- envelope.content is a
+        # JSON string, not the raw prose, so a real router response looks
+        # like this.
+        content = json.dumps({
+            "note": "setup_score looks like the culprit; try repricing low-setup games.",
+        })
 
     class _WorkingRouter:
         async def call(self, *args, **kwargs):
@@ -178,7 +205,117 @@ def test_narration_fills_field_when_router_succeeds():
 
     narration = narrate_losses(attribution, _WorkingRouter())
     assert set(narration) == {"nba|total|pre"}
-    assert "setup_score" in narration["nba|total|pre"]
+    note = narration["nba|total|pre"]
+    # The extracted value must be plain prose, not the JSON envelope/dict.
+    assert isinstance(note, str)
+    assert not note.strip().startswith("{")
+    assert "setup_score" in note
+
+
+def test_narration_fails_closed_on_malformed_or_wrong_shape_response():
+    rows = _planted_rows()
+    attribution = build_loss_attribution(rows, now_iso="2026-07-13T00:00:00+00:00")
+
+    class _NotJsonEnvelope:
+        content = "not json at all"
+
+    class _NotJsonRouter:
+        async def call(self, *args, **kwargs):
+            return _NotJsonEnvelope()
+
+    assert narrate_losses(attribution, _NotJsonRouter()) == {}
+
+    class _WrongShapeEnvelope:
+        # A FORECAST_OPINION-shaped envelope (the old, wrong task) has no
+        # "note" key -- must fail closed rather than narrating "".
+        content = json.dumps({
+            "dummy_probability": "0.5", "confidence_score": "0.5", "reasoning": "wrong shape",
+        })
+
+    class _WrongShapeRouter:
+        async def call(self, *args, **kwargs):
+            return _WrongShapeEnvelope()
+
+    assert narrate_losses(attribution, _WrongShapeRouter()) == {}
+
+
+def _load_script_module():
+    """Load scripts/run_dummy_loss_engine.py as a module so tests can call
+    its main() directly (with _get_router monkeypatched) instead of only
+    exercising narrate_losses() in isolation -- this is the SAME entry point
+    the nightly cron uses."""
+    script_path = REPO_ROOT / "scripts" / "run_dummy_loss_engine.py"
+    spec = importlib.util.spec_from_file_location("run_dummy_loss_engine_under_test", script_path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def test_main_still_writes_artifact_when_narration_raises(tmp_path, monkeypatch):
+    """If the narration path raises outright when main() runs it (router
+    trouble surfacing as an exception rather than a clean None router), the
+    deterministic loss_attribution.json artifact must still be written, with
+    narration == {}. Exercised through main() -- not narrate_losses() in
+    isolation -- because the bug this guards against was main() crashing
+    BEFORE write_report()."""
+    conn = _random_nba_total_db(rows=60, seed=99)
+    db_path = tmp_path / "ledger.db"
+    with sqlite3.connect(db_path) as file_conn:
+        conn.backup(file_conn)
+    conn.close()
+    out_path = tmp_path / "loss_attribution.json"
+
+    module = _load_script_module()
+
+    class _RaisingRouter:
+        async def call(self, *args, **kwargs):
+            raise RuntimeError("router down")
+
+    monkeypatch.setattr(module, "_get_router", lambda: _RaisingRouter())
+    monkeypatch.setattr(
+        sys, "argv",
+        ["run_dummy_loss_engine.py", "--db", str(db_path), "--out", str(out_path)],
+    )
+
+    rc = module.main()
+
+    assert rc == 0
+    assert out_path.exists()
+    payload = json.loads(out_path.read_text(encoding="utf-8"))
+    assert payload["narration"] == {}
+    assert "family_size" in payload
+
+
+def test_main_still_writes_artifact_when_model_router_import_broken(tmp_path, monkeypatch):
+    """Same entry point as above, but the failure mode is the import inside
+    narrate_losses() itself (model_router present but broken) rather than a
+    router.call() raise -- the exact scenario named in the review finding."""
+    conn = _random_nba_total_db(rows=60, seed=99)
+    db_path = tmp_path / "ledger.db"
+    with sqlite3.connect(db_path) as file_conn:
+        conn.backup(file_conn)
+    conn.close()
+    out_path = tmp_path / "loss_attribution.json"
+
+    module = _load_script_module()
+
+    class _NeverCalledRouter:
+        async def call(self, *args, **kwargs):  # pragma: no cover
+            raise AssertionError("router.call must not be reached if the import breaks first")
+
+    monkeypatch.setattr(module, "_get_router", lambda: _NeverCalledRouter())
+    monkeypatch.setitem(sys.modules, "model_router.tasks", None)
+    monkeypatch.setattr(
+        sys, "argv",
+        ["run_dummy_loss_engine.py", "--db", str(db_path), "--out", str(out_path)],
+    )
+
+    rc = module.main()
+
+    assert rc == 0
+    assert out_path.exists()
+    payload = json.loads(out_path.read_text(encoding="utf-8"))
+    assert payload["narration"] == {}
 
 
 # --------------------------------------------------------------------- B.3 loop wiring

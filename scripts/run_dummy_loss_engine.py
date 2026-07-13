@@ -66,7 +66,16 @@ def main() -> int:
 
     attribution = build_loss_attribution(rows, now_iso=datetime.now(timezone.utc).isoformat())
     if not args.no_narration:
-        attribution["narration"] = narrate_losses(attribution, _get_router())
+        try:
+            attribution["narration"] = narrate_losses(attribution, _get_router())
+        except Exception:
+            # Belt-and-suspenders fail-closed: narrate_losses() itself
+            # degrades to {} on router/import trouble, but this guard
+            # guarantees the deterministic artifact below is STILL written
+            # even if something in the narration path raises anyway (e.g. a
+            # future change to narrate_losses, or a router construction bug
+            # in _get_router() surfacing here instead of returning None).
+            attribution["narration"] = {}
     write_report(attribution, args.out)
 
     bleeding = sum(1 for scope in attribution["scopes"] if scope.get("verdict") == "bleeding")
