@@ -76,6 +76,13 @@ _STAT_KEYS: dict[str, tuple[str, ...]] = {
     "nba": ("offensiveRebounds", "turnovers"),  # + fieldGoals/freeThrows split below
     "nhl": ("powerPlayGoals", "powerPlayOpportunities", "shotsTotal"),
     "nfl": ("netPassingYards", "rushingYards", "totalYards", "turnovers", "totalOffensivePlays"),
+    # WS-4 PROBE (2026-07-13, event 401825552, PUR @ OSU, mens-college-basketball
+    # summary): boxscore.teams[].statistics[].name keys are IDENTICAL to NBA's
+    # (same composite fieldGoalsMade-fieldGoalsAttempted / freeThrowsMade-
+    # freeThrowsAttempted displayValues, same offensiveRebounds/turnovers) --
+    # ESPN's basketball schema is shared across leagues, so ncaamb reuses the
+    # NBA whitelist + split-key handling verbatim (see _parse_stat_row below).
+    "ncaamb": ("offensiveRebounds", "turnovers"),
 }
 
 # NBA-only: ESPN reports made+attempted as one composite displayValue
@@ -125,7 +132,7 @@ def _parse_stat_row(league: str, name: str, display_value: Any, out: dict[str, f
         except (TypeError, ValueError):
             pass
         return
-    if league == "nba" and name in _NBA_SPLIT_KEYS:
+    if league in ("nba", "ncaamb") and name in _NBA_SPLIT_KEYS:
         made_key, attempted_key = _NBA_SPLIT_KEYS[name]
         parts = str(display_value).split("-")
         if len(parts) == 2:

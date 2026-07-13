@@ -58,52 +58,63 @@ MAX_MARGIN = 45
 LAMBDA_BOUND = 0.40
 
 
-def _signed_base() -> dict[int, float]:
+def _signed_base(base_pmf: dict[int, float]) -> dict[int, float]:
     """Zero-mean signed base PMF: split each |m| across +/-m, tie at 0."""
     signed: dict[int, float] = {0: TIE_MASS}
-    for magnitude, mass in BASE_ABS_MARGIN_PMF.items():
+    for magnitude, mass in base_pmf.items():
         signed[magnitude] = mass / 2.0
         signed[-magnitude] = mass / 2.0
     total = sum(signed.values())
     return {margin: mass / total for margin, mass in signed.items()}
 
 
-_SIGNED_BASE = _signed_base()
+_SIGNED_BASE = _signed_base(BASE_ABS_MARGIN_PMF)
 _MARGINS = sorted(_SIGNED_BASE)
 
 
-def _tilted(lam: float) -> dict[int, float]:
-    weights = {m: _SIGNED_BASE[m] * math.exp(lam * m) for m in _MARGINS}
+def _tilted(lam: float, signed_base: dict[int, float] | None = None) -> dict[int, float]:
+    base = signed_base if signed_base is not None else _SIGNED_BASE
+    margins = sorted(base) if signed_base is not None else _MARGINS
+    weights = {m: base[m] * math.exp(lam * m) for m in margins}
     total = sum(weights.values())
     return {m: w / total for m, w in weights.items()}
 
 
-def _tilted_mean(lam: float) -> float:
-    dist = _tilted(lam)
+def _tilted_mean(lam: float, signed_base: dict[int, float] | None = None) -> float:
+    dist = _tilted(lam, signed_base)
     return sum(m * p for m, p in dist.items())
 
 
-def margin_distribution(expected_margin: float) -> dict[int, float]:
+def margin_distribution(
+    expected_margin: float, base_pmf: dict[int, float] | None = None,
+) -> dict[int, float]:
     """Signed margin PMF whose mean equals ``expected_margin`` (clamped).
 
     Solved by bisection on the tilt parameter -- the tilted mean is strictly
     increasing in lambda, so the root is unique.
+
+    ``base_pmf`` defaults to ``BASE_ABS_MARGIN_PMF`` (NFL) -- passing a
+    different auditable |margin| table (e.g. NCAAF's shallower
+    ``BASE_ABS_MARGIN_PMF_COLLEGE`` in autonomy/sports/college.py) reuses
+    this exact tilt/bisection machinery unchanged rather than forking it;
+    see that module for why this is the DRY-correct reuse path.
     """
+    signed_base = _SIGNED_BASE if base_pmf is None else _signed_base(base_pmf)
     target = float(expected_margin)
-    low_mean = _tilted_mean(-LAMBDA_BOUND)
-    high_mean = _tilted_mean(LAMBDA_BOUND)
+    low_mean = _tilted_mean(-LAMBDA_BOUND, signed_base)
+    high_mean = _tilted_mean(LAMBDA_BOUND, signed_base)
     if target <= low_mean:
-        return _tilted(-LAMBDA_BOUND)
+        return _tilted(-LAMBDA_BOUND, signed_base)
     if target >= high_mean:
-        return _tilted(LAMBDA_BOUND)
+        return _tilted(LAMBDA_BOUND, signed_base)
     low, high = -LAMBDA_BOUND, LAMBDA_BOUND
     for _ in range(60):  # ~1e-18 interval; overkill but cheap and exact
         mid = (low + high) / 2.0
-        if _tilted_mean(mid) < target:
+        if _tilted_mean(mid, signed_base) < target:
             low = mid
         else:
             high = mid
-    return _tilted((low + high) / 2.0)
+    return _tilted((low + high) / 2.0, signed_base)
 
 
 def win_probability(distribution: dict[int, float]) -> float:
