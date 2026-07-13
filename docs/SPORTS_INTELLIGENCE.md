@@ -42,6 +42,75 @@ from one internally coherent run distribution.
 The generic team model keeps independent score distributions for NFL, NCAAF,
 NHL, NBA, and NCAAB.
 
+## League engines
+
+Each league's kernel is purpose-built to that sport's real scoring shape
+(all challenger-only, fail-closed on missing feeds):
+
+| Engine | Module | Mechanism |
+|---|---|---|
+| MLB PA-sim + parks | `autonomy/sports/mlb_pa_sim.py`, `autonomy/sports/mlb_parks.py` | Plate-appearance Monte Carlo: each batter vs. the current pitcher via the Bill James log5 odds ratio against league average, with platoon and park adjustments; many simulated games aggregate into winner/total-run/YRFI/first-five-innings probabilities. Park factors are a static multiplicative scalar on expected total runs (e.g. Coors ~1.28, Petco/Oracle ~0.90), fail-closed to 1.00 for any unmapped team. |
+| NFL key-number margin kernel | `autonomy/sports/nfl_margin.py` | NFL margins are not normal — field goals (3) and touchdowns (7) create real spikes (~10% of games land exactly on 3, ~7% on 7). An auditable base PMF over absolute margins is exponentially tilted (`P_mu(m) ∝ base(m) * exp(lambda*m)`, lambda solved by bisection) so the mean matches the matchup's expected margin while preserving the key-number spikes. Winner/spread rungs derive from the same distribution; totals price from a separate normal. |
+| NBA pace × efficiency | `autonomy/sports/nba_model.py` | Per-team EWMA offensive/defensive rating per 100 possessions plus a shared pace EWMA (from boxscore-derived possession estimates). Expected score = pace × efficiency/100; dispersion is heteroskedastic, scaling with `sqrt(pace/99.5)` so fast games carry more variance. A bounded rest engine and a garbage-time cap protect the rating EWMAs from blowout distortion. Falls back to the generic team model below a minimum-games threshold. |
+| NHL goal model + goalie identity | `autonomy/sports/nhl_model.py` | Home/away goals modeled as independent Poisson processes (true bivariate correlation is a documented, deferred gap) over one regulation goal matrix, with an explicit OT/shootout branch since Kalshi settles on final score including overtime. Goalie identity (starts-weighted save percentage) shifts the matchup. |
+| NCAAF kernel + talent-gap Elo | `autonomy/sports/college.py` | Reuses the NFL margin kernel wholesale with a shallower college key-number PMF (spikes ~40% shallower than the NFL table). The margin itself blends season EWMA form with an Elo-derived talent-gap prior, weighted toward Elo early season and toward observed form as games accumulate. |
+| NCAAMB pace model | `autonomy/sports/college.py` | Reuses the NBA pace × efficiency engine wholesale via a college parameter set (different cold-start constants) — same classes, same math, no duplication. |
+| Crypto DVOL | `autonomy/signals/crypto_indicators.py`, `autonomy/crypto_implied_book.py` | The crypto analog of a sports sharp book: Deribit's DVOL implied-volatility index (forward-looking) prices an independent P(YES), triangulated against the champion's realized-vol model (backward-looking) and the Kalshi price. Fail-closed to `model_only` on missing or stale (>6h) DVOL data; challenger-only, excluded from the execution ensemble pending promotion. |
+
+## 3×3 conviction lattice
+
+`autonomy/coherence.py` builds a nine-cell lattice for every game: three
+estimators (the league's own model, the de-vigged sharp book, the Kalshi
+crowd price) crossed with three market families (winner, spread ladder, total
+ladder). Two independent checks feed conviction: **ladder violations** (the
+exchange's own rung prices should be monotonic within one family — no model
+opinion needed, gated by a small fee-band slack) and **cross-family
+incoherence** (the winner price and the spread ladder should reconcile
+through the model's own joint distribution — a first-order linear
+transport). `lattice_conviction` combines both into a tier —
+`TIER_STRUCTURAL` (an exchange-internal contradiction, needs no forecast to
+trust), `TIER_CROSS_CONFIRMED` (model, book, and market-internal structure
+all agree), `TIER_MODEL_BOOK`, or `TIER_MODEL_ONLY` — and grouping is
+subject-aware so opposite sides of the same spread are never mistaken for
+confirming each other. The mispricing monitor surfaces `structural` and
+`cross_confirmed` counts every pass as the highest-conviction subset of its
+shortlist.
+
+## Player availability, injuries, rookies, and mismatches
+
+`autonomy/sports/players.py` (WS-6, all engines) enforces a hard split
+between two kinds of availability signal: **HARD** statuses (Out, Doubtful,
+and — since WS-7 — suspensions) shift the expected margin via a bounded,
+position-weighted point delta; **SOFT** statuses (Questionable, Day-to-Day,
+Probable) and rookie flags widen uncertainty only, leaving the mean
+byte-identical. MLB's older, narrower `autonomy/sports/injuries.py` (ESPN's
+keyless MLB injuries feed) is left independently in place rather than folded
+in — it turns a count of currently-questionable players into a bounded
+uncertainty-only burden (long-term IL excluded, saturating past six
+players) and was not touched by the newer, richer layer.
+
+## Situational engine
+
+`autonomy/sports/situations.py` (WS-7) applies the same HARD/SOFT discipline
+to game context: verifiable rest states (byes, short weeks, back-to-backs)
+produce a bounded mean adjustment on the expected margin, while soft/
+narrative states (playoff motivation, roster or coaching churn) widen
+uncertainty only. It builds a generic rest tracker for NFL and NHL
+specifically — NBA already has its own tested rest engine inside
+`nba_model.py` that this layer deliberately leaves untouched. Every input is
+fail-closed: a missing feed or an offseason gap yields zero adjustment,
+byte-identical to the layer being disabled.
+
+## Football weather
+
+`autonomy/sports/football_weather.py` (WS-10) adjusts NFL/NCAAF game
+**totals only** — never winner or spread — for outdoor wind, cold, and
+precipitation, using the same keyless Open-Meteo pattern MLB's ballpark
+weather already uses. Coverage is intentionally partial: all 32 NFL stadiums
+but only the top-40 college programs; anything outside that list, or any
+fetch/parse failure, resolves to a zero adjustment with empty features —
+indistinguishable from "uncovered" by design.
+
 ## Game-engine mechanics
 
 The simulator uses game-design concepts as disciplined research controls:

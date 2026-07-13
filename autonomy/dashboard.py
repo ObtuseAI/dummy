@@ -90,6 +90,95 @@ def session_authorization_state(runtime_dir: Path) -> dict[str, Any]:
     }
 
 
+def _council_panel(
+    council_snapshot: dict[str, Any],
+    season_state: dict[str, Any],
+    backtest: dict[str, Any],
+    clv_report: dict[str, Any],
+) -> list[dict[str, Any]]:
+    """Roll up one dashboard row per specialist (WS-13, read-only view).
+
+    ``council_snapshot`` (runtime/autonomy/council_snapshot.json) supplies
+    the live-registry fields the dashboard process can't compute itself
+    (status, in_season from a team-league specialist's own health(), games
+    seen, open opportunities this pass) -- see autonomy/council_snapshot.py
+    for the writer contract. Everything else comes from artifacts the
+    dashboard already loads: ``season_state`` (runtime/autonomy/
+    season_state.json, the SAME persisted file SeasonMonitor.snapshot()
+    would return, read directly since this process holds no live monitor)
+    fills in in_season for specialists whose health() doesn't stamp it
+    (e.g. MLB); ``backtest["trust_surface_by_specialist"]`` (WS-8's
+    taxonomy-keyed contested-Brier surface, already computed in
+    assemble_dashboard_state) is summed across its market_type/phase buckets
+    per specialist; ``clv_report["scopes"]`` (WS-8 CLV, already loaded) is
+    entries-weighted across market types per specialist.
+
+    Fail-closed: no council_snapshot -> no rows (empty panel, never a
+    crash); any datum this function can't resolve for a row is left None,
+    rendered as "-" by the UI, never fabricated.
+    """
+    specialists = (council_snapshot or {}).get("specialists") or []
+    if not specialists:
+        return []
+
+    trust_by_specialist: dict[str, dict[str, Any]] = {}
+    for bucket in (backtest.get("trust_surface_by_specialist") or {}).values():
+        name = (bucket or {}).get("specialist")
+        if not name:
+            continue
+        agg = trust_by_specialist.setdefault(name, {"n": 0, "contested_n": 0, "brier_weighted": 0.0})
+        n = int(bucket.get("n") or 0)
+        contested_n = int(bucket.get("contested_n") or 0)
+        agg["n"] += n
+        agg["contested_n"] += contested_n
+        if bucket.get("mean_brier") is not None and contested_n:
+            agg["brier_weighted"] += contested_n * float(bucket["mean_brier"])
+
+    clv_by_specialist: dict[str, dict[str, Any]] = {}
+    for scope in (clv_report.get("scopes") or {}).values():
+        name = (scope or {}).get("specialist")
+        if not name or scope.get("clv_bps_mean") is None:
+            continue
+        agg = clv_by_specialist.setdefault(name, {"n_entries": 0, "bps_weighted": 0.0})
+        n_entries = int(scope.get("n_entries") or 0)
+        agg["n_entries"] += n_entries
+        agg["bps_weighted"] += n_entries * float(scope["clv_bps_mean"])
+
+    rows: list[dict[str, Any]] = []
+    for entry in specialists:
+        name = entry.get("name")
+        details = entry.get("details") or {}
+        in_season = details.get("in_season")
+        if in_season is None:
+            season_entry = season_state.get(name) if isinstance(season_state, dict) else None
+            if isinstance(season_entry, dict):
+                in_season = season_entry.get("active")
+        games_seen = details.get("games_seen")
+        if games_seen is None:
+            games_seen = details.get("score_games_seen")
+        trust = trust_by_specialist.get(name) or {}
+        contested_n = int(trust.get("contested_n") or 0)
+        contested_brier = (
+            round(trust["brier_weighted"] / contested_n, 4)
+            if contested_n and trust.get("brier_weighted") is not None else None
+        )
+        clv = clv_by_specialist.get(name) or {}
+        clv_entries = int(clv.get("n_entries") or 0)
+        clv_bps = round(clv["bps_weighted"] / clv_entries, 1) if clv_entries else None
+        rows.append({
+            "name": name,
+            "status": entry.get("status"),
+            "in_season": in_season,
+            "games_seen": games_seen,
+            "settled_n": trust.get("n") or 0,
+            "contested_n": contested_n,
+            "contested_brier": contested_brier,
+            "clv_bps": clv_bps,
+            "open_opportunities": entry.get("open_opportunities", 0),
+        })
+    return rows
+
+
 def assemble_dashboard_state(runtime_dir: Path | None = None) -> dict[str, Any]:
     """Assemble the full read-only dashboard state (pure)."""
     rd = runtime_dir or RUNTIME_DIR
@@ -101,6 +190,13 @@ def assemble_dashboard_state(runtime_dir: Path | None = None) -> dict[str, Any]:
     crypto_paper_twin = _load_json(rd / "crypto_paper_twin_latest.json") or {}
     mispricing_monitor = _load_json(rd / "mispricing_monitor_latest.json") or {}
     clv_report = _load_json(rd / "clv_report.json") or {}
+    # WS-13: council panel inputs. council_snapshot.json is written by the
+    # mispricing monitor's live SpecialistRegistry each pass (autonomy/
+    # council_snapshot.py); season_state.json is the SAME file
+    # SeasonMonitor.snapshot() would return, read directly since this
+    # process holds no live monitor. Both fail-closed to {} when absent.
+    council_snapshot = _load_json(rd / "council_snapshot.json") or {}
+    season_state = _load_json(rd / "season_state.json") or {}
     from autonomy.paper_dashboard import assemble_paper_dashboard, scheduled_task_status
     from autonomy.sports.dashboard import SPORTS_TASK_NAME, assemble_sports_dashboard
 
@@ -170,6 +266,11 @@ def assemble_dashboard_state(runtime_dir: Path | None = None) -> dict[str, Any]:
         })
     scoreboard.sort(key=lambda r: (r["beat_market_rate"] or 0), reverse=True)
 
+    try:
+        council = _council_panel(council_snapshot, season_state, backtest, clv_report)
+    except Exception:
+        council = []  # fail-closed: a malformed snapshot must never break the dashboard
+
     return {
         "heartbeat": heartbeat,
         "session": session,
@@ -191,6 +292,7 @@ def assemble_dashboard_state(runtime_dir: Path | None = None) -> dict[str, Any]:
         "crypto_paper_twin": crypto_paper_twin,
         "mispricing_monitor": mispricing_monitor,
         "clv_report": clv_report,
+        "council": council,
         "paper_operation": paper_operation,
         "paper_scheduler": paper_scheduler,
         "sports_operation": sports_operation,
@@ -277,6 +379,7 @@ _HTML = """<!doctype html>
 <div class="grid">
  <div class="card"><h2>Session authorization</h2><div id="session"></div></div>
  <div class="card"><h2>Scheduler fleet</h2><div id="fleet"></div></div>
+ <div class="card" style="grid-column:1/-1"><h2>Council of specialists</h2><div id="council"></div></div>
  <div class="card"><h2>Liveness</h2><div id="live"></div></div>
  <div class="card"><h2>Live canary gate</h2><div id="canary"></div></div>
  <div class="card"><h2>Risk</h2><div id="risk"></div></div>
@@ -434,6 +537,13 @@ function renderFleet(fleet){
   return `<div class="kv"><span>${esc(t.role)}</span><b><span class="pill ${enabled&&healthy?'live':'dead'}">${badge}</span> <span class="muted">${dt(t.next_run_time)}</span></b></div>`;
  }).join(''):'<div class="muted">No scheduler telemetry.</div>';
 }
+function renderCouncil(rows){
+ rows=rows||[];
+ const statusClass=s=>s==='ok'?'ok':s==='dormant'?'muted':s==='cold'?'warn':'bad';
+ const seasonText=v=>v==null?'—':(v?'yes':'no');
+ document.getElementById('council').innerHTML=rows.length?'<table><tr><th>specialist</th><th>status</th><th>in season</th><th>games seen</th><th>settled n</th><th>contested n</th><th>contested Brier</th><th>CLV bps</th><th>open opportunities</th></tr>'
+   +rows.map(r=>`<tr><td><b>${esc(r.name)}</b></td><td class="${statusClass(r.status)}">${esc(r.status)}</td><td>${seasonText(r.in_season)}</td><td>${r.games_seen??'—'}</td><td>${r.settled_n??'—'}</td><td>${r.contested_n??'—'}</td><td>${r.contested_brier??'—'}</td><td>${r.clv_bps==null?'—':r.clv_bps}</td><td>${r.open_opportunities??0}</td></tr>`).join('')+'</table>':'<div class="muted">No council snapshot yet (runtime/autonomy/council_snapshot.json absent or empty).</div>';
+}
 let tickGeneration=0;
 async function controlPaper(action){
  const msg=document.getElementById('controlMsg'),buttons=[document.getElementById('startBtn'),document.getElementById('stopBtn')];buttons.forEach(x=>x.disabled=true);msg.textContent=action==='start'?'Starting paper scheduler…':'Pausing future cycles…';
@@ -461,6 +571,7 @@ async function tick(){
  try{renderPaper(d);renderSports(d);}catch(e){document.getElementById('ts').textContent+=' · paper render error: '+e.message;console.error('paper render',e);}
  renderSession(d.session||{},d.heartbeat||{});
  renderFleet(d.scheduler_fleet||[]);
+ try{renderCouncil(d.council||[]);}catch(e){console.error('council render',e);}
  try{renderMispricing(d.mispricing_monitor||{},d.clv_report||{});}catch(e){console.error('mispricing render',e);}
  const hb=d.heartbeat||{};
  document.getElementById('live').innerHTML =

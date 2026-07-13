@@ -21,6 +21,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+from autonomy.council_snapshot import build_council_snapshot  # noqa: E402
 from autonomy.forecaster import EnsembleForecaster  # noqa: E402
 from autonomy.mispricing_monitor import (  # noqa: E402
     persist_book_tape,
@@ -36,6 +37,10 @@ OUT_PATH = Path("runtime/autonomy/mispricing_monitor_latest.json")
 # (scripts/run_dummy_clv_grader.py) reads. Appended, never overwritten.
 BOOK_TAPE_PATH = Path("runtime/autonomy/book_tape.jsonl")
 PAPER_ENTRIES_PATH = Path("runtime/autonomy/paper_entries.jsonl")
+# WS-13: council health + open-opportunities snapshot for the dashboard's
+# read-only council panel. Read-only reporting artifact -- see
+# autonomy/council_snapshot.py for the fail-closed contract.
+COUNCIL_SNAPSHOT_PATH = Path("runtime/autonomy/council_snapshot.json")
 
 
 def _atomic_json(path: Path, value: dict) -> None:
@@ -125,16 +130,43 @@ def _persist_evidence(report: dict, tape_state: dict) -> None:
         print(json.dumps({"status": f"WS8_PERSIST_ERROR:{type(exc).__name__}", "error": str(exc)[:200]}))
 
 
+def _persist_council_snapshot(council, report, ticker_specialist, now_iso) -> None:
+    """WS-13: best-effort council snapshot write (never takes the pass down).
+
+    Read-only reporting artifact only -- this touches no pricing, allocator,
+    executor, or risk path, and a failure here is swallowed exactly like the
+    other evidence-persistence helpers in this script.
+    """
+    try:
+        snapshot = build_council_snapshot(council, report, ticker_specialist, now_iso)
+        _atomic_json(COUNCIL_SNAPSHOT_PATH, snapshot)
+    except Exception as exc:
+        print(json.dumps({
+            "status": f"COUNCIL_SNAPSHOT_ERROR:{type(exc).__name__}", "error": str(exc)[:200],
+        }))
+
+
 def _one_pass(brain, council, forecast_fn, book_fn, specialist_fn, opportunist, tape_state) -> dict:
     brain.registry.on_cycle_start()  # warm/refresh source caches for this pass
     council.on_cycle_start()  # per-specialist warmup (isolated; failures skip)
     markets = brain.scanner.scan()
     now_iso = datetime.now(timezone.utc).isoformat()
+    # WS-13: this pass's ticker -> routed-specialist-name map, built the same
+    # way run_mispricing_sweep's own source_by_ticker is (a raising
+    # specialist_fn is caught per-market) -- used only to tag the council
+    # snapshot's open-opportunities counts, never fed back into pricing.
+    ticker_specialist: dict[str, str | None] = {}
+    for market in markets:
+        try:
+            ticker_specialist[market.ticker] = specialist_fn(market) if specialist_fn else None
+        except Exception:
+            ticker_specialist[market.ticker] = None
     report = run_mispricing_sweep(
         markets, forecast_fn, now_iso=now_iso, book_fn=book_fn, opportunist=opportunist,
         specialist_fn=specialist_fn,
     )
     _persist_evidence(report, tape_state)
+    _persist_council_snapshot(council, report, ticker_specialist, now_iso)
     # tape_rows/entries are now durably appended to their own JSONL files
     # (the CLV grader's real inputs); drop them from the dashboard-facing
     # snapshot so OUT_PATH stays the small "latest pass" summary it always

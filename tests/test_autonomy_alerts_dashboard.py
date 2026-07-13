@@ -201,3 +201,59 @@ def test_session_shadow_mode_is_not_live(tmp_path):
     state = assemble_dashboard_state(runtime_dir=tmp_path)
     assert state["session"]["status"] == "SHADOW"
     assert state["session"]["mode"] == "SHADOW"
+
+
+# ---------------------------------------------------------------- council (WS-13)
+
+
+def test_council_panel_absent_snapshot_is_empty_and_does_not_raise(tmp_path):
+    """Fail-closed: no council_snapshot.json -> empty panel, never a crash."""
+    state = assemble_dashboard_state(runtime_dir=tmp_path)
+    assert state["council"] == []
+
+
+def test_council_panel_assembles_from_snapshot_and_season_state(tmp_path):
+    (tmp_path / "council_snapshot.json").write_text(json.dumps({
+        "generated_at": "2026-07-13T00:00:00Z",
+        "specialists": [
+            {"name": "mlb", "status": "ok", "details": {"games_seen": 900},
+             "open_opportunities": 3},
+            {"name": "nba", "status": "dormant",
+             "details": {"in_season": False, "score_games_seen": 0},
+             "open_opportunities": 0},
+            {"name": "crypto", "status": "ok", "details": {"has_champion": True},
+             "open_opportunities": 1},
+        ],
+    }), encoding="utf-8")
+    # mlb's health() doesn't stamp in_season (autonomy/specialists/mlb.py);
+    # the dashboard falls back to the persisted season_state.json, the same
+    # file SeasonMonitor.snapshot() would return.
+    (tmp_path / "season_state.json").write_text(json.dumps({
+        "mlb": {"active": True, "checked_at": "2026-07-13T00:00:00+00:00"},
+    }), encoding="utf-8")
+
+    from autonomy.ledger import AutonomyLedger
+
+    led = AutonomyLedger(db_path=tmp_path / "ledger.db")
+    led.close()
+
+    state = assemble_dashboard_state(runtime_dir=tmp_path)
+    rows = {row["name"]: row for row in state["council"]}
+    assert set(rows) == {"mlb", "nba", "crypto"}
+    assert rows["mlb"]["status"] == "ok"
+    assert rows["mlb"]["in_season"] is True  # filled from season_state.json
+    assert rows["mlb"]["games_seen"] == 900
+    assert rows["mlb"]["open_opportunities"] == 3
+    assert rows["nba"]["in_season"] is False  # stamped directly in details
+    assert rows["nba"]["games_seen"] == 0
+    assert rows["crypto"]["open_opportunities"] == 1
+    # No settlements in this ledger -> no contested-Brier or CLV evidence yet,
+    # never a fabricated value.
+    assert rows["mlb"]["contested_brier"] is None
+    assert rows["mlb"]["clv_bps"] is None
+
+
+def test_council_panel_never_raises_on_malformed_snapshot(tmp_path):
+    (tmp_path / "council_snapshot.json").write_text("not valid json", encoding="utf-8")
+    state = assemble_dashboard_state(runtime_dir=tmp_path)
+    assert state["council"] == []
