@@ -1844,8 +1844,13 @@ class PowerRatingsSignal:
             hours=MASSEY_COLLEY_REWARM_TTL_HOURS
         ):
             return
-        self._warm_massey_colley(
-            warm_massey=self._owns_massey, warm_colley=self._owns_colley)
+        try:
+            self._warm_massey_colley(
+                warm_massey=self._owns_massey, warm_colley=self._owns_colley)
+        except Exception:
+            pass  # keep last-good ratings; never wedge the cycle on a warm blip
+        # Advance the timestamp regardless of outcome so a persistently failing
+        # feed is retried on the TTL, not hammered every cycle.
         self._last_massey_colley_warm = now
 
     def applicable(self, market: MarketView) -> bool:
