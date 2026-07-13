@@ -402,3 +402,68 @@ def test_colley_source_offline_empty_games_fails_closed():
     source.warmup("nfl", ["d1"])
 
     assert source.rating("nfl", "KC") is None
+
+
+# ---------------------------------------------------------------------------
+# 8. Convergence at college scale (WS-A1b review fix): a ~360-team system
+#    (NCAAF/NCAAMB scale) is only weakly diagonally dominant -- the old
+#    _MAX_ITER=2000/_TOL=1e-9 budget could exhaust before reaching tol,
+#    silently returning None and dropping the whole league from the
+#    ensemble. Build a large, fully deterministic (no RNG/datetime) schedule
+#    and assert both solves still converge.
+# ---------------------------------------------------------------------------
+
+
+def _deterministic_large_schedule(n_teams: int = 360, offsets: tuple[int, ...] = (
+    1, 2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31,
+)) -> list[tuple[str, str, float, bool]]:
+    """~360 teams, each scheduled against `len(offsets)` opponents chosen by
+    deterministic index arithmetic (opponent = (i + offset) % n) -- no RNG,
+    no datetime, byte-identical across runs. Home/away alternates by offset
+    parity and scores are a deterministic function of (team indices, offset
+    index) so margins vary realistically without any randomness source."""
+    teams = [f"T{i:03d}" for i in range(n_teams)]
+    results: list[tuple[str, str, float, bool]] = []
+    for i in range(n_teams):
+        for idx, off in enumerate(offsets):
+            j = (i + off) % n_teams
+            home_score = 60 + ((i * 13 + off * 7 + idx * 3) % 40)
+            away_score = 60 + ((j * 11 + off * 5 + idx * 2) % 40)
+            if home_score == away_score:
+                home_score += 1
+            if idx % 2 == 0:
+                home, away, hs, as_ = teams[i], teams[j], home_score, away_score
+            else:
+                home, away, hs, as_ = teams[j], teams[i], away_score, home_score
+            results.append((home, away, float(hs - as_), hs > as_))
+    return results
+
+
+def test_solve_massey_converges_at_college_scale():
+    results = _deterministic_large_schedule()
+    teams = sorted({t for h, a, _, _ in results for t in (h, a)})
+    assert len(teams) == 360
+
+    ratings, games_played = solve_massey(results)
+
+    assert ratings is not None
+    assert set(ratings) == set(teams)
+    assert all(games_played[t] >= MIN_GAMES_PER_TEAM for t in teams)
+    # Ridge-regularized Massey ratings cluster near zero-sum (small ridge
+    # pull toward zero, not an exact sum-to-zero constraint).
+    assert abs(sum(ratings.values())) < len(teams) * 5.0
+
+
+def test_solve_colley_converges_at_college_scale():
+    results = _deterministic_large_schedule()
+    teams = sorted({t for h, a, _, _ in results for t in (h, a)})
+    assert len(teams) == 360
+
+    ratings, games_played = solve_colley(results)
+
+    assert ratings is not None
+    assert set(ratings) == set(teams)
+    assert all(games_played[t] >= MIN_GAMES_PER_TEAM for t in teams)
+    # Colley ratings are dimensionless, centered at 0.5, summing to n/2.
+    assert sum(ratings.values()) == pytest.approx(len(teams) / 2.0, abs=1e-3)
+    assert all(0.0 <= r <= 1.0 for r in ratings.values())

@@ -10,6 +10,7 @@ from typing import Any
 
 from autonomy.live_odds import EspnSummaryBook
 from autonomy.ontology import MarketView, Signal, Vertical
+from core.logger import logger
 from autonomy.sports import boxscores as boxscores_module
 from autonomy.sports.baseball import (
     BaseballRunModel,
@@ -1762,11 +1763,23 @@ class PowerRatingsSignal:
                     self.massey_source.warmup(league, date_ranges)
                 except Exception:
                     pass
+                else:
+                    if not getattr(self.massey_source, "_ratings", {}).get(league):
+                        logger.warning(
+                            "Massey warmup produced no ratings (dropped from ensemble)",
+                            extra={"component": "sports_intelligence", "league": league, "source": "massey"},
+                        )
             if warm_colley:
                 try:
                     self.colley_source.warmup(league, date_ranges)
                 except Exception:
                     pass
+                else:
+                    if not getattr(self.colley_source, "_ratings", {}).get(league):
+                        logger.warning(
+                            "Colley warmup produced no ratings (dropped from ensemble)",
+                            extra={"component": "sports_intelligence", "league": league, "source": "colley"},
+                        )
 
     def _sources(self, league: str) -> list[Any]:
         rating_source = (

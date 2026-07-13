@@ -78,8 +78,14 @@ COLLEY_POINTS_PER_UNIT: dict[str, float] = {
     "ncaamb": 40.0,
 }
 
-_MAX_ITER = 2000
-_TOL = 1e-9
+# Solver-tolerance tuner candidates (propose-then-promote, like RIDGE_LAMBDA
+# above): 10000 sweeps comfortably converges even a ~360-team college-league
+# season system (NCAAF/NCAAMB) that's only weakly diagonally dominant, and is
+# cheap since `solve_spd` runs once per warmup, not per cycle; 1e-7 is tight
+# enough for point-margin accuracy (a rating error of 1e-7 points is
+# irrelevant) without needlessly forcing extra sweeps on large leagues.
+_MAX_ITER = 10000
+_TOL = 1e-7
 
 
 # ---------------------------------------------------------------------------
