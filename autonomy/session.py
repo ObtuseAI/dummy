@@ -218,6 +218,7 @@ def build_brain(mode: SessionMode):
     from autonomy.signals.sportsbook import SportsbookConsensusSignal
     from autonomy.signals.sports_intelligence import (
         BaseballIntelligenceSignal,
+        PowerRatingsSignal,
         TeamSportsIntelligenceSignal,
     )
 
@@ -291,6 +292,18 @@ def build_brain(mode: SessionMode):
     # their markets route to no sports model and are simply never forecast.
     registry.register(BaseballIntelligenceSignal(seasons=seasons))
     registry.register(TeamSportsIntelligenceSignal(seasons=seasons))
+    # WS-A2 (Phenon Harness): standalone power-ratings challenger (FPI/BPI +
+    # Elo consensus winner/spread ladder + opportunistic divergence flag).
+    # Shares the one SeasonMonitor instance like every other sports signal
+    # above; every other dependency (ESPN client, Elo/TeamScore model reads)
+    # defaults to the SAME on-disk state SportsEloSignal/
+    # TeamSportsIntelligenceSignal already train each cycle -- read-only,
+    # never a second trainer. Every emission is stamped challenger_only=True
+    # / promotion_eligible=False by the signal itself (see PowerRatingsSignal
+    # docstring), so registering it here only makes it observable in the
+    # ledger; it stays excluded from forecaster.fuse() until a human
+    # promotion review.
+    registry.register(PowerRatingsSignal(seasons=seasons))
     registry.register(CrossVenueSignal())
     # Empirical price->outcome curve mined from settled-market history; no
     # curve artifact on disk means the source simply never opines.

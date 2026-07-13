@@ -67,6 +67,23 @@ SOURCE_TAXONOMY: dict[str, str] = {
     "ncaaf": "ncaaf",
     "nhl": "nhl",
     "ncaamb": "ncaamb",
+    # WS-A2 (Phenon Harness): the power-ratings challenger emits
+    # "power_ratings_<league>" per league (autonomy/signals/
+    # sports_intelligence.py::PowerRatingsSignal) -- exact entries, not a
+    # prefix rule, since one "power_ratings_" prefix cannot resolve to
+    # per-league labels the way the existing (prefix, single-label) tuples
+    # in _SPECIALIST_PREFIXES do. Collision-free: no other registered
+    # source or self-mapping starts with "power_ratings_".
+    "power_ratings_nfl": "nfl",
+    "power_ratings_ncaaf": "ncaaf",
+    "power_ratings_nba": "nba",
+    "power_ratings_ncaamb": "ncaamb",
+    # The REGISTERED signal object's own name (PowerRatingsSignal.name ==
+    # "power_ratings", no league suffix -- the league only appears on the
+    # emitted Signal.source strings mapped just above). Kept for the same
+    # reason as "mlb_intelligence"/"team_sports_intelligence": so the
+    # registry-completeness tripwire resolves the bare registry name too.
+    "power_ratings": "power_ratings",
 }
 
 # (prefix, specialist) resolved in order; the first match wins. Ordering only

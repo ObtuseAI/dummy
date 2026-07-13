@@ -10,6 +10,7 @@ from autonomy.ontology import MarketView, Signal, Vertical
 from autonomy.scanner import WATCHLIST_SERIES, classify_vertical
 from autonomy.signals.sports_intelligence import (
     BaseballIntelligenceSignal,
+    PowerRatingsSignal,
     TeamSportsIntelligenceSignal,
     parse_sports_contract,
 )
@@ -889,6 +890,57 @@ def test_challenger_only_signals_cannot_enter_execution_forecast():
         {"challenger_only": True},
     )
     assert EnsembleForecaster(Ledger()).fuse(market, [challenger]) is None
+
+
+# ---------------------------------------------------------------------------
+# WS-A2: PowerRatingsSignal -- scope/gating smoke tests (full emission math
+# is covered in tests/test_autonomy_power_ratings_emit.py).
+# ---------------------------------------------------------------------------
+
+
+def test_power_ratings_signal_applicable_only_for_supported_leagues_and_market_types():
+    signal = PowerRatingsSignal()
+    # MLB has no power-ratings coverage (not in POINTS_PER_RATING_UNIT).
+    assert signal.applicable(_market(
+        "KXMLBGAME-26JUL102005HOUTEX-HOU", "Houston vs Texas Winner?",
+        yes_sub_title="Houston")) is False
+    # NFL totals are out of scope for this challenger (winner/spread only).
+    assert signal.applicable(_market(
+        "KXNFLTOTAL-26SEP132025KCBUF-45", "Kansas City Chiefs vs Buffalo Bills Total Points?",
+        floor_strike=44.5)) is False
+    assert signal.applicable(_market(
+        "KXNFLGAME-26SEP132025KCBUF-KC", "Kansas City Chiefs vs Buffalo Bills Winner?")) is True
+
+
+def test_power_ratings_challenger_signal_cannot_enter_execution_forecast():
+    # The real emitted Signal (not a hand-built stand-in) must still be
+    # excluded from fusion -- ties this challenger to the same global
+    # challenger-only/promotion-eligible gate as every other signal here.
+    class Ledger:
+        def get_weight(self, _source, default=1.0):
+            return default
+
+    def _fixed_consensus(home, away, league, sources):
+        from autonomy.sports.power_ratings import ConsensusMargin
+        return ConsensusMargin(ensemble_margin=6.0, dispersion=1.0, n_sources=2,
+                                per_source={"a": 6.0, "b": 6.0})
+
+    client = EspnClient(fetch_scoreboard=lambda _l, _d: {"events": []})
+    game = Game("g1", "nfl", "KC", "BUF", "pre", None, "2026-09-13T20:25Z",
+                home_name="KC", away_name="BUF")
+    client._cache[("nfl", "20260913")] = [game]
+    models = {"nfl": TeamScoreModel("nfl"), "ncaaf": TeamScoreModel("ncaaf"),
+              "nba": TeamScoreModel("nba"), "ncaamb": TeamScoreModel("ncaamb")}
+    signal = PowerRatingsSignal(
+        espn=client, model_dir=None, elo_dir=None,
+        consensus_fn=_fixed_consensus, models=models, elo_models={},
+    )
+    market = _market("KXNFLGAME-26SEP132025KCBUF-KC", "Chiefs vs Bills Winner?")
+    emitted = signal.generate(market)
+    assert emitted is not None
+    assert emitted.features["challenger_only"] is True
+    assert emitted.features["promotion_eligible"] is False
+    assert EnsembleForecaster(Ledger()).fuse(market, [emitted]) is None
 
 
 def test_simulation_metrics_use_settled_outcomes_only():

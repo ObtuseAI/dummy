@@ -68,10 +68,12 @@ def test_registry_completeness_tripwire():
     from autonomy.session import build_brain
 
     brain = build_brain(SessionMode.SHADOW)
-    unmapped = sorted(
-        name for name in (getattr(s, "name", "") for s in brain.registry.sources())
-        if specialist_for(name) == "other"
-    )
+    names = sorted(getattr(s, "name", "") for s in brain.registry.sources())
+    # WS-A2: PowerRatingsSignal must actually be wired into build_brain --
+    # not just importable/tested in isolation -- or this challenger stays
+    # permanently inert in the live pipeline.
+    assert "power_ratings" in names
+    unmapped = sorted(name for name in names if specialist_for(name) == "other")
     assert unmapped == [], f"sources with no taxonomy home: {unmapped}"
 
 
