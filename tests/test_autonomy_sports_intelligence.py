@@ -687,7 +687,14 @@ def test_team_score_models_are_league_isolated_and_parse_college_markets(tmp_pat
     client._cache[("ncaaf", "20261008")] = [upcoming]
     models = {league: TeamScoreModel(league) for league in ("nba", "ncaamb", "nfl", "ncaaf", "nhl")}
     models["ncaaf"] = model
-    source = TeamSportsIntelligenceSignal(espn=client, models=models, model_dir=tmp_path)
+    # WS-10: TEX/OU are both in football_weather.COLLEGE_STADIUMS, so a real
+    # (unmocked) TeamSportsIntelligenceSignal would otherwise attempt a live
+    # Open-Meteo fetch for this total market -- keep this pre-existing test
+    # hermetic with a stub that fails closed instantly (0.0 adjustment).
+    source = TeamSportsIntelligenceSignal(
+        espn=client, models=models, model_dir=tmp_path,
+        fetch_football_weather=lambda *_a, **_k: {},
+    )
     signal = source.generate(total_market)
     assert signal is not None and signal.source == "ncaaf_game_total"
 
