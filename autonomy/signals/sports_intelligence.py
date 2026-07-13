@@ -51,6 +51,17 @@ from autonomy.sports.players import (
     mismatch_margin_shift,
     shift_probability_by_margin,
 )
+from autonomy.sports.situations import (
+    GameDateTracker,
+    PlayoffBook,
+    PlayoffState,
+    RestEffect,
+    RosterDriftBook,
+    nfl_rest_effect,
+    nhl_rest_effect,
+    playoff_soft_effect,
+    roster_soft_effect,
+)
 from autonomy.sports.team_scores import LEAGUE_SCORE_CONFIGS, TeamScoreModel
 
 # WS-1's fetch-budget guidance ("~16/day/league"), applied here since WS-2's
@@ -523,6 +534,10 @@ class TeamSportsIntelligenceSignal:
         fetch_college_scoreboard: Any = None,
         injury_books: dict[str, LeagueInjuryBook] | None = None,
         rookie_book: RookieBook | None = None,
+        nfl_rest_tracker: GameDateTracker | None = None,
+        nhl_rest_tracker: GameDateTracker | None = None,
+        playoff_books: dict[str, PlayoffBook] | None = None,
+        roster_drift_books: dict[str, RosterDriftBook] | None = None,
     ) -> None:
         from autonomy.specialists.seasons import SeasonMonitor
 
@@ -604,6 +619,37 @@ class TeamSportsIntelligenceSignal:
         # flag is already shipped by WS-3's is_rookie_goalie -- see
         # players.py's module docstring for why this isn't duplicated here).
         self.rookie_book = rookie_book or RookieBook("nfl")
+        # WS-7: shared per-team game-date trackers for the two NEW rest
+        # states (NFL bye/Thursday-short-week, NHL back-to-back) -- NBA's
+        # own in-model rest engine is deliberately untouched, see
+        # situations.py's module docstring. Persisted on disk like every
+        # other per-league model above; an empty/fresh tracker (e.g. tests
+        # using tmp_path) means every matchup starts with no rest history,
+        # i.e. a genuine 0.0/no-op -- fail-closed.
+        self.nfl_rest_tracker = nfl_rest_tracker or GameDateTracker.load(
+            self.model_dir / "situations_rest_nfl.json", league="nfl")
+        self.nhl_rest_tracker = nhl_rest_tracker or GameDateTracker.load(
+            self.model_dir / "situations_rest_nhl.json", league="nhl")
+        # WS-7: playoff-context (clinched/eliminated/must_win) books, one per
+        # team-sport league, refreshed once per cycle exactly like
+        # `injury_books` above -- a league whose standings feed is absent/
+        # offseason (LATE_SEASON gate, see situations.py) or simply never
+        # refreshed (this signal's own `seasons.active` gate in
+        # `on_cycle_start`) resolves every team to PlayoffState()'s all-False
+        # default, fail-closed.
+        self.playoff_books = playoff_books or {
+            league: PlayoffBook(league) for league in LEAGUE_SCORE_CONFIGS
+        }
+        # WS-7: roster-hash-drift proxy books (trades/coaching soft signal),
+        # one per league, persisted on disk (the prior cycle's roster
+        # snapshot must survive a process restart for drift detection to
+        # mean anything -- see situations.py::RosterDriftBook).
+        self.roster_drift_books = roster_drift_books or {
+            league: RosterDriftBook.load(
+                self.model_dir / f"situations_roster_{league}.json", league=league,
+            )
+            for league in LEAGUE_SCORE_CONFIGS
+        }
 
     def _warmup_nba(self, date_ranges: list[str]) -> int:
         """Ingest WS-1 boxscores + update the NBA pace model for newly-final
@@ -793,19 +839,44 @@ class TeamSportsIntelligenceSignal:
                 # (see LeagueInjuryBook.refresh), so a dead feed just leaves
                 # this league's book empty rather than aborting the loop.
                 self.injury_books[league].refresh()
+                # WS-7: playoff-context, once per cycle, same fail-closed
+                # discipline as injury_books above (an unreachable/offseason
+                # standings feed just leaves this league's book empty).
+                self.playoff_books[league].refresh()
+                # WS-7: roster-hash-drift proxy, budget-capped, for today's
+                # slate only -- `self.espn.games` is a cache hit here (the
+                # warmup() call above already fetched it), same pattern as
+                # the NFL rookie probe below.
+                league_games = self.espn.games(league, recent)
+                league_teams = sorted({g.home for g in league_games} | {g.away for g in league_games})
+                self.roster_drift_books[league].refresh(league_teams)
+                self.roster_drift_books[league].save(
+                    self.model_dir / f"situations_roster_{league}.json")
                 if league == "nba":
                     self._warmup_nba([recent])
                 elif league == "nhl":
                     self._warmup_nhl([recent])
+                    # WS-7: shared rest tracker, settlement-only (see
+                    # GameDateTracker.update's own point-in-time gate) --
+                    # completed games from this cycle's recent-days window.
+                    nhl_updated = False
+                    for game in league_games:
+                        nhl_updated = self.nhl_rest_tracker.update(game) or nhl_updated
+                    if nhl_updated:
+                        self.nhl_rest_tracker.save(self.model_dir / "situations_rest_nhl.json")
                 elif league == "ncaamb":
                     self._warmup_ncaamb([recent])
                 elif league == "nfl":
                     # WS-6: NFL QB rookie-start probe, budget-capped, for
-                    # today's slate only -- `self.espn.games` is a cache hit
-                    # here (the warmup() call above already fetched it).
-                    nfl_games = self.espn.games("nfl", recent)
-                    nfl_teams = sorted({g.home for g in nfl_games} | {g.away for g in nfl_games})
-                    self.rookie_book.refresh(nfl_teams)
+                    # today's slate only -- reuses `league_games`/`league_teams`
+                    # computed above (same cache hit, no extra fetch).
+                    self.rookie_book.refresh(league_teams)
+                    # WS-7: shared rest tracker, same settlement-only gate as NHL.
+                    nfl_updated = False
+                    for game in league_games:
+                        nfl_updated = self.nfl_rest_tracker.update(game) or nfl_updated
+                    if nfl_updated:
+                        self.nfl_rest_tracker.save(self.model_dir / "situations_rest_nfl.json")
             except Exception:
                 continue
         self.espn.clear_cache()
@@ -856,6 +927,41 @@ class TeamSportsIntelligenceSignal:
         player_effect = availability_effect(
             parsed.sport, home_availability, away_availability, rookie_home, rookie_away)
         hard_margin_delta = player_effect.hard_margin_delta
+        # WS-7: HARD rest states (NFL bye/Thursday-short-week, NHL back-to-
+        # back), computed unconditionally so the miner always sees the state
+        # even when a later gate (NHL's live branch, see nba_live/nhl_live
+        # below) skips APPLYING it to price. Every other league has no
+        # tracker wired at all (situations.py deliberately leaves NBA's own
+        # in-model rest engine untouched -- see its module docstring), so
+        # this is a genuine 0.0/no-op there, fail-closed.
+        situational_rest = RestEffect()
+        if parsed.sport == "nfl":
+            situational_rest = nfl_rest_effect(
+                self.nfl_rest_tracker.recent_dates(game.home),
+                self.nfl_rest_tracker.recent_dates(game.away),
+                game.date,
+            )
+        elif parsed.sport == "nhl":
+            situational_rest = nhl_rest_effect(
+                self.nhl_rest_tracker.recent_dates(game.home),
+                self.nhl_rest_tracker.recent_dates(game.away),
+                game.date,
+            )
+        situational_margin_delta = situational_rest.margin_delta
+        # WS-7: SOFT playoff-context (clinched/eliminated -- widen only) and
+        # roster/coaching-drift proxy (widen only), both league-generic: a
+        # missing/unrefreshed book resolves to its own all-False/zero
+        # default (PlayoffBook/RosterDriftBook's own fail-closed contract),
+        # so an offseason or feed-down league is byte-identical to this
+        # whole layer being disabled.
+        playoff_book = self.playoff_books.get(parsed.sport)
+        home_playoff = playoff_book.for_team(game.home) if playoff_book else PlayoffState()
+        away_playoff = playoff_book.for_team(game.away) if playoff_book else PlayoffState()
+        playoff_effect = playoff_soft_effect(home_playoff, away_playoff)
+        roster_book = self.roster_drift_books.get(parsed.sport)
+        home_roster_event = roster_book.event_for(game.home) if roster_book else {}
+        away_roster_event = roster_book.event_for(game.away) if roster_book else {}
+        roster_effect = roster_soft_effect(home_roster_event, away_roster_event)
         # Mismatch finder: bounded [-1,1], sourced from already-shipped
         # per-team split metrics (NBA/NCAAMB rest gap, NHL special-teams
         # gap -- populated in their own blocks below once warm). NFL/NCAAF
@@ -889,14 +995,17 @@ class TeamSportsIntelligenceSignal:
         if parsed.sport == "nfl" and parsed.market_type in ("winner", "spread"):
             from autonomy.sports.nfl_margin import NflMarginModel
 
-            # WS-6: HARD availability bakes into the kernel's own input
-            # scores -- symmetric split so the margin shifts by EXACTLY
-            # hard_margin_delta while the total stays untouched (the brief's
-            # own key test: QB-Out shifts NFL expected margin by exactly
-            # -4.5). delta_margin == 0.0 is a literal no-op (both scores
-            # unchanged), so a healthy roster is byte-identical to before WS-6.
+            # WS-6/WS-7: HARD availability + HARD rest state (bye/Thursday
+            # short week) both bake into the kernel's own input scores --
+            # symmetric split so the margin shifts by EXACTLY the combined
+            # delta while the total stays untouched (the brief's own key
+            # test: QB-Out shifts NFL expected margin by exactly -4.5).
+            # delta_margin == 0.0 is a literal no-op (both scores
+            # unchanged), so a healthy/rested roster is byte-identical to
+            # before WS-6/WS-7.
             adj_home_score, adj_away_score = apply_margin_shift_to_scores(
-                prediction.expected_home_score, prediction.expected_away_score, hard_margin_delta)
+                prediction.expected_home_score, prediction.expected_away_score,
+                hard_margin_delta + situational_margin_delta)
             nfl_kernel = NflMarginModel(adj_home_score, adj_away_score)
             margin_model_version = "nfl_key_number_kernel_v1"
 
@@ -1131,7 +1240,7 @@ class TeamSportsIntelligenceSignal:
             # for it), so it keeps the shift unconditionally, same as before.
             if parsed.sport in ("nba", "nhl", "ncaamb") and not (nba_live or nhl_live):
                 probability = shift_probability_by_margin(
-                    probability, hard_margin_delta + mismatch_delta,
+                    probability, hard_margin_delta + mismatch_delta + situational_margin_delta,
                     LEAGUE_POINT_SCALE[parsed.sport], subject_is_home,
                 )
         elif parsed.market_type == "spread" and parsed.subject and parsed.threshold is not None:
@@ -1210,7 +1319,7 @@ class TeamSportsIntelligenceSignal:
             # actual (injury-affected) live score.
             if parsed.sport in ("nba", "nhl", "ncaamb") and not (nba_live or nhl_live):
                 probability = shift_probability_by_margin(
-                    probability, hard_margin_delta + mismatch_delta,
+                    probability, hard_margin_delta + mismatch_delta + situational_margin_delta,
                     LEAGUE_POINT_SCALE[parsed.sport], subject_is_home,
                 )
         elif parsed.market_type == "total" and parsed.threshold is not None:
@@ -1264,15 +1373,18 @@ class TeamSportsIntelligenceSignal:
                 detail = f"over {parsed.threshold:g}"
         else:
             return None
-        # WS-6: SOFT (Questionable/DTD/Probable) + rookie effects widen
+        # WS-6/WS-7: SOFT (Questionable/DTD/Probable) + rookie + playoff-
+        # context (clinched/eliminated) + roster-drift effects widen
         # uncertainty ONLY, uniformly across every market type (mirrors
         # BaseballIntelligenceSignal's own injury_burden/rest_bump pattern
         # -- a single additive bump right before Signal construction, never
-        # touching the mean). A healthy/rookie-free/feed-absent game adds
-        # exactly 0.0, so the clip is a no-op and `uncertainty` is
-        # byte-identical to before WS-6.
+        # touching the mean). A healthy/rookie-free/mid-season/feed-absent
+        # game adds exactly 0.0, so the clip is a no-op and `uncertainty` is
+        # byte-identical to before WS-6/WS-7.
         uncertainty = min(
-            0.45, uncertainty + player_effect.soft_uncertainty_add + player_effect.rookie_uncertainty_add,
+            0.45,
+            uncertainty + player_effect.soft_uncertainty_add + player_effect.rookie_uncertainty_add
+            + playoff_effect.uncertainty_add + roster_effect.uncertainty_add,
         )
         return Signal(
             source=source,
@@ -1301,6 +1413,11 @@ class TeamSportsIntelligenceSignal:
                 "threshold": parsed.threshold,
                 # WS-6: player availability / rookie / mismatch layer.
                 **player_effect.features,
+                # WS-7: rest (NFL bye/short-week, NHL b2b) / playoff-context
+                # (clinched/eliminated/must_win) / roster-drift layer.
+                **situational_rest.features,
+                **playoff_effect.features,
+                **roster_effect.features,
                 "mismatch_score": round(mismatch_score, 4) if mismatch_score is not None else None,
                 "mismatch_margin_delta": round(mismatch_delta, 4),
                 **({f"{parsed.sport}_mismatch_unavailable": True} if mismatch_unavailable else {}),
