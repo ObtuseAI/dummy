@@ -50,6 +50,23 @@ SOURCE_TAXONOMY: dict[str, str] = {
     # the registry-completeness tripwire resolves the registry name too.
     "mlb_intelligence": "mlb",
     "team_sports_intelligence": "team_sports",
+    # WS-8: idempotent self-mappings for the council's OWN routing labels
+    # (autonomy.specialists.base.Specialist.name -- e.g. MlbSpecialist.name
+    # == "mlb", TeamLeagueSpecialist.name == the league string). The
+    # mispricing monitor's paper entries are a fused/live forecast, not one
+    # named ledger signal, so they are tagged with the routed specialist's
+    # own name rather than an emitted Signal.source string; these entries
+    # let specialist_for() resolve that tag through the same vocabulary
+    # everything else uses instead of falling through to "other". No
+    # registered SIGNAL source is ever a bare specialist label (verified by
+    # test_registry_completeness_tripwire), so this is collision-free.
+    "mlb": "mlb",
+    "crypto": "crypto",
+    "nba": "nba",
+    "nfl": "nfl",
+    "ncaaf": "ncaaf",
+    "nhl": "nhl",
+    "ncaamb": "ncaamb",
 }
 
 # (prefix, specialist) resolved in order; the first match wins. Ordering only
