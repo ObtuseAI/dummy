@@ -28,10 +28,18 @@ from autonomy.sports.espn import EspnClient, Game, canonical_team, default_fetch
 from autonomy.sports.football_weather import default_fetch_football_weather, football_weather_adjustment
 from autonomy.sports.injuries import InjuryBook
 from autonomy.sports.nba_model import (
+    MARGIN_SIGMA_BASE as NBA_MARGIN_SIGMA_BASE,
     MODEL_VERSION as NBA_MODEL_VERSION,
     NbaModel,
     is_warm as nba_is_warm,
     minutes_remaining_in_game as nba_minutes_remaining,
+    spread_cover_probability as nba_spread_cover_probability,
+    win_probability_from_margin as nba_win_probability_from_margin,
+)
+from autonomy.sports.nfl_margin import (
+    margin_distribution as power_ratings_margin_distribution,
+    spread_cover_probability as power_ratings_nfl_spread_cover_probability,
+    win_probability as power_ratings_nfl_win_probability,
 )
 from autonomy.sports.nhl_model import (
     MODEL_VERSION as NHL_MODEL_VERSION,
@@ -40,6 +48,14 @@ from autonomy.sports.nhl_model import (
     minutes_remaining_in_game as nhl_minutes_remaining,
     parse_goalie_boxscores,
     parse_probable_goalies,
+)
+from autonomy.sports.power_ratings import (
+    ConsensusMargin,
+    EloSource,
+    EspnBpiSource,
+    EspnFpiSource,
+    POINTS_PER_RATING_UNIT,
+    consensus_margin,
 )
 from autonomy.sports.players import (
     LEAGUE_POINT_SCALE,
@@ -1543,5 +1559,295 @@ class TeamSportsIntelligenceSignal:
                     }
                     if parsed.sport == "ncaamb" else {}
                 ),
+            },
+        )
+
+
+# =========================================================================
+# Phenon Harness WS-A2: power-ratings challenger ladder + divergence flag.
+# =========================================================================
+#
+# Consumes WS-A1's `consensus_margin` (autonomy/sports/power_ratings.py --
+# ESPN FPI/BPI blended with a read-only Elo read) and turns the resulting
+# ensemble margin into TWO emissions, both challenger-only / fail-closed:
+#
+#   Emission 1 (standalone challenger): winner + the FULL spread ladder
+#   priced from ONE distribution -- `margin_distribution` (football) or the
+#   WS-2 normal-margin helper (`win_probability_from_margin` /
+#   `spread_cover_probability` in nba_model.py, basketball) -- so winner and
+#   spread stay lattice-coherent by construction, exactly like every other
+#   engine hook in this module.
+#
+#   Emission 2 (opportunistic divergence): a bounded `power_divergence`
+#   feature on the SAME Signal, fired only when the consensus disagrees with
+#   "our own" engine (the generic TeamScoreModel every league already falls
+#   back to) by more than a per-league threshold AND the power-ratings
+#   sources themselves agree (dispersion below a per-league ceiling) --
+#   high dispersion suppresses the flag rather than trusting a noisy read.
+#
+# Pre-game only (first pass, per the WS-A2 brief): this sidesteps the
+# nba_live/nhl_live double-count question WS-6/7 had to solve -- a later
+# pass can extend live coverage the same way if this is ever promoted.
+
+FOOTBALL_POWER_LEAGUES = ("nfl", "ncaaf")
+BASKETBALL_POWER_LEAGUES = ("nba", "ncaamb")
+
+POWER_RATINGS_MODEL_VERSION = "power_ratings_consensus_v1"
+
+# Per-league divergence gate (points, home-signed): |ensemble_margin -
+# our_engine_margin| must exceed this before the opportunist/mispricing
+# path is told about a divergence. One flat threshold would over-fire on
+# high-scoring sports (NFL/NCAAF) and under-fire on lower-scoring ones
+# (NBA/NCAAMB use tighter per-possession scoring), so this is per-league.
+# Propose-then-promote TUNER CANDIDATES, not placeholders.
+DIVERGENCE_THRESHOLD: dict[str, float] = {
+    "nfl": 4.0,
+    "ncaaf": 5.0,
+    "nba": 5.0,
+    "ncaamb": 6.0,
+}
+
+# Per-league dispersion ceiling (points, max-min implied margin across
+# sources): the power-ratings sources must roughly AGREE before a gap vs
+# our own engine is trusted as real signal rather than consensus noise.
+# High dispersion suppresses Emission 2 outright, independent of gap size.
+# Propose-then-promote TUNER CANDIDATES, not placeholders.
+DISPERSION_CEILING: dict[str, float] = {
+    "nfl": 6.0,
+    "ncaaf": 7.0,
+    "nba": 6.0,
+    "ncaamb": 7.0,
+}
+
+# Emission 1: dispersion (source disagreement) widens uncertainty ONLY --
+# never the mean, never a silent suppress of the challenger itself. Bounded
+# additive widen, capped so a wildly dispersed read can't blow past the
+# ontology's useful uncertainty range. Propose-then-promote TUNER
+# CANDIDATES.
+POWER_RATINGS_BASE_UNCERTAINTY = 0.30
+DISPERSION_UNCERTAINTY_SCALE = 0.01   # +uncertainty per point of dispersion
+DISPERSION_UNCERTAINTY_CAP = 0.15     # max additive widen from dispersion alone
+
+# Basketball challenger sigma (nba/ncaamb): reuses nba_model's shared base
+# margin sigma (the WS-2 normal-margin helper) rather than hand-rolling a
+# normal. The power-ratings consensus carries no per-matchup pace signal to
+# heteroskedastically scale by (unlike NbaModel's own sigma), so this is a
+# fixed challenger-only simplification -- a tuner candidate, never the same
+# object as NbaModel's per-game sigma.
+POWER_RATINGS_BASKETBALL_SIGMA = NBA_MARGIN_SIGMA_BASE
+
+
+class PowerRatingsSignal:
+    """Standalone power-ratings challenger: winner+spread ladder + divergence.
+
+    See the module comment block above for the two emissions. Every emitted
+    Signal is challenger_only/not promotion_eligible; a down/thin/all-
+    sources-none consensus (`consensus_margin` returns None) emits NO
+    signal at all, byte-identical to this whole feature being disabled.
+    """
+
+    name = "power_ratings"
+
+    def __init__(
+        self,
+        espn: EspnClient | None = None,
+        elo_dir: Path | None = None,
+        model_dir: Path | None = None,
+        fpi_source: Any = None,
+        bpi_source: Any = None,
+        seasons: Any = None,
+        consensus_fn: Any = None,
+        models: dict[str, TeamScoreModel] | None = None,
+        elo_models: dict[str, EloModel] | None = None,
+    ) -> None:
+        from autonomy.specialists.seasons import SeasonMonitor
+
+        self.espn = espn or EspnClient()
+        self.elo_dir = elo_dir or ELO_DIR
+        self.model_dir = model_dir or MODEL_DIR
+        self.seasons = seasons or SeasonMonitor(espn=self.espn)
+        # Injectable seam for tests: bypasses source selection/fetch/Elo
+        # entirely and lets a fixed ConsensusMargin drive the emission math.
+        # Defaults to the real WS-A1 blend.
+        self._consensus_fn = consensus_fn or consensus_margin
+        # Shared keyless FPI/BPI fetch sources -- one instance per league
+        # family (mirrors WS-A1's own per-cycle-warmed-instance pattern),
+        # never mutated by anything in this class.
+        self.fpi_source = fpi_source or EspnFpiSource()
+        self.bpi_source = bpi_source or EspnBpiSource()
+        # "Our own" per-league engine for the divergence gap (Emission 2):
+        # the generic TeamScoreModel every league already falls back to
+        # (see TeamSportsIntelligenceSignal) -- reloaded (never retrained)
+        # from the SAME on-disk file that signal trains every cycle, so
+        # this stays a pure read of the system's actual baseline rather
+        # than a duplicated second copy.
+        self.models = models or {
+            league: TeamScoreModel.load(
+                league, self.model_dir / f"team_scores_{league}.json")
+            for league in POINTS_PER_RATING_UNIT
+        }
+        # Read-only Elo reads, same discipline as EloSource's own contract:
+        # reloaded (never retrained) from the SAME per-league file
+        # SportsEloSignal already trains every cycle.
+        self.elo_models = elo_models or {
+            league: EloModel.load(league, self.elo_dir / f"elo_{league}.json")
+            for league in POINTS_PER_RATING_UNIT
+        }
+
+    def _sources(self, league: str) -> list[Any]:
+        rating_source = (
+            self.fpi_source if league in FOOTBALL_POWER_LEAGUES else self.bpi_source
+        )
+        return [rating_source, EloSource(self.elo_models[league])]
+
+    def on_cycle_start(self) -> None:
+        self.espn.clear_cache()
+        try:
+            self.elo_models = {
+                league: EloModel.load(league, self.elo_dir / f"elo_{league}.json")
+                for league in POINTS_PER_RATING_UNIT
+            }
+            self.models = {
+                league: TeamScoreModel.load(
+                    league, self.model_dir / f"team_scores_{league}.json")
+                for league in POINTS_PER_RATING_UNIT
+            }
+        except Exception:
+            pass  # keep last-loaded state rather than go cold on a blip
+
+    def applicable(self, market: MarketView) -> bool:
+        parsed = parse_sports_contract(market)
+        return (
+            market.vertical is Vertical.SPORTS
+            and parsed is not None
+            and parsed.sport in POINTS_PER_RATING_UNIT
+            and parsed.market_type in ("winner", "spread")
+        )
+
+    def generate(self, market: MarketView) -> Signal | None:
+        parsed = parse_sports_contract(market)
+        if (
+            parsed is None
+            or parsed.sport not in POINTS_PER_RATING_UNIT
+            or parsed.market_type not in ("winner", "spread")
+            or parsed.competitors is None
+            or not parsed.subject
+        ):
+            return None
+        if parsed.market_type == "winner":
+            game = self.espn.find_matchup(
+                parsed.sport, parsed.competitors[0], parsed.competitors[1],
+                parsed.date_yyyymmdd,
+            )
+        else:
+            game = self.espn.find_matchup_names(
+                parsed.sport, parsed.competitors[0], parsed.competitors[1],
+                parsed.date_yyyymmdd,
+            )
+        # Pre-game only (see class docstring): never fight a live or settled
+        # market -- no live double-count question to solve on this pass.
+        if game is None or game.status != "pre":
+            return None
+        home = canonical_team(parsed.sport, game.home)
+        away = canonical_team(parsed.sport, game.away)
+        subject = parsed.subject.upper()
+        if subject == home:
+            subject_is_home = True
+        elif subject == away:
+            subject_is_home = False
+        else:
+            return None
+
+        consensus = self._consensus_fn(home, away, parsed.sport, self._sources(parsed.sport))
+        if consensus is None:
+            return None  # fail-closed: every source down/thin -- no signal at all
+
+        is_football = parsed.sport in FOOTBALL_POWER_LEAGUES
+        if is_football:
+            distribution = power_ratings_margin_distribution(consensus.ensemble_margin)
+            home_win = power_ratings_nfl_win_probability(distribution)
+            if parsed.market_type == "spread":
+                if parsed.threshold is None:
+                    return None
+                subject_distribution = (
+                    distribution if subject_is_home
+                    else {-m: p for m, p in distribution.items()}
+                )
+                probability = power_ratings_nfl_spread_cover_probability(
+                    subject_distribution, parsed.threshold)
+            else:
+                probability = home_win if subject_is_home else 1.0 - home_win
+        else:
+            sigma = POWER_RATINGS_BASKETBALL_SIGMA
+            home_win = nba_win_probability_from_margin(consensus.ensemble_margin, sigma)
+            if parsed.market_type == "spread":
+                if parsed.threshold is None:
+                    return None
+                subject_margin = (
+                    consensus.ensemble_margin if subject_is_home
+                    else -consensus.ensemble_margin
+                )
+                probability = nba_spread_cover_probability(subject_margin, sigma, parsed.threshold)
+            else:
+                probability = home_win if subject_is_home else 1.0 - home_win
+        probability = min(0.995, max(0.005, probability))
+
+        # Emission 1: dispersion widens uncertainty ONLY -- bounded, capped
+        # -- never the mean and never a silent suppress of the challenger.
+        uncertainty = min(
+            0.45,
+            POWER_RATINGS_BASE_UNCERTAINTY
+            + min(DISPERSION_UNCERTAINTY_CAP, DISPERSION_UNCERTAINTY_SCALE * consensus.dispersion),
+        )
+
+        # Emission 2: opportunistic divergence flag. Bounded evidence only
+        # (never a capital action): fires ONLY when the gap between the
+        # consensus and our own engine is large AND the power-ratings
+        # sources themselves agree (low dispersion) -- high dispersion
+        # suppresses the flag even when the raw gap looks large, since a
+        # noisy consensus could simply be wrong rather than informative.
+        power_divergence: dict[str, Any] | None = None
+        our_prediction = self.models[parsed.sport].predict(game)
+        our_engine_margin = our_prediction.expected_home_score - our_prediction.expected_away_score
+        gap = consensus.ensemble_margin - our_engine_margin
+        if (
+            abs(gap) > DIVERGENCE_THRESHOLD[parsed.sport]
+            and consensus.dispersion < DISPERSION_CEILING[parsed.sport]
+        ):
+            kalshi_mid = None
+            if market.yes_bid is not None and market.yes_ask is not None:
+                kalshi_mid = (market.yes_bid + market.yes_ask) / 2.0 / 100.0
+            power_divergence = {
+                "gap": round(gap, 3),
+                "ensemble_margin": round(consensus.ensemble_margin, 3),
+                "our_engine_margin": round(our_engine_margin, 3),
+                "dispersion": round(consensus.dispersion, 3),
+                "kalshi_mid": kalshi_mid,
+            }
+
+        return Signal(
+            source=f"power_ratings_{parsed.sport}",
+            market_ticker=market.ticker,
+            probability_yes=probability,
+            uncertainty=uncertainty,
+            rationale=(
+                f"{parsed.sport.upper()} power-ratings consensus {home}/{away}: "
+                f"ensemble_margin={consensus.ensemble_margin:.2f} "
+                f"(n_sources={consensus.n_sources}, dispersion={consensus.dispersion:.2f})"
+            ),
+            features={
+                "challenger_only": True,
+                "promotion_eligible": False,
+                "point_in_time": True,
+                "public_read_only": True,
+                "sport": parsed.sport,
+                "market_type": parsed.market_type,
+                "margin_model_version": POWER_RATINGS_MODEL_VERSION,
+                "ensemble_margin": consensus.ensemble_margin,
+                "dispersion": consensus.dispersion,
+                "n_sources": consensus.n_sources,
+                "per_source": dict(consensus.per_source),
+                "threshold": parsed.threshold,
+                "power_divergence": power_divergence,
             },
         )
