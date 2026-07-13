@@ -1,0 +1,136 @@
+{
+  "events": [
+    {
+      "id": "401803067",
+      "date": "2026-01-13T00:00Z",
+      "competitions": [
+        {
+          "date": "2026-01-13T00:00Z",
+          "id": "401803067",
+          "competitors": [
+            {
+              "homeAway": "home",
+              "winner": false,
+              "score": "3",
+              "team": {
+                "abbreviation": "BUF",
+                "displayName": "Buffalo Sabres"
+              },
+              "probables": [
+                {
+                  "name": "probableStartingGoalie",
+                  "displayName": "Probable Starting Goalie",
+                  "shortDisplayName": "Starter",
+                  "abbreviation": "SG",
+                  "playerId": 4736758,
+                  "athlete": {
+                    "id": "4736758",
+                    "fullName": "Colten Ellis",
+                    "displayName": "Colten Ellis",
+                    "shortName": "C. Ellis",
+                    "links": [
+                      {
+                        "rel": [
+                          "playercard",
+                          "desktop",
+                          "athlete"
+                        ],
+                        "href": "https://www.espn.com/nhl/player/_/id/4736758"
+                      }
+                    ],
+                    "headshot": "https://a.espncdn.com/i/headshots/nhl/players/full/4736758.png",
+                    "jersey": "92",
+                    "position": "G",
+                    "team": {
+                      "id": "2"
+                    }
+                  },
+                  "status": {
+                    "id": "102",
+                    "name": "Confirmed",
+                    "type": "confirmed",
+                    "abbreviation": "Confirmed"
+                  },
+                  "statistics": [],
+                  "record": ""
+                }
+              ]
+            },
+            {
+              "homeAway": "away",
+              "winner": true,
+              "score": "4",
+              "team": {
+                "abbreviation": "FLA",
+                "displayName": "Florida Panthers"
+              },
+              "probables": [
+                {
+                  "name": "probableStartingGoalie",
+                  "displayName": "Probable Starting Goalie",
+                  "shortDisplayName": "Starter",
+                  "abbreviation": "SG",
+                  "playerId": 5571,
+                  "athlete": {
+                    "id": "5571",
+                    "fullName": "Sergei Bobrovsky",
+                    "displayName": "Sergei Bobrovsky",
+                    "shortName": "S. Bobrovsky",
+                    "links": [
+                      {
+                        "rel": [
+                          "playercard",
+                          "desktop",
+                          "athlete"
+                        ],
+                        "href": "https://www.espn.com/nhl/player/_/id/5571"
+                      }
+                    ],
+                    "headshot": "https://a.espncdn.com/i/headshots/nhl/players/full/5571.png",
+                    "position": "G",
+                    "team": {
+                      "id": "21"
+                    }
+                  },
+                  "status": {
+                    "id": "102",
+                    "name": "Confirmed",
+                    "type": "confirmed",
+                    "abbreviation": "Confirmed"
+                  },
+                  "statistics": [],
+                  "record": ""
+                }
+              ]
+            }
+          ],
+          "status": {
+            "clock": 0.0,
+            "displayClock": "0:00",
+            "period": 3,
+            "type": {
+              "id": "3",
+              "name": "STATUS_FINAL",
+              "state": "post",
+              "completed": true,
+              "description": "Final",
+              "detail": "Final",
+              "shortDetail": "Final"
+            }
+          },
+          "venue": {
+            "id": "1848",
+            "fullName": "KeyBank Center",
+            "address": {
+              "city": "Buffalo",
+              "state": "NY",
+              "country": "USA"
+            },
+            "indoor": true
+          },
+          "odds": []
+        }
+      ]
+    }
+  ]
+}
