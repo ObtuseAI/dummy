@@ -10,6 +10,19 @@ bearing (a review WILL check both):
     genuine uncertainty, not a known direction -> WIDEN UNCERTAINTY ONLY,
     the mean stays byte-identical.
 
+WS-7 ADDITION -- suspensions route through THIS module's existing hard-Out
+path, not a second mean-adjust mechanism: this module's own build-time
+probe #1 below already observed a "Suspension" status in the real NHL
+injuries feed, which ``classify_status`` was (before WS-7) silently
+DROPPING -- neither ``HARD_STATUSES`` nor ``SOFT_STATUSES`` contained it, so
+a suspended player had zero effect, same as an untracked "Active"/"Injured
+Reserve" row. ``classify_status`` now also matches any status whose text
+CONTAINS "suspension"/"suspended" (substring, case-insensitive) and routes
+it to "hard" -- reusing ``hard_points_for_player``'s existing position-
+weighted delta exactly like an Out/Doubtful row, per WS-7's brief ("hard Out
+via the EXISTING WS-6 position-impact path"). No new mean-adjust code path
+was added; see situations.py's WS-7 module docstring for the full report.
+
 SCOPE DECISION -- injuries.py left untouched: ``autonomy/sports/injuries.py``
 is MLB-only and already in production use by ``BaseballIntelligenceSignal``
 (shipped, see MEMORY.md's MLB intelligence directive). Rather than
@@ -116,10 +129,23 @@ def _status_key(status: Any) -> str:
 
 
 def classify_status(status: Any) -> str | None:
-    """"hard" | "soft" | None (untracked status, e.g. Active/IR/Suspension --
-    long-term/non-doubt statuses are deliberately excluded, same reasoning
-    as injuries.py's long-term-IL exclusion)."""
+    """"hard" | "soft" | None (untracked status, e.g. Active/Injured Reserve
+    -- long-term/non-doubt statuses are deliberately excluded, same
+    reasoning as injuries.py's long-term-IL exclusion).
+
+    WS-7: a status whose text CONTAINS "suspension" (e.g. NHL's observed
+    "Suspension" -- see players.py's own build-time probe #1 in this
+    module's docstring: {Out, Suspension, Injured Reserve}) is routed to
+    "hard" -- a suspension is exactly as verifiable/certain as an Out, and
+    the brief directs it through this EXISTING hard-Out position-impact
+    path rather than a second mean-adjust mechanism. Checked via substring
+    (not exact match) before the HARD_STATUSES/SOFT_STATUSES set lookups so
+    a league-specific phrasing variant (e.g. "Suspended") still classifies
+    correctly; this never changes any status already in either set below.
+    """
     key = _status_key(status)
+    if "suspension" in key or "suspended" in key:
+        return "hard"
     if key in HARD_STATUSES:
         return "hard"
     if key in SOFT_STATUSES:
