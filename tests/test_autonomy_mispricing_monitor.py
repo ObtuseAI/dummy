@@ -115,6 +115,28 @@ def test_sweep_groups_two_real_mlb_markets_into_one_cross_confirmed_lattice():
     assert row["cell_count"] == 2
 
 
+def test_sweep_does_not_fabricate_structural_from_both_sides_spread_markets():
+    # End-to-end guard: ONE MLB game scanned with BOTH sides' spread markets
+    # (HOU covers 1.5 AND TEX covers 1.5) at near-complementary prices. A
+    # subject-blind ladder read these as a -0.30 rung inversion and stamped
+    # every ticker structural. Must now produce ZERO structural violations.
+    hou = _sports_market(
+        "KXMLBSPREAD-26JUL132005HOUTEX-HOU2", "Houston wins by over 1.5 runs?", 25, 75,
+        floor_strike=1.5,
+    )
+    tex = _sports_market(
+        "KXMLBSPREAD-26JUL132005HOUTEX-TEX2", "Texas wins by over 1.5 runs?", 55, 45,
+        floor_strike=1.5,
+    )
+    report = run_mispricing_sweep([hou, tex], lambda m: 0.50, now_iso=NOW)
+    assert report["structural_count"] == 0
+    assert len(report["lattices"]) == 1
+    row = report["lattices"][0]
+    assert row["cell_count"] == 2
+    assert row["conviction_tier"] != "structural"
+    assert row["ladder_violations"] == []
+
+
 def test_sweep_flags_structural_ladder_inversion_across_three_spread_rungs():
     rung1 = _sports_market(
         "KXMLBSPREAD-26JUL112005HOUTEX-HOU2", "Houston vs Texas Spread?", 60, 40,

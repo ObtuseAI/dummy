@@ -26,20 +26,35 @@ not one of winner/spread/total (e.g. MLB's yrfi), is simply not grouped --
 fail-closed by construction: no cells means no lattice, means no violations,
 means no incoherence, means no conviction-tier boost anywhere downstream.
 
+SUBJECT-AWARENESS (why a game groups both teams' markets, yet never
+cross-contaminates them): one game lists markets for BOTH sides -- "HOU
+wins" and "TEX covers 1.5" and "HOU covers 1.5" all belong to the same
+game_key. That is correct for grouping, but the coherence math must never
+treat opposite-team cells as rungs or confirmations of one another (doing so
+fabricates a structural violation on essentially every game, since the two
+spread sides carry near-complementary probabilities at the same line). So
+every ``LatticeCell`` carries the per-side ``subject`` it backs, and every
+derivation -- ``ladder_violations``, ``cross_family_incoherence``,
+``lattice_conviction`` -- segregates or matches on that subject before
+comparing. Game-level totals back no single team (``subject is None``) and
+form their own single ladder.
+
 Known scope limitation (documented, not silently assumed): ``SportsContract``
-carries no home/away flag, so cells are keyed on a SORTED pair of competitor
+carries no home/away flag, so games are keyed on a SORTED pair of competitor
 labels rather than a fixed away/home order. For MLB (§4's live-now target),
 winner/spread/total all derive their competitors from the SAME ticker-
-embedded team abbreviations, so grouping is exact. For the generic team-
-sports parser (NBA/NFL/NCAAF/NHL/NCAAMB, pre-existing in
-``sports_intelligence.py``), the winner family's competitors come from the
-ticker suffix (abbreviations) while spread/total come from the market TITLE
-(full team names) -- two different string spaces that will not unify into
-one lattice today. That is a pre-existing asymmetry in
-``parse_sports_contract``, not something this module can silently paper
-over; it degrades gracefully (smaller/partial lattices, never a false
-violation) and is expected to be closed out as each sport's specialist ships
-(spec: "seeded on MLB, inherited free by every later specialist").
+embedded team abbreviations, so grouping is exact and the subject-aware
+checks are fully effective. For the generic team-sports parser
+(NBA/NFL/NCAAF/NHL/NCAAMB, pre-existing in ``sports_intelligence.py``), the
+winner family's competitors come from the ticker suffix (abbreviations)
+while spread/total come from the market TITLE (full team names) -- two
+different string spaces, so winner and spread/total for those sports land
+under different game_keys and do not yet cross-group (their same-family
+ladders still group and are subject-segregated correctly). That is a
+pre-existing asymmetry in ``parse_sports_contract``; it degrades gracefully
+(smaller/partial lattices, never a false violation -- subject-awareness
+holds regardless) and closes out as each sport's specialist ships (spec:
+"seeded on MLB, inherited free by every later specialist").
 """
 from __future__ import annotations
 
@@ -80,6 +95,13 @@ _FAMILY_BY_MARKET_TYPE = {
 class LatticeCell:
     family: str            # "winner" | "spread" | "total"
     ticker: str
+    # The per-SIDE subject this cell backs when YES resolves: the specific
+    # team for winner/spread (e.g. "HOU" vs "TEX" -- the two opposite spread
+    # sides of one game are DISTINCT subjects), or None for a game-level
+    # total (over/under the combined score backs no single team). Every
+    # subject-aware derivation below keys on this so opposite-team cells are
+    # never compared as if they were rungs/confirmations of one another.
+    subject: str | None
     line: float | None
     model_prob: float | None
     book_prob: float | None
@@ -136,7 +158,8 @@ def build_game_lattices(
             continue
         game_key = _canonical_game_key(contract.sport, contract.date_yyyymmdd, contract.competitors)
         cell = LatticeCell(
-            family=family, ticker=ticker, line=contract.threshold,
+            family=family, ticker=ticker, subject=contract.subject,
+            line=contract.threshold,
             model_prob=assessment.model_prob, book_prob=assessment.book_prob,
             kalshi_prob=assessment.market_prob,
         )
@@ -151,36 +174,44 @@ def build_game_lattices(
 def ladder_violations(cells: list[LatticeCell], family: str) -> list[dict]:
     """Kalshi's own rung monotonicity within one family -- needs NO model.
 
-    Precondition: ``cells`` are rungs of the SAME subject within ``family``.
-    ``LatticeCell`` carries no subject field, so this is the caller's
-    responsibility; today's shipped MLB spread/total series list a single
-    subject per game, so passing a lattice's full per-family cell list is
-    safe on the current surface (see module docstring for the documented
-    non-MLB limitation).
+    SUBJECT-AWARE: monotonicity only holds along rungs that back the SAME
+    subject. A single MLB game routinely lists BOTH sides' spread markets
+    (e.g. "HOU covers 1.5" AND "TEX covers 1.5") -- these are near-
+    complementary probabilities at the SAME line for OPPOSITE teams, not
+    two rungs of one ladder. Comparing them would fabricate a structural
+    violation on essentially every game, so this function segregates
+    ``cells`` by ``subject`` first and scans each subject's rungs
+    independently. (Game-level totals share ``subject is None``; that is one
+    real ladder -- over/under the combined score -- so they stay grouped,
+    which is correct.)
 
     Covering a bigger margin (spread) or clearing a higher line (total) is
-    strictly harder, so Kalshi's own quoted probability must be
-    non-increasing as the line rises: for rungs k1 < k2,
+    strictly harder, so within one subject Kalshi's own quoted probability
+    must be non-increasing as the line rises: for rungs k1 < k2,
     ``P_kalshi(cover k1) >= P_kalshi(cover k2) - FEE_BAND``. A break beyond
-    that fee/spread slack between adjacent rungs is a structural
-    incoherence -- an edge requiring no model opinion, only Kalshi's own
-    internal consistency.
+    that fee/spread slack between adjacent same-subject rungs is a
+    structural incoherence -- an edge requiring no model opinion, only
+    Kalshi's own internal consistency.
     """
-    ladder = sorted(
-        (c for c in cells if c.family == family and c.line is not None and c.kalshi_prob is not None),
-        key=lambda c: c.line,
-    )
+    by_subject: dict[str | None, list[LatticeCell]] = {}
+    for c in cells:
+        if c.family == family and c.line is not None and c.kalshi_prob is not None:
+            by_subject.setdefault(c.subject, []).append(c)
+
     violations: list[dict] = []
-    for lo, hi in zip(ladder, ladder[1:]):
-        gap = lo.kalshi_prob - hi.kalshi_prob  # expected >= 0
-        if gap < -FEE_BAND:
-            violations.append({
-                "family": family,
-                "rungs": (lo.line, hi.line),
-                "tickers": (lo.ticker, hi.ticker),
-                "gap": round(gap, 4),
-                "tier": TIER_STRUCTURAL,
-            })
+    for subject, subject_cells in by_subject.items():
+        ladder = sorted(subject_cells, key=lambda c: c.line)
+        for lo, hi in zip(ladder, ladder[1:]):
+            gap = lo.kalshi_prob - hi.kalshi_prob  # expected >= 0
+            if gap < -FEE_BAND:
+                violations.append({
+                    "family": family,
+                    "subject": subject,
+                    "rungs": (lo.line, hi.line),
+                    "tickers": (lo.ticker, hi.ticker),
+                    "gap": round(gap, 4),
+                    "tier": TIER_STRUCTURAL,
+                })
     return violations
 
 
@@ -203,9 +234,12 @@ def cross_family_incoherence(lattice: GameLattice) -> list[dict]:
     spread markets disagree about the game by more than fee/spread slack can
     explain, given the model's shape.
 
-    Every (winner cell, spread cell) pair in the lattice with the required
-    probabilities present is checked; pairs missing any required
-    probability are skipped (fail-closed -- no fabricated rows).
+    SUBJECT-AWARE: the transport only makes sense when the winner cell and
+    the spread cell back the SAME team -- "HOU wins" reconciled against
+    "HOU covers 1.5", never against "TEX covers 1.5" (which backs the
+    opponent). Only (winner, spread) pairs whose ``subject`` matches are
+    checked; pairs missing any required probability are skipped (fail-closed
+    -- no fabricated rows).
     """
     winners = [c for c in lattice.cells if c.family == "winner"]
     spreads = [c for c in lattice.cells if c.family == "spread"]
@@ -214,6 +248,8 @@ def cross_family_incoherence(lattice: GameLattice) -> list[dict]:
         if w.model_prob is None or w.kalshi_prob is None:
             continue
         for s in spreads:
+            if s.subject != w.subject:
+                continue  # opposite-team pairing -- transport is meaningless
             if s.model_prob is None or s.kalshi_prob is None or s.line is None:
                 continue
             implied_win = w.model_prob - s.model_prob + s.kalshi_prob
@@ -222,6 +258,7 @@ def cross_family_incoherence(lattice: GameLattice) -> list[dict]:
                 rows.append({
                     "game_key": lattice.game_key,
                     "family": "winner_vs_spread",
+                    "subject": w.subject,
                     "line": s.line,
                     "kalshi_winner": round(w.kalshi_prob, 4),
                     "implied_win": round(implied_win, 4),
@@ -240,40 +277,45 @@ def lattice_conviction(
     ``assessments`` is the full ticker -> MispricingAssessment map the sweep
     already computed; only tickers that are cells of this lattice matter.
 
-    * ``structural`` -- any ladder violation (spread or total) fires for
-      this game; the strongest tier, needs no model opinion.
+    * ``structural`` -- any (subject-aware) ladder violation (spread or
+      total) fires for this game; the strongest tier, needs no model
+      opinion.
     * ``cross_confirmed`` -- an actionable edge (real side, book agreement)
-      points the SAME direction in >= 2 distinct families. Cross-cell
-      confirmation: an edge visible in one cell whose direction is
-      independently implied by another family, with book agreement in
-      both, is the strongest signal the system can emit short of a
+      backs the SAME team in the SAME direction across >= 2 distinct
+      families. Cross-cell confirmation is keyed on ``(subject, side)``, not
+      side alone: a YES on "HOU wins" and a YES on "HOU covers 1.5" both
+      back HOU and confirm each other, but a YES on "HOU wins" and a YES on
+      "TEX covers 1.5" back OPPOSITE teams and must NOT be read as
+      agreement. This is the strongest signal the system can emit short of a
       structural break.
     * ``model+book`` -- at least one cell has book agreement, but no
-      cross-family confirmation.
+      cross-family (same-team) confirmation.
     * ``model_only`` -- at least one cell has an actionable model side with
       no book confirmation.
     * ``None`` -- fail-closed: the lattice's cells never reach any tier
       (e.g. every cell assessed to side "NONE").
 
     A game that lacks the cells for a tier simply cannot reach it -- e.g. a
-    single-cell lattice can never be ``structural`` (needs 2 ladder rungs)
-    or ``cross_confirmed`` (needs 2 distinct families).
+    single-cell lattice can never be ``structural`` (needs 2 same-subject
+    ladder rungs) or ``cross_confirmed`` (needs 2 distinct families backing
+    one team).
     """
-    cell_assessments = [
-        (cell, assessments[cell.ticker])
-        for cell in lattice.cells
-        if cell.ticker in assessments
-    ]
-
     tier: str | None = None
     if ladder_violations(lattice.cells, "spread") or ladder_violations(lattice.cells, "total"):
         tier = TIER_STRUCTURAL
     else:
-        families_by_side: dict[str, set[str]] = {}
+        cell_assessments = [
+            (cell, assessments[cell.ticker])
+            for cell in lattice.cells
+            if cell.ticker in assessments
+        ]
+        # Key confirmation on (subject, side): only cells backing the SAME
+        # team in the SAME direction, in >= 2 distinct families, cross-confirm.
+        families_by_team: dict[tuple[str | None, str], set[str]] = {}
         for cell, assessment in cell_assessments:
             if assessment.agreement == TIER_MODEL_BOOK and assessment.side in ("YES", "NO"):
-                families_by_side.setdefault(assessment.side, set()).add(cell.family)
-        if any(len(families) >= 2 for families in families_by_side.values()):
+                families_by_team.setdefault((cell.subject, assessment.side), set()).add(cell.family)
+        if any(len(families) >= 2 for families in families_by_team.values()):
             tier = TIER_CROSS_CONFIRMED
         elif any(a.agreement == TIER_MODEL_BOOK for _, a in cell_assessments):
             tier = TIER_MODEL_BOOK
