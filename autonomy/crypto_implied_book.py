@@ -16,6 +16,14 @@ Fail-closed: no parseable ticker, no hub state, stale/missing DVOL (the hub
 already nulls DVOL older than 6h), or a degenerate horizon all return None,
 and the assessment degrades to "model_only" -- byte-identical to a run
 without this book.
+
+DEFERRED, governance-gated slot: the full Deribit option-chain volatility
+SMILE book (per-strike implied vol read off the live chain, rather than the
+single DVOL index applied uniformly across all strikes) is NOT built here.
+DVOL-implied is the shipped challenger book for CLV grading; the smile book
+would sharpen far-from-the-money strikes but adds a second live market-data
+dependency (the option chain itself, not just the DVOL index) and is gated
+behind governance review before it is built.
 """
 from __future__ import annotations
 

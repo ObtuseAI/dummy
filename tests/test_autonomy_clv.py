@@ -10,6 +10,7 @@ Zero network: everything here is synthesized in-memory or in tmp_path.
 from __future__ import annotations
 
 import json
+from datetime import datetime, timedelta, timezone
 
 import pytest
 
@@ -24,6 +25,9 @@ from autonomy.clv import (
     load_tape_rows,
     select_close,
 )
+from autonomy.crypto_implied_book import CryptoImpliedBook
+from autonomy.ontology import MarketView, Vertical
+from autonomy.taxonomy import market_type_for
 
 
 # -- tape dedup ----------------------------------------------------------------
@@ -383,3 +387,105 @@ def test_build_clv_report_entry_missing_ts_is_excluded_when_windowed():
     report = build_clv_report([no_ts], tape_rows, now_iso=now, window_days=45.0)
     assert report["entries_in_window"] == 0
     assert report["graded_entries"] == 0
+
+
+# -- WS-12: crypto graded end-to-end through the real DVOL-implied book --------
+#
+# Unlike the hand-typed book_prob fixtures above, these build the tape row's
+# book_prob from a REAL CryptoImpliedBook.book_probability() call (the same
+# math CryptoSpecialist.book() and the monitor's book_fn drive in production
+# -- see autonomy/specialists/crypto.py and autonomy/mispricing_monitor.py's
+# _tape_row) and derive market_type via autonomy.taxonomy.market_type_for
+# (the same helper autonomy/mispricing_monitor.py's _entry_market_type falls
+# through to for crypto tickers), so the (specialist, market_type) scope is
+# resolved through the real specialist_for("crypto") path, not a fixture.
+
+_CRYPTO_TICKER = "KXBTCD-26JUL1218-T71000"
+_CRYPTO_CLOSE = datetime(2026, 7, 12, 18, 0, tzinfo=timezone.utc)
+
+
+def _crypto_market() -> MarketView:
+    return MarketView(
+        ticker=_CRYPTO_TICKER, title="BTC above 71000?", vertical=Vertical.CRYPTO,
+        status="open", close_time=_CRYPTO_CLOSE.isoformat(),
+        yes_bid=58, yes_ask=60, no_bid=40, no_ask=42,
+        volume=500, liquidity=5_000,
+        raw={"strike_type": "greater", "floor_strike": 71_000.0},
+    )
+
+
+def _crypto_book_prob() -> float:
+    # Real DVOL-implied math: fixed dvol/spot state, hours_to_close pinned so
+    # the test is deterministic -- not a re-implementation of the formula,
+    # just the same CryptoImpliedBook production callers use.
+    book = CryptoImpliedBook(lambda _asset: {"dvol": 55.0, "spot": 72_500.0},
+                              hours_to_close=lambda _m: 6.0)
+    return book.book_probability(_crypto_market())
+
+
+def test_crypto_entry_graded_end_to_end_via_real_dvol_implied_book():
+    market = _crypto_market()
+    book_prob = _crypto_book_prob()
+    assert book_prob is not None  # sanity: the fixture state must price
+
+    # Tape row lands 10 minutes before close -- within the 30-min window.
+    tape_ts = _CRYPTO_CLOSE - timedelta(minutes=10)
+    tape_row = {
+        "ticker": market.ticker, "ts": tape_ts.isoformat(),
+        "book_prob": round(book_prob, 4), "kalshi_mid": 0.59,
+        "close_time": market.close_time,
+    }
+    entry_kalshi_prob = 0.59
+    source = "crypto"  # the label CryptoSpecialist.name / specialist_fn tags
+    market_type = market_type_for(source, market.ticker, {})
+    assert market_type == "ladder"  # parse_crypto_ticker's contract_family
+    entry = {
+        "ticker": market.ticker, "side": "YES",
+        "entry_kalshi_prob": entry_kalshi_prob, "source": source,
+        "market_type": market_type, "ts": (_CRYPTO_CLOSE - timedelta(hours=1)).isoformat(),
+    }
+
+    report = build_clv_report(
+        [entry], [tape_row], now_iso=(_CRYPTO_CLOSE + timedelta(hours=1)).isoformat(),
+    )
+
+    assert report["graded_entries"] == 1
+    scope_key = f"crypto|{market_type}"
+    assert scope_key in report["scopes"]  # specialist_for("crypto") routed it here
+    scope = report["scopes"][scope_key]
+    assert scope["n_entries"] == 1
+    # grade_entries reads the tape row's rounded-to-4-decimals book_prob, not
+    # the raw CryptoImpliedBook float -- match what it actually consumes.
+    expected_bps = round(clv_bps("YES", entry_kalshi_prob, tape_row["book_prob"]), 3)
+    assert scope["clv_bps_mean"] == pytest.approx(expected_bps, abs=1e-3)
+    assert scope["clv_bps_mean"] > 0  # book confirms the YES entry -- good trade
+
+
+def test_crypto_entry_with_no_tape_within_close_window_fails_closed():
+    market = _crypto_market()
+    book_prob = _crypto_book_prob()
+    assert book_prob is not None
+
+    # Tape row lands 3 hours before close -- well outside the 30-min window,
+    # so select_close finds nothing and the entry must not grade (never
+    # invent a close from a stale/thin tape).
+    tape_ts = _CRYPTO_CLOSE - timedelta(hours=3)
+    tape_row = {
+        "ticker": market.ticker, "ts": tape_ts.isoformat(),
+        "book_prob": round(book_prob, 4), "kalshi_mid": 0.59,
+        "close_time": market.close_time,
+    }
+    source = "crypto"
+    market_type = market_type_for(source, market.ticker, {})
+    entry = {
+        "ticker": market.ticker, "side": "YES", "entry_kalshi_prob": 0.59,
+        "source": source, "market_type": market_type,
+        "ts": (_CRYPTO_CLOSE - timedelta(hours=1)).isoformat(),
+    }
+
+    report = build_clv_report(
+        [entry], [tape_row], now_iso=(_CRYPTO_CLOSE + timedelta(hours=1)).isoformat(),
+    )
+
+    assert report["graded_entries"] == 0
+    assert report["scopes"] == {}
