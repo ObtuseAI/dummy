@@ -3,6 +3,8 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
+import pytest
+
 from autonomy.mispricing_monitor import run_mispricing_sweep
 from autonomy.opportunist import OpportunistEngine
 
@@ -213,3 +215,158 @@ def test_sweep_lattices_capped_at_twenty_games():
     report = run_mispricing_sweep(markets, lambda m: 0.55, now_iso=NOW)
     assert report["assessed"] == 25
     assert len(report["lattices"]) == 20
+
+
+# --------------------------------------------------------------------------
+# WS-8: book tape + paper-entry persistence (§3.2 CLV grading). The sweep
+# stays pure -- these are new report keys the runner (or a test) can persist
+# with autonomy.clv's tape/entry helpers; run_mispricing_sweep itself does
+# no I/O.
+# --------------------------------------------------------------------------
+
+def test_sweep_emits_one_tape_row_per_assessed_market():
+    winner = _sports_market(
+        "KXMLBGAME-26JUL102005HOUTEX-HOU", "Houston vs Texas Winner?", 50, 50,
+    )
+    report = run_mispricing_sweep(
+        [winner], lambda m: 0.60, now_iso=NOW, book_fn=lambda m: 0.65,
+    )
+    assert len(report["tape_rows"]) == 1
+    row = report["tape_rows"][0]
+    assert row["ticker"] == winner.ticker
+    assert row["ts"] == NOW
+    assert row["book_prob"] == pytest.approx(0.65)
+    assert row["close_time"] == winner.close_time
+    assert row["kalshi_mid"] is not None  # mid implied by the 50/50 quotes
+
+
+def test_sweep_tape_rows_cover_non_shortlisted_markets_too():
+    # C has no edge (never shortlisted) but is still assessed -- the tape
+    # must still capture it; CLV needs the full assessed universe, not just
+    # the actionable subset.
+    markets = [_mkt("A", 30, 72), _mkt("C", 50, 52)]
+    probs = {"A": 0.70, "C": 0.50}
+    report = run_mispricing_sweep(markets, lambda m: probs[m.ticker], now_iso=NOW)
+    assert {row["ticker"] for row in report["tape_rows"]} == {"A", "C"}
+
+
+def test_sweep_emits_entries_for_shortlist_and_opportunities():
+    winner = _sports_market(
+        "KXMLBGAME-26JUL102005HOUTEX-HOU", "Houston vs Texas Winner?", 50, 50,
+    )
+    report = run_mispricing_sweep(
+        [winner], lambda m: 0.65, now_iso=NOW, book_fn=lambda m: 0.68,
+        min_confidence="low",
+    )
+    assert len(report["entries"]) >= 1
+    entry = next(e for e in report["entries"] if e["ticker"] == winner.ticker)
+    assert entry["side"] in ("YES", "NO")
+    assert entry["entry_kalshi_prob"] is not None
+    assert entry["market_type"] == "winner"  # from the KXMLBGAME series token
+
+
+def test_sweep_entry_market_type_reads_the_series_token():
+    spread = _sports_market(
+        "KXMLBSPREAD-26JUL102005HOUTEX-HOU5", "Houston vs Texas Spread?", 45, 55,
+        floor_strike=1.5,
+    )
+    report = run_mispricing_sweep(
+        [spread], lambda m: 0.65, now_iso=NOW, book_fn=lambda m: 0.68,
+        min_confidence="low",
+    )
+    entry = next(e for e in report["entries"] if e["ticker"] == spread.ticker)
+    assert entry["market_type"] == "spread"
+
+
+def test_sweep_entries_tagged_with_specialist_fn_source():
+    winner = _sports_market(
+        "KXMLBGAME-26JUL102005HOUTEX-HOU", "Houston vs Texas Winner?", 50, 50,
+    )
+    report = run_mispricing_sweep(
+        [winner], lambda m: 0.65, now_iso=NOW, book_fn=lambda m: 0.68,
+        min_confidence="low", specialist_fn=lambda m: "mlb",
+    )
+    entry = next(e for e in report["entries"] if e["ticker"] == winner.ticker)
+    assert entry["source"] == "mlb"
+
+
+def test_sweep_entries_source_falls_back_to_unknown_without_specialist_fn():
+    report = run_mispricing_sweep(
+        [_mkt("A", 30, 72)], lambda m: 0.70, now_iso=NOW,
+    )
+    if report["entries"]:
+        assert report["entries"][0]["source"] == "unknown"
+
+
+def test_sweep_entries_and_tape_rows_are_json_serializable():
+    import json
+
+    winner = _sports_market(
+        "KXMLBGAME-26JUL102005HOUTEX-HOU", "Houston vs Texas Winner?", 50, 50,
+    )
+    report = run_mispricing_sweep(
+        [winner], lambda m: 0.65, now_iso=NOW, book_fn=lambda m: 0.68,
+        min_confidence="low", specialist_fn=lambda m: "mlb",
+    )
+    json.dumps(report)  # must not raise
+
+
+def test_sweep_specialist_fn_exception_does_not_break_the_pass():
+    def _boom(market):
+        raise RuntimeError("no route")
+
+    report = run_mispricing_sweep(
+        [_mkt("A", 30, 72)], lambda m: 0.70, now_iso=NOW, specialist_fn=_boom,
+    )
+    assert report["assessed"] == 1  # the pass completes despite the routing error
+
+
+# -- persistence: book tape + paper entries (autonomy.clv-backed I/O) ----------
+
+def test_persist_book_tape_writes_and_dedups_across_calls(tmp_path):
+    from autonomy.mispricing_monitor import persist_book_tape
+
+    path = tmp_path / "book_tape.jsonl"
+    winner = _sports_market(
+        "KXMLBGAME-26JUL102005HOUTEX-HOU", "Houston vs Texas Winner?", 50, 50,
+    )
+    report1 = run_mispricing_sweep(
+        [winner], lambda m: 0.60, now_iso=NOW, book_fn=lambda m: 0.65,
+    )
+    last = persist_book_tape(path, report1)
+    report2 = run_mispricing_sweep(  # identical prices -> same tape row
+        [winner], lambda m: 0.60, now_iso="2026-07-12T00:01:30+00:00",
+        book_fn=lambda m: 0.65,
+    )
+    persist_book_tape(path, report2, last_by_ticker=last)
+    from autonomy.clv import load_tape_rows
+
+    written = load_tape_rows(path)
+    assert len(written) == 1  # second pass deduped -- book/kalshi unchanged
+
+
+def test_persist_paper_entries_appends_jsonl(tmp_path):
+    from autonomy.mispricing_monitor import persist_paper_entries
+
+    path = tmp_path / "paper_entries.jsonl"
+    winner = _sports_market(
+        "KXMLBGAME-26JUL102005HOUTEX-HOU", "Houston vs Texas Winner?", 50, 50,
+    )
+    report = run_mispricing_sweep(
+        [winner], lambda m: 0.65, now_iso=NOW, book_fn=lambda m: 0.68,
+        min_confidence="low",
+    )
+    written = persist_paper_entries(path, report)
+    assert written == len(report["entries"])
+    lines = path.read_text(encoding="utf-8").strip().splitlines()
+    assert len(lines) == written
+
+
+def test_persist_paper_entries_no_entries_is_a_noop(tmp_path):
+    from autonomy.mispricing_monitor import persist_paper_entries
+
+    path = tmp_path / "paper_entries.jsonl"
+    report = run_mispricing_sweep([_mkt("A", 50, 52)], lambda m: 0.50, now_iso=NOW)
+    written = persist_paper_entries(path, report)
+    assert written == 0
+    assert not path.exists()

@@ -42,3 +42,41 @@ def test_dashboard_renders_the_lattice_conviction_counts():
 
     assert "structural_count" in _HTML
     assert "cross_confirmed_count" in _HTML
+
+
+# -- WS-8: CLV per specialist surfaces in the mispricing panel -----------------
+
+def test_dashboard_exposes_clv_report(tmp_path):
+    (tmp_path / "clv_report.json").write_text(
+        json.dumps({
+            "report_name": "AUTONOMY_CLV",
+            "graded_entries": 3,
+            "scopes": {
+                "mlb|winner": {
+                    "specialist": "mlb", "market_type": "winner",
+                    "n_entries": 3, "n_event_clusters": 2,
+                    "clv_bps_mean": 1200.0,
+                    "clv_bps_ci95_lower": 400.0, "clv_bps_ci95_upper": 2000.0,
+                },
+            },
+        }),
+        encoding="utf-8",
+    )
+    state = assemble_dashboard_state(runtime_dir=tmp_path)
+    clv = state["clv_report"]
+    assert clv["graded_entries"] == 3
+    assert clv["scopes"]["mlb|winner"]["clv_bps_mean"] == 1200.0
+
+
+def test_missing_clv_report_yields_empty_block(tmp_path):
+    state = assemble_dashboard_state(runtime_dir=tmp_path)
+    assert state["clv_report"] == {}
+
+
+def test_dashboard_renders_the_clv_panel():
+    # WS-8: renderMispricing gains the CLV-per-specialist table.
+    from autonomy.dashboard import _HTML
+
+    assert "renderMispricing(d.mispricing_monitor" in _HTML
+    assert "clv_report" in _HTML
+    assert "clv_bps_mean" in _HTML

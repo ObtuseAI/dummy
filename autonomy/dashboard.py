@@ -100,6 +100,7 @@ def assemble_dashboard_state(runtime_dir: Path | None = None) -> dict[str, Any]:
     simulation_training = _load_json(rd / "simulation_training_latest.json") or {}
     crypto_paper_twin = _load_json(rd / "crypto_paper_twin_latest.json") or {}
     mispricing_monitor = _load_json(rd / "mispricing_monitor_latest.json") or {}
+    clv_report = _load_json(rd / "clv_report.json") or {}
     from autonomy.paper_dashboard import assemble_paper_dashboard, scheduled_task_status
     from autonomy.sports.dashboard import SPORTS_TASK_NAME, assemble_sports_dashboard
 
@@ -189,6 +190,7 @@ def assemble_dashboard_state(runtime_dir: Path | None = None) -> dict[str, Any]:
         "simulation_training": simulation_training,
         "crypto_paper_twin": crypto_paper_twin,
         "mispricing_monitor": mispricing_monitor,
+        "clv_report": clv_report,
         "paper_operation": paper_operation,
         "paper_scheduler": paper_scheduler,
         "sports_operation": sports_operation,
@@ -441,13 +443,15 @@ async function controlSports(action){
  const msg=document.getElementById('sportsControlMsg'),buttons=[document.getElementById('sportsStartBtn'),document.getElementById('sportsStopBtn')];buttons.forEach(x=>x.disabled=true);msg.textContent=action==='start'?'Starting sports scheduler…':'Pausing future sports cycles…';
  try{const r=await fetch('/api/sports-paper-scheduler/'+action,{method:'POST',headers:{'X-Dummy-Paper-Control':'paper-twin-scheduler-v1'}});const v=await r.json();msg.textContent=v.message||v.detail||v.error||'Control completed';tickGeneration++;if(v.scheduler)renderSportsScheduler(v.scheduler);tick();}catch(e){msg.textContent='Sports control request failed';}finally{setTimeout(()=>{msg.textContent='';},6000);}
 }
-function renderMispricing(m){
- m=m||{};
+function renderMispricing(m,clv){
+ m=m||{};clv=clv||{};
  const short=m.shortlist||[], opps=m.opportunities||[];
  const meta=`<div class="muted">scanned ${m.scanned??'—'} · shortlist ${m.shortlist_count??0} · opportunist strikes ${m.opportunity_count??0} · structural ${m.structural_count??0} · cross_confirmed ${m.cross_confirmed_count??0}${m.generated_at?' · '+dt(m.generated_at):''}</div>`;
  const shortTable=short.length?'<table><tr><th>ticker</th><th>side</th><th>edge</th><th>model</th><th>market</th><th>book</th><th>agreement</th><th>conf</th></tr>'+short.map(x=>`<tr><td>${esc(x.ticker)}</td><td>${esc(x.side)}</td><td>${pct(x.edge)}</td><td>${pct(x.model_prob)}</td><td>${x.market_prob==null?'—':pct(x.market_prob)}</td><td>${x.book_prob==null?'—':pct(x.book_prob)}</td><td>${esc(x.agreement)}</td><td>${esc(x.confidence)}</td></tr>`).join('')+'</table>':'<div class="muted">No actionable mispricing this pass.</div>';
  const oppTable=opps.length?'<h3>Opportunist strikes (patience → pounce)</h3><table><tr><th>ticker</th><th>side</th><th>conviction</th><th>anchor→entry</th><th>deviation</th><th>edge</th><th>conf</th></tr>'+opps.map(x=>`<tr><td>${esc(x.ticker)}</td><td>${esc(x.side)}</td><td>${pct(x.conviction)}</td><td>${pct(x.anchor_prob)}→${pct(x.entry_prob)}</td><td>${pct(x.deviation)}</td><td>${pct(x.edge)}</td><td>${esc(x.confidence)}</td></tr>`).join('')+'</table>':'';
- document.getElementById('mispricing').innerHTML=meta+shortTable+oppTable+'<div class="truth">Paper/challenger evidence only — the monitor surfaces mispricing (our model vs the de-vigged sharp book vs the price) and opportunist strikes for review; it never places an order.</div>';
+ const clvRows=Object.values(clv.scopes||{});
+ const clvTable=clvRows.length?'<h3>CLV per specialist (evidence only, not a promotion gate)</h3><table><tr><th>specialist</th><th>market type</th><th>entries</th><th>clusters</th><th>mean bps</th><th>ci95</th></tr>'+clvRows.map(x=>`<tr><td>${esc(x.specialist)}</td><td>${esc(x.market_type)}</td><td>${x.n_entries??'—'}</td><td>${x.n_event_clusters??'—'}</td><td>${x.clv_bps_mean==null?'—':x.clv_bps_mean.toFixed(1)}</td><td>${x.clv_bps_ci95_lower==null?'—':x.clv_bps_ci95_lower.toFixed(1)+' / '+x.clv_bps_ci95_upper.toFixed(1)}</td></tr>`).join('')+'</table>':'';
+ document.getElementById('mispricing').innerHTML=meta+shortTable+oppTable+clvTable+'<div class="truth">Paper/challenger evidence only — the monitor surfaces mispricing (our model vs the de-vigged sharp book vs the price) and opportunist strikes for review; it never places an order. CLV is graded against the de-vigged closing line as corroborating evidence — settlement-backed contested Brier remains the sole promotion gate.</div>';
 }
 async function tick(){
  const generation=++tickGeneration;
@@ -457,7 +461,7 @@ async function tick(){
  try{renderPaper(d);renderSports(d);}catch(e){document.getElementById('ts').textContent+=' · paper render error: '+e.message;console.error('paper render',e);}
  renderSession(d.session||{},d.heartbeat||{});
  renderFleet(d.scheduler_fleet||[]);
- try{renderMispricing(d.mispricing_monitor||{});}catch(e){console.error('mispricing render',e);}
+ try{renderMispricing(d.mispricing_monitor||{},d.clv_report||{});}catch(e){console.error('mispricing render',e);}
  const hb=d.heartbeat||{};
  document.getElementById('live').innerHTML =
    kv('status', `<span class="pill ${hb.alive?'live':'dead'}">${hb.alive?'ALIVE':'STALE'}</span>`)
