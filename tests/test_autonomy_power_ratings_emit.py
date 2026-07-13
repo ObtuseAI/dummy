@@ -320,3 +320,79 @@ def test_challenger_signal_source_routes_through_real_taxonomy(tmp_path):
     winner = signal.generate(_market("KXNCAAMBGAME-26SEP132025DUKEUNC-DUKE", "Duke vs UNC Winner?"))
     assert winner is not None
     assert specialist_for(winner.source) == "ncaamb"
+
+
+# ---------------------------------------------------------------------------
+# CF2: Massey/Colley re-warm on cadence (throttled) in on_cycle_start
+# ---------------------------------------------------------------------------
+
+
+def _owned_signal(tmp_path) -> PowerRatingsSignal:
+    """A signal that CONSTRUCTED its own (empty, no-network) Massey/Colley."""
+    client = EspnClient(fetch_scoreboard=lambda _l, _d: {"events": []})
+    models = {lg: TeamScoreModel(lg) for lg in ("nfl", "ncaaf", "nba", "ncaamb")}
+    return PowerRatingsSignal(
+        espn=client, model_dir=tmp_path, elo_dir=tmp_path,
+        consensus_fn=_fixed_consensus(ensemble_margin=3.0, dispersion=1.0),
+        models=models, elo_models={},
+    )
+
+
+def test_owned_massey_colley_rewarm_after_ttl(tmp_path):
+    signal = _owned_signal(tmp_path)
+    assert signal._owns_massey and signal._owns_colley
+    # Warmed once at construction; the timestamp is set.
+    assert signal._last_massey_colley_warm is not None
+
+    calls = {"n": 0}
+    signal._warm_massey_colley = lambda **kw: calls.__setitem__("n", calls["n"] + 1)  # type: ignore[method-assign]
+
+    # Last warm is stale (> TTL ago) -> on_cycle_start re-warms and advances ts.
+    stale = datetime.now(timezone.utc) - timedelta(hours=13)
+    signal._last_massey_colley_warm = stale
+    signal.on_cycle_start()
+    assert calls["n"] == 1
+    assert signal._last_massey_colley_warm > stale
+
+
+def test_owned_massey_colley_not_rewarmed_within_ttl(tmp_path):
+    signal = _owned_signal(tmp_path)
+    calls = {"n": 0}
+    signal._warm_massey_colley = lambda **kw: calls.__setitem__("n", calls["n"] + 1)  # type: ignore[method-assign]
+
+    fresh = datetime.now(timezone.utc) - timedelta(hours=1)
+    signal._last_massey_colley_warm = fresh
+    signal.on_cycle_start()
+    assert calls["n"] == 0            # inside TTL -> no re-solve
+    assert signal._last_massey_colley_warm == fresh
+
+
+def test_injected_massey_colley_never_rewarmed(tmp_path):
+    # Injected sources are trusted as already-warm and never touched.
+    class _Spy:
+        def __init__(self) -> None:
+            self.warmups = 0
+
+        def warmup(self, league, date_ranges):
+            self.warmups += 1
+
+        def rating(self, league, team):
+            return None
+
+        def points_per_unit(self, league):
+            return None
+
+    massey, colley = _Spy(), _Spy()
+    client = EspnClient(fetch_scoreboard=lambda _l, _d: {"events": []})
+    models = {lg: TeamScoreModel(lg) for lg in ("nfl", "ncaaf", "nba", "ncaamb")}
+    signal = PowerRatingsSignal(
+        espn=client, model_dir=tmp_path, elo_dir=tmp_path,
+        consensus_fn=_fixed_consensus(ensemble_margin=3.0, dispersion=1.0),
+        models=models, elo_models={}, massey_source=massey, colley_source=colley,
+    )
+    assert not signal._owns_massey and not signal._owns_colley
+    assert signal._last_massey_colley_warm is None
+    signal._last_massey_colley_warm = None  # even with no recorded warm...
+    signal.on_cycle_start()               # ...injected sources are left alone
+    assert massey.warmups == 0
+    assert colley.warmups == 0

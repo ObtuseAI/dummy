@@ -1668,6 +1668,14 @@ DISPERSION_UNCERTAINTY_CAP = 0.15     # max additive widen from dispersion alone
 # object as NbaModel's per-game sigma.
 POWER_RATINGS_BASKETBALL_SIGMA = NBA_MARGIN_SIGMA_BASE
 
+# Massey/Colley solve once at construction and cache; unlike Elo/TeamScoreModel
+# (reloaded from disk every cycle) they would otherwise freeze at construction
+# while the rest of the ensemble tracks fresh settlements. New games settle at
+# most a few times a day, so re-solving every 10-minute cycle is wasteful; this
+# TTL re-warms the OWNED sources at most once per window in on_cycle_start.
+# Propose-then-promote TUNER CANDIDATE.
+MASSEY_COLLEY_REWARM_TTL_HOURS = 12.0
+
 
 class PowerRatingsSignal:
     """Standalone power-ratings challenger: winner+spread ladder + divergence.
@@ -1719,9 +1727,19 @@ class PowerRatingsSignal:
         # __init__ either.
         self.massey_source = massey_source or MasseyRatingSource(espn=self.espn)
         self.colley_source = colley_source or ColleyRatingSource(espn=self.espn)
-        if massey_source is None or colley_source is None:
+        # Only sources this instance CONSTRUCTED are auto-warmed (and later
+        # re-warmed): a caller-injected source is trusted as already warm and
+        # is never touched, mirroring the injected fpi/bpi contract above.
+        self._owns_massey = massey_source is None
+        self._owns_colley = colley_source is None
+        # Wall-clock of the last (re-)warm, so on_cycle_start re-solves only
+        # once per MASSEY_COLLEY_REWARM_TTL_HOURS instead of every cycle. None
+        # until the first warm lands.
+        self._last_massey_colley_warm: datetime | None = None
+        if self._owns_massey or self._owns_colley:
             self._warm_massey_colley(
-                warm_massey=massey_source is None, warm_colley=colley_source is None)
+                warm_massey=self._owns_massey, warm_colley=self._owns_colley)
+            self._last_massey_colley_warm = datetime.now(timezone.utc)
         # "Our own" per-league engine for the divergence gap (Emission 2):
         # the generic TeamScoreModel every league already falls back to
         # (see TeamSportsIntelligenceSignal) -- reloaded (never retrained)
@@ -1806,6 +1824,29 @@ class PowerRatingsSignal:
             }
         except Exception:
             pass  # keep last-loaded state rather than go cold on a blip
+        self._rewarm_massey_colley_if_stale()
+
+    def _rewarm_massey_colley_if_stale(self) -> None:
+        """Re-solve owned Massey/Colley sources at most once per TTL.
+
+        Keeps the in-house ratings tracking fresh settlements instead of
+        freezing at construction, without paying the college-scale solve every
+        cycle. Injected sources (tests) are never touched. Fail-closed: a warm
+        that raises leaves the last-good ratings in place (``_warm_massey_colley``
+        already swallows per-league errors); the timestamp advances regardless
+        so a persistently failing feed is retried on the TTL, not every cycle.
+        """
+        if not (self._owns_massey or self._owns_colley):
+            return
+        now = datetime.now(timezone.utc)
+        last = self._last_massey_colley_warm
+        if last is not None and (now - last) < timedelta(
+            hours=MASSEY_COLLEY_REWARM_TTL_HOURS
+        ):
+            return
+        self._warm_massey_colley(
+            warm_massey=self._owns_massey, warm_colley=self._owns_colley)
+        self._last_massey_colley_warm = now
 
     def applicable(self, market: MarketView) -> bool:
         parsed = parse_sports_contract(market)
