@@ -140,6 +140,11 @@ the same `season_state.json` `SeasonMonitor` itself persists, and rolls up
 `trust_surface_by_specialist` + the CLV report's `scopes` by specialist name.
 Absent the snapshot file, the panel is simply empty — never a crash.
 
+**L1 market-state routing.** How `SpecialistRegistry` routes each market to
+exactly one specialist, per-vertical governing logic (crypto vs. sports),
+`SeasonMonitor` wake/sleep gating, and the 3×3 conviction lattice are
+documented in full in `docs/MARKET_STATE_ROUTING.md`.
+
 ## Architecture
 
 | Module | Role |
