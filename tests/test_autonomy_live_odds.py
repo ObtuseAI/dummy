@@ -1,7 +1,16 @@
 """Tests for the live ESPN-summary sportsbook odds."""
 from __future__ import annotations
 
-from autonomy.live_odds import EspnSummaryBook, devig_summary_home_probability
+import json
+from pathlib import Path
+
+from autonomy.live_odds import (
+    EspnSummaryBook,
+    devig_summary_home_probability,
+    parse_base_out_state,
+)
+
+FIXTURES = Path(__file__).parent / "fixtures"
 
 
 def _summary(home_ml, away_ml, books=2):
@@ -51,3 +60,55 @@ def test_summary_book_caches_per_event():
     book.clear()
     book.home_win_probability("g1")
     assert calls == ["g1", "g1"]
+
+
+# -- WS-11: live base-out state (plays[].onFirst/onSecond/onThird + outs) --
+
+def test_parse_base_out_state_none_without_plays():
+    assert parse_base_out_state(None) is None
+    assert parse_base_out_state({}) is None
+    assert parse_base_out_state({"plays": []}) is None
+
+
+def test_parse_base_out_state_reads_runners_and_outs_from_last_play():
+    # Bases loaded, 0 outs, as the (only, thus last) play in the list.
+    summary = {"plays": [
+        {"outs": 0, "onFirst": {"athlete": {"id": "1"}},
+         "onSecond": {"athlete": {"id": "2"}}, "onThird": {"athlete": {"id": "3"}}},
+    ]}
+    assert parse_base_out_state(summary) == ("loaded", 0)
+
+
+def test_parse_base_out_state_empty_bases_key_absence_not_boolean_false():
+    # ESPN omits onFirst/onSecond/onThird entirely when a base is empty --
+    # confirmed by the WS-11 probe (event 401816130). A play with no runner
+    # keys at all must parse to "empty", not error.
+    summary = {"plays": [{"outs": 1}]}
+    assert parse_base_out_state(summary) == ("empty", 1)
+
+
+def test_parse_base_out_state_unparseable_outs_is_none():
+    assert parse_base_out_state({"plays": [{"onFirst": {}}]}) is None  # no "outs"
+    assert parse_base_out_state({"plays": [{"outs": 3}]}) == ("empty", 3)  # 3 is valid int, just not in RE24
+
+
+def test_parse_base_out_state_from_probed_live_fixture():
+    """WS-11 build-time probe fixture: event 401816130 (MIL @ PIT, 2026-07-12),
+    trimmed from the real ESPN summary endpoint. See autonomy/live_odds.py's
+    module docstring for the full probe writeup (no live "in" game was in
+    progress at probe time; keys were confirmed via a completed game's
+    ``plays`` array instead, which carries the identical per-play schema)."""
+    fixture = json.loads((FIXTURES / "mlb_summary_401816130_baseout.json").read_text())
+    plays = fixture["plays"]
+
+    # Each representative play parses to the expected (base_state, outs).
+    assert parse_base_out_state({"plays": [plays[0]]}) == ("empty", 0)   # start-inning
+    assert parse_base_out_state({"plays": [plays[1]]}) == ("1st", 1)     # runner on first
+    assert parse_base_out_state({"plays": [plays[2]]}) == ("loaded", 0)  # bases loaded
+    assert parse_base_out_state({"plays": [plays[3]]}) == ("empty", 2)   # 2 outs, empty
+
+    # parse_base_out_state always reads the LAST play (the current state);
+    # this fixture's last recorded play happens to be the game's final out
+    # (outs=3), which is honestly outside the RE24 table's domain (0/1/2)
+    # and is fail-closed to a 0.0 adjustment by base_out_delta.
+    assert parse_base_out_state(fixture) == ("empty", 3)

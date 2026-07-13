@@ -1,0 +1,130 @@
+{
+  "meta_probe": {
+    "event_id": "401816130",
+    "date": "2026-07-12",
+    "matchup": "MIL @ PIT",
+    "note": "trimmed from live ESPN summary endpoint for WS-11 base-out parse test"
+  },
+  "plays": [
+    {
+      "id": "4018161300000000059",
+      "type": {
+        "id": "59",
+        "text": "Start Inning",
+        "type": "start-inning"
+      },
+      "awayScore": 0,
+      "homeScore": 0,
+      "period": {
+        "type": "Top",
+        "number": 1,
+        "displayValue": "1st Inning"
+      },
+      "outs": 0,
+      "team": {
+        "id": "8"
+      },
+      "text": "Top of the 1st inning"
+    },
+    {
+      "id": "4018161300304990057",
+      "type": {
+        "id": "57",
+        "text": "Play Result",
+        "type": "play-result"
+      },
+      "awayScore": 0,
+      "homeScore": 2,
+      "period": {
+        "type": "Bottom",
+        "number": 2,
+        "displayValue": "2nd Inning"
+      },
+      "outs": 1,
+      "team": {
+        "id": "23"
+      },
+      "text": "Ozuna singled to center, O'Hearn scored.",
+      "onFirst": {
+        "athlete": {
+          "id": "31668"
+        }
+      }
+    },
+    {
+      "id": "4018161300705990057",
+      "type": {
+        "id": "57",
+        "text": "Play Result",
+        "type": "play-result"
+      },
+      "awayScore": 2,
+      "homeScore": 6,
+      "period": {
+        "type": "Bottom",
+        "number": 4,
+        "displayValue": "4th Inning"
+      },
+      "outs": 0,
+      "team": {
+        "id": "23"
+      },
+      "text": "Lowe singled to center, Mangum to second, Davis to third.",
+      "onFirst": {
+        "athlete": {
+          "id": "39961"
+        }
+      },
+      "onSecond": {
+        "athlete": {
+          "id": "42664"
+        }
+      },
+      "onThird": {
+        "athlete": {
+          "id": "4418683"
+        }
+      }
+    },
+    {
+      "id": "4018161300002010001",
+      "type": {
+        "id": "1",
+        "text": "Start Batter/Pitcher",
+        "alternativeText": "Now at bat",
+        "type": "start-batterpitcher"
+      },
+      "awayScore": 0,
+      "homeScore": 0,
+      "period": {
+        "type": "Top",
+        "number": 1,
+        "displayValue": "1st Inning"
+      },
+      "outs": 2,
+      "team": {
+        "id": "8"
+      },
+      "text": "Paul Skenes pitches to Jackson Chourio"
+    },
+    {
+      "id": "4018161301603990099",
+      "type": {
+        "id": "99",
+        "text": "End Batter/Pitcher",
+        "type": "end-batterpitcher"
+      },
+      "awayScore": 5,
+      "homeScore": 14,
+      "period": {
+        "type": "Top",
+        "number": 9,
+        "displayValue": "9th Inning"
+      },
+      "outs": 3,
+      "team": {
+        "id": "8"
+      }
+    }
+  ]
+}

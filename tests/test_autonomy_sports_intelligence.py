@@ -373,12 +373,18 @@ def test_live_total_counts_runs_already_scored(tmp_path):
 
 
 def test_live_signal_prices_live_total_and_spread(tmp_path):
+    from autonomy.live_odds import EspnSummaryBook
+
     client = EspnClient(fetch_scoreboard=lambda _l, _d: {"events": []})
     client._cache[("mlb", "20260710")] = [
         _mlb_game(status="in", home_score=6, away_score=3, current_period=8)
     ]
     source = BaseballIntelligenceSignal(
         espn=client, model=BaseballRunModel(), model_path=tmp_path / "mlb.json",
+        # Hermetic stub -- no plays -> base_out_state is None, a no-op; this
+        # test only cares about the live total/spread pricing baseline, and
+        # must not make a real network call.
+        live_book=EspnSummaryBook(league="mlb", fetch_summary=lambda l, e: {}),
     )
     total = source.generate(_market(
         "KXMLBTOTAL-26JUL102005HOUTEX-9", "Total Runs?", floor_strike=8.5))
@@ -442,6 +448,219 @@ def test_live_game_abstains_on_yrfi(tmp_path):
     # total, and spread are re-priced live, but YRFI is meaningless once underway).
     assert source.generate(_market(
         "KXMLBRFI-26JUL102005HOUTEX", "First Inning Run?")) is None
+
+
+def test_park_factor_scales_total_and_yrfi_but_not_winner_margin(tmp_path):
+    from autonomy.sports.baseball import poisson_win_probability
+
+    model = BaseballRunModel()
+    game = Game(
+        game_id="gcol", league="mlb", home="COL", away="SD", status="pre",
+        home_won=None, date="2026-07-10T20:05:00Z",
+        home_pitcher_era=4.0, away_pitcher_era=4.0,
+    )
+    prediction = model.predict(game)
+    # Winner is priced off the UNSCALED per-team means -- park factor never
+    # touches expected_home_runs/expected_away_runs (winner margin unaffected).
+    assert prediction.home_win_probability == poisson_win_probability(
+        prediction.expected_home_runs, prediction.expected_away_runs)
+    assert prediction.park_factor == 1.28
+    # expected_total_runs is the ONLY thing scaled, and by exactly the factor.
+    assert abs(
+        prediction.expected_total_runs
+        - (prediction.expected_home_runs + prediction.expected_away_runs) * 1.28
+    ) < 1e-9
+
+
+def test_park_factor_scales_yrfi_upward_for_a_hitters_park(tmp_path):
+    # Two cold-start models differing ONLY in home team code (identical
+    # priors otherwise) isolate the park-factor effect on YRFI.
+    col_pred = BaseballRunModel().predict(Game(
+        game_id="g1", league="mlb", home="COL", away="SD", status="pre",
+        home_won=None, date="2026-07-10T20:05:00Z",
+    ))
+    neutral_pred = BaseballRunModel().predict(Game(
+        game_id="g2", league="mlb", home="ATL", away="SD", status="pre",
+        home_won=None, date="2026-07-10T20:05:00Z",
+    ))
+    assert col_pred.yrfi_probability > neutral_pred.yrfi_probability
+
+
+def test_park_factor_absent_for_unknown_team_is_byte_identical_total(tmp_path):
+    prediction = BaseballRunModel().predict(Game(
+        game_id="g3", league="mlb", home="ZZZ", away="SD", status="pre",
+        home_won=None, date="2026-07-10T20:05:00Z",
+    ))
+    assert prediction.park_factor == 1.0
+    assert prediction.expected_total_runs == (
+        prediction.expected_home_runs + prediction.expected_away_runs
+    )
+
+
+def test_re24_table_hand_checked_anchors():
+    from autonomy.sports.baseball import RE24_TABLE
+    # WS-11 brief anchors: bases loaded/0 outs ~2.3, empty/2 outs ~0.10.
+    assert abs(RE24_TABLE[("loaded", 0)] - 2.3) < 0.05
+    assert abs(RE24_TABLE[("empty", 2)] - 0.10) < 0.05
+    # Monotone in the expected directions.
+    assert RE24_TABLE[("empty", 0)] > RE24_TABLE[("empty", 1)] > RE24_TABLE[("empty", 2)]
+    assert RE24_TABLE[("loaded", 0)] > RE24_TABLE[("2nd_3rd", 0)] > RE24_TABLE[("empty", 0)]
+
+
+def test_base_state_key_maps_runner_flags():
+    from autonomy.sports.baseball import base_state_key
+    assert base_state_key(False, False, False) == "empty"
+    assert base_state_key(True, False, False) == "1st"
+    assert base_state_key(False, True, False) == "2nd"
+    assert base_state_key(False, False, True) == "3rd"
+    assert base_state_key(True, True, False) == "1st_2nd"
+    assert base_state_key(True, False, True) == "1st_3rd"
+    assert base_state_key(False, True, True) == "2nd_3rd"
+    assert base_state_key(True, True, True) == "loaded"
+
+
+def test_base_out_delta_fail_closed_and_directional():
+    from autonomy.sports.baseball import base_out_delta
+    assert base_out_delta(None, None) == 0.0
+    assert base_out_delta("loaded", None) == 0.0
+    assert base_out_delta("bogus", 0) == 0.0
+    assert base_out_delta("empty", 3) == 0.0  # outs=3 not in the 8x3 table
+    assert base_out_delta("loaded", 0) > 0.0   # raises the remaining mean
+    assert base_out_delta("empty", 2) < 0.0    # lowers the remaining mean
+
+
+def test_live_total_probability_no_live_state_is_byte_identical_to_old_signature(tmp_path):
+    model = BaseballRunModel()
+    prediction = model.predict(_mlb_game())
+    old_style = model.live_total_probability(prediction, 3, 8.5, 4)
+    new_style = model.live_total_probability(
+        prediction, 3, 8.5, 4, base_state=None, outs=None, current_period=None)
+    assert old_style == new_style
+
+
+def test_live_total_probability_bases_loaded_no_outs_raises_over_probability(tmp_path):
+    model = BaseballRunModel()
+    prediction = model.predict(_mlb_game())
+    baseline = model.live_total_probability(prediction, 4, 8.5, 3)
+    loaded = model.live_total_probability(prediction, 4, 8.5, 3, base_state="loaded", outs=0)
+    empty2 = model.live_total_probability(prediction, 4, 8.5, 3, base_state="empty", outs=2)
+    assert loaded > baseline > empty2
+
+
+def test_tto_fatigue_multiplier_windows():
+    from autonomy.sports.baseball import tto_fatigue_multiplier
+    assert tto_fatigue_multiplier(None) == 1.0
+    assert tto_fatigue_multiplier(1) == 1.0
+    assert tto_fatigue_multiplier(4) == 1.0
+    assert tto_fatigue_multiplier(5) == 1.12
+    assert tto_fatigue_multiplier(6) == 1.12
+    assert tto_fatigue_multiplier(7) == 1.0
+    assert tto_fatigue_multiplier(9) == 1.0
+
+
+def test_live_total_probability_tto_window_raises_over_probability(tmp_path):
+    model = BaseballRunModel()
+    prediction = model.predict(_mlb_game())
+    inning4 = model.live_total_probability(prediction, 4, 8.5, 5, current_period=4)
+    inning5 = model.live_total_probability(prediction, 4, 8.5, 5, current_period=5)
+    assert inning5 > inning4
+
+
+def test_rest_travel_uncertainty_bump_pure_function():
+    from autonomy.sports.baseball import rest_travel_uncertainty_bump
+    # Day game (UTC 17:05 ~ ET 13:05) after a previous night game (UTC 23:35
+    # prior day ~ ET 19:35) -> soft bump.
+    assert rest_travel_uncertainty_bump("2026-07-11T17:05Z", "2026-07-10T23:35Z") == 0.02
+    # Both day games -> no bump.
+    assert rest_travel_uncertainty_bump("2026-07-11T17:05Z", "2026-07-10T17:05Z") == 0.0
+    # Missing data -> no-op.
+    assert rest_travel_uncertainty_bump(None, "2026-07-10T23:35Z") == 0.0
+    assert rest_travel_uncertainty_bump("2026-07-11T17:05Z", None) == 0.0
+
+
+def test_live_total_signal_includes_park_factor_and_base_out_features(tmp_path):
+    from autonomy.live_odds import EspnSummaryBook
+    from autonomy.sports.mlb_parks import PARK_FACTORS
+
+    client = EspnClient(fetch_scoreboard=lambda _l, _d: {"events": []})
+    client._cache[("mlb", "20260710")] = [
+        _mlb_game(status="in", home_score=6, away_score=3, current_period=6)
+    ]
+    live_book = EspnSummaryBook(
+        league="mlb",
+        fetch_summary=lambda league, eid: {"plays": [
+            {"outs": 0, "onFirst": {}, "onSecond": {}, "onThird": {}},
+        ]},
+    )
+    source = BaseballIntelligenceSignal(
+        espn=client, model=BaseballRunModel(), model_path=tmp_path / "mlb.json",
+        live_book=live_book,
+    )
+    sig = source.generate(_market(
+        "KXMLBTOTAL-26JUL102005HOUTEX-9", "Total Runs?", floor_strike=8.5))
+    assert sig is not None
+    assert sig.features["base_out_state"] == {"base_state": "loaded", "outs": 0}
+    assert sig.features["park_factor"] == PARK_FACTORS[canonical_team("mlb", "TEX")]
+
+
+def test_live_total_signal_base_out_absent_is_byte_identical(tmp_path):
+    from autonomy.live_odds import EspnSummaryBook
+
+    client = EspnClient(fetch_scoreboard=lambda _l, _d: {"events": []})
+    client._cache[("mlb", "20260710")] = [
+        _mlb_game(status="in", home_score=6, away_score=3, current_period=8)
+    ]
+    empty_book = EspnSummaryBook(league="mlb", fetch_summary=lambda l, e: {})
+
+    def boom(_l, _e):
+        raise RuntimeError("espn down")
+
+    dead_book = EspnSummaryBook(league="mlb", fetch_summary=boom)
+    market = _market("KXMLBTOTAL-26JUL102005HOUTEX-9", "Total Runs?", floor_strike=8.5)
+    sig_empty = BaseballIntelligenceSignal(
+        espn=client, model=BaseballRunModel(), model_path=tmp_path / "a.json",
+        live_book=empty_book,
+    ).generate(market)
+    sig_dead = BaseballIntelligenceSignal(
+        espn=client, model=BaseballRunModel(), model_path=tmp_path / "b.json",
+        live_book=dead_book,
+    ).generate(market)
+    assert sig_empty.probability_yes == sig_dead.probability_yes
+    assert sig_empty.features["base_out_state"] is None
+    assert sig_dead.features["base_out_state"] is None
+
+
+def test_rest_travel_widens_uncertainty_when_previous_game_was_a_night_game(tmp_path):
+    from dataclasses import replace
+
+    from autonomy.signals.sports_intelligence import _date_range
+
+    day_game = replace(_mlb_game(), date="2026-07-10T17:05Z")  # TEX home, day start
+    previous_night_game = Game(
+        game_id="prev1", league="mlb", home="TEX", away="LAA", status="post",
+        home_won=True, date="2026-07-09T23:35Z",
+        home_score=5, away_score=2, home_first_inning_runs=1, away_first_inning_runs=0,
+    )
+    tired_client = EspnClient(fetch_scoreboard=lambda _l, _d: {"events": []})
+    tired_client._cache[("mlb", "20260710")] = [day_game]
+    tired_client._cache[("mlb", _date_range())] = [day_game, previous_night_game]
+    tired = BaseballIntelligenceSignal(
+        espn=tired_client, model=BaseballRunModel(), model_path=tmp_path / "tired.json",
+    )
+
+    rested_client = EspnClient(fetch_scoreboard=lambda _l, _d: {"events": []})
+    rested_client._cache[("mlb", "20260710")] = [day_game]
+    rested_client._cache[("mlb", _date_range())] = [day_game]  # no previous game found
+    rested = BaseballIntelligenceSignal(
+        espn=rested_client, model=BaseballRunModel(), model_path=tmp_path / "rested.json",
+    )
+
+    market = _market("KXMLBGAME-26JUL102005HOUTEX-TEX", "Winner?")
+    tired_sig = tired.generate(market)
+    rested_sig = rested.generate(market)
+    assert tired_sig.uncertainty > rested_sig.uncertainty
+    # Soft signal: direction is narrative, so the MEAN never moves.
+    assert abs(tired_sig.probability_yes - rested_sig.probability_yes) < 1e-9
 
 
 def test_team_score_models_are_league_isolated_and_parse_college_markets(tmp_path):

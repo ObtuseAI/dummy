@@ -8,8 +8,13 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
+from autonomy.live_odds import EspnSummaryBook
 from autonomy.ontology import MarketView, Signal, Vertical
-from autonomy.sports.baseball import BaseballRunModel, remaining_innings
+from autonomy.sports.baseball import (
+    BaseballRunModel,
+    remaining_innings,
+    rest_travel_uncertainty_bump,
+)
 from autonomy.sports.espn import EspnClient, canonical_team
 from autonomy.sports.injuries import InjuryBook
 from autonomy.sports.team_scores import LEAGUE_SCORE_CONFIGS, TeamScoreModel
@@ -205,6 +210,7 @@ class BaseballIntelligenceSignal:
         model_path: Path | None = None,
         injuries: "InjuryBook | None" = None,
         seasons: Any = None,
+        live_book: EspnSummaryBook | None = None,
     ) -> None:
         from autonomy.specialists.seasons import SeasonMonitor
 
@@ -213,6 +219,11 @@ class BaseballIntelligenceSignal:
         self.model = model or BaseballRunModel.load(self.model_path)
         self.injuries = injuries or InjuryBook()
         self.seasons = seasons or SeasonMonitor(espn=self.espn)
+        # WS-11: live base-out state (plays[-1].onFirst/onSecond/onThird +
+        # outs), read from the same ESPN-summary endpoint the sharp-book live
+        # de-vig already uses. A fetch failure or missing plays -> None,
+        # which is a fail-closed no-op on live_total_probability.
+        self.live_book = live_book or EspnSummaryBook(league="mlb")
 
     def warmup(self, date_ranges: list[str]) -> int:
         updated = 0
@@ -236,10 +247,43 @@ class BaseballIntelligenceSignal:
         self.warmup([_date_range()])
         self.espn.clear_cache()
         self.injuries.refresh()  # refresh availability once per cycle
+        self.live_book.clear()  # re-read in-play base-out state each cycle
 
     def applicable(self, market: MarketView) -> bool:
         parsed = parse_sports_contract(market)
         return market.vertical is Vertical.SPORTS and parsed is not None and parsed.sport == "mlb"
+
+    def _previous_start(self, team: str, before_date_yyyymmdd: str, exclude_game_id: str) -> str | None:
+        """Most recent OTHER game's start time for `team` strictly before the
+        given date, from the signal's own recent-days ESPN cache ("our
+        stores") -- no dedicated network fetch. Fail-closed to None on any
+        lookup problem.
+        """
+        try:
+            games = self.espn.games("mlb", _date_range())
+        except Exception:
+            return None
+        candidates = [
+            g for g in games
+            if g.game_id != exclude_game_id
+            and g.date
+            and g.date[:10].replace("-", "") < before_date_yyyymmdd
+            and (canonical_team("mlb", g.home) == team or canonical_team("mlb", g.away) == team)
+        ]
+        if not candidates:
+            return None
+        return max(candidates, key=lambda g: g.date).date
+
+    def _rest_travel_uncertainty(self, game: Any) -> float:
+        today = game.date[:10].replace("-", "") if game.date else ""
+        if not today:
+            return 0.0
+        for team in (canonical_team("mlb", game.home), canonical_team("mlb", game.away)):
+            previous = self._previous_start(team, today, game.game_id)
+            bump = rest_travel_uncertainty_bump(game.date, previous)
+            if bump > 0.0:
+                return bump
+        return 0.0
 
     def generate(self, market: MarketView) -> Signal | None:
         parsed = parse_sports_contract(market)
@@ -252,6 +296,7 @@ class BaseballIntelligenceSignal:
             return None
         prediction = self.model.predict(game)
         live = game.status == "in"
+        base_out_feature: dict[str, Any] | None = None
         # One fail-closed gate for every live market: a valid score + inning are
         # required, and YRFI (a first-inning market) is meaningless once underway.
         live_state: tuple[int, int, float] | None = None
@@ -288,13 +333,25 @@ class BaseballIntelligenceSignal:
         elif parsed.market_type == "total_runs" and parsed.threshold is not None:
             if live_state is not None:
                 home_score, away_score, rem = live_state
+                base_state = outs = None
+                try:
+                    base_out = self.live_book.base_out_state(game.game_id)
+                except Exception:
+                    base_out = None
+                if base_out is not None:
+                    base_state, outs = base_out
+                    base_out_feature = {"base_state": base_state, "outs": outs}
                 probability = self.model.live_total_probability(
-                    prediction, home_score + away_score, parsed.threshold, rem)
+                    prediction, home_score + away_score, parsed.threshold, rem,
+                    base_state=base_state, outs=outs, current_period=game.current_period,
+                )
                 uncertainty = min(0.45, prediction.total_uncertainty + 0.05)
                 source = "mlb_live_total"
                 market_detail = (
                     f"live over {parsed.threshold:g} ({home_score + away_score} so far, "
-                    f"inning {game.current_period})"
+                    f"inning {game.current_period}"
+                    + (f", {base_state} {outs}out" if base_state else "")
+                    + ")"
                 )
             else:
                 probability = self.model.total_probability(prediction, parsed.threshold)
@@ -339,7 +396,11 @@ class BaseballIntelligenceSignal:
             self.injuries.burden_for(game.home_name)
             + self.injuries.burden_for(game.away_name)
         )
-        uncertainty = min(0.45, uncertainty + 0.05 * injury_burden)
+        # Rest/travel: SOFT signal (day game after a previous night game) --
+        # widens uncertainty only, never shifts the mean. No prior-game match
+        # -> 0.0 -> byte-identical.
+        rest_bump = self._rest_travel_uncertainty(game)
+        uncertainty = min(0.45, uncertainty + 0.05 * injury_burden + rest_bump)
         return Signal(
             source=source,
             market_ticker=market.ticker,
@@ -377,6 +438,9 @@ class BaseballIntelligenceSignal:
                 "yrfi_probability": prediction.yrfi_probability,
                 "threshold": parsed.threshold,
                 "sample_games": prediction.sample_games,
+                "park_factor": prediction.park_factor,
+                "base_out_state": base_out_feature,
+                "rest_travel_uncertainty_bump": rest_bump,
             },
         )
 
