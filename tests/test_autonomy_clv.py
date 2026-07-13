@@ -15,6 +15,7 @@ import pytest
 
 from autonomy.clv import (
     CLOSE_WINDOW_MINUTES,
+    DEFAULT_ENTRY_WINDOW_DAYS,
     aggregate_clv,
     append_tape_rows,
     build_clv_report,
@@ -316,3 +317,69 @@ def test_build_clv_report_is_json_serializable():
                         "2026-07-12T03:55:00+00:00", "2026-07-12T04:00:00+00:00")]
     report = build_clv_report(entries, tape_rows, now_iso="2026-07-12T05:00:00+00:00")
     json.dumps(report)  # must not raise
+
+
+# -- trailing entry window: bound the grader's cumulative growth ---------------
+
+def _dated_entry(ticker, source, market_type, ts, side="YES", prob=0.30):
+    return {"ticker": ticker, "side": side, "entry_kalshi_prob": prob,
+            "source": source, "market_type": market_type, "ts": ts}
+
+
+def test_default_entry_window_days_is_a_sane_auditable_constant():
+    assert DEFAULT_ENTRY_WINDOW_DAYS == 45.0
+
+
+def test_build_clv_report_excludes_entries_emitted_before_the_window():
+    now = "2026-07-12T00:00:00+00:00"
+    fresh = _dated_entry("KXMLBGAME-26JUL10HOU-HOU", "mlb", "winner",
+                         ts="2026-07-10T00:00:00+00:00")  # 2 days ago -> in
+    stale = _dated_entry("KXMLBGAME-26MAY01SEA-SEA", "mlb", "winner",
+                         ts="2026-05-01T00:00:00+00:00")  # ~72 days ago -> out
+    tape_rows = [
+        _tape("KXMLBGAME-26JUL10HOU-HOU", 0.45, 0.44,
+              "2026-07-12T03:55:00+00:00", "2026-07-12T04:00:00+00:00"),
+        _tape("KXMLBGAME-26MAY01SEA-SEA", 0.45, 0.44,
+              "2026-05-01T03:55:00+00:00", "2026-05-01T04:00:00+00:00"),
+    ]
+    report = build_clv_report(
+        [fresh, stale], tape_rows, now_iso=now, window_days=DEFAULT_ENTRY_WINDOW_DAYS)
+    assert report["entries_considered"] == 1  # stale one filtered out
+    assert report["entries_in_window"] == 1
+    assert report["graded_entries"] == 1
+    assert set(report["scopes"].keys()) == {"mlb|winner"}
+
+
+def test_build_clv_report_window_boundary_is_inclusive():
+    now = "2026-07-12T00:00:00+00:00"
+    # Exactly 45 days before now -> still in the window.
+    edge = _dated_entry("KXMLBGAME-26MAY28HOU-HOU", "mlb", "winner",
+                        ts="2026-05-28T00:00:00+00:00")
+    tape_rows = [_tape("KXMLBGAME-26MAY28HOU-HOU", 0.45, 0.44,
+                       "2026-05-28T03:55:00+00:00", "2026-05-28T04:00:00+00:00")]
+    report = build_clv_report([edge], tape_rows, now_iso=now, window_days=45.0)
+    assert report["entries_in_window"] == 1
+    assert report["graded_entries"] == 1
+
+
+def test_build_clv_report_no_window_grades_everything():
+    now = "2026-07-12T00:00:00+00:00"
+    stale = _dated_entry("KXMLBGAME-26MAY01SEA-SEA", "mlb", "winner",
+                         ts="2026-05-01T00:00:00+00:00")
+    tape_rows = [_tape("KXMLBGAME-26MAY01SEA-SEA", 0.45, 0.44,
+                       "2026-05-01T03:55:00+00:00", "2026-05-01T04:00:00+00:00")]
+    # window_days=None (default) preserves the un-bounded behavior.
+    report = build_clv_report([stale], tape_rows, now_iso=now)
+    assert report["entries_considered"] == 1
+    assert report["graded_entries"] == 1
+
+
+def test_build_clv_report_entry_missing_ts_is_excluded_when_windowed():
+    now = "2026-07-12T00:00:00+00:00"
+    # No ts at all -> cannot establish recency -> fail-closed (excluded).
+    no_ts = _entry("KXMLBGAME-26JUL10HOU-HOU", "mlb", "winner")  # helper omits ts
+    tape_rows = [_tape("KXMLBGAME-26JUL10HOU-HOU", 0.45, 0.44,
+                       "2026-07-12T03:55:00+00:00", "2026-07-12T04:00:00+00:00")]
+    report = build_clv_report([no_ts], tape_rows, now_iso=now, window_days=45.0)
+    assert report["entries_in_window"] == 0
+    assert report["graded_entries"] == 0

@@ -54,6 +54,16 @@ CLOSE_WINDOW_MINUTES = 30.0
 # and roll a dated backup if it ever matters in practice.
 TAPE_ROTATE_BYTES = 50 * 1024 * 1024
 
+# Trailing entry window (days). ``paper_entries.jsonl`` is append-only, so a
+# nightly grader that read every entry ever written would re-grade long-
+# settled markets forever and ``n_event_clusters`` would accrue without
+# bound -- the "nightly" report would silently become cumulative-all-time.
+# The grader instead considers only entries emitted within this trailing
+# window. 45 days is generously longer than any market's settle horizon
+# (crypto: hours; sports: same-day; longest-dated events: a few weeks) yet
+# bounds the effective read to ~6 weeks of entries. Auditable, static.
+DEFAULT_ENTRY_WINDOW_DAYS = 45.0
+
 
 def _parse_ts(value: Any) -> float | None:
     if value is None:
@@ -299,28 +309,61 @@ def aggregate_clv(graded: list[dict[str, Any]]) -> dict[str, Any]:
     }
 
 
+def _within_window(entry: dict[str, Any], cutoff_ts: float | None) -> bool:
+    """True when the entry was emitted at/after ``cutoff_ts`` (fail-closed).
+
+    ``cutoff_ts is None`` means no window (grade everything). Otherwise an
+    entry whose ``ts`` is missing or unparseable is EXCLUDED -- recency can't
+    be established, so it fails closed rather than being graded forever.
+    """
+    if cutoff_ts is None:
+        return True
+    ts = _parse_ts(entry.get("ts"))
+    if ts is None:
+        return False
+    return ts >= cutoff_ts
+
+
 def build_clv_report(
     entries: list[dict[str, Any]],
     tape_rows: list[dict[str, Any]],
     *,
     now_iso: str,
+    window_days: float | None = None,
 ) -> dict[str, Any]:
     """One full grading pass: entries x tape -> the CLV report artifact.
+
+    ``window_days`` (the grader passes ``DEFAULT_ENTRY_WINDOW_DAYS``) bounds
+    the grader's otherwise-cumulative growth: only entries emitted within the
+    trailing window are considered, so long-settled entries stop being re-
+    graded and ``n_event_clusters`` stays bounded. ``None`` (the default,
+    kept for callers/tests that want the un-bounded behavior) grades every
+    entry.
 
     A run with no gradeable entries returns an empty-but-valid report --
     idempotent (byte-identical downstream) on a repeat run with unchanged
     inputs, never raises, never partially grades.
     """
+    cutoff_ts: float | None = None
+    if window_days is not None:
+        now_ts = _parse_ts(now_iso)
+        if now_ts is not None:
+            cutoff_ts = now_ts - float(window_days) * 86_400.0
+    in_window = [e for e in entries if _within_window(e, cutoff_ts)]
+
     tape_by_ticker: dict[str, list[dict[str, Any]]] = {}
     for row in tape_rows:
         ticker = row.get("ticker")
         if ticker:
             tape_by_ticker.setdefault(ticker, []).append(row)
-    graded = grade_entries(entries, tape_by_ticker)
+    graded = grade_entries(in_window, tape_by_ticker)
     aggregated = aggregate_clv(graded)
     return {
         "report_name": "AUTONOMY_CLV",
         "generated_at": now_iso,
-        "entries_considered": len(entries),
+        "entries_considered": len(in_window),
+        "entries_in_window": len(in_window),
+        "entries_total_seen": len(entries),
+        "entry_window_days": window_days,
         **aggregated,
     }

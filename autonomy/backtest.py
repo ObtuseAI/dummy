@@ -955,6 +955,86 @@ def _crypto_challenger_gates(
     return result
 
 
+def roll_up_trust_surface(sources_by_scope: dict[str, Any]) -> dict[str, Any]:
+    """Additive (specialist, market_type, phase) roll-up of ``sources_by_scope``.
+
+    Spec section 3.3 wants contested-Brier viewable as a *surface* keyed on
+    ``(specialist, market_type, phase)``. ``sources_by_scope`` is already
+    keyed ``source|market_type|phase_or_horizon`` (WS-15, via
+    ``autonomy.taxonomy.grading_scope``); this is a PURE post-processing
+    roll-up of those already-computed per-source summaries -- it never
+    re-runs ``grading_scope`` or a second scope tracker, it only groups the
+    existing keys by ``specialist_for(source)``.
+
+    Honest by construction:
+      * Point metrics (``mean_brier``, ``expected_calibration_error``,
+        ``contested_beat_rate``) are n-weighted across the constituent
+        sources -- a plain mean-of-means would misweight.
+      * NO confidence interval is emitted at this coarser grain: the
+        per-source cluster-bootstrap CIs cannot be honestly recombined from
+        their summaries alone (that needs the raw per-cluster edges). The
+        honest CIs stay in ``sources_by_scope``, and the promotion gate keeps
+        reading THOSE. This surface is a human-facing evidence view, never a
+        gate input -- CLV and this roll-up are both evidence, contested Brier
+        at source grain remains the gate.
+      * ``source_family`` / ``source_family_size`` disclose how many sources
+        back each bucket (family-size disclosure, per house statistical
+        honesty rules). ``contested_event_clusters_summed`` is the SUM across
+        sources (an upper bound -- one event priced by two sources in the
+        same bucket is counted twice; deduping needs the raw cluster sets,
+        which is exactly what the per-source grain preserves).
+    """
+    from autonomy.taxonomy import specialist_for
+
+    buckets: dict[str, dict[str, Any]] = {}
+    for scope_key, summary in sources_by_scope.items():
+        parts = str(scope_key).split("|")
+        if len(parts) != 3:
+            continue  # defensive: only well-formed source|market_type|axis keys
+        source, market_type, axis = parts
+        specialist = specialist_for(source)
+        rolled_key = f"{specialist}|{market_type}|{axis}"
+        bucket = buckets.setdefault(rolled_key, {
+            "specialist": specialist, "market_type": market_type, "phase": axis,
+            "n": 0, "contested_n": 0, "contested_event_clusters_summed": 0,
+            "_brier_weighted": 0.0, "_ece_weighted": 0.0, "_beat_weighted": 0.0,
+            "sources": set(),
+        })
+        n = int(summary.get("n") or 0)
+        contested_n = int(summary.get("contested_n") or 0)
+        bucket["n"] += n
+        bucket["contested_n"] += contested_n
+        bucket["contested_event_clusters_summed"] += int(
+            summary.get("contested_event_clusters") or 0)
+        if summary.get("mean_brier") is not None:
+            bucket["_brier_weighted"] += n * float(summary["mean_brier"])
+        if summary.get("expected_calibration_error") is not None:
+            bucket["_ece_weighted"] += n * float(summary["expected_calibration_error"])
+        if summary.get("contested_beat_rate") is not None:
+            bucket["_beat_weighted"] += contested_n * float(summary["contested_beat_rate"])
+        bucket["sources"].add(source)
+
+    surface: dict[str, Any] = {}
+    for rolled_key, bucket in buckets.items():
+        n, contested_n = bucket["n"], bucket["contested_n"]
+        surface[rolled_key] = {
+            "specialist": bucket["specialist"],
+            "market_type": bucket["market_type"],
+            "phase": bucket["phase"],
+            "n": n,
+            "mean_brier": round(bucket["_brier_weighted"] / n, 4) if n else None,
+            "expected_calibration_error": (
+                round(bucket["_ece_weighted"] / n, 6) if n else None),
+            "contested_n": contested_n,
+            "contested_beat_rate": (
+                round(bucket["_beat_weighted"] / contested_n, 3) if contested_n else None),
+            "contested_event_clusters_summed": bucket["contested_event_clusters_summed"],
+            "source_family": sorted(bucket["sources"]),
+            "source_family_size": len(bucket["sources"]),
+        }
+    return surface
+
+
 def run_backtest(ledger: AutonomyLedger, bootstrap_weights: bool = False) -> dict[str, Any]:
     """Score all sources against settled markets; optionally persist weights."""
     conn = ledger._conn  # noqa: SLF001 - backtester is a trusted ledger consumer
@@ -1032,6 +1112,12 @@ def run_backtest(ledger: AutonomyLedger, bootstrap_weights: bool = False) -> dic
         for scoped_key, weight in derived_scoped.items():
             ledger.update_weight(scoped_key, weight)
 
+    sources_by_scope = {s: {k: t.summary()[k] for k in
+                            ("n", "mean_brier", "contested_n",
+                             "contested_beat_rate", "contested_event_clusters",
+                             "contested_mean_brier_edge_ci95",
+                             "expected_calibration_error")}
+                        for s, t in scope_trackers.items()}
     return {
         "report_name": "AUTONOMY_BACKTEST",
         "settled_markets": len(settlements),
@@ -1043,12 +1129,11 @@ def run_backtest(ledger: AutonomyLedger, bootstrap_weights: bool = False) -> dic
                                      "contested_mean_brier_edge_ci95",
                                      "expected_calibration_error")}
                                 for s, t in scoped_trackers.items()},
-        "sources_by_scope": {s: {k: t.summary()[k] for k in
-                                 ("n", "mean_brier", "contested_n",
-                                  "contested_beat_rate", "contested_event_clusters",
-                                  "contested_mean_brier_edge_ci95",
-                                  "expected_calibration_error")}
-                             for s, t in scope_trackers.items()},
+        "sources_by_scope": sources_by_scope,
+        # WS-8 (spec section 3.3): the literal (specialist, market_type, phase)
+        # trust surface, rolled up ADDITIVELY from the source-grain
+        # sources_by_scope above -- no re-keying, no second scope tracker.
+        "trust_surface_by_specialist": roll_up_trust_surface(sources_by_scope),
         "derived_weights": derived,
         "derived_weights_by_vertical": derived_scoped,
         "weights_written": bootstrap_weights,

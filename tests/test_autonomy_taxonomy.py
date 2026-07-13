@@ -149,6 +149,55 @@ def test_backtest_separates_scopes_and_keeps_bare_source_aggregate(tmp_path):
         ledger.close()
 
 
+# -- WS-8: (specialist, market_type, phase) trust-surface roll-up --------------
+
+def test_trust_surface_rolls_sources_up_to_specialist_grain(tmp_path):
+    ledger = AutonomyLedger(db_path=tmp_path / "l.db")
+    try:
+        # Two DIFFERENT crypto sources price the same ladder/hourly scope; the
+        # roll-up must collapse them into ONE crypto|ladder|hourly bucket.
+        cases = [
+            ("KXBTCD-26JUL0917-T71000", True, 2.0),
+            ("KXBTCD-26JUL0918-T71000", False, 2.0),
+        ]
+        for ticker, result, hours in cases:
+            ledger.record_signal(_crypto_signal("market_prior", ticker, 0.5, hours))
+            ledger.record_signal(
+                _crypto_signal("crypto_spot_vol", ticker, 0.8 if result else 0.2, hours))
+            ledger.record_signal(
+                _crypto_signal("crypto_structure_swing", ticker, 0.7 if result else 0.3, hours))
+            ledger.record_settlement(ticker, result)
+
+        report = run_backtest(ledger, bootstrap_weights=False)
+        # Source grain is unchanged (two distinct source scopes still present).
+        scopes = report["sources_by_scope"]
+        assert "crypto_spot_vol|ladder|hourly" in scopes
+        assert "crypto_structure_swing|ladder|hourly" in scopes
+
+        surface = report["trust_surface_by_specialist"]
+        assert "crypto|ladder|hourly" in surface
+        rolled = surface["crypto|ladder|hourly"]
+        assert rolled["specialist"] == "crypto"
+        assert rolled["market_type"] == "ladder"
+        assert rolled["phase"] == "hourly"
+        # Both crypto sources (2 markets each) rolled up -> n = 4.
+        assert rolled["n"] == 4
+        assert rolled["source_family_size"] == 2
+        assert set(rolled["source_family"]) == {"crypto_spot_vol", "crypto_structure_swing"}
+        # market_prior rolls up to its OWN specialist ("market"), never into
+        # crypto. (Its axis is phase "pre", not a horizon -- grading_scope only
+        # uses horizon buckets for crypto-specialist sources; market_prior is
+        # not one. The roll-up faithfully reflects that WS-15 keying.)
+        assert any(k.startswith("market|") for k in surface)
+        assert "market|ladder|pre" in surface
+        # Honest by construction: NO fabricated CI at this coarser grain --
+        # the per-source cluster CIs stay in sources_by_scope (the gate reads
+        # those). This view is evidence, not a promotion input.
+        assert "contested_mean_brier_edge_ci95" not in rolled
+    finally:
+        ledger.close()
+
+
 def test_calibration_signals_carry_parsed_features(tmp_path):
     ledger = AutonomyLedger(db_path=tmp_path / "l.db")
     try:

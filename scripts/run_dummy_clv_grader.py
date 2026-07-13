@@ -25,7 +25,11 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from autonomy.clv import build_clv_report, load_tape_rows  # noqa: E402
+from autonomy.clv import (  # noqa: E402
+    DEFAULT_ENTRY_WINDOW_DAYS,
+    build_clv_report,
+    load_tape_rows,
+)
 from autonomy.strategy_miner import write_report  # noqa: E402
 
 ENTRIES_PATH = Path("runtime/autonomy/paper_entries.jsonl")
@@ -54,17 +58,24 @@ def main() -> int:
     parser.add_argument("--entries", type=Path, default=ENTRIES_PATH)
     parser.add_argument("--tape", type=Path, default=TAPE_PATH)
     parser.add_argument("--out", type=Path, default=OUT_PATH)
+    parser.add_argument(
+        "--window-days", type=float, default=DEFAULT_ENTRY_WINDOW_DAYS,
+        help="only grade entries emitted within this trailing window "
+             "(bounds the otherwise-cumulative nightly report)",
+    )
     args = parser.parse_args()
 
     entries = _load_jsonl(args.entries)
     tape_rows = load_tape_rows(args.tape)
     report = build_clv_report(
         entries, tape_rows, now_iso=datetime.now(timezone.utc).isoformat(),
+        window_days=args.window_days,
     )
     write_report(report, args.out)
     print(json.dumps({
         "status": "OK",
-        "entries_considered": report["entries_considered"],
+        "entries_total_seen": report["entries_total_seen"],
+        "entries_in_window": report["entries_in_window"],
         "graded_entries": report["graded_entries"],
         "graded_event_clusters": report["graded_event_clusters"],
         "scopes": len(report["scopes"]),
