@@ -21,6 +21,7 @@ from autonomy.sports.power_ratings import (
     EspnFpiSource,
     POINTS_PER_RATING_UNIT,
     consensus_margin,
+    default_fetch_powerindex,
     parse_powerindex,
 )
 
@@ -233,15 +234,19 @@ def test_espn_bpi_source_basic_lookup():
 
 
 class SpyEloModel:
-    """Stand-in EloModel: records rating() calls, raises if update() is ever called."""
+    """Stand-in EloModel: records rating() calls, raises if update() is ever called.
+
+    Exposes a public `ratings` dict, mirroring the real `EloModel.ratings`
+    field, since `EloSource` checks membership there directly.
+    """
 
     def __init__(self, ratings: dict[str, float]) -> None:
-        self._ratings = ratings
+        self.ratings = ratings
         self.rating_calls: list[str] = []
 
     def rating(self, team: str) -> float:
         self.rating_calls.append(team)
-        return self._ratings.get(team, 1500.0)
+        return self.ratings.get(team, 1500.0)
 
     def update(self, *args, **kwargs) -> None:
         raise AssertionError("EloSource must never call EloModel.update() -- point-in-time read only")
@@ -267,3 +272,58 @@ def test_elo_source_participates_in_consensus_without_updating(scaled_league):
     assert result is not None
     assert result.per_source["elo"] == (1550.0 - 1500.0) * 2.0
     assert elo_model.rating_calls == ["HOME", "AWAY"]
+
+
+# ---------------------------------------------------------------------------
+# EloSource: fail-closed on unknown teams (WS-A1 review fix)
+# ---------------------------------------------------------------------------
+
+
+def test_elo_source_returns_none_for_team_absent_from_elo_model():
+    # KC is present; KC's opponent this cycle, "XYZ", has never been seen by
+    # the Elo model. EloSource must not fabricate BASE_RATING (1500.0) for it.
+    elo_model = SpyEloModel({"KC": 1620.0})
+    source = EloSource(elo_model)
+
+    assert source.rating("nfl", "XYZ") is None
+    # A present team still resolves to its real rating.
+    assert source.rating("nfl", "KC") == 1620.0
+    # And a team legitimately rated exactly 1500.0 must NOT be treated as
+    # missing -- membership in `.ratings`, not equality to BASE_RATING, is
+    # the test.
+    elo_model_at_base = SpyEloModel({"KC": 1620.0, "KNOWN_AT_1500": 1500.0})
+    source_at_base = EloSource(elo_model_at_base)
+    assert source_at_base.rating("nfl", "KNOWN_AT_1500") == 1500.0
+
+
+def test_consensus_margin_elo_only_both_teams_absent_returns_none(scaled_league):
+    # Regression for the fail-closed hole: previously EloModel.rating()
+    # defaulted BOTH unknown teams to 1500.0, producing a fabricated
+    # ConsensusMargin(0.0, ...) instead of dropping the source entirely.
+    elo_model = SpyEloModel({})  # neither HOME nor AWAY has ever been rated
+    elo_source = EloSource(elo_model)
+
+    result = consensus_margin("HOME", "AWAY", scaled_league, [elo_source])
+
+    assert result is None
+
+
+def test_consensus_margin_elo_only_one_team_absent_returns_none(scaled_league):
+    # HOME is known, AWAY has never been rated -> Elo must drop out rather
+    # than reporting a fabricated (rating - 1500.0) implied margin. Elo is
+    # the only source here, so the whole consensus is None.
+    elo_model = SpyEloModel({"HOME": 1600.0})
+    elo_source = EloSource(elo_model)
+
+    result = consensus_margin("HOME", "AWAY", scaled_league, [elo_source])
+
+    assert result is None
+
+
+# ---------------------------------------------------------------------------
+# default_fetch_powerindex: unmapped league fails closed, not KeyError
+# ---------------------------------------------------------------------------
+
+
+def test_default_fetch_powerindex_unmapped_league_returns_empty_dict():
+    assert default_fetch_powerindex("not_a_real_league") == {}

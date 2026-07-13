@@ -105,7 +105,14 @@ def default_fetch_powerindex(league: str) -> dict:
     """
     import httpx
 
-    sport, espn_league = LEAGUE_TO_ESPN[league]
+    mapping = LEAGUE_TO_ESPN.get(league)
+    if mapping is None:
+        # Unmapped league: fail closed (empty payload) rather than raising
+        # KeyError on a direct caller. `_CachedPowerIndexSource.rating` also
+        # wraps this in try/except, but that shouldn't be the only thing
+        # standing between an unmapped league and an unhandled exception.
+        return {}
+    sport, espn_league = mapping
     response = httpx.get(
         f"{_BASE_URL}/{sport}/{espn_league}/powerindex",
         params={"limit": 1000},
@@ -172,9 +179,13 @@ class _CachedPowerIndexSource:
     this repo already use). A fetch or parse failure caches an empty map
     for that league so every team resolves to None that cycle instead of
     raising.
-    """
 
-    name = "power_index"
+    Deliberately declares no `name` here: `consensus_margin`'s `per_source`
+    dict is keyed by `source.name`, so a shared default across subclasses
+    would silently collide (two sources overwriting one entry, undercounting
+    `n_sources`) instead of failing loudly. Each concrete subclass MUST set
+    its own distinct `name`.
+    """
 
     def __init__(self, fetch: Callable[[str], dict] | None = None) -> None:
         self._fetch = fetch or default_fetch_powerindex
@@ -208,6 +219,14 @@ class EloSource:
     Only ever calls `elo_model.rating(team)` (a pure read). Never calls
     `.update()` -- point-in-time ratings must not leak into the model's
     learning path.
+
+    `EloModel.rating` (autonomy/sports/elo.py) is `self.ratings.get(team,
+    BASE_RATING)` -- it fabricates BASE_RATING (1500.0) for ANY unknown
+    team and never returns None. To stay fail-closed, membership in the
+    model's rating table is checked directly (`team in elo_model.ratings`)
+    BEFORE calling `.rating()`, rather than calling `.rating()` and
+    comparing the result to 1500.0 -- a team can be legitimately rated
+    exactly 1500.0, and that must not be mistaken for "missing".
     """
 
     name = "elo"
@@ -216,7 +235,10 @@ class EloSource:
         self._elo_model = elo_model
 
     def rating(self, league: str, team: str) -> float | None:
-        return self._elo_model.rating(team)
+        key = canonical_team(league, team)
+        if key not in self._elo_model.ratings:
+            return None
+        return self._elo_model.rating(key)
 
 
 @dataclass(frozen=True)
