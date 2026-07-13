@@ -1,0 +1,700 @@
+{
+  "teams": [
+    {
+      "team": {
+        "id": "25",
+        "abbreviation": "OKC",
+        "displayName": "Oklahoma City Thunder"
+      },
+      "categories": [
+        {
+          "name": "bpi",
+          "displayName": "BPI",
+          "totals": [
+            "11.196",
+            "1st",
+            "4.426",
+            "6.770",
+            "11.196",
+            "-",
+            "-",
+            "75",
+            "22"
+          ],
+          "values": [
+            11.196,
+            1.0,
+            4.426,
+            6.77,
+            11.196,
+            null,
+            null,
+            75.0,
+            22.0
+          ],
+          "ranks": [
+            "1st",
+            "1st",
+            "4th",
+            "1st",
+            "1st",
+            "-",
+            "-",
+            "Tied-1st",
+            "1st"
+          ]
+        },
+        {
+          "name": "projections",
+          "displayName": "Projections",
+          "totals": [
+            "64.000",
+            "18.000",
+            "100%",
+            ">99.9%",
+            "100%",
+            "0%",
+            "1.000",
+            "30.000",
+            "0%"
+          ],
+          "values": [
+            64.0,
+            18.0,
+            100.0,
+            100.0,
+            100.0,
+            0.0,
+            1.0,
+            30.0,
+            0.0
+          ],
+          "ranks": [
+            "1st",
+            "1st",
+            "Tied-1st",
+            "Tied-1st",
+            "Tied-1st",
+            "Tied-9th",
+            "Tied-1st",
+            "30th",
+            "Tied-15th"
+          ]
+        },
+        {
+          "name": "playoffs",
+          "totals": [
+            "11.196",
+            "4.426",
+            "6.770",
+            ">99.9%",
+            "100%",
+            "100%",
+            "0%",
+            "0%"
+          ],
+          "values": [
+            11.196,
+            4.426,
+            6.77,
+            100.0,
+            100.0,
+            100.0,
+            0.0,
+            0.0
+          ],
+          "ranks": [
+            "1st",
+            "4th",
+            "1st",
+            "Tied-1st",
+            "Tied-1st",
+            "Tied-1st",
+            "Tied-3rd",
+            "Tied-2nd"
+          ]
+        }
+      ]
+    },
+    {
+      "team": {
+        "id": "18",
+        "abbreviation": "NY",
+        "displayName": "New York Knicks"
+      },
+      "categories": [
+        {
+          "name": "bpi",
+          "displayName": "BPI",
+          "totals": [
+            "10.253",
+            "2nd",
+            "4.959",
+            "5.294",
+            "10.253",
+            "-",
+            "-",
+            "69",
+            "32"
+          ],
+          "values": [
+            10.253,
+            2.0,
+            4.959,
+            5.294,
+            10.253,
+            null,
+            null,
+            69.0,
+            32.0
+          ],
+          "ranks": [
+            "2nd",
+            "2nd",
+            "3rd",
+            "3rd",
+            "2nd",
+            "-",
+            "-",
+            "3rd",
+            "Tied-5th"
+          ]
+        },
+        {
+          "name": "projections",
+          "displayName": "Projections",
+          "totals": [
+            "53.000",
+            "29.000",
+            "0%",
+            ">99.9%",
+            "100%",
+            "0%",
+            "3.000",
+            "24.000",
+            "0%"
+          ],
+          "values": [
+            53.0,
+            29.0,
+            0.0,
+            100.0,
+            100.0,
+            0.0,
+            3.0,
+            24.0,
+            0.0
+          ],
+          "ranks": [
+            "Tied-6th",
+            "Tied-6th",
+            "Tied-7th",
+            "Tied-1st",
+            "Tied-1st",
+            "Tied-9th",
+            "Tied-5th",
+            "Tied-24th",
+            "Tied-15th"
+          ]
+        },
+        {
+          "name": "playoffs",
+          "totals": [
+            "10.253",
+            "4.959",
+            "5.294",
+            ">99.9%",
+            "100%",
+            "100%",
+            "100%",
+            "100%"
+          ],
+          "values": [
+            10.253,
+            4.959,
+            5.294,
+            100.0,
+            100.0,
+            100.0,
+            100.0,
+            100.0
+          ],
+          "ranks": [
+            "2nd",
+            "3rd",
+            "3rd",
+            "Tied-1st",
+            "Tied-1st",
+            "Tied-1st",
+            "Tied-1st",
+            "1st"
+          ]
+        }
+      ]
+    },
+    {
+      "team": {
+        "id": "24",
+        "abbreviation": "SA",
+        "displayName": "San Antonio Spurs"
+      },
+      "categories": [
+        {
+          "name": "bpi",
+          "displayName": "BPI",
+          "totals": [
+            "10.120",
+            "3rd",
+            "5.131",
+            "4.989",
+            "10.120",
+            "-",
+            "-",
+            "75",
+            "30"
+          ],
+          "values": [
+            10.12,
+            3.0,
+            5.131,
+            4.989,
+            10.12,
+            null,
+            null,
+            75.0,
+            30.0
+          ],
+          "ranks": [
+            "3rd",
+            "3rd",
+            "2nd",
+            "4th",
+            "3rd",
+            "-",
+            "-",
+            "Tied-1st",
+            "Tied-3rd"
+          ]
+        },
+        {
+          "name": "projections",
+          "displayName": "Projections",
+          "totals": [
+            "62.000",
+            "20.000",
+            "100%",
+            ">99.9%",
+            "100%",
+            "0%",
+            "2.000",
+            "29.000",
+            "0%"
+          ],
+          "values": [
+            62.0,
+            20.0,
+            100.0,
+            100.0,
+            100.0,
+            0.0,
+            2.0,
+            29.0,
+            0.0
+          ],
+          "ranks": [
+            "2nd",
+            "2nd",
+            "Tied-1st",
+            "Tied-1st",
+            "Tied-1st",
+            "Tied-9th",
+            "Tied-3rd",
+            "29th",
+            "Tied-15th"
+          ]
+        },
+        {
+          "name": "playoffs",
+          "totals": [
+            "10.120",
+            "5.131",
+            "4.989",
+            ">99.9%",
+            "100%",
+            "100%",
+            "100%",
+            "0%"
+          ],
+          "values": [
+            10.12,
+            5.131,
+            4.989,
+            100.0,
+            100.0,
+            100.0,
+            100.0,
+            0.0
+          ],
+          "ranks": [
+            "3rd",
+            "2nd",
+            "4th",
+            "Tied-1st",
+            "Tied-1st",
+            "Tied-1st",
+            "Tied-1st",
+            "Tied-2nd"
+          ]
+        }
+      ]
+    },
+    {
+      "team": {
+        "id": "8",
+        "abbreviation": "DET",
+        "displayName": "Detroit Pistons"
+      },
+      "categories": [
+        {
+          "name": "bpi",
+          "displayName": "BPI",
+          "totals": [
+            "8.130",
+            "4th",
+            "2.655",
+            "5.475",
+            "8.130",
+            "-",
+            "-",
+            "67",
+            "29"
+          ],
+          "values": [
+            8.13,
+            4.0,
+            2.655,
+            5.475,
+            8.13,
+            null,
+            null,
+            67.0,
+            29.0
+          ],
+          "ranks": [
+            "4th",
+            "4th",
+            "9th",
+            "2nd",
+            "4th",
+            "-",
+            "-",
+            "4th",
+            "2nd"
+          ]
+        },
+        {
+          "name": "projections",
+          "displayName": "Projections",
+          "totals": [
+            "60.000",
+            "22.000",
+            "100%",
+            ">99.9%",
+            "100%",
+            "0%",
+            "1.000",
+            "28.000",
+            "0%"
+          ],
+          "values": [
+            60.0,
+            22.0,
+            100.0,
+            100.0,
+            100.0,
+            0.0,
+            1.0,
+            28.0,
+            0.0
+          ],
+          "ranks": [
+            "3rd",
+            "3rd",
+            "Tied-1st",
+            "Tied-1st",
+            "Tied-1st",
+            "Tied-9th",
+            "Tied-1st",
+            "28th",
+            "Tied-15th"
+          ]
+        },
+        {
+          "name": "playoffs",
+          "totals": [
+            "8.130",
+            "2.655",
+            "5.475",
+            ">99.9%",
+            "100%",
+            "0%",
+            "0%",
+            "0%"
+          ],
+          "values": [
+            8.13,
+            2.655,
+            5.475,
+            100.0,
+            100.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          "ranks": [
+            "4th",
+            "9th",
+            "2nd",
+            "Tied-1st",
+            "Tied-1st",
+            "Tied-5th",
+            "Tied-3rd",
+            "Tied-2nd"
+          ]
+        }
+      ]
+    },
+    {
+      "team": {
+        "id": "2",
+        "abbreviation": "BOS",
+        "displayName": "Boston Celtics"
+      },
+      "categories": [
+        {
+          "name": "bpi",
+          "displayName": "BPI",
+          "totals": [
+            "7.146",
+            "5th",
+            "3.694",
+            "3.452",
+            "7.146",
+            "-",
+            "-",
+            "59",
+            "30"
+          ],
+          "values": [
+            7.146,
+            5.0,
+            3.694,
+            3.452,
+            7.146,
+            null,
+            null,
+            59.0,
+            30.0
+          ],
+          "ranks": [
+            "5th",
+            "5th",
+            "6th",
+            "5th",
+            "5th",
+            "-",
+            "-",
+            "6th",
+            "Tied-3rd"
+          ]
+        },
+        {
+          "name": "projections",
+          "displayName": "Projections",
+          "totals": [
+            "56.000",
+            "26.000",
+            "100%",
+            ">99.9%",
+            "100%",
+            "0%",
+            "2.000",
+            "27.000",
+            "0%"
+          ],
+          "values": [
+            56.0,
+            26.0,
+            100.0,
+            100.0,
+            100.0,
+            0.0,
+            2.0,
+            27.0,
+            0.0
+          ],
+          "ranks": [
+            "4th",
+            "4th",
+            "Tied-1st",
+            "Tied-1st",
+            "Tied-1st",
+            "Tied-9th",
+            "Tied-3rd",
+            "27th",
+            "Tied-15th"
+          ]
+        },
+        {
+          "name": "playoffs",
+          "totals": [
+            "7.146",
+            "3.694",
+            "3.452",
+            ">99.9%",
+            "0%",
+            "0%",
+            "0%",
+            "0%"
+          ],
+          "values": [
+            7.146,
+            3.694,
+            3.452,
+            100.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          "ranks": [
+            "5th",
+            "6th",
+            "5th",
+            "Tied-1st",
+            "Tied-9th",
+            "Tied-5th",
+            "Tied-3rd",
+            "Tied-2nd"
+          ]
+        }
+      ]
+    },
+    {
+      "team": {
+        "id": "30",
+        "abbreviation": "CHA",
+        "displayName": "Charlotte Hornets"
+      },
+      "categories": [
+        {
+          "name": "bpi",
+          "displayName": "BPI",
+          "totals": [
+            "6.323",
+            "6th",
+            "4.059",
+            "2.264",
+            "6.323",
+            "-",
+            "-",
+            "44",
+            "38"
+          ],
+          "values": [
+            6.323,
+            6.0,
+            4.059,
+            2.264,
+            6.323,
+            null,
+            null,
+            44.0,
+            38.0
+          ],
+          "ranks": [
+            "6th",
+            "6th",
+            "5th",
+            "10th",
+            "6th",
+            "-",
+            "-",
+            "16th",
+            "9th"
+          ]
+        },
+        {
+          "name": "projections",
+          "displayName": "Projections",
+          "totals": [
+            "44.000",
+            "38.000",
+            "0%",
+            "<0.1%",
+            "0%",
+            "100%",
+            "9.000",
+            "14.000",
+            "0.5%"
+          ],
+          "values": [
+            44.0,
+            38.0,
+            0.0,
+            0.0,
+            0.0,
+            100.0,
+            9.0,
+            14.0,
+            0.5
+          ],
+          "ranks": [
+            "16th",
+            "16th",
+            "Tied-7th",
+            "Tied-17th",
+            "Tied-13th",
+            "Tied-1st",
+            "Tied-17th",
+            "14th",
+            "14th"
+          ]
+        },
+        {
+          "name": "playoffs",
+          "totals": [
+            "6.323",
+            "4.059",
+            "2.264",
+            "<0.1%",
+            "0%",
+            "0%",
+            "0%",
+            "0%"
+          ],
+          "values": [
+            6.323,
+            4.059,
+            2.264,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          "ranks": [
+            "6th",
+            "5th",
+            "10th",
+            "Tied-17th",
+            "Tied-9th",
+            "Tied-5th",
+            "Tied-3rd",
+            "Tied-2nd"
+          ]
+        }
+      ]
+    }
+  ]
+}
