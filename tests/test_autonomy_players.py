@@ -2,7 +2,10 @@
 from __future__ import annotations
 
 from autonomy.signals.sports_intelligence import TeamSportsIntelligenceSignal
+from autonomy.sports.boxscores import BoxscoreStore, TeamBoxscore
 from autonomy.sports.espn import EspnClient, Game
+from autonomy.sports.nba_model import MIN_GAMES_FOR_ENGINE, NbaModel, NbaTeamState
+from autonomy.sports.team_scores import LEAGUE_SCORE_CONFIGS, TeamScoreModel
 from autonomy.sports.players import (
     LEAGUE_POINT_SCALE,
     POSITION_IMPACT,
@@ -479,3 +482,120 @@ def test_engine_injuries_feed_absent_is_byte_identical_to_disabled(tmp_path):
     assert disabled_signal.uncertainty == absent_signal.uncertainty
     assert absent_signal.features["hard_margin_delta"] == 0.0
     assert absent_signal.features["soft_uncertainty_add"] == 0.0
+
+
+# =========================================================================
+# Regression: WS-6 availability/mismatch shift must not double-count on the
+# nba_live/nhl_live in-play path (the live win/spread probability already
+# reflects the injured player's absence via the actual live score).
+# =========================================================================
+
+NBA_NOW = datetime(2026, 1, 12, 16, 0, tzinfo=timezone.utc)
+
+
+def _nba_box(team: str, opponent: str, is_home: bool, fga: float, orb: float,
+             to: float, fta: float, game_id: str = "g1") -> TeamBoxscore:
+    return TeamBoxscore(
+        game_id=game_id, league="nba", team=team, opponent=opponent, is_home=is_home,
+        stats={
+            "fieldGoalsAttempted": fga, "offensiveRebounds": orb,
+            "turnovers": to, "freeThrowsAttempted": fta,
+        },
+    )
+
+
+class _AlwaysActiveNba:
+    def active(self, _league):
+        return True
+
+
+def _nba_market(ticker: str, title: str, **raw) -> MarketView:
+    payload = {"event_ticker": ticker.rsplit("-", 1)[0], **raw}
+    return MarketView(
+        ticker=ticker, title=title, vertical=Vertical.SPORTS, status="open",
+        close_time=(NBA_NOW + timedelta(hours=6)).isoformat(),
+        yes_bid=44, yes_ask=46, no_bid=54, no_ask=56, volume=500, liquidity=1_000,
+        raw=payload,
+    )
+
+
+def _nba_warm_signal(tmp_path, game: Game, injury_books=None) -> TeamSportsIntelligenceSignal:
+    client = EspnClient(fetch_scoreboard=lambda _l, _d: {"events": []})
+    client._cache[("nba", "20260112")] = [game]
+    models = {key: TeamScoreModel(key) for key in LEAGUE_SCORE_CONFIGS}
+    store = BoxscoreStore("nba", path=tmp_path / "boxscores_nba.json")
+    store.ingest([
+        _nba_box("LAL", "BOS", True, fga=92.0, orb=9.0, to=13.0, fta=19.0, game_id=f"gh{i}")
+        for i in range(MIN_GAMES_FOR_ENGINE)
+    ])
+    store.ingest([
+        _nba_box("BOS", "LAL", False, fga=90.0, orb=11.0, to=15.0, fta=17.0, game_id=f"ga{i}")
+        for i in range(MIN_GAMES_FOR_ENGINE)
+    ])
+    nba_model = NbaModel()
+    nba_model.teams["LAL"] = NbaTeamState(games=10, pace_ewma=101.0, ortg_ewma=117.0, drtg_ewma=112.0)
+    nba_model.teams["BOS"] = NbaTeamState(games=10, pace_ewma=98.0, ortg_ewma=115.0, drtg_ewma=113.0)
+    return TeamSportsIntelligenceSignal(
+        espn=client, models=models, model_dir=tmp_path, seasons=_AlwaysActiveNba(),
+        nba_boxscores=store, nba_model=nba_model, injury_books=injury_books,
+    )
+
+
+def _lal_out_injury_books() -> dict[str, LeagueInjuryBook]:
+    payload = {"injuries": [
+        {"displayName": "Los Angeles Lakers", "injuries": [
+            {"status": "Out", "athlete": {"position": {"abbreviation": "SF"}}},
+        ]},
+    ]}
+    book = LeagueInjuryBook("nba", fetch_fn=lambda: payload)
+    book.refresh()
+    return {"nba": book}
+
+
+def test_nba_live_availability_shift_is_gated_pregame_only(tmp_path):
+    """Adversarial-review regression: once nba_live is true, `home_win`/
+    `probability` already comes from `live_win_probability_for`, which prices
+    off the actual live score -- an injured (Out) player's absence is already
+    baked into that score. Re-applying the pre-game hard_margin_delta on top
+    would double-count it, so the live branch must be a byte-identical
+    no-op regardless of the injury feed. The pre-game branch (no live score
+    to reflect the injury) must still apply the shift exactly as before."""
+    live_game = Game(
+        "g1", "nba", "LAL", "BOS", "in", None, "2026-01-12T20:25Z",
+        home_name="Los Angeles Lakers", away_name="Boston Celtics",
+        home_score=60, away_score=50, current_period=3, current_clock="6:00",
+    )
+    pregame_game = Game(
+        "g1", "nba", "LAL", "BOS", "pre", None, "2026-01-12T20:25Z",
+        home_name="Los Angeles Lakers", away_name="Boston Celtics",
+    )
+    market = _nba_market("KXNBAGAME-26JAN12LALBOS-LAL", "Lakers vs Celtics Winner?")
+
+    live_healthy = _nba_warm_signal(tmp_path / "a", live_game).generate(market)
+    live_hurt = _nba_warm_signal(
+        tmp_path / "b", live_game, injury_books=_lal_out_injury_books()).generate(market)
+    pregame_healthy = _nba_warm_signal(tmp_path / "c", pregame_game).generate(market)
+    pregame_hurt = _nba_warm_signal(
+        tmp_path / "d", pregame_game, injury_books=_lal_out_injury_books()).generate(market)
+
+    assert live_healthy is not None and live_hurt is not None
+    assert pregame_healthy is not None and pregame_hurt is not None
+    assert live_hurt.source == "nba_live_winner"
+    assert pregame_hurt.source == "nba_structural_winner"
+
+    # The Out player's effect is still computed/logged (telemetry keeps
+    # seeing it)...
+    assert live_hurt.features["hard_margin_delta"] == -1.8
+    assert pregame_hurt.features["hard_margin_delta"] == -1.8
+
+    # ...but on the live branch it must be a no-op: BYTE-IDENTICAL to the
+    # no-injury live market, proving the shift is gated off, not merely
+    # attenuated.
+    assert live_hurt.probability_yes == live_healthy.probability_yes
+
+    # On the pre-game branch (no live score to already reflect the injury)
+    # the shift must still fire: LAL is home and the subject, so an Out LAL
+    # player must lower LAL's win probability relative to the healthy
+    # pre-game baseline -- proving the gate is live-only, not a blanket
+    # disable of the availability layer.
+    assert pregame_hurt.probability_yes < pregame_healthy.probability_yes

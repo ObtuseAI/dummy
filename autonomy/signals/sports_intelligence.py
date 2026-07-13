@@ -1123,7 +1123,13 @@ class TeamSportsIntelligenceSignal:
             # nudge the already-computed probability via a bounded logit-
             # space shift instead (see players.shift_probability_by_margin
             # -- an exact no-op when the combined delta is 0.0).
-            if parsed.sport in ("nba", "nhl", "ncaamb"):
+            # Pre-game only: once nba_live/nhl_live's `live_win_probability_for`
+            # is pricing off the actual live score, the injured player's
+            # absence is already baked into that score -- re-applying the
+            # pre-game availability/mismatch delta here would double-count
+            # it. NCAAMB has no live path (nba_live/nhl_live are always False
+            # for it), so it keeps the shift unconditionally, same as before.
+            if parsed.sport in ("nba", "nhl", "ncaamb") and not (nba_live or nhl_live):
                 probability = shift_probability_by_margin(
                     probability, hard_margin_delta + mismatch_delta,
                     LEAGUE_POINT_SCALE[parsed.sport], subject_is_home,
@@ -1198,8 +1204,11 @@ class TeamSportsIntelligenceSignal:
             # WS-6: same post-hoc logit shift as the winner branch above --
             # NFL/NCAAF are exact via their kernel (nfl_kernel/ncaaf_kernel
             # already reflect hard_margin_delta), NBA/NHL/NCAAMB get the
-            # bounded approximation.
-            if parsed.sport in ("nba", "nhl", "ncaamb"):
+            # bounded approximation. Same live-double-count gate as the
+            # winner branch: skip on the nba_live/nhl_live in-play path,
+            # since live_spread_probability_for already prices off the
+            # actual (injury-affected) live score.
+            if parsed.sport in ("nba", "nhl", "ncaamb") and not (nba_live or nhl_live):
                 probability = shift_probability_by_margin(
                     probability, hard_margin_delta + mismatch_delta,
                     LEAGUE_POINT_SCALE[parsed.sport], subject_is_home,
