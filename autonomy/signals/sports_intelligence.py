@@ -55,7 +55,6 @@ from autonomy.sports.power_ratings import (
     EloSource,
     EspnBpiSource,
     EspnFpiSource,
-    POINTS_PER_RATING_UNIT,
     consensus_margin,
 )
 from autonomy.sports.players import (
@@ -1592,6 +1591,10 @@ class TeamSportsIntelligenceSignal:
 
 FOOTBALL_POWER_LEAGUES = ("nfl", "ncaaf")
 BASKETBALL_POWER_LEAGUES = ("nba", "ncaamb")
+# The 4 leagues this signal supports (retired POINTS_PER_RATING_UNIT's role
+# as the leagues gate now that per-league scaling moved into each
+# RatingSource -- see autonomy/sports/power_ratings.py).
+POWER_RATINGS_SUPPORTED_LEAGUES = FOOTBALL_POWER_LEAGUES + BASKETBALL_POWER_LEAGUES
 
 POWER_RATINGS_MODEL_VERSION = "power_ratings_consensus_v1"
 
@@ -1685,14 +1688,14 @@ class PowerRatingsSignal:
         self.models = models or {
             league: TeamScoreModel.load(
                 league, self.model_dir / f"team_scores_{league}.json")
-            for league in POINTS_PER_RATING_UNIT
+            for league in POWER_RATINGS_SUPPORTED_LEAGUES
         }
         # Read-only Elo reads, same discipline as EloSource's own contract:
         # reloaded (never retrained) from the SAME per-league file
         # SportsEloSignal already trains every cycle.
         self.elo_models = elo_models or {
             league: EloModel.load(league, self.elo_dir / f"elo_{league}.json")
-            for league in POINTS_PER_RATING_UNIT
+            for league in POWER_RATINGS_SUPPORTED_LEAGUES
         }
 
     def _sources(self, league: str) -> list[Any]:
@@ -1706,12 +1709,12 @@ class PowerRatingsSignal:
         try:
             self.elo_models = {
                 league: EloModel.load(league, self.elo_dir / f"elo_{league}.json")
-                for league in POINTS_PER_RATING_UNIT
+                for league in POWER_RATINGS_SUPPORTED_LEAGUES
             }
             self.models = {
                 league: TeamScoreModel.load(
                     league, self.model_dir / f"team_scores_{league}.json")
-                for league in POINTS_PER_RATING_UNIT
+                for league in POWER_RATINGS_SUPPORTED_LEAGUES
             }
         except Exception:
             pass  # keep last-loaded state rather than go cold on a blip
@@ -1721,7 +1724,7 @@ class PowerRatingsSignal:
         return (
             market.vertical is Vertical.SPORTS
             and parsed is not None
-            and parsed.sport in POINTS_PER_RATING_UNIT
+            and parsed.sport in POWER_RATINGS_SUPPORTED_LEAGUES
             and parsed.market_type in ("winner", "spread")
         )
 
@@ -1729,7 +1732,7 @@ class PowerRatingsSignal:
         parsed = parse_sports_contract(market)
         if (
             parsed is None
-            or parsed.sport not in POINTS_PER_RATING_UNIT
+            or parsed.sport not in POWER_RATINGS_SUPPORTED_LEAGUES
             or parsed.market_type not in ("winner", "spread")
             or parsed.competitors is None
             or not parsed.subject
