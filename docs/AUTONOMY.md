@@ -74,6 +74,72 @@ python scripts/run_dummy_autonomous.py start --live --hours 24 --ack \
 python scripts/run_dummy_autonomous.py stop
 ```
 
+## Council of specialists
+
+Council build-out (WS-8, WS-9, WS-14, WS-15). Every vertical — MLB, NBA, NFL,
+NCAAF, NHL, NCAAMB, and crypto — is owned end-to-end by its own subagent
+behind one protocol (`autonomy/specialists/base.py`: `Specialist` /
+`SpecialistRegistry`): `applicable`/`forecast`/`live_forecast`/`book`/
+`on_cycle_start`/`health`. `autonomy/specialists/factory.py` assembles the
+registry over the brain's already-registered signal instances (no second copy
+of the model state); registration order is routing order, and series prefixes
+are disjoint by design so at most one specialist ever claims a market. A
+specialist that raises during routing or warmup is skipped — one broken
+vertical can never take the council down.
+
+**Season gating.** `autonomy/specialists/seasons.py`'s `SeasonMonitor` decides
+whether a league is active from ESPN's own scoreboard (any game inside a
+-7/+21 day window means active) — no hardcoded calendar to rot. Verdicts are
+TTL-cached (6h) and sticky-on-error (a feed blip keeps the last known verdict
+rather than silently benching a live league), persisted to
+`runtime/autonomy/season_state.json` so restarts remember. A league never
+checked successfully defaults ACTIVE (fail-open on cost, not fail-closed on
+capital — challenger-only + fail-closed already guard capital).
+
+**CLV grading (WS-8).** `autonomy/clv.py` grades every paper entry against
+the sharp book's closing line (~10x faster feedback than waiting on
+settlement): a book tape (one row per assessed market per monitor pass) plus
+close selection within a window, aggregated as `clv_bps` per
+`(specialist, market_type)` with per-event-cluster confidence intervals
+(never per-row — correlated same-event entries would shrink the interval
+dishonestly). **CLV is evidence for review, never a promotion gate** —
+settlement-backed contested Brier (`autonomy/backtest.py`, taxonomy-keyed via
+`autonomy/taxonomy.py`'s `grading_scope`) remains the sole gate, and
+`autonomy/backtest.py`'s `trust_surface_by_specialist` rolls the per-scope
+contested-Brier record up to one (specialist, market_type, phase) surface for
+human review.
+
+**Propose-then-promote tuner (WS-9).** `autonomy/tuner.py` proposes better
+sigma/edge scalars for the sports engines into one artifact
+(`runtime/autonomy/tuning_proposals.json`) and never writes a constant back
+into a `.py` file — the walk-forward winner is picked on TRAIN only and
+evaluated once, out-of-sample, on TEST, with per-event-cluster means (not
+per-row) feeding the reported confidence interval. A human reads the artifact
+and edits the source constant in a reviewed PR; the tuner's own test suite
+asserts source-file hashes are byte-identical before and after a full run.
+
+**Promotion registry (WS-14).** `autonomy/promotion.py` is the only path a
+challenger scope can ever reach the live ensemble, under a strict contract:
+*promotion is human-only* (`runtime/autonomy/promotions.json` is edited by a
+person in a reviewed PR citing the readiness report — the system never writes
+it) and *demotion is automatic and one-way-safe* (a promoted scope's negative
+turn is written to `runtime/autonomy/auto_demotions.json` by the nightly
+readiness pass and the registry stops honoring it immediately — reducing risk
+never waits on a human, adding it always does). `EnsembleForecaster.fuse`
+consults `is_promoted_signal` at its existing `challenger_only` filter; a
+missing or corrupt promotions file means nobody is promoted, byte-identical
+to a build without the registry.
+
+**Dashboard council panel (WS-13).** The operator dashboard is a read-only
+process over runtime JSON files — it never holds a live `SpecialistRegistry`
+or `SeasonMonitor`. The mispricing monitor (which already builds and cycles a
+live council every pass) writes `runtime/autonomy/council_snapshot.json`
+(`autonomy/council_snapshot.py`: per-specialist status, season/health details,
+open-opportunities count for that pass); the dashboard reads that file plus
+the same `season_state.json` `SeasonMonitor` itself persists, and rolls up
+`trust_surface_by_specialist` + the CLV report's `scopes` by specialist name.
+Absent the snapshot file, the panel is simply empty — never a crash.
+
 ## Architecture
 
 | Module | Role |

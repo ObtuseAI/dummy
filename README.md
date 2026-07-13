@@ -45,11 +45,29 @@ health, active and settled paper trades, decision explanations, lane-level
 calibration and P&L, target-evidence progress, weaknesses, and promotion gates.
 It also exposes the isolated forced-coverage ledgers for every designated
 crypto scope and sports prediction type so missing markets, explanations, and
-settlements are visible without contaminating promotion evidence. Its Start
+settlements are visible without contaminating promotion evidence, plus a
+council-of-specialists panel (status, season state, settled/contested
+evidence volume, CLV, open opportunities per specialist — read-only, fails
+closed to an empty panel when no snapshot has been written yet). Its Start
 and Stop controls only enable or pause the paper schedulers; they cannot reach
 live execution, credentials, risk settings, or capital.
 
 ![Dummy paper trading command center](docs/assets/dummy-paper-dashboard.jpg)
+
+## Council of specialists
+
+Every vertical (MLB, NBA, NFL, NCAAF, NHL, NCAAMB, crypto) is owned end-to-end
+by its own specialist subagent behind one protocol — pre-game forecast,
+in-play view, independent sharp "book" estimator, feed warmup, and health
+(`autonomy/specialists/`). Routing is disjoint (one market, one specialist)
+and every specialist fails closed: missing data means abstain, never a
+degraded guess. Leagues auto-wake/sleep with their real season (ESPN
+scoreboard window, no hardcoded calendar), CLV-vs-closing-line and
+settlement-backed contested Brier both accrue per specialist as challenger
+evidence, and a human-gated propose-then-promote pipeline is the only way
+evidence ever reaches the execution ensemble. The dashboard's council panel
+(below) surfaces per-specialist status, season state, evidence volume, and
+CLV read-only. Details: [docs/AUTONOMY.md](docs/AUTONOMY.md#council-of-specialists).
 
 ## The loop
 
