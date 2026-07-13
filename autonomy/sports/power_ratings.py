@@ -61,27 +61,32 @@ class RatingSource(Protocol):
         """Team's rating, or None if the source has no opinion this cycle."""
         ...
 
+    def points_per_unit(self, league: str) -> float | None:
+        """Multiplier converting THIS source's (home - away) rating diff into
+        expected point margin for `league` -- the common unit `consensus_margin`
+        medians across sources.
 
-# Per-league scale converting one native rating unit into expected point
-# margin. Propose-then-promote TUNER CANDIDATES (same convention as
-# nfl_margin.BASE_ABS_MARGIN_PMF / nba_model's heteroskedastic sigmas):
-# picked as reasonable starting points, never independently fit.
-#
-# These values are calibrated to EloModel's native scale (SCALE=400
-# logistic, ratings centered on BASE_RATING=1500) converted to point
-# margin using widely-cited rule-of-thumb ratios: ~25 Elo points per
-# point of NFL/NCAAF margin, ~28 Elo points per point of NBA/NCAAMB
-# margin.
-#
-# KNOWN SIMPLIFICATION: ESPN's FPI/BPI are already reported on an
-# approximately point-margin scale ("expected point margin vs average
-# opponent" per ESPN's own glossary), so applying this SAME per-league
-# factor to an FPI/BPI source's rating diff will shrink its implied
-# margin by roughly this same factor rather than leaving it near 1:1.
-# WS-A1's exact signature specifies one constant per league (not one per
-# source x league), so per-source scale separation is deferred to the
-# tuner once there is contested-Brier evidence to justify a promotion.
-POINTS_PER_RATING_UNIT: dict[str, float] = {
+        None => this source has no opinion for `league` (fail-closed: the
+        source is dropped for that league, exactly like a missing team
+        rating). Every concrete source expresses its OWN scale here rather
+        than sharing one per-league constant, because different providers'
+        native rating units are not the same distance apart: ESPN's FPI/BPI
+        are already reported on an approximately point-margin scale (unit
+        ~= 1.0 point), while EloModel's logistic rating points are a much
+        finer unit (~25-28 Elo points per point of margin).
+        """
+        ...
+
+
+# Elo-points-per-margin-point ratios (FiveThirtyEight rule-of-thumb):
+# expected margin = elo_diff / ELO_POINTS_PER_MARGIN[league]. Calibrated to
+# EloModel's native scale (SCALE=400 logistic, ratings centered on
+# BASE_RATING=1500). Propose-then-promote TUNER CANDIDATES (same convention
+# as nfl_margin.BASE_ABS_MARGIN_PMF / nba_model's heteroskedastic sigmas):
+# picked as reasonable starting points, never independently fit. Used ONLY
+# by `EloSource.points_per_unit` -- FPI/BPI are already point-scale and do
+# not go through this table (see `_CachedPowerIndexSource.points_per_unit`).
+ELO_POINTS_PER_MARGIN: dict[str, float] = {
     "nfl": 25.0,
     "ncaaf": 25.0,
     "nba": 28.0,
@@ -200,6 +205,15 @@ class _CachedPowerIndexSource:
                 self._cache[league] = {}
         return self._cache[league].get(canonical_team(league, team))
 
+    def points_per_unit(self, league: str) -> float | None:
+        # FPI/BPI are already reported on an approximately point-margin
+        # scale ("expected point margin vs average opponent" per ESPN's own
+        # glossary -- see module docstring), so a rating diff is already
+        # ~1:1 with expected point margin. Any league this source actually
+        # maps to (LEAGUE_TO_ESPN) gets scale 1.0; an unmapped league drops
+        # the source (fail-closed), same as a missing team rating.
+        return 1.0 if league in LEAGUE_TO_ESPN else None
+
 
 class EspnFpiSource(_CachedPowerIndexSource):
     """ESPN Football Power Index (keyless, first-party)."""
@@ -240,6 +254,14 @@ class EloSource:
             return None
         return self._elo_model.rating(key)
 
+    def points_per_unit(self, league: str) -> float | None:
+        # Elo's native rating points are a finer unit than expected point
+        # margin (see ELO_POINTS_PER_MARGIN): a rating DIFF must be DIVIDED
+        # by the ratio, not multiplied. A league absent from the table has
+        # no known ratio -- fail closed rather than guess.
+        ratio = ELO_POINTS_PER_MARGIN.get(league)
+        return None if ratio is None else 1.0 / ratio
+
 
 @dataclass(frozen=True)
 class ConsensusMargin:
@@ -254,19 +276,21 @@ def consensus_margin(
 ) -> ConsensusMargin | None:
     """Blend every source's implied point margin into one consensus.
 
-    For each source where BOTH teams resolve to a rating, the implied
-    margin is `(rating(home) - rating(away)) * POINTS_PER_RATING_UNIT[league]`.
-    `ensemble_margin` is the median of the implieds, `dispersion` is
-    max - min (0.0 for a single source). Zero implieds (no sources, an
-    unknown league, or every source dropping out) returns None. No side
-    effects; nothing here ever touches a model's learning path.
+    Each source expresses its own rating diff in expected point margin via
+    `source.points_per_unit(league)` (per-source, NOT a shared per-league
+    constant -- see `RatingSource.points_per_unit`). For each source where
+    the league resolves to a scale AND both teams resolve to a rating, the
+    implied margin is `(rating(home) - rating(away)) * scale`. `ensemble_margin`
+    is the median of the implieds, `dispersion` is max - min (0.0 for a
+    single source). Zero implieds (no sources, an unknown league for every
+    source, or every source dropping out) returns None. No side effects;
+    nothing here ever touches a model's learning path.
     """
-    scale = POINTS_PER_RATING_UNIT.get(league)
-    if scale is None:
-        return None
-
     per_source: dict[str, float] = {}
     for source in sources:
+        scale = source.points_per_unit(league)
+        if scale is None:
+            continue
         home_rating = source.rating(league, home)
         away_rating = source.rating(league, away)
         if home_rating is None or away_rating is None:

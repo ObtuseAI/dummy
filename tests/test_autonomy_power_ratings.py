@@ -10,16 +10,17 @@ happens in a test.
 from __future__ import annotations
 
 import json
+import statistics
 from pathlib import Path
 
 import pytest
 
 from autonomy.sports.power_ratings import (
     ConsensusMargin,
+    ELO_POINTS_PER_MARGIN,
     EloSource,
     EspnBpiSource,
     EspnFpiSource,
-    POINTS_PER_RATING_UNIT,
     consensus_margin,
     default_fetch_powerindex,
     parse_powerindex,
@@ -29,20 +30,30 @@ FIXTURES = Path(__file__).parent / "fixtures"
 
 
 class FakeSource:
-    """A RatingSource with a fixed home/away rating (or None) per team."""
+    """A RatingSource with a fixed home/away rating (or None) per team, and a
+    fixed per-source `points_per_unit` scale (the new per-source contract)."""
 
-    def __init__(self, name: str, ratings: dict[str, float | None]) -> None:
+    def __init__(
+        self,
+        name: str,
+        ratings: dict[str, float | None],
+        scale: float | None = 2.0,
+    ) -> None:
         self.name = name
         self._ratings = ratings
+        self._scale = scale
 
     def rating(self, league: str, team: str) -> float | None:
         return self._ratings.get(team)
 
+    def points_per_unit(self, league: str) -> float | None:
+        return self._scale
+
 
 @pytest.fixture()
-def scaled_league(monkeypatch):
-    """A dedicated fake league with a clean, easy-to-hand-compute scale."""
-    monkeypatch.setitem(POINTS_PER_RATING_UNIT, "testleague", 2.0)
+def scaled_league():
+    """A dedicated fake league name; FakeSource supplies its own scale (2.0
+    by default) rather than relying on a shared module-level table."""
     return "testleague"
 
 
@@ -94,7 +105,11 @@ def test_consensus_margin_empty_source_list_returns_none(scaled_league):
 
 
 def test_consensus_margin_unknown_league_returns_none():
-    source_a = FakeSource("A", {"HOME": 110, "AWAY": 100})
+    # Per-source contract: an "unknown league" is now expressed by every
+    # source's points_per_unit() returning None for it, which drops each
+    # source and leaves per_source empty -> None. (EloSource's real-world
+    # version of this guarantee is covered separately below.)
+    source_a = FakeSource("A", {"HOME": 110, "AWAY": 100}, scale=None)
     assert consensus_margin("HOME", "AWAY", "not_a_real_league", [source_a]) is None
 
 
@@ -263,14 +278,14 @@ def test_elo_source_reads_via_rating_and_never_updates():
     # SpyEloModel.update() would raise if called; reaching here means it never was.
 
 
-def test_elo_source_participates_in_consensus_without_updating(scaled_league):
+def test_elo_source_participates_in_consensus_without_updating():
     elo_model = SpyEloModel({"HOME": 1550.0, "AWAY": 1500.0})
     elo_source = EloSource(elo_model)
 
-    result = consensus_margin("HOME", "AWAY", scaled_league, [elo_source])
+    result = consensus_margin("HOME", "AWAY", "nfl", [elo_source])
 
     assert result is not None
-    assert result.per_source["elo"] == (1550.0 - 1500.0) * 2.0
+    assert result.per_source["elo"] == (1550.0 - 1500.0) / ELO_POINTS_PER_MARGIN["nfl"]
     assert elo_model.rating_calls == ["HOME", "AWAY"]
 
 
@@ -296,28 +311,136 @@ def test_elo_source_returns_none_for_team_absent_from_elo_model():
     assert source_at_base.rating("nfl", "KNOWN_AT_1500") == 1500.0
 
 
-def test_consensus_margin_elo_only_both_teams_absent_returns_none(scaled_league):
+def test_consensus_margin_elo_only_both_teams_absent_returns_none():
     # Regression for the fail-closed hole: previously EloModel.rating()
     # defaulted BOTH unknown teams to 1500.0, producing a fabricated
     # ConsensusMargin(0.0, ...) instead of dropping the source entirely.
     elo_model = SpyEloModel({})  # neither HOME nor AWAY has ever been rated
     elo_source = EloSource(elo_model)
 
-    result = consensus_margin("HOME", "AWAY", scaled_league, [elo_source])
+    result = consensus_margin("HOME", "AWAY", "nfl", [elo_source])
 
     assert result is None
 
 
-def test_consensus_margin_elo_only_one_team_absent_returns_none(scaled_league):
+def test_consensus_margin_elo_only_one_team_absent_returns_none():
     # HOME is known, AWAY has never been rated -> Elo must drop out rather
     # than reporting a fabricated (rating - 1500.0) implied margin. Elo is
     # the only source here, so the whole consensus is None.
     elo_model = SpyEloModel({"HOME": 1600.0})
     elo_source = EloSource(elo_model)
 
-    result = consensus_margin("HOME", "AWAY", scaled_league, [elo_source])
+    result = consensus_margin("HOME", "AWAY", "nfl", [elo_source])
 
     assert result is None
+
+
+# ---------------------------------------------------------------------------
+# EloSource.points_per_unit: per-source fail-closed on unknown league
+# ---------------------------------------------------------------------------
+
+
+def test_elo_source_points_per_unit_known_leagues():
+    elo_model = SpyEloModel({})
+    source = EloSource(elo_model)
+
+    assert source.points_per_unit("nfl") == 1.0 / 25.0
+    assert source.points_per_unit("ncaaf") == 1.0 / 25.0
+    assert source.points_per_unit("nba") == 1.0 / 28.0
+    assert source.points_per_unit("ncaamb") == 1.0 / 28.0
+
+
+def test_elo_source_points_per_unit_unknown_league_is_none():
+    elo_model = SpyEloModel({})
+    source = EloSource(elo_model)
+
+    assert source.points_per_unit("not_a_league") is None
+
+
+def test_consensus_margin_elo_drops_for_unknown_league_even_with_both_teams_known():
+    # Both teams are known to the Elo model, but the league itself has no
+    # ELO_POINTS_PER_MARGIN entry -> points_per_unit returns None -> the
+    # source is dropped regardless of team presence. Elo is the only
+    # source, so the whole consensus is None (fail-closed).
+    elo_model = SpyEloModel({"HOME": 1600.0, "AWAY": 1500.0})
+    elo_source = EloSource(elo_model)
+
+    result = consensus_margin("HOME", "AWAY", "not_a_league", [elo_source])
+
+    assert result is None
+
+
+# ---------------------------------------------------------------------------
+# consensus_margin: REALISTIC-MAGNITUDE SANITY (the test that would have
+# caught the WS-A1-fix bug -- pre-fix this produced ~1875, not ~3.0)
+# ---------------------------------------------------------------------------
+
+
+def test_consensus_margin_elo_realistic_magnitude_is_sane_not_hundreds():
+    # A real-ish Elo gap: KC 1575.0 vs DEN 1500.0 (diff 75) in the nfl.
+    # Correct: 75 / 25 = 3.0 point spread. The pre-fix code multiplied
+    # instead of dividing, yielding 75 * 25 = 1875 -- an absurd margin that
+    # pins WS-A2's win-prob ladder at ~1.0 on every game.
+    elo_model = SpyEloModel({"KC": 1575.0, "DEN": 1500.0})
+    elo_source = EloSource(elo_model)
+
+    result = consensus_margin("KC", "DEN", "nfl", [elo_source])
+
+    assert result is not None
+    assert result.ensemble_margin == pytest.approx(3.0)
+    assert result.ensemble_margin != pytest.approx(1875.0)
+    assert abs(result.ensemble_margin) < 30.0  # sane single-digit spread
+
+
+def test_consensus_margin_fpi_stub_realistic_magnitude_is_sane_not_75():
+    # FPI/BPI are already ~point-scale (points_per_unit -> 1.0), so a
+    # 3.0-point FPI edge (home 5.5, away 2.5) must stay a 3.0-point implied
+    # margin, NOT get multiplied by 25 into 75.
+    fpi_stub = FakeSource("espn_fpi", {"HOME": 5.5, "AWAY": 2.5}, scale=1.0)
+
+    result = consensus_margin("HOME", "AWAY", "nfl", [fpi_stub])
+
+    assert result is not None
+    assert result.ensemble_margin == pytest.approx(3.0)
+    assert result.ensemble_margin != pytest.approx(75.0)
+
+
+def test_consensus_margin_mixed_fpi_elo_lands_in_sane_range():
+    # Mixed real-world-shaped consensus: an FPI-scale stub (~1.0) alongside
+    # a real Elo gap, medianed together. Pre-fix, the Elo leg alone would
+    # have contributed ~1875 and the FPI leg ~75 (both multiplied by the
+    # per-league constant) -- hundreds of points either way. Post-fix both
+    # legs land in a normal low-double-digit spread.
+    fpi_stub = FakeSource("espn_fpi", {"HOME": 6.0, "AWAY": 1.0}, scale=1.0)
+    elo_model = SpyEloModel({"HOME": 1575.0, "AWAY": 1500.0})
+    elo_source = EloSource(elo_model)
+
+    result = consensus_margin("HOME", "AWAY", "nfl", [fpi_stub, elo_source])
+
+    assert result is not None
+    assert result.per_source["espn_fpi"] == pytest.approx(5.0)
+    assert result.per_source["elo"] == pytest.approx(3.0)
+    assert abs(result.ensemble_margin) < 30.0
+    for implied in result.per_source.values():
+        assert abs(implied) < 100.0  # sanity ceiling well below the pre-fix ~1875
+
+
+def test_consensus_margin_per_source_scale_differs_fpi_vs_elo_same_diff():
+    # Same rating-diff magnitude fed through two different per-source
+    # scales must NOT collapse to the same implied margin: FPI (1.0) is
+    # left alone, Elo (1/25) is shrunk. Confirms the per-source contract
+    # (not a shared per-league multiplier) actually drives the math.
+    fpi_stub = FakeSource("espn_fpi", {"HOME": 1525.0, "AWAY": 1500.0}, scale=1.0)
+    elo_model = SpyEloModel({"HOME": 1525.0, "AWAY": 1500.0})
+    elo_source = EloSource(elo_model)
+
+    result = consensus_margin("HOME", "AWAY", "nfl", [fpi_stub, elo_source])
+
+    assert result is not None
+    assert result.per_source["espn_fpi"] == pytest.approx(25.0)
+    assert result.per_source["elo"] == pytest.approx(1.0)
+    assert result.per_source["espn_fpi"] != result.per_source["elo"]
+    assert result.ensemble_margin == pytest.approx(statistics.median([25.0, 1.0]))
 
 
 # ---------------------------------------------------------------------------

@@ -900,7 +900,7 @@ def test_challenger_only_signals_cannot_enter_execution_forecast():
 
 def test_power_ratings_signal_applicable_only_for_supported_leagues_and_market_types():
     signal = PowerRatingsSignal()
-    # MLB has no power-ratings coverage (not in POINTS_PER_RATING_UNIT).
+    # MLB has no power-ratings coverage (not in POWER_RATINGS_SUPPORTED_LEAGUES).
     assert signal.applicable(_market(
         "KXMLBGAME-26JUL102005HOUTEX-HOU", "Houston vs Texas Winner?",
         yes_sub_title="Houston")) is False
