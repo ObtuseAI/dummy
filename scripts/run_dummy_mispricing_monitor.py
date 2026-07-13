@@ -156,6 +156,11 @@ def main() -> int:
                 "scanned": report["scanned"],
                 "shortlist": report["shortlist_count"],
                 "opportunities": report["opportunity_count"],
+                # WS-5: per-game lattice conviction tiers (grouped inside the
+                # sweep itself via autonomy.coherence -- nothing to assemble
+                # here, the report already carries them through).
+                "structural": report.get("structural_count", 0),
+                "cross_confirmed": report.get("cross_confirmed_count", 0),
             }))
         except Exception as exc:  # a monitor must never wedge on a bad pass
             print(json.dumps({"status": f"ERROR:{type(exc).__name__}", "error": str(exc)[:200]}))

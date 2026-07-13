@@ -8,11 +8,13 @@ from autonomy.opportunist import OpportunistEngine, _favored
 def _assess(
     ticker="G", *, model_prob, market_prob, side="NONE", edge=0.0,
     agreement="model_only", confidence="medium", book_prob=None,
+    conviction_tier=None,
 ) -> MispricingAssessment:
     return MispricingAssessment(
         market_ticker=ticker, side=side, model_prob=model_prob,
         market_prob=market_prob, book_prob=book_prob, edge=edge,
         agreement=agreement, confidence=confidence, rationale="test",
+        conviction_tier=conviction_tier,
     )
 
 
@@ -112,4 +114,68 @@ def test_min_confidence_gate():
 def test_missing_market_price_is_fail_closed():
     eng = OpportunistEngine()
     assert eng.observe(_assess(model_prob=0.80, market_prob=None)) is None
+    assert eng.candidates == {}
+
+
+# --------------------------------------------------------------------------
+# WS-5: conviction_tier drops the lock-in anchor threshold for structural /
+# cross_confirmed lattice tiers. Absent tier (None, the default) must be
+# byte-identical to today's behavior.
+# --------------------------------------------------------------------------
+
+def test_conviction_tier_absent_is_byte_identical_to_today():
+    eng = OpportunistEngine()
+    # Below the 0.62 floor and no tier -> still refuses to lock, same as today.
+    assert eng.observe(_assess(model_prob=0.58, market_prob=0.55, side="YES", edge=0.03)) is None
+    assert eng.candidates == {}
+
+
+def test_structural_tier_drops_anchor_threshold_by_0_04():
+    eng = OpportunistEngine()
+    # model_prob=0.59 -> conviction 0.59; floor 0.62 - 0.04 = 0.58 -> clears.
+    opp = eng.observe(_assess(
+        model_prob=0.59, market_prob=0.55, side="YES", edge=0.03,
+        conviction_tier="structural",
+    ))
+    assert opp is None  # lock-in observation never fires immediately
+    assert "G" in eng.candidates and eng.candidates["G"].conviction == 0.59
+
+
+def test_structural_tier_still_refuses_below_the_dropped_floor():
+    eng = OpportunistEngine()
+    # conviction 0.55 is still below 0.62 - 0.04 = 0.58 -> refuses even with the tier.
+    assert eng.observe(_assess(
+        model_prob=0.55, market_prob=0.55, side="YES", edge=0.03,
+        conviction_tier="structural",
+    )) is None
+    assert eng.candidates == {}
+
+
+def test_cross_confirmed_tier_drops_anchor_threshold_by_0_02():
+    eng = OpportunistEngine()
+    # model_prob=0.61 -> conviction 0.61; floor 0.62 - 0.02 = 0.60 -> clears.
+    eng.observe(_assess(
+        model_prob=0.61, market_prob=0.55, side="YES", edge=0.03,
+        conviction_tier="cross_confirmed",
+    ))
+    assert "G" in eng.candidates
+
+
+def test_cross_confirmed_tier_does_not_clear_the_structural_sized_gap():
+    eng = OpportunistEngine()
+    # conviction 0.59 clears the structural-dropped floor (0.58) but not the
+    # smaller cross_confirmed drop (0.62 - 0.02 = 0.60).
+    assert eng.observe(_assess(
+        model_prob=0.59, market_prob=0.55, side="YES", edge=0.03,
+        conviction_tier="cross_confirmed",
+    )) is None
+    assert eng.candidates == {}
+
+
+def test_unknown_conviction_tier_is_treated_as_no_drop():
+    eng = OpportunistEngine()
+    assert eng.observe(_assess(
+        model_prob=0.59, market_prob=0.55, side="YES", edge=0.03,
+        conviction_tier="some_future_tier",
+    )) is None
     assert eng.candidates == {}

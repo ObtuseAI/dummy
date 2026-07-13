@@ -29,6 +29,16 @@ DEFAULT_TRIGGER_EDGE = 0.06
 # since the anchor (the "deviation"), so we do not fire at the entry price.
 DEFAULT_MIN_DEVIATION = 0.03
 
+# WS-5 (autonomy/coherence.py): a lattice conviction tier on the assessment
+# lowers the lock-in conviction floor -- a structural (ladder-violation) or
+# cross_confirmed (independent cross-family agreement) read is trustworthy
+# evidence on its own, so the model doesn't need to clear the full 0.62 bar
+# to be worth watching. Unknown/absent tiers get no drop (byte-identical).
+CONVICTION_TIER_ANCHOR_DROP: dict[str, float] = {
+    "structural": 0.04,
+    "cross_confirmed": 0.02,
+}
+
 
 def _favored(model_prob: float) -> tuple[str, float]:
     """(favored side, conviction) — the side the model backs and how strongly."""
@@ -94,7 +104,9 @@ class OpportunistEngine:
 
         candidate = self.candidates.get(assessment.market_ticker)
         if candidate is None:
-            if conviction < self.conviction_floor:
+            tier = getattr(assessment, "conviction_tier", None)
+            effective_floor = self.conviction_floor - CONVICTION_TIER_ANCHOR_DROP.get(tier, 0.0)
+            if conviction < effective_floor:
                 return None  # not a candidate worth the patience
             candidate = Candidate(
                 ticker=assessment.market_ticker, side=side,

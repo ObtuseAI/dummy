@@ -70,6 +70,11 @@ class MispricingAssessment:
     agreement: str       # "model+book" | "model_only" | "conflict" | "none"
     confidence: str      # "high" | "medium" | "low"
     rationale: str
+    # WS-5 (autonomy/coherence.py): optional per-game lattice conviction tier
+    # ("structural" | "cross_confirmed" | "model+book" | "model_only" | None).
+    # Absent/None is byte-identical to pre-WS-5 behavior everywhere it is
+    # consumed (autonomy/opportunist.py's anchor-threshold relaxation).
+    conviction_tier: str | None = None
 
 
 def _implied_yes_from_quotes(
