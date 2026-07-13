@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import math
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
@@ -25,6 +25,7 @@ from autonomy.sports.college import (
 )
 from autonomy.sports.elo import EloModel
 from autonomy.sports.espn import EspnClient, Game, canonical_team, default_fetch_scoreboard
+from autonomy.sports.football_weather import default_fetch_football_weather, football_weather_adjustment
 from autonomy.sports.injuries import InjuryBook
 from autonomy.sports.nba_model import (
     MODEL_VERSION as NBA_MODEL_VERSION,
@@ -538,6 +539,7 @@ class TeamSportsIntelligenceSignal:
         nhl_rest_tracker: GameDateTracker | None = None,
         playoff_books: dict[str, PlayoffBook] | None = None,
         roster_drift_books: dict[str, RosterDriftBook] | None = None,
+        fetch_football_weather: Any = None,
     ) -> None:
         from autonomy.specialists.seasons import SeasonMonitor
 
@@ -650,6 +652,12 @@ class TeamSportsIntelligenceSignal:
             )
             for league in LEAGUE_SCORE_CONFIGS
         }
+        # WS-10: NFL/NCAAF outdoor-weather TOTALS-only adjustment (see
+        # autonomy/sports/football_weather.py). Injectable for tests;
+        # defaults to the real keyless Open-Meteo fetch. Only ever called
+        # from the "total" market branch below -- winner/spread pricing
+        # never touches it, so it's never invoked for those market types.
+        self._fetch_football_weather = fetch_football_weather or default_fetch_football_weather
 
     def _warmup_nba(self, date_ranges: list[str]) -> int:
         """Ingest WS-1 boxscores + update the NBA pace model for newly-final
@@ -1174,6 +1182,13 @@ class TeamSportsIntelligenceSignal:
         else:
             report = prediction
 
+        # WS-10: NFL/NCAAF outdoor-weather TOTALS-only mean shift. Populated
+        # ONLY inside the "total" branch below for parsed.sport in
+        # ("nfl", "ncaaf") -- winner/spread never set this, so they stay
+        # byte-identical to a world without this feature (no fetch is even
+        # attempted for those market types, let alone applied).
+        weather_features: dict[str, Any] = {}
+
         if parsed.market_type == "winner" and parsed.subject:
             subject = parsed.subject.upper()
             if subject == game.home.upper():
@@ -1360,13 +1375,48 @@ class TeamSportsIntelligenceSignal:
                 source = "ncaamb_game_total"
                 detail = f"over {parsed.threshold:g}"
             elif ncaaf_kernel is not None:
-                probability = ncaaf_kernel.total_over_probability(parsed.threshold)
+                # WS-10: weather hits the TOTAL mean only -- ncaaf_kernel
+                # itself (shared with the winner/spread branches above) is
+                # never mutated; a fresh kernel is built here just for total
+                # pricing so winner/spread stay byte-identical regardless of
+                # weather. NcaafCollegeModel's margin distribution (which is
+                # all winner/spread reads) depends only on expected_margin,
+                # never expected_total, so this is doubly safe.
+                weather_delta, weather_features = football_weather_adjustment(
+                    "ncaaf", game.home, game.date, fetch_fn=self._fetch_football_weather)
+                total_kernel = ncaaf_kernel
+                if weather_delta:
+                    from autonomy.sports.college import NcaafCollegeModel
+
+                    total_kernel = NcaafCollegeModel(
+                        ncaaf_kernel.expected_margin,
+                        ncaaf_kernel.expected_total + weather_delta,
+                        ncaaf_kernel.total_sigma,
+                    )
+                probability = total_kernel.total_over_probability(parsed.threshold)
                 uncertainty = ncaaf_prediction.total_uncertainty
                 source = "ncaaf_game_total"
                 detail = f"over {parsed.threshold:g}"
             else:
+                # WS-10: NFL totals price off the generic TeamScoreModel
+                # path (NFL's own key-number kernel is winner/spread only --
+                # see nfl_kernel's construction above), so the weather delta
+                # shifts a locally-`replace`d copy of `prediction` used ONLY
+                # for this probability call; `prediction` itself (read by
+                # the winner/spread branches and by `report` above) is
+                # untouched. Every other league landing in this generic
+                # branch (cold NBA/NHL/NCAAMB) never computes a weather
+                # delta at all, so it's an exact 0.0 no-op for them.
+                weather_delta = 0.0
+                if parsed.sport == "nfl":
+                    weather_delta, weather_features = football_weather_adjustment(
+                        "nfl", game.home, game.date, fetch_fn=self._fetch_football_weather)
+                total_prediction = prediction
+                if weather_delta:
+                    total_prediction = replace(
+                        prediction, expected_total=prediction.expected_total + weather_delta)
                 probability = self.models[parsed.sport].total_probability(
-                    prediction, parsed.threshold,
+                    total_prediction, parsed.threshold,
                 )
                 uncertainty = prediction.total_uncertainty
                 source = f"{parsed.sport}_game_total"
@@ -1418,6 +1468,11 @@ class TeamSportsIntelligenceSignal:
                 **situational_rest.features,
                 **playoff_effect.features,
                 **roster_effect.features,
+                # WS-10: NFL/NCAAF outdoor-weather TOTALS-only layer -- empty
+                # for every non-total market and for any total signal where
+                # the reading was unavailable (fail-closed), never mutating
+                # any of the mean-shift keys above.
+                **weather_features,
                 "mismatch_score": round(mismatch_score, 4) if mismatch_score is not None else None,
                 "mismatch_margin_delta": round(mismatch_delta, 4),
                 **({f"{parsed.sport}_mismatch_unavailable": True} if mismatch_unavailable else {}),
