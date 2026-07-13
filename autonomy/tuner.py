@@ -93,6 +93,7 @@ row's repricing (fail-closed per row, never guessed).
 """
 from __future__ import annotations
 
+import json
 import math
 import re
 import sqlite3
@@ -113,6 +114,11 @@ from autonomy.strategy_miner import MinedRow, _purged_split, load_settled_rows
 # ("respect it") is honored without inventing a second, possibly-divergent
 # threshold; see the WS-9 report for this discrepancy on record.
 from autonomy.strategy_miner import MIN_TEST_CLUSTERS as MIN_CLUSTERS
+
+# WS-B loop wiring: the loss-deconstruction evolution engine's priority read.
+# ORDER/ANNOTATE ONLY -- see _load_loss_priority and its use in
+# tuning_report(). Never touches _fit_tunable or the walk-forward CI gate.
+DEFAULT_LOSS_ATTRIBUTION_PATH = Path("runtime/autonomy/loss_attribution.json")
 
 # -- subject-side inference (see module docstring) --------------------------
 _SPREAD_SUBJECT_RE = re.compile(r"^([A-Z]+)\d+$")
@@ -476,19 +482,80 @@ def _fit_tunable(spec: _TunableSpec, rows: list[MinedRow]) -> dict[str, Any]:
     return base
 
 
-def tuning_report(conn: sqlite3.Connection, *, now_iso: str) -> dict[str, Any]:
+def _load_loss_priority(path: Path | None) -> list[str]:
+    """Read-only, fail-closed priority read (WS-B loop wiring).
+
+    Missing file, corrupt JSON, or any other trouble -> empty list -> no-op
+    ordering, identical to the artifact never having existed. This is the
+    ONLY thing the loss-deconstruction engine is allowed to influence here:
+    which order ``tuning_report`` lists tunables in, and a ``bleeding_priority``
+    annotation on each proposal. It must never reach ``_fit_tunable`` or any
+    field ``_fit_tunable`` computes.
+    """
+    target = path if path is not None else DEFAULT_LOSS_ATTRIBUTION_PATH
+    try:
+        if not target.exists():
+            return []
+        data = json.loads(target.read_text(encoding="utf-8"))
+    except Exception:
+        return []
+    try:
+        from autonomy.loss_engine import loss_priority
+
+        return loss_priority(data)
+    except Exception:
+        return []
+
+
+def _tunable_is_bleeding(spec: _TunableSpec, scope: str) -> bool:
+    """Does a WS-B bleeding scope key (``specialist|market_type|axis``)
+    describe this tunable? Matching only, never a value change."""
+    parts = str(scope or "").split("|")
+    if len(parts) < 2:
+        return False
+    specialist, market_type = parts[0], parts[1]
+    return specialist == spec.applies_to and market_type in spec.market_types
+
+
+def tuning_report(
+    conn: sqlite3.Connection, *, now_iso: str,
+    loss_attribution_path: Path | None = None,
+) -> dict[str, Any]:
     """One full tuning pass -> JSON-able proposal artifact.
 
     Read-only against the ledger; writes NOTHING but the returned dict
     (the caller decides whether/where to persist it via ``write_report``).
+
+    ``loss_attribution_path`` (WS-B loop wiring, defaults to
+    ``runtime/autonomy/loss_attribution.json``) is read fail-closed to
+    decide which tunables to list FIRST and to annotate with
+    ``bleeding_priority`` -- it is applied strictly AFTER every proposal's
+    verdict/fields are already computed below, so it can never change a
+    walk-forward CI gate or a candidate/keep verdict, only the order the
+    (otherwise byte-identical) proposals are listed in.
     """
     rows = load_settled_rows(conn)
-    proposals = [_fit_tunable(spec, rows) for spec in _SPECS]
+    proposals = [_fit_tunable(spec, rows) for spec in _SPECS]  # gate/verdict: UNCHANGED by priority
     total_grid_points = sum(len(spec.grid) for spec in _SPECS)
+
+    priority_scopes = _load_loss_priority(loss_attribution_path)
+    spec_by_name = {spec.name: spec for spec in _SPECS}
+    for proposal in proposals:
+        spec = spec_by_name[proposal["name"]]
+        proposal["bleeding_priority"] = any(
+            _tunable_is_bleeding(spec, scope) for scope in priority_scopes
+        )
+    if priority_scopes:
+        # Stable sort: bleeding-priority tunables first, original registry
+        # order preserved within each group. Ordering/annotation ONLY --
+        # every proposal dict's content besides this new key is untouched.
+        proposals.sort(key=lambda proposal: not proposal["bleeding_priority"])
+
     return {
         "generated_at": now_iso,
         "settled_rows": len(rows),
         "proposals": proposals,
+        "loss_priority_scopes": priority_scopes,
         "candidate_count": sum(1 for proposal in proposals if proposal["verdict"] == "candidate"),
         # Multiple-comparisons disclosure (mirrors strategy_miner.py's
         # `rules_tested`/`expected_false_positives` block): how many

@@ -90,11 +90,34 @@ def session_authorization_state(runtime_dir: Path) -> dict[str, Any]:
     }
 
 
+def _bleeding_by_specialist(loss_attribution: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    """WS-B: the single worst bleeding grading scope per specialist, from
+    ``runtime/autonomy/loss_attribution.json``. Fail-closed: absent/malformed
+    artifact or no bleeding scopes -> {} (the council panel then shows no
+    "where we bleed" line for anyone, never a fabricated one)."""
+    worst: dict[str, dict[str, Any]] = {}
+    for entry in (loss_attribution or {}).get("scopes") or []:
+        if not isinstance(entry, dict) or entry.get("verdict") != "bleeding":
+            continue
+        scope = str(entry.get("scope") or "")
+        specialist = scope.split("|", 1)[0]
+        if not specialist:
+            continue
+        edge = entry.get("cluster_edge")
+        if edge is None:
+            continue
+        current = worst.get(specialist)
+        if current is None or float(edge) < float(current.get("cluster_edge") or 0.0):
+            worst[specialist] = entry
+    return worst
+
+
 def _council_panel(
     council_snapshot: dict[str, Any],
     season_state: dict[str, Any],
     backtest: dict[str, Any],
     clv_report: dict[str, Any],
+    loss_attribution: dict[str, Any] | None = None,
 ) -> list[dict[str, Any]]:
     """Roll up one dashboard row per specialist (WS-13, read-only view).
 
@@ -144,6 +167,10 @@ def _council_panel(
         agg["n_entries"] += n_entries
         agg["bps_weighted"] += n_entries * float(scope["clv_bps_mean"])
 
+    # WS-B: worst bleeding grading scope per specialist, from the loss
+    # engine's read-only artifact. Fail-closed to {} -> no line for anyone.
+    bleeding = _bleeding_by_specialist(loss_attribution or {})
+
     rows: list[dict[str, Any]] = []
     for entry in specialists:
         name = entry.get("name")
@@ -165,6 +192,11 @@ def _council_panel(
         clv = clv_by_specialist.get(name) or {}
         clv_entries = int(clv.get("n_entries") or 0)
         clv_bps = round(clv["bps_weighted"] / clv_entries, 1) if clv_entries else None
+        bleed = bleeding.get(name)
+        where_we_bleed = (
+            f"{bleed['scope']} edge {bleed['cluster_edge']} ({bleed['n_clusters']} clusters)"
+            if bleed else None
+        )
         rows.append({
             "name": name,
             "status": entry.get("status"),
@@ -174,6 +206,7 @@ def _council_panel(
             "contested_n": contested_n,
             "contested_brier": contested_brier,
             "clv_bps": clv_bps,
+            "where_we_bleed": where_we_bleed,
             "open_opportunities": entry.get("open_opportunities", 0),
         })
     return rows
@@ -197,6 +230,9 @@ def assemble_dashboard_state(runtime_dir: Path | None = None) -> dict[str, Any]:
     # process holds no live monitor. Both fail-closed to {} when absent.
     council_snapshot = _load_json(rd / "council_snapshot.json") or {}
     season_state = _load_json(rd / "season_state.json") or {}
+    # WS-B: loss-deconstruction evolution engine artifact (read-only,
+    # fail-closed to {} when absent -- see autonomy/loss_engine.py).
+    loss_attribution = _load_json(rd / "loss_attribution.json") or {}
     from autonomy.paper_dashboard import assemble_paper_dashboard, scheduled_task_status
     from autonomy.sports.dashboard import SPORTS_TASK_NAME, assemble_sports_dashboard
 
@@ -267,7 +303,9 @@ def assemble_dashboard_state(runtime_dir: Path | None = None) -> dict[str, Any]:
     scoreboard.sort(key=lambda r: (r["beat_market_rate"] or 0), reverse=True)
 
     try:
-        council = _council_panel(council_snapshot, season_state, backtest, clv_report)
+        council = _council_panel(
+            council_snapshot, season_state, backtest, clv_report, loss_attribution,
+        )
     except Exception:
         council = []  # fail-closed: a malformed snapshot must never break the dashboard
 
@@ -292,6 +330,7 @@ def assemble_dashboard_state(runtime_dir: Path | None = None) -> dict[str, Any]:
         "crypto_paper_twin": crypto_paper_twin,
         "mispricing_monitor": mispricing_monitor,
         "clv_report": clv_report,
+        "loss_attribution": loss_attribution,
         "council": council,
         "paper_operation": paper_operation,
         "paper_scheduler": paper_scheduler,
@@ -541,8 +580,8 @@ function renderCouncil(rows){
  rows=rows||[];
  const statusClass=s=>s==='ok'?'ok':s==='dormant'?'muted':s==='cold'?'warn':'bad';
  const seasonText=v=>v==null?'—':(v?'yes':'no');
- document.getElementById('council').innerHTML=rows.length?'<table><tr><th>specialist</th><th>status</th><th>in season</th><th>games seen</th><th>settled n</th><th>contested n</th><th>contested Brier</th><th>CLV bps</th><th>open opportunities</th></tr>'
-   +rows.map(r=>`<tr><td><b>${esc(r.name)}</b></td><td class="${statusClass(r.status)}">${esc(r.status)}</td><td>${seasonText(r.in_season)}</td><td>${r.games_seen??'—'}</td><td>${r.settled_n??'—'}</td><td>${r.contested_n??'—'}</td><td>${r.contested_brier??'—'}</td><td>${r.clv_bps==null?'—':r.clv_bps}</td><td>${r.open_opportunities??0}</td></tr>`).join('')+'</table>':'<div class="muted">No council snapshot yet (runtime/autonomy/council_snapshot.json absent or empty).</div>';
+ document.getElementById('council').innerHTML=rows.length?'<table><tr><th>specialist</th><th>status</th><th>in season</th><th>games seen</th><th>settled n</th><th>contested n</th><th>contested Brier</th><th>CLV bps</th><th>open opportunities</th><th>where we bleed</th></tr>'
+   +rows.map(r=>`<tr><td><b>${esc(r.name)}</b></td><td class="${statusClass(r.status)}">${esc(r.status)}</td><td>${seasonText(r.in_season)}</td><td>${r.games_seen??'—'}</td><td>${r.settled_n??'—'}</td><td>${r.contested_n??'—'}</td><td>${r.contested_brier??'—'}</td><td>${r.clv_bps==null?'—':r.clv_bps}</td><td>${r.open_opportunities??0}</td><td>${r.where_we_bleed?esc(r.where_we_bleed):'—'}</td></tr>`).join('')+'</table>':'<div class="muted">No council snapshot yet (runtime/autonomy/council_snapshot.json absent or empty).</div>';
 }
 let tickGeneration=0;
 async function controlPaper(action){

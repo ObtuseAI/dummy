@@ -30,11 +30,14 @@ def test_installer_references_both_miner_and_grader():
 
 def test_installer_runs_the_grader_after_the_miner():
     text = INSTALLER.read_text(encoding="utf-8")
-    # In the schtasks bootstrap action the two scripts are chained with && so
-    # the grader runs only after the miner, in that order.
+    # In the schtasks bootstrap action the scripts are chained with && so the
+    # grader runs only after the miner, in that order (the loss engine -- see
+    # test_autonomy_loss_engine_scheduled.py -- was appended after WS-B,
+    # still after the grader).
     miner_at = text.index("run_dummy_strategy_miner.py")
     grader_at = text.index("run_dummy_clv_grader.py")
     assert miner_at < grader_at
-    # And the effective ScheduledTask action is an ARRAY of two actions
-    # (Task Scheduler runs array actions sequentially).
-    assert "@($minerAction, $graderAction)" in text
+    # And the effective ScheduledTask action is an ARRAY containing both
+    # actions in order (Task Scheduler runs array actions sequentially).
+    action_array_at = text.index("-Action @($minerAction, $graderAction, $lossEngineAction)")
+    assert action_array_at > 0
