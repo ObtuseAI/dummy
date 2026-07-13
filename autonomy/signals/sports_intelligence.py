@@ -10,6 +10,7 @@ from typing import Any
 
 from autonomy.live_odds import EspnSummaryBook
 from autonomy.ontology import MarketView, Signal, Vertical
+from core.logger import logger
 from autonomy.sports import boxscores as boxscores_module
 from autonomy.sports.baseball import (
     BaseballRunModel,
@@ -57,6 +58,7 @@ from autonomy.sports.power_ratings import (
     EspnFpiSource,
     consensus_margin,
 )
+from autonomy.sports.ratings_solvers import ColleyRatingSource, MasseyRatingSource
 from autonomy.sports.players import (
     LEAGUE_POINT_SCALE,
     LeagueInjuryBook,
@@ -273,6 +275,32 @@ def _date_range(days_back: int = 2) -> str:
     today = datetime.now(timezone.utc).date()
     start = today - timedelta(days=days_back)
     return f"{start.strftime('%Y%m%d')}-{today.strftime('%Y%m%d')}"
+
+
+# How far back MasseyRatingSource/ColleyRatingSource look to build their
+# settled-game graph, and how the window is chunked (mirrors
+# scripts/run_dummy_sports_warmup.py's own chunking for the same reason:
+# keep each individual ESPN scoreboard fetch to a bounded date span rather
+# than one huge multi-month request). Both are solved ONCE per
+# PowerRatingsSignal instance (construction time), not re-solved every
+# cycle -- "Keep per-cycle warm cost sane" per the WS-A1b brief -- so this
+# cost is paid once per process, same as FPI/BPI's per-instance fetch cache.
+MASSEY_COLLEY_WARMUP_DAYS_BACK = 120
+MASSEY_COLLEY_WARMUP_CHUNK_DAYS = 15
+
+
+def _massey_colley_date_ranges(
+    days_back: int = MASSEY_COLLEY_WARMUP_DAYS_BACK,
+    chunk_days: int = MASSEY_COLLEY_WARMUP_CHUNK_DAYS,
+) -> list[str]:
+    today = datetime.now(timezone.utc).date()
+    ranges: list[str] = []
+    start = today - timedelta(days=days_back)
+    while start < today:
+        end = min(today, start + timedelta(days=chunk_days - 1))
+        ranges.append(f"{start.strftime('%Y%m%d')}-{end.strftime('%Y%m%d')}")
+        start = end + timedelta(days=1)
+    return ranges
 
 
 class BaseballIntelligenceSignal:
@@ -1659,6 +1687,8 @@ class PowerRatingsSignal:
         model_dir: Path | None = None,
         fpi_source: Any = None,
         bpi_source: Any = None,
+        massey_source: Any = None,
+        colley_source: Any = None,
         seasons: Any = None,
         consensus_fn: Any = None,
         models: dict[str, TeamScoreModel] | None = None,
@@ -1679,6 +1709,19 @@ class PowerRatingsSignal:
         # never mutated by anything in this class.
         self.fpi_source = fpi_source or EspnFpiSource()
         self.bpi_source = bpi_source or EspnBpiSource()
+        # WS-A1b: in-house Massey (ridge least-squares over margins) +
+        # Colley (win-loss matrix) sources, mathematically independent of
+        # ESPN FPI/BPI/Elo -- see autonomy/sports/ratings_solvers.py. Solved
+        # ONCE here at construction time (not re-solved every cycle) and
+        # cached on the source; a caller-injected source is trusted as
+        # already warm and is NEVER auto-warmed here, mirroring how an
+        # injected fpi_source/bpi_source is never re-fetched by this
+        # __init__ either.
+        self.massey_source = massey_source or MasseyRatingSource(espn=self.espn)
+        self.colley_source = colley_source or ColleyRatingSource(espn=self.espn)
+        if massey_source is None or colley_source is None:
+            self._warm_massey_colley(
+                warm_massey=massey_source is None, warm_colley=colley_source is None)
         # "Our own" per-league engine for the divergence gap (Emission 2):
         # the generic TeamScoreModel every league already falls back to
         # (see TeamSportsIntelligenceSignal) -- reloaded (never retrained)
@@ -1698,11 +1741,56 @@ class PowerRatingsSignal:
             for league in POWER_RATINGS_SUPPORTED_LEAGUES
         }
 
+    def _warm_massey_colley(self, warm_massey: bool = True, warm_colley: bool = True) -> None:
+        """Solve Massey/Colley once per league over the trailing settled-game
+        window (see `_massey_colley_date_ranges`). Same fail-closed shape as
+        every other per-league warm in this module: a dormant league (season
+        gate) or an exception mid-fetch is skipped/swallowed rather than
+        raised, leaving that league's ratings empty (byte-identical to the
+        source being absent) instead of crashing signal construction.
+        """
+        if not (warm_massey or warm_colley):
+            return
+        date_ranges = _massey_colley_date_ranges()
+        for league in POWER_RATINGS_SUPPORTED_LEAGUES:
+            try:
+                if not self.seasons.active(league):
+                    continue
+            except Exception:
+                continue
+            if warm_massey:
+                try:
+                    self.massey_source.warmup(league, date_ranges)
+                except Exception:
+                    pass
+                else:
+                    if not getattr(self.massey_source, "_ratings", {}).get(league):
+                        logger.warning(
+                            "Massey warmup produced no ratings (dropped from ensemble)",
+                            extra={"component": "sports_intelligence", "league": league, "source": "massey"},
+                        )
+            if warm_colley:
+                try:
+                    self.colley_source.warmup(league, date_ranges)
+                except Exception:
+                    pass
+                else:
+                    if not getattr(self.colley_source, "_ratings", {}).get(league):
+                        logger.warning(
+                            "Colley warmup produced no ratings (dropped from ensemble)",
+                            extra={"component": "sports_intelligence", "league": league, "source": "colley"},
+                        )
+
     def _sources(self, league: str) -> list[Any]:
         rating_source = (
             self.fpi_source if league in FOOTBALL_POWER_LEAGUES else self.bpi_source
         )
-        return [rating_source, EloSource(self.elo_models[league])]
+        return [
+            rating_source,
+            EloSource(self.elo_models[league]),
+            self.massey_source,
+            self.colley_source,
+        ]
 
     def on_cycle_start(self) -> None:
         self.espn.clear_cache()
