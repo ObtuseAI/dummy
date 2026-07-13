@@ -810,7 +810,7 @@ class TeamSportsIntelligenceSignal:
                     nhl_prediction, home_score, away_score, minutes_remaining)
                 source = "nhl_live_winner"
                 detail = f"{subject} live win ({away_score}-{home_score}, period {game.current_period})"
-                uncertainty = min(0.45, prediction.winner_uncertainty + 0.05)
+                uncertainty = min(0.45, nhl_prediction.winner_uncertainty + 0.05)
             else:
                 if nba_engine is not None:
                     home_win = nba_prediction.home_win_probability
@@ -822,7 +822,11 @@ class TeamSportsIntelligenceSignal:
                     home_win = prediction.home_win_probability
                 source = f"{parsed.sport}_structural_winner"
                 detail = f"{subject} win"
-                uncertainty = prediction.winner_uncertainty
+                uncertainty = (
+                    nhl_prediction.winner_uncertainty
+                    if nhl_engine is not None
+                    else prediction.winner_uncertainty
+                )
             probability = home_win if subject_is_home else 1.0 - home_win
         elif parsed.market_type == "spread" and parsed.subject and parsed.threshold is not None:
             subject = parsed.subject.upper()
@@ -847,7 +851,7 @@ class TeamSportsIntelligenceSignal:
                     home_score, away_score, minutes_remaining)
                 source = "nhl_live_spread"
                 detail = f"{subject} live by >{parsed.threshold:g} (period {game.current_period})"
-                uncertainty = min(0.45, prediction.winner_uncertainty + 0.07)
+                uncertainty = min(0.45, nhl_prediction.winner_uncertainty + 0.07)
             else:
                 if nba_engine is not None:
                     probability = nba_engine.cover_probability(
@@ -872,7 +876,11 @@ class TeamSportsIntelligenceSignal:
                     sigma = LEAGUE_SCORE_CONFIGS[parsed.sport].margin_sigma
                     z = (parsed.threshold - subject_margin) / max(0.25, sigma)
                     probability = min(0.995, max(0.005, 1.0 - 0.5 * (1.0 + math.erf(z / math.sqrt(2.0)))))
-                uncertainty = min(0.44, prediction.winner_uncertainty + 0.02)
+                uncertainty = (
+                    min(0.44, nhl_prediction.winner_uncertainty + 0.02)
+                    if nhl_engine is not None
+                    else min(0.44, prediction.winner_uncertainty + 0.02)
+                )
                 source = f"{parsed.sport}_spread"
                 detail = f"{subject} covers {parsed.threshold:g}"
         elif parsed.market_type == "total" and parsed.threshold is not None:
@@ -896,7 +904,7 @@ class TeamSportsIntelligenceSignal:
                     f"live over {parsed.threshold:g} ({home_score + away_score} so far, "
                     f"period {game.current_period})"
                 )
-                uncertainty = min(0.45, prediction.total_uncertainty + 0.05)
+                uncertainty = min(0.45, nhl_prediction.total_uncertainty + 0.05)
             elif nba_engine is not None:
                 probability = nba_engine.total_probability(nba_prediction, parsed.threshold)
                 uncertainty = prediction.total_uncertainty
@@ -904,7 +912,7 @@ class TeamSportsIntelligenceSignal:
                 detail = f"over {parsed.threshold:g}"
             elif nhl_engine is not None:
                 probability = nhl_engine.total_probability(nhl_prediction, parsed.threshold)
-                uncertainty = prediction.total_uncertainty
+                uncertainty = nhl_prediction.total_uncertainty
                 source = "nhl_game_total"
                 detail = f"over {parsed.threshold:g}"
             else:

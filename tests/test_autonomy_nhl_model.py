@@ -540,3 +540,59 @@ def test_nhl_hook_live_abstains_when_cold(tmp_path):
     signal = _mk_signal(tmp_path, game)
     result = signal.generate(_market("KXNHLGAME-26JAN12BOSBUF-BOS", "Bruins vs Sabres Winner?"))
     assert result is None
+
+
+def _probables_payload(game_id: str, home_name: str, away_name: str) -> dict:
+    return {"events": [{"id": game_id, "competitions": [{"competitors": [
+        {"homeAway": "home", "probables": [{"athlete": {"displayName": home_name}}]},
+        {"homeAway": "away", "probables": [{"athlete": {"displayName": away_name}}]},
+    ]}]}]}
+
+
+def test_nhl_hook_emitted_signal_widens_uncertainty_when_goalie_unknown(tmp_path):
+    # WS-3 review regression: the pre-game winner path must widen the
+    # emitted Signal.uncertainty by GOALIE_UNKNOWN_UNCERTAINTY_BUMP when the
+    # starting goalie is unconfirmed, sourced from the NHL model's own
+    # nhl_prediction.winner_uncertainty -- not the generic TeamScoreModel's
+    # prediction.winner_uncertainty, which never carries the bump.
+    game = Game("g1", "nhl", "BOS", "BUF", "pre", None, "2026-01-12T20:00Z")
+    boxes = [_box("BOS", "BUF", True, 1.0, 3.0, game_id=f"g{i}") for i in range(MIN_GAMES_FOR_ENGINE)]
+    boxes += [_box("BUF", "BOS", False, 1.0, 3.0, game_id=f"g{i}") for i in range(MIN_GAMES_FOR_ENGINE)]
+
+    unknown_dir = tmp_path / "unknown"
+    unknown_dir.mkdir()
+    unknown_signal = _mk_signal(unknown_dir, game, nhl_model=NhlModel())
+    unknown_signal.nhl_boxscores.ingest(boxes)
+    unknown_result = unknown_signal.generate(
+        _market("KXNHLGAME-26JAN12BOSBUF-BOS", "Bruins vs Sabres Winner?"))
+    assert unknown_result is not None
+    assert unknown_result.features["goalie_known_home"] is False
+    assert unknown_result.features["goalie_known_away"] is False
+
+    known_dir = tmp_path / "known"
+    known_dir.mkdir()
+    known_signal = _mk_signal(known_dir, game, nhl_model=NhlModel())
+    known_signal._fetch_nhl_scoreboard = (
+        lambda league, dates: _probables_payload("g1", "Known Home Goalie", "Known Away Goalie"))
+    known_signal.nhl_boxscores.ingest(boxes)
+    known_result = known_signal.generate(
+        _market("KXNHLGAME-26JAN12BOSBUF-BOS", "Bruins vs Sabres Winner?"))
+    assert known_result is not None
+    assert known_result.features["goalie_known_home"] is True
+    assert known_result.features["goalie_known_away"] is True
+
+    # The widening must actually reach the emitted Signal, not just the
+    # NhlModel prediction object -- this is the exact defect under review.
+    # Both goalies are unconfirmed in the "unknown" case, so the bump is
+    # applied twice (once per side) inside NhlModel.predict -- compute the
+    # expected values independently from the model itself rather than
+    # re-deriving the arithmetic, so this test doesn't silently drift if the
+    # bump formula changes.
+    reference_model = NhlModel()
+    expected_unknown = reference_model.predict(game, None, None).winner_uncertainty
+    expected_known = reference_model.predict(
+        game, "Known Home Goalie", "Known Away Goalie").winner_uncertainty
+    assert expected_unknown > expected_known  # sanity: the bump is real
+    assert unknown_result.uncertainty == pytest.approx(expected_unknown, abs=1e-9)
+    assert known_result.uncertainty == pytest.approx(expected_known, abs=1e-9)
+    assert unknown_result.uncertainty > known_result.uncertainty
