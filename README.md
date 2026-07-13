@@ -12,7 +12,10 @@ records the full lifecycle in an auditable ledger.
 - **Sports arsenal:** MLB winners, totals, spreads, and YRFI/NRFI — with real
   left/right platoon splits, per-team bullpen quality, rivalry/divisional
   awareness, and probabilistic baserunning; NBA, NCAAB, NFL, NCAAF, and NHL
-  winners and totals. (UFC and Formula One retired 2026-07-12.)
+  winners and totals, each priced by a league-specific kernel and cross-checked
+  by a power-ratings ensemble challenger (ESPN FPI/BPI, in-house Elo, and
+  in-house Massey and Colley ratings computed from public final scores).
+  (UFC and Formula One retired 2026-07-12.)
 - **Training arsenal:** point-in-time replay, Monte Carlo simulation,
   adversarial arenas, event-purged walk-forward validation, calibration and
   risk analytics, deterministic replay buffers, and bounded recursive
@@ -68,6 +71,22 @@ evidence, and a human-gated propose-then-promote pipeline is the only way
 evidence ever reaches the execution ensemble. The dashboard's council panel
 (below) surfaces per-specialist status, season state, evidence volume, and
 CLV read-only. Details: [docs/AUTONOMY.md](docs/AUTONOMY.md#council-of-specialists).
+
+The market-state routing that assigns one specialist per market — the layer
+that decides *"who governs this market"* — is documented in
+[docs/MARKET_STATE_ROUTING.md](docs/MARKET_STATE_ROUTING.md).
+
+**Power-ratings ensemble.** Each team league carries a challenger that blends
+several independent rating sources — ESPN FPI/BPI (keyless, first-party),
+in-house Elo, and in-house Massey (ridge least-squares over margins) and Colley
+(win-loss matrix) ratings computed from public settled scores — into one
+consensus point margin. Each source declares its own point-margin scale, and
+the ensemble prices a coherent winner-plus-spread ladder from a single
+distribution plus an opportunistic divergence flag when the ensemble and the
+league kernel disagree while sources agree. It is challenger-only: it accrues
+CLV and Brier evidence but never reaches capital until an explicit human
+promotion. No ratings site is scraped; the Massey and Colley methods are
+replicated in-house from public final scores.
 
 ## The loop
 
@@ -133,6 +152,14 @@ default), reconciles settlements, and grades every source against reality.
   model, rewrite code, alter production weights, or reach capital. NFL winner
   is also retained as an explicit gap while listed contracts accumulate
   scope-specific forward settlement and calibration evidence.
+- **Loss-deconstruction evolution engine**: a deterministic nightly pass groups
+  settled trades by grading scope, finds where the system bleeds versus the
+  market (cluster-level Brier shortfall with 95% intervals and disclosed family
+  size), and buckets each bleeding scope by feature regime, market type, and
+  phase. An LLM narration layer adds plain-language commentary per scope. The
+  output is a read-only artifact that orders the tuner's target priority
+  (non-gating) and surfaces a "where we bleed" line on the dashboard — it
+  mutates no source, parameter, or promotion.
 - **Reflexion**: losing decisions distilled into structured lessons via the
   model router.
 

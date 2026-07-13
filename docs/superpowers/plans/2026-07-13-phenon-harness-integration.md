@@ -26,6 +26,26 @@ Every task's requirements implicitly include these (verbatim from the spec):
 
 ---
 
+## STATUS — SHIPPED 2026-07-13
+
+All planned workstreams merged to `main`, plus one user addition (WS-A1b) and one
+Critical fix (WS-A1-fix) found during the build. Full suite 5420 green.
+
+| WS | Status | PR | Merge SHA |
+|---|---|---|---|
+| WS-C — L1 routing docs | ✅ merged | #66 | `2f760b6` |
+| WS-A1 — power-ratings fetch + consensus | ✅ merged | #67 | `00c9555` |
+| WS-A1-fix — consensus scale (Critical) | ✅ merged | #70 | `929b097` |
+| WS-B — loss-deconstruction evolution engine | ✅ merged | #68 | `e9f1b24` |
+| WS-A2 — power-ratings emissions | ✅ merged | #69 | `7dedb46` |
+| WS-A1b — in-house Massey + Colley (user addition) | ✅ merged | #71 | `8960d0c` |
+
+Each PR passed an adversarial opus review; findings fixed pre-merge. See the
+takeover report for build history, the Critical bug write-up, deferred
+follow-ups, and how to resume: [docs/HANDOFF-2026-07-13-phenon.md](../../HANDOFF-2026-07-13-phenon.md).
+
+---
+
 ## WS-C: L1 market-state routing documentation (docs only)
 
 **Files:**
