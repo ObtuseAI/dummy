@@ -10,18 +10,64 @@ from __future__ import annotations
 
 import json
 import math
+import re
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any
 
 from autonomy.sports.elo import LEAGUE_AVG_ERA
 from autonomy.sports.espn import Game
+from autonomy.sports.mlb_parks import park_factor_for
 
-MODEL_VERSION = "mlb-runs-v1"
+# v2 adds park factors, live base-out RE, TTO fatigue, and rest/travel
+# uncertainty (WS-11 / spec §4) -- bumped so grading regimes segment the
+# distribution shift under a stable source name.
+MODEL_VERSION = "mlb_runs_v2_parks"
 PRIOR_TEAM_RUNS = 4.35
 PRIOR_FIRST_SCORE = 0.30
 PRIOR_YRFI = 1.0 - (1.0 - PRIOR_FIRST_SCORE) ** 2
 EWMA_ALPHA = 0.08
+
+# -- WS-11: static run-expectancy (RE24-style) table -------------------------
+# Expected runs scored in the REST of the current half-inning, given
+# (base-occupancy, outs). Values are the widely-published multi-season MLB
+# run-expectancy matrix (source: the RE24 table as popularized by Tom Tango /
+# Baseball Prospectus from ~2010s play-by-play; the WS-11 brief's own anchors
+# -- bases loaded/0 outs ~2.3, empty/2 outs ~0.10 -- match this table almost
+# exactly). Base-state keys: "empty", "1st", "2nd", "3rd", "1st_2nd",
+# "1st_3rd", "2nd_3rd", "loaded" (see `base_state_key`).
+RE24_TABLE: dict[tuple[str, int], float] = {
+    ("empty", 0): 0.461, ("empty", 1): 0.243, ("empty", 2): 0.095,
+    ("1st", 0): 0.831, ("1st", 1): 0.489, ("1st", 2): 0.214,
+    ("2nd", 0): 1.068, ("2nd", 1): 0.644, ("2nd", 2): 0.305,
+    ("3rd", 0): 1.277, ("3rd", 1): 0.897, ("3rd", 2): 0.353,
+    ("1st_2nd", 0): 1.373, ("1st_2nd", 1): 0.971, ("1st_2nd", 2): 0.466,
+    ("1st_3rd", 0): 1.799, ("1st_3rd", 1): 1.135, ("1st_3rd", 2): 0.466,
+    ("2nd_3rd", 0): 1.964, ("2nd_3rd", 1): 1.376, ("2nd_3rd", 2): 0.570,
+    ("loaded", 0): 2.292, ("loaded", 1): 1.541, ("loaded", 2): 0.736,
+}
+# The delta below zeroes RE24_TABLE against this game's own expected runs per
+# half-inning. Reuses PRIOR_TEAM_RUNS (already the model's own league-average
+# runs/team/game prior) rather than fabricating a second "average" constant.
+LEAGUE_AVG_HALF_INNING_RUNS = PRIOR_TEAM_RUNS / 9.0
+
+# TTO fatigue: applied only while the current inning is in this window (see
+# `tto_fatigue_multiplier` docstring for why this proxy was chosen over a
+# precise batters-faced count).
+TTO_FATIGUE_INNINGS = (5, 6)
+TTO_FATIGUE_MULTIPLIER = 1.12
+
+# Rest/travel: soft, narrative-direction uncertainty widen for a day game
+# following a previous night game (see `rest_travel_uncertainty_bump`).
+REST_TRAVEL_UNCERTAINTY_BUMP = 0.02
+_DAY_GAME_LOCAL_HOUR_CEILING = 14
+_NIGHT_GAME_LOCAL_HOUR_FLOOR = 19
+# Single-timezone (US/Eastern, EDT = UTC-4) approximation used to convert an
+# ESPN UTC start timestamp to a "local" hour. MLB spans multiple US
+# timezones, so a West Coast game can be misclassified; the effect is bounded
+# to a +0.02 uncertainty WIDEN only (never a mean shift), so the cost of an
+# occasional misclassification on this soft/narrative signal is low.
+_APPROX_LOCAL_UTC_OFFSET_HOURS = -4
 
 
 @dataclass
@@ -52,6 +98,7 @@ class BaseballPrediction:
     first_inning_uncertainty: float
     sample_games: int
     pitchers_available: bool
+    park_factor: float = 1.0
     model_version: str = MODEL_VERSION
 
 
@@ -150,6 +197,93 @@ def remaining_innings(current_period: int | None) -> float:
     if not current_period or int(current_period) < 1:
         return 9.0
     return max(0.5, 9.0 - (int(current_period) - 1))
+
+
+def base_state_key(on_first: bool, on_second: bool, on_third: bool) -> str:
+    """Canonical RE24_TABLE base-occupancy key from three runner flags."""
+    if on_first and on_second and on_third:
+        return "loaded"
+    if on_first and on_second:
+        return "1st_2nd"
+    if on_first and on_third:
+        return "1st_3rd"
+    if on_second and on_third:
+        return "2nd_3rd"
+    if on_first:
+        return "1st"
+    if on_second:
+        return "2nd"
+    if on_third:
+        return "3rd"
+    return "empty"
+
+
+def base_out_delta(base_state: str | None, outs: int | None) -> float:
+    """Adjustment to the current half-inning's expected remaining runs.
+
+    Fail-closed: an unknown/missing base-out state (no live play data, or an
+    outs value outside the RE24 table's 0/1/2 domain -- e.g. outs==3 at a
+    half-inning boundary) is a genuine 0.0 no-op, leaving
+    `live_total_probability`'s remaining-mean unchanged.
+    """
+    if base_state is None or outs is None:
+        return 0.0
+    value = RE24_TABLE.get((base_state, int(outs)))
+    if value is None:
+        return 0.0
+    return value - LEAGUE_AVG_HALF_INNING_RUNS
+
+
+def tto_fatigue_multiplier(current_period: int | None) -> float:
+    """Times-through-order fatigue proxy: remaining-inning run rate x1.12
+    during innings 5-6 of a live game.
+
+    A precise TTO count (batters faced // 9, gated on "starter still in")
+    would require correlating the probable starter's athlete id against each
+    play's pitcher-participant id across the full play-by-play -- a fragile,
+    keyless cross-endpoint join with real bug risk around double switches,
+    pinch pitchers, and mid-at-bat relief. Per the WS-11 brief's own
+    ambiguity resolution ("if pitcher-change detection from plays is
+    undetectable keylessly, apply the x1.12 bump only in innings 5-6 as a
+    documented proxy -- do NOT fabricate a precise TTO count you can't
+    observe"), this model always uses the inning-window proxy rather than
+    attempting that precise count. No `plays` fetch is required for this
+    signal at all, which is also why "missing plays" never blocks TTO -- the
+    proxy IS the only implementation.
+    """
+    if current_period is None:
+        return 1.0
+    return TTO_FATIGUE_MULTIPLIER if int(current_period) in TTO_FATIGUE_INNINGS else 1.0
+
+
+def _approx_local_hour(start_iso: str | None) -> int | None:
+    """Best-effort local hour-of-day from an ESPN UTC start timestamp.
+
+    See `_APPROX_LOCAL_UTC_OFFSET_HOURS` for the single-timezone caveat.
+    """
+    if not start_iso:
+        return None
+    match = re.match(r"^\d{4}-\d{2}-\d{2}T(\d{2}):", start_iso)
+    if match is None:
+        return None
+    return (int(match.group(1)) + _APPROX_LOCAL_UTC_OFFSET_HOURS) % 24
+
+
+def rest_travel_uncertainty_bump(
+    current_start_iso: str | None, previous_start_iso: str | None,
+) -> float:
+    """+0.02 uncertainty widen for a day game following a previous night
+    game (SOFT: the direction of any bias is narrative/unknown, so this only
+    widens uncertainty -- it never shifts a probability mean). 0.0 no-op
+    when either timestamp is missing or the pattern doesn't match.
+    """
+    current_hour = _approx_local_hour(current_start_iso)
+    previous_hour = _approx_local_hour(previous_start_iso)
+    if current_hour is None or previous_hour is None:
+        return 0.0
+    if current_hour < _DAY_GAME_LOCAL_HOUR_CEILING and previous_hour >= _NIGHT_GAME_LOCAL_HOUR_FLOOR:
+        return REST_TRAVEL_UNCERTAINTY_BUMP
+    return 0.0
 
 
 def poisson_live_win_probability(
@@ -288,6 +422,13 @@ class BaseballRunModel:
         expected_home = max(1.2, min(8.0, expected_home))
         expected_away = max(1.2, min(8.0, expected_away))
 
+        # WS-11: static per-team park factor (autonomy/sports/mlb_parks.py),
+        # separate from the venue-name-keyed EWMA learned above. Applies
+        # multiplicatively to TOTALS/YRFI only -- winner/spread stay on the
+        # unscaled expected_home_runs/expected_away_runs, so a park factor of
+        # 1.0 (unknown park) is a byte-identical no-op everywhere.
+        park_factor = park_factor_for(game.home)
+
         home_first = 0.5 * (
             self._team_metric(home, "first_score_ewma", PRIOR_FIRST_SCORE)
             + self._team_metric(away, "first_allow_ewma", PRIOR_FIRST_SCORE)
@@ -296,6 +437,8 @@ class BaseballRunModel:
             self._team_metric(away, "first_score_ewma", PRIOR_FIRST_SCORE)
             + self._team_metric(home, "first_allow_ewma", PRIOR_FIRST_SCORE)
         ) + self._pitcher_first_adjustment(game.home_pitcher_era)
+        home_first *= park_factor
+        away_first *= park_factor
         home_first = max(0.06, min(0.70, home_first))
         away_first = max(0.06, min(0.70, away_first))
         yrfi = 1.0 - (1.0 - home_first) * (1.0 - away_first)
@@ -311,13 +454,14 @@ class BaseballRunModel:
             home_win_probability=poisson_win_probability(expected_home, expected_away),
             expected_home_runs=expected_home,
             expected_away_runs=expected_away,
-            expected_total_runs=expected_home + expected_away,
+            expected_total_runs=(expected_home + expected_away) * park_factor,
             yrfi_probability=min(0.95, max(0.05, yrfi)),
             winner_uncertainty=min(0.40, 0.07 + 0.18 * cold + missing_pitcher_penalty),
             total_uncertainty=min(0.42, 0.11 + 0.18 * cold + missing_pitcher_penalty),
             first_inning_uncertainty=min(0.42, 0.13 + 0.18 * cold + missing_pitcher_penalty),
             sample_games=sample,
             pitchers_available=pitchers,
+            park_factor=park_factor,
         )
 
     def total_probability(self, prediction: BaseballPrediction, threshold: float) -> float:
@@ -361,15 +505,30 @@ class BaseballRunModel:
         current_total_runs: int,
         threshold: float,
         remaining_innings: float,
+        base_state: str | None = None,
+        outs: int | None = None,
+        current_period: int | None = None,
     ) -> float:
         """Live P(final total > threshold): runs already in plus the rest.
 
         Only the runs still to come are random (Poisson over the innings left),
         shifted by what's already scored. At the start it reduces to
         ``total_probability``.
+
+        WS-11 adds two independent, fail-closed adjustments to the remaining
+        mean, both defaulting to a no-op (byte-identical to the pre-WS11
+        signature when omitted):
+          - ``base_state``/``outs``: the static RE24 table (see
+            `base_out_delta`) adjusts the CURRENT half-inning's remaining
+            runs only -- a hard, verifiable state, so it may shift the mean.
+          - ``current_period``: the TTO fatigue proxy (see
+            `tto_fatigue_multiplier`) scales the whole remaining-mean by
+            1.12x during innings 5-6.
         """
         fraction = max(0.0, float(remaining_innings)) / 9.0
         remaining_mean = prediction.expected_total_runs * fraction
+        remaining_mean = max(0.0, remaining_mean + base_out_delta(base_state, outs))
+        remaining_mean *= tto_fatigue_multiplier(current_period)
         return poisson_over_probability(remaining_mean, threshold - int(current_total_runs))
 
     def live_spread_probability(
