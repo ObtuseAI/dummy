@@ -53,6 +53,12 @@ MESSAGE_AUTHORITY = {
     MessageType.MUTATION_PROPOSAL: Authority.RECOMMEND,
 }
 
+
+def required_authority(message_type: MessageType) -> Authority:
+    """Return the exact authority exercised by a message type."""
+
+    return MESSAGE_AUTHORITY[message_type]
+
 MARKET_SCOPED_TYPES = frozenset(
     {
         MessageType.OBSERVATION,
