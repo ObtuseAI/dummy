@@ -49,6 +49,12 @@ Phase 0/1 now has a frozen
 execution authority; current canary and scale gates remain blocked by the
 recorded operational evidence.
 
+Phase 2 adds the inactive, research-only
+[`agent control plane`](docs/VNEXT_PHASE2_AGENTIZATION.md) and its canonical
+[`contract catalog`](docs/VNEXT_PHASE2_CONTRACT_CATALOG.json): versioned
+contracts, lifecycle, health, permissions, deterministic mailbox/runtime, and
+read-only incumbent adapters. Phase 3 organism orchestration is not yet claimed.
+
 ## Current paper operation
 
 The market-horizon paper twin runs every five minutes through the Windows
