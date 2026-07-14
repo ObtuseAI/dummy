@@ -73,18 +73,19 @@ NCAAF, NHL, NCAAMB) plus the dedicated `MlbSpecialist`, each routing through
 |---|---|---|
 | MLB | `autonomy/sports/baseball.py` | Plate-appearance-level run distribution: EWMA offense/prevention, first-inning tendencies, venue run environment, announced-starter ERA, RE24-style base-out run expectancy |
 | NFL | `autonomy/sports/nfl_margin.py` | Key-number-tilted margin PMF (field goals/touchdowns spike the real distribution); winner + full spread ladder derive from ONE exponentially-tilted distribution so they stay coherent by construction |
-| NCAAF | `autonomy/sports/college.py` | Reuses the NFL margin kernel wholesale with a shallower college key-number table and an Elo talent-gap prior blended with season form |
+| NCAAF | `autonomy/sports/college.py` | College-specific compound-Poisson score-event kernel shared with the live scoring grammar; coherent winner/spread/total PMFs plus an Elo talent-gap prior blended with season form |
 | NBA | `autonomy/sports/nba_model.py` | Pace × efficiency (EWMA offensive/defensive rating per 100 possessions, shared pace EWMA); heteroskedastic dispersion scaling with `sqrt(pace/99.5)`; bounded rest engine + garbage-time cap |
 | NCAAMB | `autonomy/sports/college.py` | Reuses the NBA pace × efficiency engine wholesale via a college parameter set (different cold-start constants) |
 | NHL | `autonomy/sports/nhl_model.py` | Independent-Poisson goal model per side over one regulation-goal matrix, with an explicit OT/shootout branch (Kalshi settles on final score including OT/SO) and goalie-identity (save-percentage) adjustment |
 
-Per-league `book()` sources an independent sharp line: MLB prefers a live
-ESPN-summary de-vig when a game is in progress, falling back to pre-game
-sportsbook consensus; the other team leagues use sportsbook consensus
-directly (`TeamLeagueSpecialist.book`). `live_forecast()` is wired for MLB
-(gated on `game.status == "in"` and the signal's own `features["live"]`
-flag) and abstains for the other team leagues, which have no separate
-in-play model yet.
+Per-league `book()` sources an independent sharp line: every team specialist
+prefers an ESPN-summary live de-vig for an in-progress winner, spread, or total
+and falls back to pre-game sportsbook consensus when applicable. Spread/total
+coverage is exact-line only; unmatched alternate strikes abstain.
+`live_forecast()` is wired for MLB, NBA, NFL, NCAAF, NHL, and NCAAMB, gated on
+`game.status == "in"` plus each signal's own point-in-time score/clock checks.
+MLB additionally emits separately graded `mlb_pa_live_*` opinions when the
+StatsAPI plate-appearance context passes its lineup/starter/coverage gates.
 
 Every kernel here is explicitly **challenger-only** (`features
 ["challenger_only"] = True`) and fail-closed: missing ESPN data returns
@@ -155,7 +156,7 @@ pass as the highest-conviction subset of its shortlist.
 |---|---|---|
 | L1 "Ontological Market Manifold" (per-market reality state routing) | `autonomy/specialists/base.py::SpecialistRegistry` + `autonomy/taxonomy.py::specialist_for` route every market to exactly one specialist by vertical/league, each with its own pricing logic (this document) | **Shipped** |
 | L2 "Athletic Quant" (external power-ratings ensemble vs. Kalshi) | `autonomy/sports/power_ratings.py` — external-power-ratings ensemble challenger + divergence flag | **Planned / in progress** (not yet in the codebase; tracked as workstream WS-A of the Phenon Harness integration) |
-| L3 "Evolution Engine" (deconstruct losses → propose → integrate) | Split across three existing/planned modules: `autonomy/strategy_miner.py` *discovers* candidate edges from past/missed trades (shipped); a planned loss-attribution module (workstream WS-B, not yet in the codebase) would *deconstruct* where the system bleeds; `autonomy/tuner.py` *proposes* better parameter values (shipped); `autonomy/promotion.py` *integrates* a challenger into the live ensemble, but **only on an explicit human-authored edit to `runtime/autonomy/promotions.json`** — promotion is human-only, and the only automatic transition in this whole chain is one-way-safe auto-demotion | Miner, tuner, and promotion registry **shipped**; loss-attribution ("evolution engine" proper) **planned / in progress** |
+| L3 "Evolution Engine" (deconstruct losses → propose → integrate) | Split across four shipped modules: `autonomy/strategy_miner.py` *discovers* candidate edges from past/missed trades; `autonomy/loss_engine.py` *deconstructs* settled cluster-level Brier shortfall and supplies a non-gating tuner priority plus dashboard evidence; `autonomy/tuner.py` *proposes* better parameter values; `autonomy/promotion.py` *integrates* a challenger into the live ensemble, but **only on an explicit human-authored edit to `runtime/autonomy/promotions.json`** — promotion is human-only, and the only automatic transition in this whole chain is one-way-safe auto-demotion | All four modules **shipped**; loss attribution is chained after the nightly strategy miner and CLV grader and writes only `runtime/autonomy/loss_attribution.json` |
 
 No component described above writes execution logic, promotes a challenger,
 or moves capital on its own. Everything in the mapping table upstream of a

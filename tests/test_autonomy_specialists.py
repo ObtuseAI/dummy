@@ -59,13 +59,27 @@ class _StubSportsbook:
 
 
 class _StubLiveBook:
-    def __init__(self, home_probability: float | None, ejections=()):
+    def __init__(
+        self, home_probability: float | None, ejections=(),
+        *, total_probability: float | None = None,
+        spread_probability: float | None = None,
+    ):
         self.home_probability = home_probability
+        self.total_probability = total_probability
+        self.spread_probability = spread_probability
         self.ejections = tuple(ejections)
         self.cleared = 0
 
     def home_win_probability(self, event_id: str | None) -> float | None:
         return self.home_probability
+
+    def total_over_probability(self, event_id: str | None, threshold: float) -> float | None:
+        return self.total_probability
+
+    def spread_cover_probability(
+        self, event_id: str | None, *, subject_is_home: bool, threshold: float,
+    ) -> float | None:
+        return self.spread_probability
 
     def ejection_events(self, event_id: str | None):
         return self.ejections if event_id else ()
@@ -290,9 +304,29 @@ def test_team_league_ejections_are_evidence_only_and_cache_clears_each_cycle():
     assert live_book.cleared == 1
 
 
-def test_team_league_book_never_maps_moneyline_to_spread_or_total():
+def test_team_league_book_uses_live_spread_and_total_without_reusing_moneyline():
     spread = _market(
-        "KXNBASPREAD-26JUL12LALBOS-LAL5", "Lakers win by over 4.5 points?",
+        "KXNBASPREAD-26JUL12LALBOS-LAL5", "LAL vs BOS Spread",
+        floor_strike=4.5,
+    )
+    total = _market(
+        "KXNBATOTAL-26JUL12LALBOS-221", "LAL vs BOS Total Points?",
+        floor_strike=220.5,
+    )
+    specialist = TeamLeagueSpecialist(
+        "nba", _StubIntelligence("team_sports_intelligence"), None,
+        espn=_espn_with_team_game("nba", "in"),
+        live_book=_StubLiveBook(
+            0.66, total_probability=0.57, spread_probability=0.43,
+        ),
+    )
+    assert specialist.book(spread) == 0.43
+    assert specialist.book(total) == 0.57
+
+
+def test_team_league_book_abstains_when_live_line_does_not_match():
+    spread = _market(
+        "KXNBASPREAD-26JUL12LALBOS-LAL5", "LAL vs BOS Spread",
         floor_strike=4.5,
     )
     specialist = TeamLeagueSpecialist(
@@ -300,6 +334,25 @@ def test_team_league_book_never_maps_moneyline_to_spread_or_total():
         espn=_espn_with_team_game("nba", "in"), live_book=_StubLiveBook(0.66),
     )
     assert specialist.book(spread) is None
+
+
+def test_mlb_book_uses_live_total_and_spread_lines():
+    specialist = MlbSpecialist(
+        intelligence=None, sportsbook=None, espn=_espn_with_game("in"),
+        live_book=_StubLiveBook(
+            0.64, total_probability=0.55, spread_probability=0.41,
+        ),
+    )
+    total = _market(
+        "KXMLBTOTAL-26JUL122005HOUTEX-9", "Astros vs Rangers Total Runs?",
+        floor_strike=8.5,
+    )
+    spread = _market(
+        "KXMLBSPREAD-26JUL122005HOUTEX-HOU2", "Houston by 1.5?",
+        floor_strike=1.5,
+    )
+    assert specialist.book(total) == 0.55
+    assert specialist.book(spread) == 0.41
 
 
 def test_crypto_specialist_routes_and_abstains_from_book_when_unwired():

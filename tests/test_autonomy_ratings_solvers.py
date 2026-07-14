@@ -162,6 +162,28 @@ def test_colley_scores_do_not_affect_rating_only_win_loss():
     assert ratings_blowout == ratings_close
 
 
+def test_colley_tie_is_half_win_half_loss_for_each_team():
+    ratings, games_played = solve_colley([("A", "B", 0.0, None)])
+
+    assert ratings == pytest.approx({"A": 0.5, "B": 0.5}, abs=1e-6)
+    assert games_played == {"A": 1, "B": 1}
+
+
+def test_settled_results_includes_explicit_tie_but_not_unresolved_post():
+    games = [
+        Game(
+            "tie", "nfl", "A", "B", "post", None, "2026-01-01",
+            home_score=20, away_score=20, is_tie=True,
+        ),
+        Game(
+            "unknown", "nfl", "C", "D", "post", None, "2026-01-01",
+            home_score=20, away_score=20,
+        ),
+    ]
+
+    assert settled_results(games, "nfl") == [("A", "B", 0.0, None)]
+
+
 def test_colley_points_per_unit_documented_table():
     espn = FakeEspnClient({("nfl", "d1"): [
         _post_game("g1", "nfl", "A", "B", 20, 10),

@@ -2,12 +2,13 @@
 
 The scoreboard's embedded moneyline is a pre-game snapshot; ESPN's per-game
 ``summary`` endpoint carries a ``pickcenter`` block whose books update through
-the game. De-vigging those live moneylines gives a live P(home win) — the
-sharp-book leg of the triangulated mispricing engine for in-progress games,
-keyless and already-whitelisted (same source as the scoreboard).
+the game. De-vigging its two-way moneyline, point-spread, and total markets
+gives the sharp-book leg of the triangulated mispricing engine for in-progress
+games, keyless and already-whitelisted (same source as the scoreboard).
 
-Fail-closed: no summary, no pickcenter, or no two-way moneyline -> None, and the
-engine falls back to the pre-game book or abstains.
+Fail-closed: no summary, no pickcenter, no complete two-way prices, or a book
+line that does not exactly match the Kalshi strike -> None. A single ESPN main
+line is never extrapolated across Kalshi's alternate-line ladder.
 
 WS-11 build-time PROBE (2026-07-12, network confirmed reachable): the plan
 was to find a live ("in") MLB game and inspect its summary's ``situation``
@@ -44,6 +45,7 @@ becomes "post" instead of an in-progress one):
 """
 from __future__ import annotations
 
+import math
 import re
 from typing import Any, Callable
 
@@ -68,6 +70,95 @@ def devig_summary_home_probability(summary: dict[str, Any] | None) -> float | No
     if not probabilities:
         return None
     return sum(probabilities) / len(probabilities)
+
+
+def _number(value: Any) -> float | None:
+    """Finite numeric value, accepting ESPN's ``o8.5``/``u8.5`` strings."""
+    if value is None or isinstance(value, bool):
+        return None
+    text = str(value).strip().lower()
+    if text.startswith(("o", "u")):
+        text = text[1:]
+    try:
+        parsed = float(text)
+    except (TypeError, ValueError):
+        return None
+    return parsed if math.isfinite(parsed) else None
+
+
+def _same_line(left: float | None, right: float | None) -> bool:
+    return left is not None and right is not None and abs(left - right) <= 1e-6
+
+
+def devig_summary_total_probability(
+    summary: dict[str, Any] | None, threshold: float,
+) -> float | None:
+    """Average de-vigged P(final total > ``threshold``) at an exact line.
+
+    ESPN exposes one current main total per book. Kalshi exposes an alternate
+    ladder, so line equality is mandatory: odds at 8.5 say nothing directly
+    about a 9.5 contract without an independently calibrated distribution.
+    """
+    wanted = _number(threshold)
+    if wanted is None:
+        return None
+    probabilities: list[float] = []
+    for book in (summary or {}).get("pickcenter", []) or []:
+        if not isinstance(book, dict):
+            continue
+        line = _number(book.get("overUnder"))
+        over_odds = _american(book.get("overOdds"))
+        under_odds = _american(book.get("underOdds"))
+        if not _same_line(line, wanted):
+            continue
+        devigged = devig_two_way(over_odds, under_odds)
+        if devigged is not None:
+            probabilities.append(devigged)
+    return (sum(probabilities) / len(probabilities)) if probabilities else None
+
+
+def devig_summary_spread_probability(
+    summary: dict[str, Any] | None,
+    *,
+    subject_is_home: bool,
+    threshold: float,
+) -> float | None:
+    """Average de-vigged P(subject wins by more than ``threshold``).
+
+    Kalshi's contract threshold is a winning-margin expression. ESPN's
+    ``pointSpread`` line is the handicap applied to that side, so a Kalshi
+    ``wins by > 1.5`` contract matches an ESPN side at ``-1.5``. Both sides'
+    lines and prices must be present and complementary; malformed or stale
+    one-sided rows abstain.
+    """
+    wanted = _number(threshold)
+    if wanted is None:
+        return None
+    probabilities: list[float] = []
+    subject_key = "home" if subject_is_home else "away"
+    opponent_key = "away" if subject_is_home else "home"
+    for book in (summary or {}).get("pickcenter", []) or []:
+        if not isinstance(book, dict):
+            continue
+        spread = book.get("pointSpread") or {}
+        if not isinstance(spread, dict):
+            continue
+        subject = (spread.get(subject_key) or {}).get("close") or {}
+        opponent = (spread.get(opponent_key) or {}).get("close") or {}
+        if not isinstance(subject, dict) or not isinstance(opponent, dict):
+            continue
+        subject_line = _number(subject.get("line"))
+        opponent_line = _number(opponent.get("line"))
+        if not _same_line(subject_line, -wanted):
+            continue
+        if subject_line is None or opponent_line is None or abs(subject_line + opponent_line) > 1e-6:
+            continue
+        devigged = devig_two_way(
+            _american(subject.get("odds")), _american(opponent.get("odds")),
+        )
+        if devigged is not None:
+            probabilities.append(devigged)
+    return (sum(probabilities) / len(probabilities)) if probabilities else None
 
 
 def _base_state_from_play(play: dict[str, Any]) -> tuple[str, int] | None:
@@ -212,6 +303,30 @@ class EspnSummaryBook:
         if not event_id:
             return None
         return devig_summary_home_probability(self._summary(event_id))
+
+    def total_over_probability(
+        self, event_id: str | None, threshold: float,
+    ) -> float | None:
+        """De-vigged live P(total > threshold), exact main-line match only."""
+        if not event_id:
+            return None
+        return devig_summary_total_probability(self._summary(event_id), threshold)
+
+    def spread_cover_probability(
+        self,
+        event_id: str | None,
+        *,
+        subject_is_home: bool,
+        threshold: float,
+    ) -> float | None:
+        """De-vigged live P(subject wins by > threshold), exact line only."""
+        if not event_id:
+            return None
+        return devig_summary_spread_probability(
+            self._summary(event_id),
+            subject_is_home=subject_is_home,
+            threshold=threshold,
+        )
 
     def base_out_state(self, event_id: str | None) -> tuple[str, int] | None:
         """(base_state, outs) for the event's current game state, or None.

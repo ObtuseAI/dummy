@@ -13,22 +13,31 @@ from autonomy.ontology import MarketView, Signal, Vertical
 from core.logger import logger
 from autonomy.sports import boxscores as boxscores_module
 from autonomy.sports.baseball import (
+    BaseballPrediction,
     BaseballRunModel,
     remaining_innings,
     rest_travel_uncertainty_bump,
 )
 from autonomy.sports.boxscores import BoxscoreStore, parse_team_boxscores
 from autonomy.sports.college import (
-    BASE_ABS_MARGIN_PMF_COLLEGE,
     NCAAF_MODEL_VERSION,
     NCAAMB_PARAMS,
+    margin_cover_probability as college_margin_cover_probability,
+    margin_win_probability as college_margin_win_probability,
     ncaaf_college,
+    ncaaf_margin_distribution,
     parse_neutral_site,
 )
 from autonomy.sports.elo import EloModel
 from autonomy.sports.espn import EspnClient, Game, canonical_team, default_fetch_scoreboard
 from autonomy.sports.football_weather import default_fetch_football_weather, football_weather_adjustment
 from autonomy.sports.injuries import InjuryBook
+from autonomy.sports.mlb_matchups import is_divisional, is_rivalry
+from autonomy.sports.mlb_pa_sim import (
+    regress_home_win_for_matchup,
+    simulate_game_markets,
+)
+from autonomy.sports.statsapi import StatsApiClient
 from autonomy.sports.live_team_models import (
     NcaafLiveModel,
     NcaambLiveModel,
@@ -105,6 +114,9 @@ NCAAMB_BOXSCORE_FETCH_BUDGET = 16
 # and idempotent.  Twenty-one days covers a normal week plus a bye with room
 # for a missed cycle without turning warmup into a season backfill.
 NFL_REST_LOOKBACK_DAYS = 21
+MLB_PA_LIVE_MODEL_VERSION = "mlb_pa_sim_live_v1"
+MLB_PA_LIVE_SIMS = 800
+MLB_PA_MIN_BATTER_COVERAGE = 0.75
 
 MODEL_DIR = Path("runtime/autonomy")
 # WS-4: shared with autonomy/signals/sports_elo.py's own ELO_DIR -- this
@@ -329,6 +341,9 @@ class BaseballIntelligenceSignal:
         injuries: "InjuryBook | None" = None,
         seasons: Any = None,
         live_book: EspnSummaryBook | None = None,
+        statsapi: StatsApiClient | None = None,
+        pa_simulator: Any = None,
+        pa_sims: int = MLB_PA_LIVE_SIMS,
     ) -> None:
         from autonomy.specialists.seasons import SeasonMonitor
 
@@ -342,6 +357,14 @@ class BaseballIntelligenceSignal:
         # de-vig already uses. A fetch failure or missing plays -> None,
         # which is a fail-closed no-op on live_total_probability.
         self.live_book = live_book or EspnSummaryBook(league="mlb")
+        injected_pa_path = statsapi is not None and pa_simulator is not None
+        self.statsapi = statsapi or StatsApiClient()
+        self.pa_simulator = pa_simulator or simulate_game_markets
+        self.pa_sims = max(100, int(pa_sims))
+        self._pa_cache: dict[str, tuple[BaseballPrediction, dict[str, Any]] | None] = {}
+        # Production activates after the cycle hook. Explicit injected doubles
+        # are hermetic and can exercise the path without a warmup/network call.
+        self._pa_cycle_ready = injected_pa_path
 
     def warmup(self, date_ranges: list[str]) -> int:
         updated = 0
@@ -359,6 +382,9 @@ class BaseballIntelligenceSignal:
         # genuine wake follows an offseason with no games behind it, and a
         # false-dormant blip (bounded by the gate's TTL) is covered by this
         # recent-days warmup window on the next active cycle.
+        self._pa_cycle_ready = False
+        self._pa_cache.clear()
+        self.statsapi.clear_schedule_cache()
         if not self.seasons.active("mlb"):
             return
         self.espn.clear_cache()
@@ -366,6 +392,86 @@ class BaseballIntelligenceSignal:
         self.espn.clear_cache()
         self.injuries.refresh()  # refresh availability once per cycle
         self.live_book.clear()  # re-read in-play base-out state each cycle
+        self._pa_cycle_ready = True
+
+    def _pa_live_prior(
+        self, game: Game, baseline: BaseballPrediction,
+    ) -> tuple[BaseballPrediction, dict[str, Any]] | None:
+        """Build one fully hydrated StatsAPI PA prior per live game.
+
+        Missing schedule matching, confirmed lineups, both starters, or
+        sufficient batter-rate coverage fails back to the incumbent live
+        model under its original source name. The PA regime is therefore
+        separately graded and cannot silently contaminate prior evidence.
+        """
+        key = str(game.game_id)
+        if key in self._pa_cache:
+            return self._pa_cache[key]
+        self._pa_cache[key] = None
+        if not self._pa_cycle_ready or not game.date:
+            return None
+        try:
+            captured_at = datetime.now(timezone.utc).isoformat()
+            context = self.statsapi.projected_context_for_matchup(
+                game.date[:10], home=game.home, away=game.away,
+                captured_at=captured_at,
+            )
+            if context is None:
+                return None
+            context = self.statsapi.confirm_lineups(context, captured_at=captured_at)
+            context = self.statsapi.hydrate_batter_rates(context)
+            lineup_ids = {
+                slot.player_id for slot in (*context.home_lineup, *context.away_lineup)
+            }
+            if (len(context.home_lineup) < 9 or len(context.away_lineup) < 9
+                    or context.home_pitcher is None or context.away_pitcher is None
+                    or not lineup_ids):
+                return None
+            coverage = len(lineup_ids & set(context.batter_rates)) / len(lineup_ids)
+            if coverage < MLB_PA_MIN_BATTER_COVERAGE:
+                return None
+            divisional = is_divisional(context.home, context.away)
+            rivalry = is_rivalry(context.home, context.away)
+            markets = self.pa_simulator(
+                context, seed=int(context.game_pk), sims=self.pa_sims,
+                total_line=8.5, divisional=divisional, rivalry=rivalry,
+            )
+            expected_home = float(markets["expected_home_runs"])
+            expected_away = float(markets["expected_away_runs"])
+            if not all(math.isfinite(value) and value > 0.0 for value in (
+                expected_home, expected_away,
+            )):
+                return None
+            pa_prediction = replace(
+                baseline,
+                home_win_probability=float(markets["home_win"]),
+                expected_home_runs=expected_home,
+                expected_away_runs=expected_away,
+                expected_total_runs=expected_home + expected_away,
+                yrfi_probability=float(markets["yrfi"]),
+                # Richer inputs do not earn a narrower error bar before this
+                # separately named source has settlement-backed calibration.
+                winner_uncertainty=max(baseline.winner_uncertainty, 0.18),
+                total_uncertainty=max(baseline.total_uncertainty, 0.22),
+                first_inning_uncertainty=max(baseline.first_inning_uncertainty, 0.24),
+                pitchers_available=True,
+                model_version=MLB_PA_LIVE_MODEL_VERSION,
+            )
+            metadata = {
+                "source": "mlb_statsapi",
+                "game_pk": context.game_pk,
+                "snapshot": context.snapshot,
+                "captured_at": context.captured_at,
+                "sims": self.pa_sims,
+                "batter_rate_coverage": round(coverage, 4),
+                "divisional": divisional,
+                "rivalry": rivalry,
+                "conditioning": "pa_expected_runs_to_live_poisson",
+            }
+            self._pa_cache[key] = (pa_prediction, metadata)
+            return self._pa_cache[key]
+        except Exception:
+            return None
 
     def applicable(self, market: MarketView) -> bool:
         parsed = parse_sports_contract(market)
@@ -426,6 +532,12 @@ class BaseballIntelligenceSignal:
             live_state = (
                 game.home_score, game.away_score, remaining_innings(game.current_period),
             )
+        pa_metadata: dict[str, Any] | None = None
+        active_prediction = prediction
+        if live_state is not None:
+            pa_prior = self._pa_live_prior(game, prediction)
+            if pa_prior is not None:
+                active_prediction, pa_metadata = pa_prior
         if parsed.market_type == "winner":
             subject = canonical_team("mlb", parsed.subject or "")
             home = canonical_team("mlb", game.home)
@@ -434,10 +546,19 @@ class BaseballIntelligenceSignal:
             if live_state is not None:
                 home_score, away_score, rem = live_state
                 home_win = self.model.live_win_probability(
-                    prediction, home_score, away_score, rem)
+                    active_prediction, home_score, away_score, rem)
+                if pa_metadata is not None:
+                    home_win = regress_home_win_for_matchup(
+                        home_win,
+                        divisional=bool(pa_metadata["divisional"]),
+                        rivalry=bool(pa_metadata["rivalry"]),
+                    )
                 # A per-inning live approximation is coarser than the pre-game line.
-                uncertainty = min(0.45, prediction.winner_uncertainty + 0.05)
-                source = "mlb_live_winner"
+                uncertainty = min(0.45, active_prediction.winner_uncertainty + 0.05)
+                source = (
+                    "mlb_pa_live_winner" if pa_metadata is not None
+                    else "mlb_live_winner"
+                )
                 market_detail = (
                     f"{subject} live win ({away_score}-{home_score}, "
                     f"inning {game.current_period})"
@@ -460,11 +581,14 @@ class BaseballIntelligenceSignal:
                     base_state, outs = base_out
                     base_out_feature = {"base_state": base_state, "outs": outs}
                 probability = self.model.live_total_probability(
-                    prediction, home_score + away_score, parsed.threshold, rem,
+                    active_prediction, home_score + away_score, parsed.threshold, rem,
                     base_state=base_state, outs=outs, current_period=game.current_period,
                 )
-                uncertainty = min(0.45, prediction.total_uncertainty + 0.05)
-                source = "mlb_live_total"
+                uncertainty = min(0.45, active_prediction.total_uncertainty + 0.05)
+                source = (
+                    "mlb_pa_live_total" if pa_metadata is not None
+                    else "mlb_live_total"
+                )
                 market_detail = (
                     f"live over {parsed.threshold:g} ({home_score + away_score} so far, "
                     f"inning {game.current_period}"
@@ -486,10 +610,13 @@ class BaseballIntelligenceSignal:
             if live_state is not None:
                 home_score, away_score, rem = live_state
                 probability = self.model.live_spread_probability(
-                    prediction, subject_is_home, parsed.threshold,
+                    active_prediction, subject_is_home, parsed.threshold,
                     home_score, away_score, rem)
-                uncertainty = min(0.45, prediction.winner_uncertainty + 0.07)
-                source = "mlb_live_spread"
+                uncertainty = min(0.45, active_prediction.winner_uncertainty + 0.07)
+                source = (
+                    "mlb_pa_live_spread" if pa_metadata is not None
+                    else "mlb_live_spread"
+                )
                 market_detail = (
                     f"{subject} live by >{parsed.threshold:g} (inning {game.current_period})"
                 )
@@ -526,9 +653,11 @@ class BaseballIntelligenceSignal:
             uncertainty=uncertainty,
             rationale=(
                 f"MLB {market_detail}: {game.away}@{game.home}; expected runs "
-                f"{prediction.expected_away_runs:.2f}+{prediction.expected_home_runs:.2f}="
-                f"{prediction.expected_total_runs:.2f}; YRFI={prediction.yrfi_probability:.3f}; "
-                f"team sample={prediction.sample_games}; pitchers={prediction.pitchers_available}"
+                f"{active_prediction.expected_away_runs:.2f}+{active_prediction.expected_home_runs:.2f}="
+                f"{active_prediction.expected_total_runs:.2f}; "
+                f"YRFI={active_prediction.yrfi_probability:.3f}; "
+                f"team sample={active_prediction.sample_games}; "
+                f"pitchers={active_prediction.pitchers_available}"
             ),
             features={
                 "challenger_only": True,
@@ -542,7 +671,7 @@ class BaseballIntelligenceSignal:
                 "current_period": game.current_period,
                 "home_score": game.home_score,
                 "away_score": game.away_score,
-                "model_version": prediction.model_version,
+                "model_version": active_prediction.model_version,
                 "event_start": game.date,
                 "home": game.home,
                 "away": game.away,
@@ -550,15 +679,16 @@ class BaseballIntelligenceSignal:
                 "away_pitcher": game.away_pitcher,
                 "home_pitcher_era": game.home_pitcher_era,
                 "away_pitcher_era": game.away_pitcher_era,
-                "expected_home_runs": prediction.expected_home_runs,
-                "expected_away_runs": prediction.expected_away_runs,
-                "expected_total_runs": prediction.expected_total_runs,
-                "yrfi_probability": prediction.yrfi_probability,
+                "expected_home_runs": active_prediction.expected_home_runs,
+                "expected_away_runs": active_prediction.expected_away_runs,
+                "expected_total_runs": active_prediction.expected_total_runs,
+                "yrfi_probability": active_prediction.yrfi_probability,
                 "threshold": parsed.threshold,
-                "sample_games": prediction.sample_games,
-                "park_factor": prediction.park_factor,
+                "sample_games": active_prediction.sample_games,
+                "park_factor": active_prediction.park_factor,
                 "base_out_state": base_out_feature,
                 "rest_travel_uncertainty_bump": rest_bump,
+                "pa_simulator": pa_metadata,
             },
         )
 
@@ -1108,11 +1238,11 @@ class TeamSportsIntelligenceSignal:
                 game.home_score, game.away_score, minutes_remaining)
             margin_model_version = nfl_live_prediction.model_version
 
-        # NCAAF winner/spread price from the college key-number kernel
-        # (WS-4) -- reuses nfl_margin.py's tilted-PMF machinery wholesale
-        # (autonomy/sports/college.py::NcaafCollegeModel) with a shallower
-        # college base table and an expected margin blended with a talent-
-        # gap Elo prior early in the season. Unlike NBA/NHL/NCAAMB below,
+        # NCAAF winner/spread/total price from its own compound-Poisson
+        # scoring-event kernel (shared with the live NCAAF scoring grammar,
+        # not with NFL's absolute-margin tilt) and an expected margin blended
+        # with a talent-gap Elo prior early in the season. Unlike
+        # NBA/NHL/NCAAMB below,
         # this never wholesale-falls-back to the generic prediction -- the
         # blend is DESIGNED to degrade gracefully to pure Elo at games=0
         # rather than needing a cold gate (see college.py::talent_gap_margin).
@@ -2116,17 +2246,17 @@ class PowerRatingsSignal:
 
         is_football = parsed.sport in FOOTBALL_POWER_LEAGUES
         if is_football:
-            # WS-C routing doctrine: college engines price off the shallower
-            # college key-number table (BASE_ABS_MARGIN_PMF_COLLEGE), not
-            # NFL's -- college margins spike less hard on 3/7 and run a
-            # longer tail (see autonomy/sports/college.py). NFL keeps the
-            # module default (base_pmf=None -> BASE_ABS_MARGIN_PMF).
-            football_base_pmf = (
-                BASE_ABS_MARGIN_PMF_COLLEGE if parsed.sport == "ncaaf" else None
-            )
-            distribution = power_ratings_margin_distribution(
-                consensus.ensemble_margin, base_pmf=football_base_pmf)
-            home_win = power_ratings_nfl_win_probability(distribution)
+            if parsed.sport == "ncaaf":
+                # NCAAF owns its compound-Poisson scoring-event kernel.  The
+                # power-ratings lane has only a margin, so the college module
+                # supplies its disclosed league-total variance prior.
+                distribution = ncaaf_margin_distribution(consensus.ensemble_margin)
+                home_win = college_margin_win_probability(distribution)
+                cover_probability = college_margin_cover_probability
+            else:
+                distribution = power_ratings_margin_distribution(consensus.ensemble_margin)
+                home_win = power_ratings_nfl_win_probability(distribution)
+                cover_probability = power_ratings_nfl_spread_cover_probability
             if parsed.market_type == "spread":
                 if parsed.threshold is None:
                     return None
@@ -2134,8 +2264,7 @@ class PowerRatingsSignal:
                     distribution if subject_is_home
                     else {-m: p for m, p in distribution.items()}
                 )
-                probability = power_ratings_nfl_spread_cover_probability(
-                    subject_distribution, parsed.threshold)
+                probability = cover_probability(subject_distribution, parsed.threshold)
             else:
                 probability = home_win if subject_is_home else 1.0 - home_win
         else:

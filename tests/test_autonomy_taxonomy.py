@@ -105,6 +105,9 @@ def test_grading_scope_uses_horizon_for_crypto_and_phase_for_sports():
     live = grading_scope("mlb_live_winner", "KXMLBGAME-26JUL10-HOU",
                          {"market_type": "winner"})
     assert live == "mlb_live_winner|winner|live"
+    pa_live = grading_scope("mlb_pa_live_winner", "KXMLBGAME-26JUL10-HOU",
+                            {"market_type": "winner"})
+    assert pa_live == "mlb_pa_live_winner|winner|live"
     live_feature = grading_scope("nba_structural_winner", "KXNBAGAME-26OCT20-LAL",
                                  {"market_type": "winner", "live": True})
     assert live_feature.endswith("|live")

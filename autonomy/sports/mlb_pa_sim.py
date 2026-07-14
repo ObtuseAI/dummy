@@ -441,6 +441,17 @@ DIVISIONAL_REGRESSION = 0.06  # fraction of the home_win edge pulled toward 0.5
 RIVALRY_REGRESSION = 0.09     # marquee rivalries compress the gap a bit more
 
 
+def regress_home_win_for_matchup(
+    probability: float, *, divisional: bool = False, rivalry: bool = False,
+) -> float:
+    """Apply the shared rivalry/division regression to a home-win view."""
+    regression = max(
+        RIVALRY_REGRESSION if rivalry else 0.0,
+        DIVISIONAL_REGRESSION if divisional else 0.0,
+    )
+    return 0.5 + (float(probability) - 0.5) * (1.0 - regression)
+
+
 def simulate_game_markets(
     context: MlbGameContext,
     *,
@@ -466,6 +477,8 @@ def simulate_game_markets(
     yrfi = 0
     home_f5 = 0
     total_runs_sum = 0
+    home_runs_sum = 0
+    away_runs_sum = 0
     for _ in range(runs):
         game = simulate_one_game(context, rng, weather=weather)
         if game.home_runs > game.away_runs:
@@ -473,6 +486,8 @@ def simulate_game_markets(
         elif game.home_runs == game.away_runs:
             home_wins += 0.5
         combined = game.home_runs + game.away_runs
+        home_runs_sum += game.home_runs
+        away_runs_sum += game.away_runs
         total_runs_sum += combined
         if combined > total_line:
             total_over += 1
@@ -482,12 +497,9 @@ def simulate_game_markets(
             home_f5 += 1
     home_win = home_wins / runs
     # Rivalry dominates divisional (max, never summed); both-False -> no change.
-    regression = max(
-        RIVALRY_REGRESSION if rivalry else 0.0,
-        DIVISIONAL_REGRESSION if divisional else 0.0,
+    home_win = regress_home_win_for_matchup(
+        home_win, divisional=divisional, rivalry=rivalry,
     )
-    if regression > 0.0:
-        home_win = 0.5 + (home_win - 0.5) * (1.0 - regression)
     return {
         "home_win": home_win,
         "total_over": total_over / runs,
@@ -495,5 +507,7 @@ def simulate_game_markets(
         "yrfi": yrfi / runs,
         "home_f5_lead": home_f5 / runs,
         "expected_total_runs": total_runs_sum / runs,
+        "expected_home_runs": home_runs_sum / runs,
+        "expected_away_runs": away_runs_sum / runs,
         "sims": runs,
     }

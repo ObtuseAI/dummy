@@ -75,19 +75,25 @@ class Game:
     # scoreboard payload. None pre-game and post-game, same gating as
     # current_period.
     current_clock: str | None = None
+    # Completed games can end tied (rare in NFL/NCAAF).  ``home_won=None``
+    # alone cannot distinguish a true tie from an unresolved/malformed
+    # result, so preserve the settlement fact explicitly for tie-aware
+    # ratings such as Colley while leaving winner-only models fail-closed.
+    is_tie: bool = False
 
 
 def _american(value: Any) -> int | None:
     """Parse an american-odds string ('+101', '-149', 'EVEN') to an int."""
-    if value is None:
+    if value is None or isinstance(value, bool):
         return None
     text = str(value).strip().upper()
     if text in ("EVEN", "EV", "PK"):
         return 100
     try:
-        return int(text.replace("+", ""))
+        parsed = float(text.replace("+", ""))
     except Exception:
         return None
+    return int(parsed) if parsed.is_integer() else None
 
 
 def _moneylines(comp: dict[str, Any]) -> tuple[int | None, int | None, int | None, int | None, str | None]:
@@ -223,8 +229,16 @@ def parse_scoreboard(league: str, payload: dict[str, Any]) -> list[Game]:
         state = comp.get("status", {}).get("type", {}).get("state", "")
         if not home or not away:
             continue
+        home_score = _score(home_competitor or {}) if state in ("post", "in") else None
+        away_score = _score(away_competitor or {}) if state in ("post", "in") else None
+        is_tie = (
+            state == "post"
+            and home_score is not None
+            and away_score is not None
+            and home_score == away_score
+        )
         resolved: bool | None = None
-        if state == "post":
+        if state == "post" and not is_tie:
             if home_won is True or away_won is False:
                 resolved = True
             elif home_won is False or away_won is True:
@@ -255,8 +269,8 @@ def parse_scoreboard(league: str, payload: dict[str, Any]) -> list[Game]:
             home_ml=home_ml, away_ml=away_ml,
             home_ml_open=home_ml_open, away_ml_open=away_ml_open,
             odds_provider=provider,
-            home_score=_score(home_competitor or {}) if live_or_final else None,
-            away_score=_score(away_competitor or {}) if live_or_final else None,
+            home_score=home_score if live_or_final else None,
+            away_score=away_score if live_or_final else None,
             home_first_inning_runs=(
                 _inning_runs(home_competitor or {}) if state == "post" else None
             ),
@@ -271,6 +285,7 @@ def parse_scoreboard(league: str, payload: dict[str, Any]) -> list[Game]:
             weather_condition=weather.get("displayValue"),
             home_name=home_name,
             away_name=away_name,
+            is_tie=is_tie,
         ))
     return games
 

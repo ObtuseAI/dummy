@@ -509,6 +509,36 @@ def default_fetch_batter_splits(player_id: int) -> dict[str, Any]:
     return response.json()
 
 
+def default_fetch_batter_people_bulk(player_ids: tuple[int, ...]) -> dict[str, Any]:
+    """Fetch season hitting rates for one confirmed lineup in a single GET."""
+    import httpx
+    response = httpx.get(
+        f"{_BASE}/people",
+        params={
+            "personIds": ",".join(str(player_id) for player_id in player_ids),
+            "hydrate": "stats(group=[hitting],type=[season])",
+        },
+        timeout=30,
+    )
+    response.raise_for_status()
+    return response.json()
+
+
+def default_fetch_batter_splits_bulk(player_ids: tuple[int, ...]) -> dict[str, Any]:
+    """Fetch handedness splits for one confirmed lineup in a single GET."""
+    import httpx
+    response = httpx.get(
+        f"{_BASE}/people",
+        params={
+            "personIds": ",".join(str(player_id) for player_id in player_ids),
+            "hydrate": "stats(group=[hitting],type=[statSplits],sitCodes=[vl,vr])",
+        },
+        timeout=30,
+    )
+    response.raise_for_status()
+    return response.json()
+
+
 def default_fetch_pitcher_splits(player_id: int) -> dict[str, Any]:
     import httpx
     response = httpx.get(
@@ -546,6 +576,8 @@ class StatsApiClient:
         fetch_batter_people: Callable[[int], dict[str, Any]] | None = None,
         fetch_batter_splits: Callable[[int], dict[str, Any]] | None = None,
         fetch_pitcher_splits: Callable[[int], dict[str, Any]] | None = None,
+        fetch_batter_people_bulk: Callable[[tuple[int, ...]], dict[str, Any]] | None = None,
+        fetch_batter_splits_bulk: Callable[[tuple[int, ...]], dict[str, Any]] | None = None,
     ) -> None:
         self.fetch_schedule = fetch_schedule or default_fetch_schedule
         self.fetch_boxscore = fetch_boxscore or default_fetch_boxscore
@@ -553,14 +585,38 @@ class StatsApiClient:
         self.fetch_batter_people = fetch_batter_people or default_fetch_batter_people
         self.fetch_batter_splits = fetch_batter_splits or default_fetch_batter_splits
         self.fetch_pitcher_splits = fetch_pitcher_splits or default_fetch_pitcher_splits
+        # Preserve dependency-injected tests/callers: default batching is used
+        # only when the corresponding single-player fetcher was not replaced.
+        self.fetch_batter_people_bulk = (
+            fetch_batter_people_bulk
+            if fetch_batter_people_bulk is not None
+            else (default_fetch_batter_people_bulk if fetch_batter_people is None else None)
+        )
+        self.fetch_batter_splits_bulk = (
+            fetch_batter_splits_bulk
+            if fetch_batter_splits_bulk is not None
+            else (default_fetch_batter_splits_bulk if fetch_batter_splits is None else None)
+        )
         self._pitcher_cache: dict[int, PitcherRates | None] = {}
         self._batter_cache: dict[int, BatterRates | None] = {}
+        self._schedule_cache: dict[str, dict[str, Any]] = {}
 
     def clear_cache(self) -> None:
         """Drop cached pitcher AND batter lookups (splits are baked into these
         same cached rates objects) so a reused client refetches season rates."""
         self._pitcher_cache.clear()
         self._batter_cache.clear()
+        self._schedule_cache.clear()
+
+    def clear_schedule_cache(self) -> None:
+        """Refresh slate discovery without discarding season-rate caches."""
+        self._schedule_cache.clear()
+
+    def _schedule(self, date_iso: str) -> dict[str, Any]:
+        key = str(date_iso)
+        if key not in self._schedule_cache:
+            self._schedule_cache[key] = self.fetch_schedule(key) or {}
+        return self._schedule_cache[key]
 
     def _pitcher(self, player_id: int | None) -> PitcherRates | None:
         if player_id is None:
@@ -602,7 +658,7 @@ class StatsApiClient:
         self, date_iso: str, *, captured_at: str,
     ) -> list[MlbGameContext]:
         contexts = parse_schedule(
-            self.fetch_schedule(date_iso), captured_at=captured_at,
+            self._schedule(date_iso), captured_at=captured_at,
         )
         hydrated: list[MlbGameContext] = []
         for ctx in contexts:
@@ -616,6 +672,36 @@ class StatsApiClient:
             ))
         return hydrated
 
+    def projected_context_for_matchup(
+        self,
+        date_iso: str,
+        *,
+        home: str,
+        away: str,
+        captured_at: str,
+    ) -> MlbGameContext | None:
+        """Hydrate only one matchup instead of every pitcher on the slate."""
+        from autonomy.sports.espn import canonical_team
+
+        wanted_home = canonical_team("mlb", home)
+        wanted_away = canonical_team("mlb", away)
+        contexts = parse_schedule(self._schedule(date_iso), captured_at=captured_at)
+        target = next((
+            ctx for ctx in contexts
+            if canonical_team("mlb", ctx.home) == wanted_home
+            and canonical_team("mlb", ctx.away) == wanted_away
+        ), None)
+        if target is None:
+            return None
+        run_factor, hr_factor = park_factors(target.venue)
+        return replace(
+            target,
+            home_pitcher=self._pitcher(target.home_probable_pitcher_id),
+            away_pitcher=self._pitcher(target.away_probable_pitcher_id),
+            park_run_factor=run_factor,
+            park_hr_factor=hr_factor,
+        )
+
     def confirm_lineups(
         self, ctx: MlbGameContext, *, captured_at: str,
     ) -> MlbGameContext:
@@ -624,6 +710,38 @@ class StatsApiClient:
 
     def hydrate_batter_rates(self, ctx: MlbGameContext) -> MlbGameContext:
         """Attach season offensive rates for every batter in both lineups."""
+        player_ids = tuple(dict.fromkeys(
+            slot.player_id for slot in (*ctx.home_lineup, *ctx.away_lineup)
+        ))
+        missing = tuple(player_id for player_id in player_ids if player_id not in self._batter_cache)
+        if (missing and self.fetch_batter_people_bulk is not None
+                and self.fetch_batter_splits_bulk is not None):
+            try:
+                people_payload = self.fetch_batter_people_bulk(missing)
+                splits_payload = self.fetch_batter_splits_bulk(missing)
+                people_by_id = {
+                    int(person["id"]): person
+                    for person in (people_payload.get("people") or [])
+                    if isinstance(person, dict) and person.get("id") is not None
+                }
+                splits_by_id = {
+                    int(person["id"]): person
+                    for person in (splits_payload.get("people") or [])
+                    if isinstance(person, dict) and person.get("id") is not None
+                }
+                for player_id in missing:
+                    person = people_by_id.get(player_id)
+                    rates = parse_batter_rates({"people": [person]}) if person else None
+                    if rates is not None:
+                        split_person = splits_by_id.get(player_id)
+                        if split_person is not None:
+                            vs_lhp, vs_rhp = parse_batter_splits({"people": [split_person]})
+                            rates = replace(rates, vs_lhp=vs_lhp, vs_rhp=vs_rhp)
+                    self._batter_cache[player_id] = rates
+            except Exception:
+                # One failed bulk request degrades to the existing isolated
+                # per-player fetch path; individual failures still stay local.
+                pass
         rates: dict[int, BatterRates] = {}
         for slot in (*ctx.home_lineup, *ctx.away_lineup):
             batter = self._batter(slot.player_id)

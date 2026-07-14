@@ -49,11 +49,11 @@ Each league's kernel is purpose-built to that sport's real scoring shape
 
 | Engine | Module | Mechanism |
 |---|---|---|
-| MLB PA-sim + parks | `autonomy/sports/mlb_pa_sim.py`, `autonomy/sports/mlb_parks.py` | Plate-appearance Monte Carlo: each batter vs. the current pitcher via the Bill James log5 odds ratio against league average, with platoon and park adjustments; many simulated games aggregate into winner/total-run/YRFI/first-five-innings probabilities. Park factors are a static multiplicative scalar on expected total runs (e.g. Coors ~1.28, Petco/Oracle ~0.90), fail-closed to 1.00 for any unmapped team. |
+| MLB PA-sim + parks | `autonomy/sports/mlb_pa_sim.py`, `autonomy/sports/mlb_parks.py` | Plate-appearance Monte Carlo: each batter vs. the current pitcher via the Bill James log5 odds ratio against league average, with platoon and park adjustments. The active live path requires confirmed StatsAPI lineups, both starters, and >=75% batter-rate coverage, caches one simulation per game/cycle, then conditions its expected side runs on the observed score/remaining innings. It emits distinct `mlb_pa_live_*` challenger sources; hydration failure preserves the incumbent `mlb_live_*` path. |
 | NFL key-number margin kernel | `autonomy/sports/nfl_margin.py` | NFL margins are not normal — field goals (3) and touchdowns (7) create real spikes (~10% of games land exactly on 3, ~7% on 7). An auditable base PMF over absolute margins is exponentially tilted (`P_mu(m) ∝ base(m) * exp(lambda*m)`, lambda solved by bisection) so the mean matches the matchup's expected margin while preserving the key-number spikes. Winner/spread rungs derive from the same distribution; totals price from a separate normal. |
 | NBA pace × efficiency | `autonomy/sports/nba_model.py` | Per-team EWMA offensive/defensive rating per 100 possessions plus a shared pace EWMA (from boxscore-derived possession estimates). Expected score = pace × efficiency/100; dispersion is heteroskedastic, scaling with `sqrt(pace/99.5)` so fast games carry more variance. A bounded rest engine and a garbage-time cap protect the rating EWMAs from blowout distortion. Falls back to the generic team model below a minimum-games threshold. |
 | NHL goal model + goalie identity | `autonomy/sports/nhl_model.py` | Home/away goals modeled as independent Poisson processes (true bivariate correlation is a documented, deferred gap) over one regulation goal matrix, with an explicit OT/shootout branch since Kalshi settles on final score including overtime. Goalie identity (starts-weighted save percentage) shifts the matchup. |
-| NCAAF kernel + talent-gap Elo | `autonomy/sports/college.py` | Reuses the NFL margin kernel wholesale with a shallower college key-number PMF (spikes ~40% shallower than the NFL table). The margin itself blends season EWMA form with an Elo-derived talent-gap prior, weighted toward Elo early season and toward observed form as games accumulate. |
+| NCAAF kernel + talent-gap Elo | `autonomy/sports/college.py` | College-specific compound-Poisson team-score distributions use the NCAAF scoring-event mix and one joint grid for coherent winner/spread/total pricing. Key-number spikes are shallower and tails longer than the NFL absolute-margin tilt. The mean margin blends season EWMA form with an Elo-derived talent-gap prior, weighted toward Elo early season and toward observed form as games accumulate. |
 | NCAAMB pace model | `autonomy/sports/college.py` | Reuses the NBA pace × efficiency engine wholesale via a college parameter set (different cold-start constants) — same classes, same math, no duplication. |
 | NFL live state | `autonomy/sports/live_team_models.py` | Conditions the pre-game team scoring means on ESPN's observed score and regulation clock through an NFL-specific compound-Poisson scoring-event mix. Winner, spread, and total share the same discrete final-score distribution. |
 | NCAAF live state | `autonomy/sports/live_team_models.py` | A separate compound-Poisson model with a college-specific scoring-event mix and model version; it does not alias the NFL distribution. |
@@ -64,6 +64,13 @@ Every live-state model is point-in-time and stateless: it learns only from the
 settled-game pre-game engine, then conditions on the current ESPN observation.
 Missing/invalid scores, period, or clock produce an abstention. NFL/NCAAF
 overtime also abstains until possession-aware overtime rules are modeled.
+
+The ESPN sharp-book leg covers the same three families. Moneylines de-vig the
+home/away odds; totals de-vig over/under; spreads de-vig the paired home/away
+handicaps after mapping Kalshi's "wins by > X" threshold to the sportsbook's
+`-X` side. Totals and spreads require exact line equality and complete paired
+odds, so one main line never fabricates prices for the rest of an alternate
+ladder.
 
 ## 3×3 conviction lattice
 

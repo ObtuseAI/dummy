@@ -88,9 +88,12 @@ specialist that raises during routing or warmup is skipped — one broken
 vertical can never take the council down.
 
 **Live team-sport triangulation.** MLB and all five team-league specialists
-expose their in-play winner models to the mispricing monitor. For live winner
-contracts, `EspnSummaryBook` reads the same event-summary cache and de-vigs the
-two-way `pickcenter` moneyline; it is never reused as a spread/total book.
+expose their in-play winner, spread, and total models to the mispricing
+monitor. `EspnSummaryBook` reads one event-summary cache and de-vigs the
+two-way `pickcenter` moneyline, point spread, or over/under. Spread and total
+odds are accepted only when ESPN's current main line exactly equals the Kalshi
+strike; the book abstains on every unmatched alternate rung rather than
+extrapolating one sportsbook line into a distribution.
 NBA/NHL use their existing residual score models. NFL and NCAAF use distinct
 compound-Poisson scoring-event distributions, and NCAAMB uses its own
 40-minute/two-half normal remainder model (`autonomy/sports/live_team_models.py`).
@@ -101,6 +104,24 @@ publishes an explicit play. Each observation records the source event time and
 the monitor's receipt time and is surfaced as opportunist evidence only: it
 does not shift a probability, widen uncertainty, change a strike gate, or
 create execution authority. Article prose is excluded as postgame knowledge.
+
+**MLB StatsAPI PA live challenger.** When a live MLB event can be matched to
+StatsAPI and has confirmed nine-player lineups, both starters, and at least
+75% batter-rate coverage, `BaseballIntelligenceSignal` runs the deterministic
+plate-appearance simulator once per game/cycle. Its expected home/away runs
+condition the observed score and remaining innings, while the existing
+division/rivalry table applies the bounded winner regression. These opinions
+use distinct `mlb_pa_live_winner|total|spread` source names and model version
+`mlb_pa_sim_live_v1`, so they accrue a new forward record instead of rewriting
+the incumbent `mlb_live_*` evidence. Missing hydration fails back to the
+incumbent source. All outputs remain challenger-only and human-promotion-only.
+
+**Loss attribution.** `autonomy/loss_engine.py` deconstructs settled,
+market-benchmarked forecast history by grading scope and event cluster, surfaces
+the worst adequately sampled feature regimes, and supplies only a non-gating
+priority order to the tuner. The nightly strategy-miner task runs it after the
+miner and CLV grader. It writes `runtime/autonomy/loss_attribution.json`; it
+cannot mutate model constants, source weights, promotions, execution, or capital.
 
 **Season gating.** `autonomy/specialists/seasons.py`'s `SeasonMonitor` decides
 whether a league is active from ESPN's own scoreboard (any game inside a

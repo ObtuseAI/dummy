@@ -11,9 +11,10 @@ matrix-library inverse.
 
 Fail-closed & point-in-time (same discipline as every other RatingSource in
 this module):
-  - Only `status == "post"` games with both scores present and a resolved
-    `home_won` feed either solve -- never live/pre games (mirrors
-    `SportsEloSignal.warmup`'s own fetch+filter, see `_settled_results`).
+  - Only `status == "post"` games with both scores present and either a
+    resolved winner or an explicit tie feed either solve -- never live/pre
+    games.  Ties carry a zero margin into Massey and half-win/half-loss
+    treatment into Colley; unresolved results still fail closed.
   - A league that has never been warmed (`warmup` not called, or called with
     zero usable games) holds no ratings for that league at all --
     `.rating()` returns None for every team, byte-identical to the source
@@ -136,24 +137,30 @@ def solve_spd(
 # ---------------------------------------------------------------------------
 
 
-def settled_results(games: Iterable[Game], league: str) -> list[tuple[str, str, float, bool]]:
+SettledResult = tuple[str, str, float, bool | None]
+
+
+def settled_results(games: Iterable[Game], league: str) -> list[SettledResult]:
     """(home, away, margin, home_won) for settled, both-scored games only.
 
-    Filter mirrors `SportsEloSignal.warmup`: `status == "post"` AND
-    `home_won is not None`, plus (Massey-specific) both scores present --
-    never a live/pre game. Team names are canonicalized via
+    ``home_won=None`` means a tie only when ``Game.is_tie`` is explicitly
+    true; otherwise it remains unresolved and is excluded. Team names are
+    canonicalized via
     `autonomy.sports.espn.canonical_team` so aliases (e.g. MLB's AZ/ARI,
     CWS/CHW) collapse to one identity, same as every other RatingSource.
     """
-    out: list[tuple[str, str, float, bool]] = []
+    out: list[SettledResult] = []
     for g in games:
-        if g.status != "post" or g.home_won is None:
+        if g.status != "post":
             continue
         if g.home_score is None or g.away_score is None:
             continue
+        if g.home_won is None and not g.is_tie:
+            continue
         home = canonical_team(league, g.home)
         away = canonical_team(league, g.away)
-        out.append((home, away, float(g.home_score - g.away_score), bool(g.home_won)))
+        outcome = None if g.is_tie else bool(g.home_won)
+        out.append((home, away, float(g.home_score - g.away_score), outcome))
     return out
 
 
@@ -163,7 +170,7 @@ def settled_results(games: Iterable[Game], league: str) -> list[tuple[str, str, 
 
 
 def build_massey_system(
-    results: list[tuple[str, str, float, bool]],
+    results: list[SettledResult],
 ) -> tuple[list[str], dict[str, int], list[list[float]], list[float], dict[str, int]]:
     """Assemble the Massey normal-equation system directly (no G x n design
     matrix materialized): for each game, `A[h][h] += 1`, `A[a][a] += 1`,
@@ -188,7 +195,7 @@ def build_massey_system(
 
 
 def solve_massey(
-    results: list[tuple[str, str, float, bool]], ridge_lambda: float = RIDGE_LAMBDA
+    results: list[SettledResult], ridge_lambda: float = RIDGE_LAMBDA
 ) -> tuple[dict[str, float] | None, dict[str, int]]:
     """Solve the ridge-regularized Massey system. Returns (ratings, games_played);
     ratings is None on zero games or solver non-convergence (fail-closed)."""
@@ -257,7 +264,7 @@ class MasseyRatingSource:
 
 
 def build_colley_system(
-    results: list[tuple[str, str, float, bool]],
+    results: list[SettledResult],
 ) -> tuple[list[str], dict[str, int], list[list[float]], list[float], dict[str, int]]:
     """Assemble the Colley matrix: `C_ii = 2 + n_i`, `C_ij = -n_ij`,
     `b_i = 1 + (w_i - l_i) / 2`. Scores are unused -- pure win-loss."""
@@ -276,12 +283,20 @@ def build_colley_system(
         C[a][h] -= 1.0
         games_played[home] += 1
         games_played[away] += 1
-        if home_won:
+        if home_won is True:
             wins[home] += 1.0
             losses[away] += 1.0
-        else:
+        elif home_won is False:
             wins[away] += 1.0
             losses[home] += 1.0
+        else:
+            # Standard Colley tie treatment: half a win and half a loss for
+            # each team.  Their net W-L contribution is zero, while the game
+            # still strengthens both diagonal/schedule terms above.
+            wins[home] += 0.5
+            losses[home] += 0.5
+            wins[away] += 0.5
+            losses[away] += 0.5
     b = [0.0] * n
     for team, i in index.items():
         C[i][i] += 2.0
@@ -290,7 +305,7 @@ def build_colley_system(
 
 
 def solve_colley(
-    results: list[tuple[str, str, float, bool]],
+    results: list[SettledResult],
 ) -> tuple[dict[str, float] | None, dict[str, int]]:
     """Solve the Colley system. Returns (ratings, games_played); ratings is
     None on zero games or solver non-convergence (fail-closed)."""

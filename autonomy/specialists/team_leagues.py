@@ -90,14 +90,31 @@ class TeamLeagueSpecialist:
             resolved = self._live_game(market)
             if resolved is not None:
                 parsed, game = resolved
-                # EspnSummaryBook currently exposes a two-way MONEYLINE only;
-                # never misapply it to a spread/total contract.
                 if parsed.market_type == "winner" and parsed.subject:
                     home_prob = self.live_book.home_win_probability(game.game_id)
                     if home_prob is not None:
                         subject = canonical_team(self.league, parsed.subject)
                         yes_is_home = subject == canonical_team(self.league, game.home)
                         return home_prob if yes_is_home else 1.0 - home_prob
+                elif parsed.market_type == "total" and parsed.threshold is not None:
+                    probability = self.live_book.total_over_probability(
+                        game.game_id, parsed.threshold,
+                    )
+                    if probability is not None:
+                        return probability
+                elif (parsed.market_type == "spread" and parsed.subject
+                      and parsed.threshold is not None):
+                    subject = canonical_team(self.league, parsed.subject)
+                    home = canonical_team(self.league, game.home)
+                    away = canonical_team(self.league, game.away)
+                    if subject in {home, away}:
+                        probability = self.live_book.spread_cover_probability(
+                            game.game_id,
+                            subject_is_home=subject == home,
+                            threshold=parsed.threshold,
+                        )
+                        if probability is not None:
+                            return probability
             if self.sportsbook is not None and self.sportsbook.applicable(market):
                 signal = self.sportsbook.generate(market)
                 return signal.probability_yes if signal else None

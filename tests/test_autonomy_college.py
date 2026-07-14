@@ -13,13 +13,13 @@ from autonomy.ontology import MarketView, Vertical
 from autonomy.signals.sports_intelligence import TeamSportsIntelligenceSignal
 from autonomy.sports.boxscores import BoxscoreStore, TeamBoxscore
 from autonomy.sports.college import (
-    BASE_ABS_MARGIN_PMF_COLLEGE,
     NCAAF_MODEL_VERSION,
     NCAAMB_MODEL_VERSION,
     NCAAMB_PARAMS,
     NcaafCollegeModel,
     TALENT_GAP_FULL_GAMES,
     ncaaf_college,
+    ncaaf_score_distributions,
     ncaaf_talent_gap_margin,
     parse_neutral_site,
     talent_gap_margin,
@@ -31,7 +31,7 @@ from autonomy.sports.live_team_models import (
     NCAAMB_LIVE_MODEL_VERSION,
 )
 from autonomy.sports.nba_model import MIN_GAMES_FOR_ENGINE, NbaModel, NbaTeamState
-from autonomy.sports.nfl_margin import BASE_ABS_MARGIN_PMF, margin_distribution
+from autonomy.sports.nfl_margin import margin_distribution
 from autonomy.sports.team_scores import LEAGUE_SCORE_CONFIGS, TeamScoreModel, TeamScorePrediction
 
 NOW = datetime(2026, 1, 12, 16, 0, tzinfo=timezone.utc)
@@ -40,23 +40,31 @@ NOW = datetime(2026, 1, 12, 16, 0, tzinfo=timezone.utc)
 # ---------------------------------------------------------- college PMF
 
 
-def test_college_pmf_normalizes_to_one():
-    dist = margin_distribution(0.0, base_pmf=BASE_ABS_MARGIN_PMF_COLLEGE)
-    assert sum(dist.values()) == pytest.approx(1.0, abs=1e-9)
+def test_college_score_event_distributions_normalize_to_one():
+    margins, totals = ncaaf_score_distributions(28.0, 24.0)
+    assert sum(margins.values()) == pytest.approx(1.0, abs=1e-9)
+    assert sum(totals.values()) == pytest.approx(1.0, abs=1e-9)
+    assert sum(margin * mass for margin, mass in margins.items()) == pytest.approx(4.0, abs=1e-6)
+    assert sum(total * mass for total, mass in totals.items()) == pytest.approx(52.0, abs=1e-6)
 
 
-def test_college_pmf_key_number_spikes_are_shallower_than_nfl():
-    ratio_3 = BASE_ABS_MARGIN_PMF_COLLEGE[3] / BASE_ABS_MARGIN_PMF[3]
-    ratio_7 = BASE_ABS_MARGIN_PMF_COLLEGE[7] / BASE_ABS_MARGIN_PMF[7]
-    assert ratio_3 < 1.0
-    assert ratio_7 < 1.0
-    assert ratio_3 == pytest.approx(0.6, abs=0.1)
-    assert ratio_7 == pytest.approx(0.6, abs=0.1)
+def test_college_score_event_key_number_spikes_are_shallower_than_nfl():
+    college, _ = ncaaf_score_distributions(28.0, 28.0)
+    nfl = margin_distribution(0.0)
+
+    def neighbor_spike(distribution, key):
+        neighbor_mean = (distribution[key - 1] + distribution[key + 1]) / 2.0
+        return distribution[key] / neighbor_mean
+
+    assert neighbor_spike(college, 3) < neighbor_spike(nfl, 3)
+    assert neighbor_spike(college, 7) < neighbor_spike(nfl, 7)
 
 
-def test_college_pmf_mass_extends_further_than_nfl():
-    assert max(BASE_ABS_MARGIN_PMF_COLLEGE) == 60
-    assert max(BASE_ABS_MARGIN_PMF) == 45
+def test_college_score_event_kernel_has_longer_blowout_tail_than_nfl():
+    college, _ = ncaaf_score_distributions(28.0, 28.0)
+    nfl = margin_distribution(0.0)
+    assert max(college) > max(nfl)
+    assert min(college) < min(nfl)
 
 
 # ------------------------------------------------------- talent-gap blend
@@ -122,11 +130,15 @@ def test_ncaaf_neutral_site_zeroes_the_home_edge():
     assert margin_non_neutral - margin_neutral == pytest.approx(home_edge, abs=1e-9)
 
 
-def test_ncaaf_college_kernel_uses_the_college_base_pmf():
+def test_ncaaf_college_kernel_uses_the_college_score_event_distribution():
     prediction = _ncaaf_prediction(expected_home=24.0, expected_away=21.0)
     kernel, out = ncaaf_college(prediction, home_elo=1500.0, away_elo=1500.0, games=10, neutral_site=False)
     assert isinstance(kernel, NcaafCollegeModel)
-    assert kernel.distribution == margin_distribution(out.expected_margin, base_pmf=BASE_ABS_MARGIN_PMF_COLLEGE)
+    expected_margin, expected_total = ncaaf_score_distributions(
+        kernel.expected_home_score, kernel.expected_away_score)
+    assert kernel.distribution == expected_margin
+    assert kernel.total_distribution == expected_total
+    assert kernel.distribution != margin_distribution(out.expected_margin)
     assert out.model_version == NCAAF_MODEL_VERSION
     assert 0.0 < out.home_win_probability < 1.0
 

@@ -7,6 +7,8 @@ from pathlib import Path
 from autonomy.live_odds import (
     EspnSummaryBook,
     devig_summary_home_probability,
+    devig_summary_spread_probability,
+    devig_summary_total_probability,
     parse_base_out_state,
     parse_ejection_events,
 )
@@ -17,6 +19,21 @@ FIXTURES = Path(__file__).parent / "fixtures"
 def _summary(home_ml, away_ml, books=2):
     book = {"homeTeamOdds": {"moneyLine": home_ml}, "awayTeamOdds": {"moneyLine": away_ml}}
     return {"pickcenter": [dict(book) for _ in range(books)]}
+
+
+def _summary_with_lines(
+    *, home_line=-1.5, home_odds=163, away_line=1.5, away_odds=-198,
+    total_line=8.5, over_odds=-103, under_odds=-117,
+):
+    return {"pickcenter": [{
+        "overUnder": total_line,
+        "overOdds": over_odds,
+        "underOdds": under_odds,
+        "pointSpread": {
+            "home": {"close": {"line": f"{home_line:+g}", "odds": f"{home_odds:+d}"}},
+            "away": {"close": {"line": f"{away_line:+g}", "odds": f"{away_odds:+d}"}},
+        },
+    }]}
 
 
 def test_devig_summary_removes_vig_and_averages_books():
@@ -47,6 +64,73 @@ def test_summary_book_provider_fail_closed():
     assert EspnSummaryBook(
         fetch_summary=lambda _league, _event: _summary(-150, 130)
     ).home_win_probability(None) is None
+
+
+def test_devig_summary_total_requires_exact_line_and_two_sided_odds():
+    summary = _summary_with_lines()
+    expected = 103.0 / 203.0
+    other = 117.0 / 217.0
+    assert devig_summary_total_probability(summary, 8.5) == expected / (expected + other)
+    assert devig_summary_total_probability(summary, 9.5) is None
+    assert devig_summary_total_probability(
+        {"pickcenter": [{"overUnder": 8.5, "overOdds": -110}]}, 8.5,
+    ) is None
+
+
+def test_devig_summary_total_averages_only_books_at_matching_line():
+    first = _summary_with_lines(over_odds=-110, under_odds=-110)["pickcenter"][0]
+    second = _summary_with_lines(over_odds=120, under_odds=-140)["pickcenter"][0]
+    mismatched = _summary_with_lines(total_line=9.5, over_odds=-500, under_odds=300)["pickcenter"][0]
+    p1 = devig_summary_total_probability({"pickcenter": [first]}, 8.5)
+    p2 = devig_summary_total_probability({"pickcenter": [second]}, 8.5)
+    assert devig_summary_total_probability(
+        {"pickcenter": [first, second, mismatched]}, 8.5,
+    ) == (p1 + p2) / 2.0
+
+
+def test_devig_summary_spread_maps_kalshi_margin_to_subject_handicap():
+    summary = _summary_with_lines()
+    home = devig_summary_spread_probability(
+        summary, subject_is_home=True, threshold=1.5,
+    )
+    assert home is not None and 0.30 < home < 0.45
+    # Away is +1.5 in this book, which corresponds to "away wins by > -1.5".
+    away = devig_summary_spread_probability(
+        summary, subject_is_home=False, threshold=-1.5,
+    )
+    assert away is not None and abs(home + away - 1.0) < 1e-12
+    assert devig_summary_spread_probability(
+        summary, subject_is_home=False, threshold=1.5,
+    ) is None
+
+
+def test_devig_summary_spread_rejects_noncomplementary_or_one_sided_rows():
+    malformed = _summary_with_lines(away_line=2.5)
+    assert devig_summary_spread_probability(
+        malformed, subject_is_home=True, threshold=1.5,
+    ) is None
+    one_sided = {"pickcenter": [{
+        "pointSpread": {"home": {"close": {"line": "-1.5", "odds": "+160"}}},
+    }]}
+    assert devig_summary_spread_probability(
+        one_sided, subject_is_home=True, threshold=1.5,
+    ) is None
+
+
+def test_summary_book_line_methods_reuse_cached_summary():
+    calls = []
+
+    def fetch(league, event_id):
+        calls.append((league, event_id))
+        return _summary_with_lines()
+
+    book = EspnSummaryBook(league="mlb", fetch_summary=fetch)
+    assert book.total_over_probability("g1", 8.5) is not None
+    assert book.spread_cover_probability(
+        "g1", subject_is_home=True, threshold=1.5,
+    ) is not None
+    assert book.total_over_probability(None, 8.5) is None
+    assert calls == [("mlb", "g1")]
 
 
 def test_summary_book_caches_per_event():

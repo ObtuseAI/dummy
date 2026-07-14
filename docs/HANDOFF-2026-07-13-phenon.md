@@ -92,13 +92,13 @@ under the old code). Fix = per-source `points_per_unit(league)` contract.
 - ✅ **Massey/Colley re-warm** (CF2, PR #73). `on_cycle_start` re-warms owned sources on a 12h TTL
    (`MASSEY_COLLEY_REWARM_TTL_HOURS`); injected sources untouched; crash-proof/fail-closed.
 
-**Still deferred (logged, non-blocking):**
-1. **Colley tie handling.** `Game.home_won` collapses ties to a home win upstream
-   (`espn.py`), so Colley can't see true ties. Near-zero impact for the 4 Colley leagues
-   (rare NFL ties only); fix at the feed layer if it ever matters.
-2. **NCAAF uses the college key-number table** now (matches WS-C doctrine), but still
-   reuses the NFL margin kernel wholesale otherwise — a shallower college-specific kernel
-   is a future fidelity improvement.
+**Deferred follow-ups resolved (2026-07-14):**
+1. **Colley tie handling.** `Game.is_tie` now preserves a completed tied score at
+   the ESPN feed boundary. Settled ratings intake admits only explicit ties (not
+   unresolved results), and Colley records half a win plus half a loss for each team.
+2. **College-specific NCAAF kernel.** Pre-game specialist and independent
+   power-ratings paths now use the NCAAF compound-Poisson scoring-event model,
+   producing coherent winner/spread/total distributions without the NFL margin tilt.
 
 ## Pre-promotion punch list (from Part I whole-branch review — separate from Phenon)
 

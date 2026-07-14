@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import pytest
+
 from autonomy.sports.mlb_pa_sim import LEAGUE, log5, PA_OUTCOMES, plate_appearance_distribution
 from autonomy.sports.statsapi import BatterRates, PitcherRates
 
@@ -300,6 +302,11 @@ def test_market_probabilities_are_bounded_and_keyed():
         assert 0.0 <= markets[key] <= 1.0
     assert markets["sims"] == 400
     assert markets["expected_total_runs"] > 0.0
+    assert markets["expected_home_runs"] > 0.0
+    assert markets["expected_away_runs"] > 0.0
+    assert markets["expected_total_runs"] == pytest.approx(
+        markets["expected_home_runs"] + markets["expected_away_runs"],
+    )
 
 
 def test_market_simulation_is_deterministic():
