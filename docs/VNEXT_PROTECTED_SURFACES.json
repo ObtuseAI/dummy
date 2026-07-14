@@ -1,0 +1,115 @@
+{
+  "schema_version": 1,
+  "promotion_authority": "HUMAN_ONLY",
+  "automatic_mutation_authority": "RECOMMEND_MAXIMUM",
+  "protected_surfaces": [
+    {
+      "path": "dummy/constitution",
+      "category": "constitution",
+      "reason": "Evolution cannot modify its authority or evaluator protections."
+    },
+    {
+      "path": "autonomy/ledger.py",
+      "category": "settlement_truth",
+      "reason": "Append-only observations, decisions, fills, and outcomes are authoritative."
+    },
+    {
+      "path": "autonomy/reconciler.py",
+      "category": "settlement_truth",
+      "reason": "Settlement reconciliation must remain outside the mutation surface."
+    },
+    {
+      "path": "autonomy/backtest.py",
+      "category": "settlement_truth",
+      "reason": "The primary evidence evaluator cannot be changed by its candidates."
+    },
+    {
+      "path": "autonomy/evolution_lab.py",
+      "category": "settlement_truth",
+      "reason": "Candidate evaluation and held-out fold rules are protected."
+    },
+    {
+      "path": "autonomy/promotion.py",
+      "category": "promotion",
+      "reason": "Promotion is human-only and automatic changes may only demote."
+    },
+    {
+      "path": "autonomy/canary.py",
+      "category": "promotion",
+      "reason": "Canary and scale evidence floors may not be weakened."
+    },
+    {
+      "path": "proof/ledger.py",
+      "category": "fill_truth",
+      "reason": "Execution proof records are authoritative evidence."
+    },
+    {
+      "path": "live_firewall",
+      "category": "execution",
+      "reason": "All live orders must remain behind the hardened firewall."
+    },
+    {
+      "path": "execution",
+      "category": "execution",
+      "reason": "Execution adapters are outside recursive research authority."
+    },
+    {
+      "path": "core/proof_authority.py",
+      "category": "execution",
+      "reason": "Operator authority is explicit, typed, and externally granted."
+    },
+    {
+      "path": "core/proof_lock.py",
+      "category": "execution",
+      "reason": "Proof consumption locks must remain fail closed."
+    },
+    {
+      "path": "core/second_proof_lock.py",
+      "category": "execution",
+      "reason": "One-shot authority locks cannot be mutated by research."
+    },
+    {
+      "path": "core/second_proof_runner.py",
+      "category": "execution",
+      "reason": "The live proof runner is isolated from forecasting evolution."
+    },
+    {
+      "path": "configs/live_submit.json",
+      "category": "execution",
+      "reason": "Live-submit state requires explicit operator action."
+    },
+    {
+      "path": "configs/caps.json",
+      "category": "execution",
+      "reason": "Capital and order caps are operator-controlled."
+    },
+    {
+      "path": "core/secret_guard.py",
+      "category": "credentials",
+      "reason": "Secret registration and redaction are protected."
+    },
+    {
+      "path": "model_router/credential_source.py",
+      "category": "credentials",
+      "reason": "Credential discovery is not available to research agents."
+    },
+    {
+      "path": "kalshi/client.py",
+      "category": "credentials",
+      "reason": "Authenticated broker transport remains outside research authority."
+    }
+  ],
+  "evolvable_roots": [
+    "dummy/agents",
+    "dummy/organisms",
+    "dummy/forecasting",
+    "dummy/world_model",
+    "dummy/adversarial",
+    "dummy/metacognition",
+    "dummy/shadows",
+    "dummy/genome",
+    "dummy/evolution",
+    "autonomy/signals",
+    "autonomy/specialists"
+  ]
+}

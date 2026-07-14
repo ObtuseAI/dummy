@@ -1,0 +1,96 @@
+{
+  "schema_version": 1,
+  "report_name": "DUMMY_VNEXT_PHASE0_BASELINE",
+  "maturity": "EXPERIMENTAL_SOVEREIGN_FORECASTING",
+  "baseline_git_commit": "e5ddde49cd1e8845d7f3004e048b417f0786f3aa",
+  "baseline_ref": "origin/main",
+  "artifact_capture_at": "2026-07-14T21:01:28.9157527Z",
+  "protected_surface_manifest_sha256": "cfead6963451764832577ff8c742f0c19fc7f27585b87db862d197a6fc3a2b1b",
+  "artifacts": [
+    {
+      "path": "runtime/autonomy/readiness_report.json",
+      "bytes": 34625,
+      "modified_at": "2026-07-14T19:50:06.4252384Z",
+      "sha256": "179e68e93cb337154a27b69c58bd21f505953d68f92627a534537b06be4982ef"
+    },
+    {
+      "path": "runtime/autonomy/loss_attribution.json",
+      "bytes": 11058,
+      "modified_at": "2026-07-14T19:49:07.8879869Z",
+      "sha256": "add9de07c2a1d544c3b671b92fa5de9e63dc849e955818c09df977f9a7c5f634"
+    },
+    {
+      "path": "runtime/autonomy/clv_report.json",
+      "bytes": 1124,
+      "modified_at": "2026-07-14T19:48:32.0643700Z",
+      "sha256": "6f38d2ed68ec5c2378458b81ebb3a7429336df97f40acd917cb5ffe48c526613"
+    },
+    {
+      "path": "runtime/autonomy/strategy_mining_report.json",
+      "bytes": 7141,
+      "modified_at": "2026-07-14T19:48:26.5802192Z",
+      "sha256": "6afc34943b64c9ea0f5e7569efcb7bd592f01516fd51f003846e8e8c96249976"
+    },
+    {
+      "path": "runtime/autonomy/latest_backtest_summary.json",
+      "bytes": 13971,
+      "modified_at": "2026-07-10T05:28:23.4247124Z",
+      "sha256": "1b2d5a6954f2ff55d00da34c1e7fe5e824b39f305a6de9eb33f663f1198a1b33"
+    },
+    {
+      "path": "runtime/autonomy/simulation_training_latest.json",
+      "bytes": 13278,
+      "modified_at": "2026-07-14T20:55:04.9524645Z",
+      "sha256": "42e2c4e71821479a663139fe8a73217b194fb18665609699faa2b61567d2704a"
+    }
+  ],
+  "readiness_artifact": {
+    "scopes_evaluated": 54,
+    "promotion_candidates": [
+      "crypto_blend_sigma|15m_direction|15m",
+      "crypto_equities_flow|15m_direction|15m"
+    ],
+    "auto_demotions": [],
+    "interpretation": "Eligibility is a review queue only; promotion remains human-only."
+  },
+  "read_only_canary_probe": {
+    "probe_started_at": "2026-07-14T21:02:15.333822+00:00",
+    "probe_completed_at": "2026-07-14T21:04:23.042181+00:00",
+    "ready": false,
+    "blockers": [
+      "verified shadow PnL is not positive for canary: -380c",
+      "fill-conditioned forecast Brier skill is not positive for canary: -0.1603"
+    ],
+    "settled_markets": 86761,
+    "realized_shadow_pnl_cents": -380,
+    "settled_fills": 22,
+    "settled_fill_event_clusters": 19,
+    "fill_conditioned_decisions": 23,
+    "fill_conditioned_event_clusters": 20,
+    "fill_conditioned_forecast_brier": 0.242447,
+    "fill_conditioned_market_brier": 0.208959,
+    "fill_conditioned_brier_skill_vs_market": -0.1603,
+    "scale_ready": false,
+    "scale_blockers": [
+      "verified net PnL is not positive: -380c",
+      "fill-conditioned forecast Brier skill is not positive: -0.1603",
+      "statistically detected negative forecast drift: local Brier-excess change=0.02034"
+    ],
+    "signal_data_quality_status": "WARN",
+    "signal_data_quality_blocking_issues": [],
+    "signal_data_quality_warnings": [
+      "382813 historical signals predate receipt-time/feature provenance"
+    ]
+  },
+  "crypto_execution_truth": {
+    "source_artifact": "runtime/autonomy/simulation_training_latest.json",
+    "selection": "witnessed_crypto_fills_with_settlement",
+    "settled_fills": 11,
+    "wins": 1,
+    "net_pnl_cents": -282,
+    "ensemble_brier": 0.253315,
+    "market_brier": 0.185064
+  },
+  "baseline_verdict": "NOT_READY",
+  "execution_authority_added": false
+}

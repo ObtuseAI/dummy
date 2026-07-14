@@ -16,7 +16,7 @@ jobs:
     runs-on: windows-latest
     timeout-minutes: 45
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Mirror checkout to the canonical root
         # Parts of the suite assert the doctrine that the repo lives at
         # C:\src\engine\dummy (canonical-identity gates, artifact paths).
@@ -24,7 +24,7 @@ jobs:
         run: |
           New-Item -ItemType Directory -Force -Path C:\src\engine | Out-Null
           Copy-Item -Recurse -Force -Path $env:GITHUB_WORKSPACE -Destination C:\src\engine\dummy
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
           cache: pip

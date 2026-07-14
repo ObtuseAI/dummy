@@ -474,7 +474,7 @@ class AutonomyLedger:
         }
 
     # ------------------------------------------------------------------
-    # Trust weights (Blunder-descended: outcome-updated source trust)
+    # Trust weights are updated only from realized outcomes.
     # ------------------------------------------------------------------
 
     def get_weight(self, source: str, default: float = 1.0) -> float:

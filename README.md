@@ -42,6 +42,12 @@ specialists—and every new subsystem starts as
 `EXPERIMENTAL_SOVEREIGN_FORECASTING`. The reviewed architecture, staged
 delivery plan, benchmark claims, and exit gates are documented in
 [`docs/VNEXT_MASTER_PLAN_INTEGRATION.md`](docs/VNEXT_MASTER_PLAN_INTEGRATION.md).
+Phase 0/1 now has a frozen
+[`evidence baseline`](docs/VNEXT_PHASE0_BASELINE.json), a reviewed
+[`governance audit`](docs/VNEXT_PHASE0_GOVERNANCE_AUDIT.md), and an executable
+[`protected-surface manifest`](docs/VNEXT_PROTECTED_SURFACES.json). These add no
+execution authority; current canary and scale gates remain blocked by the
+recorded operational evidence.
 
 ## Current paper operation
 

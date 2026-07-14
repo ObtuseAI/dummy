@@ -4,7 +4,6 @@ Three loops, all evidence-driven:
 1. Calibration: on every settlement, score each source's logged signal for
    that market (Brier) and update its trust weight multiplicatively —
    sources that beat the market gain influence, sources that lose it fade.
-   (Blunder's recursive_feedback_engine pattern, applied to signals.)
 2. Risk: settled P&L per contract feeds the risk brain's stage evidence, so
    position size is always downstream of demonstrated edge.
 3. Reflexion: periodically, losing decisions are summarized through the

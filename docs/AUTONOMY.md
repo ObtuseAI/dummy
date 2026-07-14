@@ -337,13 +337,13 @@ powershell -ExecutionPolicy Bypass -File scripts/install_simulation_training_tas
 Crypto hardening evidence and challenger gates are documented in
 `docs/CRYPTO_PERFORMANCE_AUDIT.md`.
 
-## Doctrine inheritance
+## Dummy doctrine
 
-- **Rainman**: fail-closed, honest status enums (`CYCLE_OK`,
-  `HALTED_KILL_SWITCH`, `HALTED_SELF_STOP:*`, `CYCLE_DEGRADED_*`), gates only
-  added or hardened.
-- **Blunder inflow**: source trust is earned from realized outcomes only;
-  untrusted evidence is quarantined, never promoted.
+- Fail closed with honest status enums (`CYCLE_OK`, `HALTED_KILL_SWITCH`,
+  `HALTED_SELF_STOP:*`, `CYCLE_DEGRADED_*`); gates may only be added or
+  hardened.
+- Source trust is earned from realized outcomes only; untrusted evidence is
+  quarantined and never promoted.
 
 ## Safety invariants (unchanged by autonomy)
 
