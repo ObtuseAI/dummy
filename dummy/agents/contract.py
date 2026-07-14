@@ -27,6 +27,7 @@ class AgentRole(str, Enum):
     FEATURE_EXTRACTOR = "feature_extractor"
     MARKET_PRIOR = "market_prior"
     SPECIALIST = "specialist"
+    CONTRARIAN = "contrarian"
     CALIBRATOR = "calibrator"
     ADVERSARY = "adversary"
     SYNTHESIZER = "synthesizer"

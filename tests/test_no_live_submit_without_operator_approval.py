@@ -24,11 +24,13 @@ def reset_state():
     import live_firewall.firewall as firewall_module
 
     firewall_module.STATE = fresh
+    firewall_module.REJECTED_ADAPTERS.clear()
     original_key = os.environ.get("KALSHI_API_KEY_ID")
     os.environ["KALSHI_API_KEY_ID"] = "test"
     try:
         yield
     finally:
+        firewall_module.REJECTED_ADAPTERS.clear()
         if original_key is None:
             os.environ.pop("KALSHI_API_KEY_ID", None)
         else:

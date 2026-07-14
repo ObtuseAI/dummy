@@ -1,0 +1,63 @@
+{
+  "execution_authority": false,
+  "incumbent_substitution_allowed": false,
+  "maturity": "EXPERIMENTAL_SOVEREIGN_FORECASTING",
+  "promotion_authority": "HUMAN_ONLY",
+  "schema_version": 1,
+  "templates": [
+    {
+      "clock_domain": "fifteen_minute",
+      "dependency_order": [
+        "btc15m-incumbent-v1",
+        "btc15m-calibrator-v1",
+        "btc15m-market-prior-v1",
+        "btc15m-contrarian-v1",
+        "btc15m-adversary-v1",
+        "btc15m-shadow-controller-v1",
+        "btc15m-synthesizer-v1"
+      ],
+      "digest": "47939e0d8ebd2a71e66e87256931b21d5f7a5d8244132f8ba5efca0183627599",
+      "market_type": "15m_direction",
+      "one_specialist_per_market": true,
+      "roles": [
+        "market_prior",
+        "specialist",
+        "contrarian",
+        "calibrator",
+        "adversary",
+        "shadow",
+        "synthesizer"
+      ],
+      "template_id": "btc-15m-direction-organism-v1",
+      "ticker_prefix": "KXBTC15M",
+      "vertical": "crypto"
+    },
+    {
+      "clock_domain": "pregame",
+      "dependency_order": [
+        "mlbpregame-incumbent-v1",
+        "mlbpregame-calibrator-v1",
+        "mlbpregame-market-prior-v1",
+        "mlbpregame-contrarian-v1",
+        "mlbpregame-adversary-v1",
+        "mlbpregame-shadow-controller-v1",
+        "mlbpregame-synthesizer-v1"
+      ],
+      "digest": "fa4f658da81c8d784fb07a7974b3230afbb5fac108e01f21d7224e8dec4d26b9",
+      "market_type": "winner",
+      "one_specialist_per_market": true,
+      "roles": [
+        "market_prior",
+        "specialist",
+        "contrarian",
+        "calibrator",
+        "adversary",
+        "shadow",
+        "synthesizer"
+      ],
+      "template_id": "mlb-pregame-winner-organism-v1",
+      "ticker_prefix": "KXMLBGAME",
+      "vertical": "mlb"
+    }
+  ]
+}

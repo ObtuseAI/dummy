@@ -21,6 +21,7 @@ class MessageType(str, Enum):
     MARKET_STATE = "MARKET_STATE"
     HYPOTHESIS = "HYPOTHESIS"
     FORECAST = "FORECAST"
+    ABSTENTION = "ABSTENTION"
     COUNTERFORECAST = "COUNTERFORECAST"
     UNCERTAINTY = "UNCERTAINTY"
     DATA_GAP = "DATA_GAP"
@@ -40,6 +41,7 @@ MESSAGE_AUTHORITY = {
     MessageType.MARKET_STATE: Authority.MODEL,
     MessageType.HYPOTHESIS: Authority.MODEL,
     MessageType.FORECAST: Authority.FORECAST,
+    MessageType.ABSTENTION: Authority.FORECAST,
     MessageType.COUNTERFORECAST: Authority.CHALLENGE,
     MessageType.UNCERTAINTY: Authority.MODEL,
     MessageType.DATA_GAP: Authority.OBSERVE,
@@ -66,6 +68,7 @@ MARKET_SCOPED_TYPES = frozenset(
         MessageType.MARKET_STATE,
         MessageType.HYPOTHESIS,
         MessageType.FORECAST,
+        MessageType.ABSTENTION,
         MessageType.COUNTERFORECAST,
         MessageType.UNCERTAINTY,
         MessageType.DATA_GAP,
@@ -207,6 +210,28 @@ class MessageEnvelope:
             ):
                 raise ProtocolValidationError(
                     "forecast payload requires probability in [0, 1]"
+                )
+        if self.message_type is MessageType.ABSTENTION:
+            reasons = self.payload.get(
+                "abstain_reasons",
+                self.payload.get("reasons", ()),
+            )
+            if (
+                not isinstance(reasons, tuple)
+                or not reasons
+                or any(not isinstance(item, str) or not item.strip() for item in reasons)
+            ):
+                raise ProtocolValidationError(
+                    "abstention payload requires at least one non-empty reason"
+                )
+            candidate = self.payload.get("candidate_probability")
+            if candidate is not None and (
+                not isinstance(candidate, (int, float))
+                or isinstance(candidate, bool)
+                or not 0.0 <= float(candidate) <= 1.0
+            ):
+                raise ProtocolValidationError(
+                    "abstention candidate_probability must be in [0, 1]"
                 )
 
     @classmethod
