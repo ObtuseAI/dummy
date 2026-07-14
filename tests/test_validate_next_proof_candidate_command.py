@@ -3,7 +3,6 @@ import subprocess
 import sys
 from pathlib import Path
 
-import pytest
 
 from tests._real_proof_test_helpers import make_evidence_bundle, patch_artifact_paths
 
@@ -11,7 +10,7 @@ CLI = [sys.executable, "-m", "tools.operator_authority_appliance.operator_full_c
 
 
 def test_validate_next_proof_candidate_writes_report(tmp_path, monkeypatch):
-    bundle = make_evidence_bundle(tmp_path)
+    make_evidence_bundle(tmp_path)
     patch_artifact_paths(monkeypatch, tmp_path)
     out_dir = tmp_path / "next_proof_candidate"
     monkeypatch.setenv("DUMMY_NEXT_PROOF_CANDIDATE_OUT_DIR", str(out_dir))
@@ -30,7 +29,7 @@ def test_validate_next_proof_candidate_writes_report(tmp_path, monkeypatch):
 
 
 def test_validate_next_proof_candidate_does_not_enable_live_submit(tmp_path, monkeypatch):
-    bundle = make_evidence_bundle(tmp_path)
+    make_evidence_bundle(tmp_path)
     patch_artifact_paths(monkeypatch, tmp_path)
     result = subprocess.run(
         [*CLI, "validate-next-proof-candidate"],
@@ -46,7 +45,7 @@ def test_validate_next_proof_candidate_does_not_enable_live_submit(tmp_path, mon
 
 
 def test_validate_next_proof_candidate_no_broker_contact(tmp_path, monkeypatch):
-    bundle = make_evidence_bundle(tmp_path)
+    make_evidence_bundle(tmp_path)
     patch_artifact_paths(monkeypatch, tmp_path)
     out_dir = tmp_path / "next_proof_candidate"
     monkeypatch.setenv("DUMMY_NEXT_PROOF_CANDIDATE_OUT_DIR", str(out_dir))

@@ -6,7 +6,6 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Any
 
-from predator_mesh.v19 import DOMAINS
 
 
 class SourceActivationMode(str, Enum):

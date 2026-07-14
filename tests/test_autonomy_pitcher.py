@@ -98,7 +98,7 @@ def _market(ticker="KXMLBGAME-26JUL091810TORSF-TOR"):
 def test_signal_incorporates_pitcher_edge(tmp_path):
     # SF home (Webb 3.86), TOR away (Cease 2.56 ace). TOR is the subject.
     scoreboard = {"events": [_event_with_probables("SF", "TOR", 3.86, 2.56)]}
-    client = EspnClient(fetch_scoreboard=lambda l, d: scoreboard)
+    client = EspnClient(fetch_scoreboard=lambda _league, _date: scoreboard)
     signal = SportsEloSignal(espn=client, elo_dir=tmp_path)
 
     with_pitcher = signal.generate(_market())
@@ -109,7 +109,7 @@ def test_signal_incorporates_pitcher_edge(tmp_path):
 
     # Compare to the same matchup with no probables: the ace should lift TOR.
     no_prob = {"events": [_event_with_probables("SF", "TOR", None, None)]}
-    client2 = EspnClient(fetch_scoreboard=lambda l, d: no_prob)
+    client2 = EspnClient(fetch_scoreboard=lambda _league, _date: no_prob)
     signal2 = SportsEloSignal(espn=client2, elo_dir=tmp_path)
     without_pitcher = signal2.generate(_market())
     assert with_pitcher.probability_yes > without_pitcher.probability_yes
@@ -120,7 +120,7 @@ def test_signal_incorporates_pitcher_edge(tmp_path):
 def test_signal_pitcher_only_affects_baseball(tmp_path):
     # A non-baseball ticker never carries probables -> unaffected path.
     scoreboard = {"events": [_event_with_probables("BOS", "NYK", None, None)]}
-    client = EspnClient(fetch_scoreboard=lambda l, d: scoreboard)
+    client = EspnClient(fetch_scoreboard=lambda _league, _date: scoreboard)
     signal = SportsEloSignal(espn=client, elo_dir=tmp_path)
     nba = signal.generate(MarketView(
         ticker="KXNBAGAME-26JUL09BOSNYK-BOS", title="", vertical=Vertical.SPORTS, status="active",

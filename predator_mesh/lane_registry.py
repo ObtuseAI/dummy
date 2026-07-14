@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from typing import Any
 
 from predator_mesh.lanes.anomaly_mining import AnomalyMiningLane
 from predator_mesh.lanes.base import BaseLane

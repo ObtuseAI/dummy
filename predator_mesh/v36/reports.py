@@ -9,11 +9,6 @@ from typing import Any
 from predator_mesh.v31.probes import CAPS_HASH, LIVE_SUBMIT_HASH
 from predator_mesh.v36 import MILESTONE
 from predator_mesh.v36.run import (
-    EXACT_GATE_ENV,
-    FAKE_TRANSPORT_TEST,
-    LIVE_PUBLIC_PROBE_RESULT,
-    OBSERVED_REAL_LIVE_PUBLIC,
-    PIPELINE_SCORE_ONLY,
     build_default_v36_state,
 )
 

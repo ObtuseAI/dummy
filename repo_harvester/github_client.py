@@ -1,5 +1,5 @@
-import os, httpx
-from datetime import datetime
+import os
+import httpx
 
 GITHUB_TOKEN = os.environ.get("GITHUB_TOKEN")
 HEADERS = {"Authorization": f"token {GITHUB_TOKEN}"} if GITHUB_TOKEN else {}

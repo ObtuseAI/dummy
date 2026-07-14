@@ -1,7 +1,7 @@
 from __future__ import annotations
 import time
 from typing import Any
-from model_router.config import ModelRoutingConfig, load_model_routing_config, ProviderConfig
+from model_router.config import ModelRoutingConfig, load_model_routing_config
 from model_router.envelope import ModelResponseEnvelope, ModelRouteDecision
 from model_router.providers import DeepSeekV4FlashProvider, MinimaxM3Provider, MockProvider, OpenRouterProvider
 from model_router.prompt_firewall import PromptFirewall
@@ -91,7 +91,7 @@ class ModelRouter:
             if not self.config.live_model_calls_enabled:
                 raise RuntimeError("live_model_calls_enabled is false")
             content_text, metadata = await provider.complete(sanitized, task, max_tokens, temperature)
-        except Exception as exc:
+        except Exception:
             if not self.config.mock_fallback_enabled:
                 raise
             fallback_reason = f"{decision.provider_name}_request_failed" if self.config.live_model_calls_enabled else "live_calls_disabled"

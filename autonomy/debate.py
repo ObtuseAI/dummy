@@ -164,7 +164,6 @@ async def run_debate(router: Any, market: MarketView, base_prob: float | None = 
         if revised:
             opinions = revised
 
-    total_w = sum(o.confidence for o in opinions) or float(len(opinions))
     weights = [(o.confidence or 1.0) for o in opinions]
     probability = sum(o.probability_yes * w for o, w in zip(opinions, weights)) / sum(weights)
     mean = sum(o.probability_yes for o in opinions) / len(opinions)

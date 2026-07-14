@@ -19,6 +19,7 @@ import subprocess
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Any
 from unittest.mock import patch
 
 import httpx
@@ -598,7 +599,6 @@ def _is_kalshi_auth_error(exc: Exception) -> bool:
 async def generate_real_market_strategy_scan_report_v3() -> dict:
     _load_dotenv()
     from core import state as state_module
-    from core.config_loader import load_caps
     from core.ontology import AccountMode, OrderBook, OrderBookLevel
     from execution.autonomous_path import AutonomousExecutionPath
     from forecasting.engine import ForecastEngine
@@ -788,7 +788,6 @@ async def generate_live_cap_firewall_rehearsal_report_v3() -> dict:
     from live_firewall.firewall import LiveBrokerFirewall
     from live_firewall.exposure_tracker import ExposureTracker
     from forecasting.engine import ForecastEngine
-    from decimal import Decimal
 
     state_module.STATE.set_mode(AccountMode.AUTONOMOUS_LIVE_CAPPED)
     os.environ["KALSHI_API_KEY_ID"] = os.environ.get("KALSHI_API_KEY_ID") or "report_test_key"

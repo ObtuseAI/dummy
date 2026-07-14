@@ -6,7 +6,6 @@ concrete Kalshi adapter satisfies it. No real network is used.
 
 from __future__ import annotations
 
-import asyncio
 import inspect
 from typing import Any
 

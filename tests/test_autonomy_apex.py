@@ -4,7 +4,6 @@ tape reader, capital-velocity ranking, circuit breakers, self-recalibration."""
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
-from pathlib import Path
 
 from autonomy.ledger import AutonomyLedger
 from autonomy.ontology import Forecast, MarketView, Signal, Vertical
@@ -78,7 +77,7 @@ def test_devig_two_way_removes_margin():
 def test_sportsbook_signal_devig_and_steam():
     scoreboard = {"events": [
         _event_with_ml("NYM", "KC", "-149", "+124", home_open="-120", away_open="+100")]}
-    client = EspnClient(fetch_scoreboard=lambda l, d: scoreboard)
+    client = EspnClient(fetch_scoreboard=lambda _league, _date: scoreboard)
     source = SportsbookConsensusSignal(espn=client)
     market = _market("KXMLBGAME-26JUL091910KCNYM-NYM")
     assert source.applicable(market)
@@ -99,11 +98,11 @@ def test_sportsbook_signal_fail_closed():
     bare = {"events": [{"id": "1", "date": "2026-07-09T22:10Z", "competitions": [{
         "status": {"type": {"state": "pre"}},
         "competitors": [comp_side("NYM", "home"), comp_side("KC", "away")]}]}]}
-    source = SportsbookConsensusSignal(espn=EspnClient(fetch_scoreboard=lambda l, d: bare))
+    source = SportsbookConsensusSignal(espn=EspnClient(fetch_scoreboard=lambda _league, _date: bare))
     assert source.generate(_market("KXMLBGAME-26JUL091910KCNYM-NYM")) is None
     # Started game -> stale line -> no opinion.
     started = {"events": [_event_with_ml("NYM", "KC", "-149", "+124", state="in")]}
-    source2 = SportsbookConsensusSignal(espn=EspnClient(fetch_scoreboard=lambda l, d: started))
+    source2 = SportsbookConsensusSignal(espn=EspnClient(fetch_scoreboard=lambda _league, _date: started))
     assert source2.generate(_market("KXMLBGAME-26JUL091910KCNYM-NYM")) is None
 
 

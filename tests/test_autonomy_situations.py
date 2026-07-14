@@ -366,9 +366,10 @@ def test_roster_drift_large_change_triggers():
 
 
 def test_roster_drift_book_first_cycle_zero_then_detects_large_diff(tmp_path):
-    fetch_teams = lambda _l: {"sports": [{"leagues": [{"teams": [
-        {"team": {"abbreviation": "SF", "id": "25"}},
-    ]}]}]}
+    def fetch_teams(_league):
+        return {"sports": [{"leagues": [{"teams": [
+            {"team": {"abbreviation": "SF", "id": "25"}},
+        ]}]}]}
     rosters = [_roster_payload([str(i) for i in range(1, 20)])]
 
     def fetch_roster(_league, _team_id):
@@ -394,9 +395,11 @@ def test_roster_drift_book_first_cycle_zero_then_detects_large_diff(tmp_path):
 
 
 def test_roster_drift_book_respects_fetch_budget():
-    fetch_teams = lambda _l: {"sports": [{"leagues": [{"teams": [
-        {"team": {"abbreviation": t, "id": str(i)}} for i, t in enumerate(["A", "B", "C"])
-    ]}]}]}
+    def fetch_teams(_league):
+        return {"sports": [{"leagues": [{"teams": [
+            {"team": {"abbreviation": team, "id": str(index)}}
+            for index, team in enumerate(["A", "B", "C"])
+        ]}]}]}
     fetched: list[str] = []
 
     def fetch_roster(_league, team_id):

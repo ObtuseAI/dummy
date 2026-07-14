@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import httpx
-import pytest
 
 from model_router.error_classifier import (
     classify_provider_error_v2,

@@ -1,6 +1,5 @@
 import json
 import pytest
-from pathlib import Path
 
 from calibration.storage import CalibrationStorage
 from core.ontology import ForecastOpinion

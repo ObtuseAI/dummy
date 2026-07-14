@@ -16,7 +16,6 @@ from core.secret_guard import redact
 from core.state import STATE
 from forecasting.engine import ForecastEngine
 from kalshi.live_data import KalshiRealReadOnly
-from kalshi.normalizer import KalshiNormalizer
 from strategies.scan import StrategyScanner
 
 router = APIRouter(prefix="/v6", tags=["v6"])

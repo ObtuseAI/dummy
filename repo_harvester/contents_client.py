@@ -1,4 +1,6 @@
-import os, httpx, base64
+import os
+import httpx
+import base64
 
 GITHUB_TOKEN = os.environ.get("GITHUB_TOKEN")
 HEADERS = {"Authorization": f"token {GITHUB_TOKEN}"} if GITHUB_TOKEN else {}

@@ -1,7 +1,5 @@
-import pytest
 from datetime import datetime, timezone
-from decimal import Decimal
-from core.ontology import OrderBook, OrderBookLevel, Forecast
+from core.ontology import OrderBook, OrderBookLevel
 from forecasting.engine import ForecastEngine
 from strategies.registry import STRATEGIES
 from strategies.probability_disagreement import ProbabilityDisagreement

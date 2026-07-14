@@ -1,5 +1,7 @@
 import asyncio
-import os, httpx, json as _json
+import os
+import httpx
+import json as _json
 from datetime import datetime, timezone
 from typing import Any
 from core.ontology import OrderBook, OrderBookLevel

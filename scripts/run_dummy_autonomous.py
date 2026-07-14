@@ -24,7 +24,7 @@ ROOT = Path(__file__).resolve().parent.parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from autonomy.executor import AUTONOMY_ACK, load_session
+from autonomy.executor import load_session
 from autonomy.ontology import SessionMode
 from autonomy.session import build_brain, session_status, start_session, stop_session
 

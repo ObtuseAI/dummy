@@ -58,7 +58,6 @@ class HybridAutonomousExecutionPath(AutonomousExecutionPath):
         if base.get("status") in ("blocked", "no_trade") or "proposal" not in base:
             return {**base, "model_review": None}
 
-        proposal = base["proposal"]
         orderbook = base.get("orderbook")
         forecast_opinion = None
         if orderbook:

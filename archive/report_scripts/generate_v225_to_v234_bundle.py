@@ -33,7 +33,8 @@ def main() -> dict[str, Any]:
 
     # Consolidated named artifact.
     from predator_mesh.v233.reports import build_scoreboard_v3
-    scoreboard = build_scoreboard_v3(); scoreboard["generated_at"] = sgc.now_iso()
+    scoreboard = build_scoreboard_v3()
+    scoreboard["generated_at"] = sgc.now_iso()
     sgc.write_report("completion_scoreboard_v233.json", scoreboard)
 
     verdicts = [e["verdict"] for e in stage_finals.values()]

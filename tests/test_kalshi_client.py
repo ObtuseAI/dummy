@@ -1,5 +1,6 @@
-import pytest, os, httpx
-from datetime import datetime, timezone
+import pytest
+import os
+import httpx
 from unittest.mock import patch, AsyncMock, MagicMock
 from kalshi.client import KalshiClient
 from kalshi.signer import sign_request

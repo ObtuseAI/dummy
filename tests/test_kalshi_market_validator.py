@@ -1,4 +1,3 @@
-import pytest
 from core.kalshi_market_validator import (
     validate_ticker_shape,
     validate_order_payload_shape,

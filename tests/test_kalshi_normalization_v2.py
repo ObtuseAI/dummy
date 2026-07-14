@@ -1,5 +1,4 @@
 import pytest
-from decimal import Decimal
 
 
 def test_normalizer_rejects_stale_orderbook():

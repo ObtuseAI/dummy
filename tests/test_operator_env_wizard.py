@@ -133,7 +133,8 @@ def test_build_pack_from_env_fails_closed_missing():
 
 
 def test_build_pack_from_env_calls_appliance(tmp_path):
-    env = dict(GOOD_ENV); env["DUMMY_AUTHORITY_PACK_DIR"] = str(tmp_path / "pack")
+    env = dict(GOOD_ENV)
+    env["DUMMY_AUTHORITY_PACK_DIR"] = str(tmp_path / "pack")
     r = FakeRunner()
     rc, out = _run(["build-pack-from-env"], env=env, runner=r)
     assert rc == 0

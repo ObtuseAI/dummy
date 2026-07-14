@@ -1,5 +1,4 @@
 import os
-import pytest
 
 
 def test_required_secret_names_detected_without_leaking_values():

@@ -7,7 +7,6 @@ and cross-checked against the pure-Python Gauss-Seidel solver).
 """
 from __future__ import annotations
 
-import math
 
 import pytest
 
@@ -15,7 +14,6 @@ from autonomy.sports.espn import Game
 from autonomy.sports.ratings_solvers import (
     COLLEY_POINTS_PER_UNIT,
     MIN_GAMES_PER_TEAM,
-    RIDGE_LAMBDA,
     ColleyRatingSource,
     MasseyRatingSource,
     build_colley_system,

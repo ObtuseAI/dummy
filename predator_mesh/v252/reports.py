@@ -132,7 +132,6 @@ def _common(ctx) -> dict[str, Any]:
         "live_orders": 0,
         "real_live_orders_submitted_count": 0,
         "total_real_live_orders_submitted": 0,
-        "real_broker_contacted": ctx.real_broker_contacted,
         "autonomous_trading_enabled": False,
         "approval_files_written": 0,
         "runtime_approvals_created_by_dummy": False,

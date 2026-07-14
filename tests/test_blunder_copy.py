@@ -1,4 +1,5 @@
-import json, hashlib
+import json
+import hashlib
 from pathlib import Path
 
 BLUNDER_ROOT = Path("C:/src/engine/obtuse/blunder")

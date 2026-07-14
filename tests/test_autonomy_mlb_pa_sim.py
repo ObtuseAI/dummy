@@ -1,9 +1,25 @@
 from __future__ import annotations
 
+import random as _random
+
 import pytest
 
-from autonomy.sports.mlb_pa_sim import LEAGUE, log5, PA_OUTCOMES, plate_appearance_distribution
-from autonomy.sports.statsapi import BatterRates, PitcherRates
+from autonomy.sports.mlb_pa_sim import (
+    LEAGUE,
+    RELIEVER_K_PCT,
+    TTO_PENALTY_PER_TIME,
+    GameResult,
+    _advance,
+    _starter_distributions_by_tto,
+    log5,
+    PA_OUTCOMES,
+    plate_appearance_distribution,
+    sample_outcome,
+    simulate_game_markets,
+    simulate_half_inning,
+    simulate_one_game,
+)
+from autonomy.sports.statsapi import BatterRates, LineupSlot, MlbGameContext, PitcherRates
 
 
 def test_league_baseline_sums_to_one():
@@ -73,7 +89,9 @@ def test_platoon_advantage_raises_offensive_share():
     p = _pitcher(0.22, 0.08, 1.2)
     favored = plate_appearance_distribution(b, p, platoon=1.07)
     neutral = plate_appearance_distribution(b, p, platoon=1.0)
-    off = lambda d: d["bb"] + d["hr"] + d["single"] + d["double"] + d["triple"]
+    def off(distribution):
+        return sum(distribution[outcome] for outcome in ("bb", "hr", "single", "double", "triple"))
+
     assert off(favored) > off(neutral)  # platoon>1 lifts the batter's offense
     assert abs(sum(favored.values()) - 1.0) < 1e-9
 
@@ -83,7 +101,9 @@ def test_higher_slugging_raises_hit_share():
                                         _pitcher(0.22, 0.08, 1.2))
     high = plate_appearance_distribution(_batter(0.20, 0.09, 0.34, 0.58, 0.10),
                                          _pitcher(0.22, 0.08, 1.2))
-    hits = lambda d: d["single"] + d["double"] + d["triple"]
+    def hits(distribution):
+        return sum(distribution[outcome] for outcome in ("single", "double", "triple"))
+
     assert hits(high) > hits(low)  # slugging drives on-contact hit quality
 
 
@@ -96,12 +116,6 @@ def test_extreme_rates_keep_distribution_valid():
     )
     assert abs(sum(d.values()) - 1.0) < 1e-9
     assert all(0.0 <= v <= 1.0 for v in d.values())
-
-
-import random as _random
-
-from autonomy.sports.mlb_pa_sim import sample_outcome, simulate_half_inning
-from autonomy.sports.mlb_pa_sim import _advance
 
 
 class _QueuedRng:
@@ -211,10 +225,6 @@ def test_half_inning_all_outs_scores_zero():
     assert cursor == 3  # exactly three batters retired
 
 
-from autonomy.sports.mlb_pa_sim import GameResult, simulate_one_game
-from autonomy.sports.statsapi import LineupSlot, MlbGameContext, PitcherRates
-
-
 def _context(*, home_batter_iso, away_batter_iso):
     home_lineup = tuple(LineupSlot(i + 1, 100 + i, bats="R") for i in range(9))
     away_lineup = tuple(LineupSlot(i + 1, 200 + i, bats="R") for i in range(9))
@@ -292,8 +302,6 @@ def test_bullpen_fatigue_degrades_run_prevention():
     assert sum(d["k"] for d in tired) < sum(d["k"] for d in fresh)
 
 
-from autonomy.sports.mlb_pa_sim import simulate_game_markets
-
 
 def test_market_probabilities_are_bounded_and_keyed():
     ctx = _context(home_batter_iso=0.16, away_batter_iso=0.16)
@@ -320,11 +328,6 @@ def test_much_stronger_home_lineup_favored_to_win():
     ctx = _context(home_batter_iso=0.30, away_batter_iso=0.08)
     markets = simulate_game_markets(ctx, seed=7, sims=800)
     assert markets["home_win"] > 0.60  # a far stronger lineup wins more often
-
-
-from autonomy.sports.mlb_pa_sim import (
-    RELIEVER_K_PCT, TTO_PENALTY_PER_TIME, _starter_distributions_by_tto,
-)
 
 
 def test_tto_penalty_raises_offense_deeper_into_the_order():
@@ -381,7 +384,6 @@ def test_neutral_matchup_is_calibrated_to_real_mlb():
 
 
 def test_neutral_run_composition_is_realistic():
-    ctx = _context(home_batter_iso=0.15, away_batter_iso=0.15)
     # Recompute HR/PA and HR-share-of-hits from the neutral distribution.
     from autonomy.sports.mlb_pa_sim import plate_appearance_distribution
     b = BatterRates(player_id=1, k_pct=0.20, bb_pct=0.09, obp=0.340, slg=0.450, iso=0.15)

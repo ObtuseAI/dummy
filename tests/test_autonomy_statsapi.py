@@ -1,10 +1,23 @@
 from __future__ import annotations
 
-from dataclasses import replace as _replace
 
 from autonomy.sports.statsapi import (
-    MlbGameContext, LineupSlot, apply_confirmed_lineups, parse_boxscore_lineups,
+    BatterRates,
+    LineupSlot,
+    MlbGameContext,
+    StatsApiClient,
+    apply_confirmed_lineups,
+    batter_rates_vs,
+    bullpen_fatigue,
+    park_factors,
+    parse_batter_rates,
+    parse_batter_splits,
+    parse_boxscore_lineups,
+    parse_pitcher_rates,
+    parse_pitcher_splits,
     parse_schedule,
+    parse_team_bullpen,
+    pitcher_rates_vs,
 )
 
 
@@ -154,8 +167,6 @@ def test_parse_boxscore_lineups_empty_dict_does_not_raise():
     assert home == () and away == ()
 
 
-from autonomy.sports.statsapi import parse_pitcher_rates
-
 _PEOPLE_FIXTURE = {
     "people": [
         {
@@ -209,9 +220,6 @@ def test_parse_pitcher_rates_absent_id_returns_none():
     assert parse_pitcher_rates({"people": [{"fullName": "No Id"}]}) is None
 
 
-from autonomy.sports.statsapi import bullpen_fatigue, park_factors
-
-
 def test_park_factors_known_and_neutral():
     run, hr = park_factors("Coors Field")
     assert run > 1.0 and hr > 1.0  # hitter park
@@ -240,9 +248,6 @@ def test_bullpen_fatigue_saturates_at_one():
     # More weight than 1.0 of appearances still caps at 1.0.
     heavy = {4: ["2026-07-10", "2026-07-09", "2026-07-08", "2026-07-07"]}
     assert bullpen_fatigue(heavy, as_of="2026-07-11")[4] == 1.0
-
-
-from autonomy.sports.statsapi import StatsApiClient
 
 
 def test_client_assembles_projected_context_with_pitcher_rates():
@@ -369,9 +374,6 @@ def test_client_clear_cache_forces_pitcher_refetch():
     assert len(calls) > first  # cache cleared -> refetched
 
 
-from autonomy.sports.statsapi import BatterRates
-
-
 def test_batter_rates_attaches_to_context_and_reports_provenance():
     from autonomy.sports.statsapi import MlbGameContext
     rates = BatterRates(
@@ -392,8 +394,6 @@ def test_batter_rates_attaches_to_context_and_reports_provenance():
     )
     assert empty.field_provenance()["batter_rates"] is False
 
-
-from autonomy.sports.statsapi import parse_batter_rates
 
 _BATTER_FIXTURE = {
     "people": [
@@ -440,8 +440,6 @@ def test_parse_batter_rates_none_on_empty_and_missing_denominator():
 
 
 def test_client_hydrate_batter_rates_fills_lineup_and_swallows_failures():
-    from autonomy.sports.statsapi import StatsApiClient, MlbGameContext, LineupSlot
-
     def fake_batter(player_id):
         if player_id == 999:
             raise RuntimeError("statsapi down")
@@ -468,8 +466,6 @@ def test_client_hydrate_batter_rates_fills_lineup_and_swallows_failures():
 
 
 def test_client_batches_confirmed_lineup_batter_hydration():
-    from autonomy.sports.statsapi import StatsApiClient, MlbGameContext, LineupSlot
-
     bulk_calls = []
 
     def person(player_id, *, splits=False):
@@ -530,7 +526,6 @@ def test_client_clear_cache_forces_batter_refetch():
                                 "plateAppearances": 500, "strikeOuts": 100,
                                 "baseOnBalls": 50, "obp": "0.340", "slg": "0.450",
                                 "avg": "0.270"}}]}]}]}
-    from autonomy.sports.statsapi import StatsApiClient, MlbGameContext, LineupSlot
     client = StatsApiClient(
         fetch_batter_people=counting_batter,
         fetch_batter_splits=lambda pid: {"people": []},  # keep hermetic; no network
@@ -544,9 +539,6 @@ def test_client_clear_cache_forces_batter_refetch():
     client.clear_cache()
     client.hydrate_batter_rates(ctx)
     assert len(calls) > first  # cache cleared -> refetched
-
-
-from autonomy.sports.statsapi import batter_rates_vs, pitcher_rates_vs
 
 
 def test_batter_rates_vs_selects_split_by_pitcher_hand():
@@ -585,8 +577,6 @@ def test_rates_vs_ignores_empty_small_sample_split():
 
 
 # --- Task 2: parse + hydrate StatsAPI handedness splits ---------------------
-
-from autonomy.sports.statsapi import parse_batter_splits, parse_pitcher_splits
 
 _BATTER_SPLITS_FIXTURE = {
     "people": [
@@ -725,9 +715,6 @@ def test_client_swallows_pitcher_splits_fetch_failure_leaves_vs_none():
 
 
 # --- Task 4: per-team bullpen quality ---------------------------------------
-
-from autonomy.sports.statsapi import parse_team_bullpen
-
 
 def test_context_gains_bullpen_rates_fields_defaulting_to_none():
     ctx = MlbGameContext(

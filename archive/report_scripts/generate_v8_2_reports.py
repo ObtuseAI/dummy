@@ -288,7 +288,7 @@ async def generate_model_id_validation_report_v1() -> dict[str, Any]:
 
 
 async def generate_provider_alias_probe_report_v1() -> dict[str, Any]:
-    from model_router.resolver import ModelProviderResolver, _DEFAULT_ALIASES, _DEFAULT_BASE_URLS
+    from model_router.resolver import ModelProviderResolver, _DEFAULT_ALIASES
 
     resolver = ModelProviderResolver()
     result: dict[str, Any] = {}
@@ -566,7 +566,7 @@ async def main() -> dict[str, Any]:
             "model IDs need operator review."
         ),
     }
-    final_path = _write_report("final_report_v8_2.json", final)
+    _write_report("final_report_v8_2.json", final)
     print(json.dumps(final, indent=2, default=str))
     return final
 

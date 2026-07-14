@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import os
-from pathlib import Path
 
 from tests.v36_test_helpers import assert_current_test_report
 

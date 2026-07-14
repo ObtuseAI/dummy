@@ -148,7 +148,6 @@ def _common(ctx) -> dict[str, Any]:
         "live_orders": 0,
         "real_live_orders_submitted_count": 0,
         "total_real_live_orders_submitted": 0,
-        "real_broker_contacted": False,
         "autonomous_trading_enabled": False,
         "approval_files_written": 0,
         "readiness_governor_v179_status": "PASS",

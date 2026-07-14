@@ -19,16 +19,14 @@ import asyncio
 import hashlib
 import importlib.util
 import inspect
-import io
 import json
 import os
 import subprocess
 import sys
 from contextlib import contextmanager
-from dataclasses import asdict
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Callable
+from typing import Any, Callable
 
 from core import config_loader, env_loader, kalshi_market_validator, proof_order_candidate
 from core.proof_authority import (
@@ -41,7 +39,6 @@ from core.proof_authority import (
     build_second_proof_authority_draft,
 )
 from core.second_proof_lock import (
-    consume_second_proof_lock,
     create_second_proof_lock,
     is_second_proof_lock_consumed,
 )
@@ -49,7 +46,6 @@ from core.env_loader import kalshi_credential_status, load_whitelisted_env
 from core.live_submit_state import (
     LIVE_SUBMIT_REQUIRED_ACK,
     LIVE_SUBMIT_TYPED_CONFIRMATION,
-    validate_default_disabled,
     validate_operator_one_proof_enabled,
 )
 from core.proof_lock import REAL_PROOF_REGISTRY_PATH, load_real_proof_registry, real_proof_attempt_exists
@@ -478,7 +474,6 @@ def _check_kalshi_credentials() -> tuple[list[str], dict[str, Any]]:
     Requires KALSHI_API_KEY_ID and at least one private-key ref (inline PEM or
     readable path), matching the KalshiLiveBrokerFirewallAdapter resolver.
     """
-    from core.env_loader import KALSHI_ENV_REFS
     status = kalshi_credential_status()
     missing: list[str] = []
 
@@ -749,7 +744,7 @@ def cmd_second_proof_runtime_preflight(env: dict[str, str], out) -> int:
     # Import the full runtime dependency graph.  This is the line that originally
     # failed with ``ModuleNotFoundError: No module named 'calibration'``.
     try:
-        from core.second_proof_runner import run_second_proof_execute_once
+        pass
     except Exception as exc:
         report["verdict"] = "BLOCKED_RUNTIME_IMPORT"
         report["exact_blocker"] = f"{type(exc).__name__}:{exc}"

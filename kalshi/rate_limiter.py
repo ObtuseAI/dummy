@@ -1,4 +1,5 @@
-import asyncio, httpx
+import asyncio
+import httpx
 from kalshi.error_classifier import classify, KalshiErrorCategory
 
 class KalshiRateLimiter:

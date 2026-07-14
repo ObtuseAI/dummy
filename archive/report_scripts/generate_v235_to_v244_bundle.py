@@ -30,7 +30,8 @@ def main() -> dict[str, Any]:
         stage_finals[f"v{version}"] = {"verdict": final["verdict"], "milestone": final["milestone"], "partial_reason": final["partial_reason"], "current_next_action": final.get("current_next_action"), "final_report": final_name}
 
     from predator_mesh.v244.reports import build_completion_lift_v4
-    lift = build_completion_lift_v4(); lift["generated_at"] = sgc.now_iso()
+    lift = build_completion_lift_v4()
+    lift["generated_at"] = sgc.now_iso()
     sgc.write_report("completion_lift_v4_v244.json", lift)
 
     verdicts = [e["verdict"] for e in stage_finals.values()]

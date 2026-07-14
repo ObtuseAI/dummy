@@ -16,7 +16,6 @@ import sys
 from pathlib import Path
 from types import SimpleNamespace
 
-import pytest
 
 from tests._real_proof_test_helpers import make_evidence_bundle, patch_artifact_paths
 from tools.operator_authority_appliance import operator_full_completion as ofc

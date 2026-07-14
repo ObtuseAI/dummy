@@ -1,4 +1,4 @@
-import json, asyncio
+import json
 import websockets
 from core.state import STATE
 from core.logger import logger

@@ -30,7 +30,6 @@ def _state(spot, minute_move_frac=0.0):
     # across assets (so BTC and an alt share an annual vol and a given % move
     # equals the same number of sigmas), plus 30 minute closes whose last bar
     # jumps by minute_move_frac vs 15 minutes ago.
-    swing = spot * 0.003
     hourly = [spot * (1.0 + 0.003 * (1 if i % 2 else -1)) for i in range(200)]
     hourly[-1] = spot
     minute = [spot] * 30

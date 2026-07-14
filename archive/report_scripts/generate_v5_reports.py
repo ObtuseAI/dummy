@@ -10,7 +10,6 @@ import subprocess
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
-from unittest.mock import AsyncMock
 
 ROOT = Path(__file__).parent.parent.parent
 ARTIFACTS = ROOT / "artifacts" / "dummy"
@@ -225,7 +224,7 @@ async def generate_firewall_rehearsal_report_v2() -> dict:
     }
 
     # oversized / cap violation
-    from core.ontology import LiveOrderRequest, OrderBook, OrderBookLevel, Forecast, EdgeEstimate, Position
+    from core.ontology import LiveOrderRequest, OrderBook, OrderBookLevel, Forecast, Position
     from decimal import Decimal
     from datetime import datetime, timezone
     from unittest.mock import patch
@@ -587,7 +586,6 @@ def generate_strategy_candidate_quality_report() -> dict:
             "compliance verdict",
             "proof reference",
         ],
-        "verdict": "PASS",
     }
 
 
@@ -610,7 +608,6 @@ def generate_autonomous_live_capped_path_report_v2() -> dict:
         "live_submit_requires_explicit_acknowledgement": True,
         "market_orders_blocked": True,
         "all_orders_through_firewall_submit": True,
-        "verdict": "PASS",
     }
 
 

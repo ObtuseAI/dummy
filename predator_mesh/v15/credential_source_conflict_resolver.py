@@ -13,7 +13,6 @@ from enum import Enum
 from typing import Any
 
 from predator_mesh.v13.credential_bridge import (
-    KalshiCredentialSource,
     KalshiReadOnlyCredentialBridge,
 )
 

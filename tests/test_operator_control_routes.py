@@ -14,7 +14,6 @@ from __future__ import annotations
 
 import importlib
 from pathlib import Path
-from types import SimpleNamespace
 from unittest import mock
 
 import pytest
@@ -111,7 +110,7 @@ async def test_max_progress_uses_bootstrap_and_no_danger_flags():
         return FakeProc(0, stdout="max-progress ok", stderr="")
 
     with mock.patch.object(ocr.subprocess, "run", side_effect=fake_run):
-        res = await ocr.max_progress()
+        await ocr.max_progress()
 
     cmd = calls[0][0]
     assert "operator_bootstrap.py" in cmd[1]

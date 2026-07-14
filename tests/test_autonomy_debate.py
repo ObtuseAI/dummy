@@ -83,7 +83,6 @@ def test_debate_signal_recorded_and_refused_into_forecast(tmp_path, monkeypatch)
     """Brain adjudication path: debate signal re-fuses the top market."""
     from autonomy.brain import PredatorBrain
     from autonomy.executor import Executor
-    from autonomy.forecaster import EnsembleForecaster
     from autonomy.ledger import AutonomyLedger
     from autonomy.learner import Learner
     from autonomy.ontology import SessionMode

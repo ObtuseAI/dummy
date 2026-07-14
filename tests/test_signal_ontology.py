@@ -1,6 +1,5 @@
 """Tests for the signal ontology."""
 
-import pytest
 
 from predator_mesh.signals.models import NormalizedSignal, SignalType
 

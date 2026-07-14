@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from unittest.mock import AsyncMock
 
-import pytest
 
 from core.proof_lock import proof_lock_clear
 from predator_mesh.v298.reports import full_authority_arm

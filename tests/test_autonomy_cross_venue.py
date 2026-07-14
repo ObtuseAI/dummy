@@ -42,7 +42,9 @@ def test_index_parses_slug_and_prices():
 
 
 def test_signal_extracts_subject_probability():
-    fetch = lambda: [_pm_market("mlb-kc-nym-2026-07-08", ["KC", "NYM"], ["0.355", "0.645"], 0.35, 0.36)]
+    def fetch():
+        return [_pm_market("mlb-kc-nym-2026-07-08", ["KC", "NYM"], ["0.355", "0.645"], 0.35, 0.36)]
+
     signal = CrossVenueSignal(fetch_markets=fetch)
     result = signal.generate(_market("KXMLBGAME-26JUL081810KCNYM-KC"))
     assert result is not None
@@ -54,19 +56,25 @@ def test_signal_extracts_subject_probability():
 
 
 def test_signal_fail_closed_on_no_match():
-    fetch = lambda: [_pm_market("mlb-lad-sf-2026-07-08", ["LAD", "SF"], ["0.6", "0.4"])]
+    def fetch():
+        return [_pm_market("mlb-lad-sf-2026-07-08", ["LAD", "SF"], ["0.6", "0.4"])]
+
     signal = CrossVenueSignal(fetch_markets=fetch)
     assert signal.generate(_market("KXMLBGAME-26JUL081810KCNYM-KC")) is None
 
 
 def test_signal_fail_closed_on_wrong_date():
-    fetch = lambda: [_pm_market("mlb-kc-nym-2026-07-09", ["KC", "NYM"], ["0.4", "0.6"])]
+    def fetch():
+        return [_pm_market("mlb-kc-nym-2026-07-09", ["KC", "NYM"], ["0.4", "0.6"])]
+
     signal = CrossVenueSignal(fetch_markets=fetch)
     assert signal.generate(_market("KXMLBGAME-26JUL081810KCNYM-KC")) is None
 
 
 def test_alias_normalization_matches_wsh_was():
-    fetch = lambda: [_pm_market("nba-wsh-bos-2026-07-08", ["WSH", "BOS"], ["0.3", "0.7"])]
+    def fetch():
+        return [_pm_market("nba-wsh-bos-2026-07-08", ["WSH", "BOS"], ["0.3", "0.7"])]
+
     signal = CrossVenueSignal(fetch_markets=fetch)
     # Kalshi/ESPN uses WAS; alias maps WSH->WAS so the set matches.
     result = signal.generate(_market("KXNBAGAME-26JUL08WASBOS-WAS"))
@@ -94,10 +102,12 @@ def test_index_failure_is_swallowed():
 
 
 def test_live_clob_book_replaces_gamma_price_and_adds_depth_provenance():
-    fetch = lambda: [_pm_market(
-        "mlb-kc-nym-2026-07-08", ["KC", "NYM"], ["0.20", "0.80"],
-        0.19, 0.21, liq=50_000, tokens=["kc-token", "nym-token"],
-    )]
+    def fetch():
+        return [_pm_market(
+            "mlb-kc-nym-2026-07-08", ["KC", "NYM"], ["0.20", "0.80"],
+            0.19, 0.21, liq=50_000, tokens=["kc-token", "nym-token"],
+        )]
+
     calls = []
 
     def book(token_id):
@@ -121,10 +131,11 @@ def test_live_clob_book_replaces_gamma_price_and_adds_depth_provenance():
 
 
 def test_clob_book_failure_falls_back_to_gamma_without_dropping_signal():
-    fetch = lambda: [_pm_market(
-        "mlb-kc-nym-2026-07-08", ["KC", "NYM"], ["0.35", "0.65"],
-        0.34, 0.36, tokens=["kc-token", "nym-token"],
-    )]
+    def fetch():
+        return [_pm_market(
+            "mlb-kc-nym-2026-07-08", ["KC", "NYM"], ["0.35", "0.65"],
+            0.34, 0.36, tokens=["kc-token", "nym-token"],
+        )]
 
     def unavailable(_token_id):
         raise RuntimeError("public book unavailable")
@@ -136,10 +147,12 @@ def test_clob_book_failure_falls_back_to_gamma_without_dropping_signal():
 
 
 def test_default_shape_can_batch_books_once_per_cycle():
-    fetch = lambda: [_pm_market(
-        "mlb-kc-nym-2026-07-08", ["KC", "NYM"], ["0.20", "0.80"],
-        tokens=["kc-token", "nym-token"],
-    )]
+    def fetch():
+        return [_pm_market(
+            "mlb-kc-nym-2026-07-08", ["KC", "NYM"], ["0.20", "0.80"],
+            tokens=["kc-token", "nym-token"],
+        )]
+
     calls = []
 
     def books(token_ids):

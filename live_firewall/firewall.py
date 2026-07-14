@@ -139,8 +139,6 @@ class LiveBrokerFirewall:
 
     async def evaluate(self, req: LiveOrderRequest, orderbook: OrderBook, forecast: Forecast) -> FirewallVerdict:
         caps = load_caps()
-        reasons: list[tuple[str, str]] = []
-
         def fail(by: str, reason: str) -> FirewallVerdict:
             logger.info("Firewall rejection", extra={"component": "firewall", "rejected_by": by, "reason": reason, "proposal_id": req.proposal_id})
             return FirewallVerdict(allow=False, reason=reason, rejected_by=by)
@@ -174,7 +172,9 @@ class LiveBrokerFirewall:
         spread = orderbook.asks[0].price - orderbook.bids[0].price
         if spread > caps.max_spread_cents:
             return fail("spread", "Spread too wide")
-        total_liquidity = sum(l.size for l in orderbook.bids) + sum(l.size for l in orderbook.asks)
+        total_liquidity = sum(level.size for level in orderbook.bids) + sum(
+            level.size for level in orderbook.asks
+        )
         if total_liquidity < caps.min_liquidity:
             return fail("liquidity", "Liquidity too low")
         if forecast.edge_after_fees <= 0:
@@ -309,7 +309,6 @@ class LiveBrokerFirewall:
         from predator_mesh.brokers.kalshi_livebrokerfirewall_adapter import (
             KalshiLiveBrokerFirewallAdapter,
         )
-        from predator_mesh.brokers.livebrokerfirewall_adapter import LimitOrderRequest
 
         mode, blocker, ctx = classify_live_execution_mode(
             live_submit_config=_load_live_submit_config(),

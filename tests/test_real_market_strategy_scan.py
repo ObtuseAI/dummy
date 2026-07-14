@@ -3,7 +3,6 @@
 from datetime import datetime, timezone
 from decimal import Decimal
 
-import pytest
 
 from core.ontology import Forecast, OrderBook, OrderBookLevel
 from strategies.scan import StrategyScanner, StrategyScanResult

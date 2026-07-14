@@ -158,7 +158,7 @@ def build_second_proof_authority_draft() -> SecondProofAuthority:
     Does not enable live-submit, contact the broker, or consume any lock.
     """
     candidate = _load_json(V3_CANDIDATE_PATH)
-    report = _load_json(V3_REPORT_PATH)
+    _load_json(V3_REPORT_PATH)
     registry = _load_json(REAL_PROOF_REGISTRY_PATH)
 
     ok, reason = _candidate_invariants(candidate)

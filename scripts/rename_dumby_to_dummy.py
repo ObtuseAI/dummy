@@ -1,6 +1,5 @@
 """One-off bulk string replacement for the Dummy -> Dummy canonical rename."""
 from __future__ import annotations
-import os
 from pathlib import Path
 
 ROOT = Path(__file__).parent.parent

@@ -7,7 +7,6 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-import pytest
 
 DUMMY_ROOT = Path("C:/src/engine/dummy")
 CANONICAL_BLUNDER = Path("C:/src/engine/obtuse/blunder")

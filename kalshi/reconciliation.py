@@ -1,4 +1,3 @@
-from typing import Any
 
 def reconcile_orders(local: list[dict], remote: list[dict]) -> dict:
     remote_ids = {o["order_id"] for o in remote}

@@ -10,7 +10,12 @@ from pathlib import Path
 from typing import Any
 
 from model_router.config import ProviderConfig, load_model_routing_config
+from model_router.credential_source import (
+    ProviderCredentialReadinessV2,
+    ProviderCredentialSourceResolver,
+)
 from model_router.credential_readiness import CredentialReadiness
+from model_router.output_firewall import ModelOutputFirewall
 from model_router.prompt_firewall import PromptFirewallV2
 from model_router.providers import (
     BaseModelProvider,
@@ -20,6 +25,13 @@ from model_router.providers import (
     ProviderError,
 )
 from model_router.tasks import ModelTask
+from model_router.resolver import (
+    ModelProviderResolver,
+    ProviderResolutionResult,
+    _DEFAULT_ALIASES,
+    _DEFAULT_BASE_URLS,
+)
+from model_router.route_mode import ProviderRouteMode, ProviderRouteModeResolver
 
 
 ARTIFACTS_DIR = Path(__file__).parent.parent / "artifacts" / "dummy"
@@ -467,15 +479,6 @@ def generate_live_model_prompt_safety_report_v1() -> dict[str, Any]:
 # V8.1: resolved live-model smoke with explicit status labels
 # -----------------------------------------------------------------------------
 
-from model_router.output_firewall import ModelOutputFirewall
-from model_router.resolver import (
-    ModelProviderResolver,
-    ProviderResolutionResult,
-    _DEFAULT_ALIASES,
-    _DEFAULT_BASE_URLS,
-)
-
-
 class LiveModelSmokeV2(LiveModelSmoke):
     """V8.1 smoke runner that resolves provider/model IDs before live calls.
 
@@ -755,17 +758,6 @@ async def generate_live_model_output_safety_report_v1() -> dict[str, Any]:
 # -----------------------------------------------------------------------------
 # V8.2: credential-source-aware, route-mode-aware live smoke V3
 # -----------------------------------------------------------------------------
-
-from model_router.credential_source import (
-    ProviderCredentialReadinessV2,
-    ProviderCredentialSource,
-    ProviderCredentialSourceResolver,
-)
-from model_router.route_mode import (
-    ProviderRouteMode,
-    ProviderRouteModeResolver,
-)
-
 
 class LiveModelSmokeV3(LiveModelSmokeV2):
     """V8.2 smoke runner with deterministic credential discovery and route mode.

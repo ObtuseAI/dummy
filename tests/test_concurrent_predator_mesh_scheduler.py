@@ -15,7 +15,6 @@ from predator_mesh.models import (
     MeshContext,
     MeshPriority,
     MeshResult,
-    MeshTimeout,
 )
 from predator_mesh.scheduler import MeshScheduler
 

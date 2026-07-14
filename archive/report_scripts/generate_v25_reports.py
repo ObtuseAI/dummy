@@ -18,7 +18,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from predator_mesh.v25 import MILESTONE
-from predator_mesh.v25.reports import REPORT_NAMES, V25ReportFactory
+from predator_mesh.v25.reports import V25ReportFactory
 
 
 def now_iso() -> str:

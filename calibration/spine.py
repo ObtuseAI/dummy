@@ -2,7 +2,6 @@ from __future__ import annotations
 from decimal import Decimal
 from math import log
 from statistics import mean, pstdev
-from typing import Any
 from calibration.schema import (
     CalibrationMetrics,
     CalibrationMetricsV2,

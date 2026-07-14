@@ -41,7 +41,8 @@ def main() -> dict[str, Any]:
         payload["generated_at"] = sgc.now_iso()
         sgc.write_report(dst, payload)
     from predator_mesh.v264.reports import build_completion_lift_v6
-    lift = build_completion_lift_v6(); lift["generated_at"] = sgc.now_iso()
+    lift = build_completion_lift_v6()
+    lift["generated_at"] = sgc.now_iso()
     sgc.write_report("completion_lift_v6_v264.json", lift)
 
     verdicts = [e["verdict"] for e in stage_finals.values()]

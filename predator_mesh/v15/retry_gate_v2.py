@@ -2,12 +2,11 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 from enum import Enum
 from typing import Any
 
 from predator_mesh.v14.credential_forensics import KalshiCredentialForensics
-from predator_mesh.v15.auth_probe_v2 import KalshiAuthProbeDecision, KalshiAuthProbeV2
+from predator_mesh.v15.auth_probe_v2 import KalshiAuthProbeV2
 from predator_mesh.v15.credential_shape_repair import (
     KalshiCredentialShapeRepairEngine,
     KalshiEnvRepairVerdict,

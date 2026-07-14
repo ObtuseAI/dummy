@@ -48,9 +48,6 @@ def generate_adapter_plan(repo_meta: dict, scan: dict) -> dict:
 
 def classify_repo_source(repo_meta: dict, scan: dict, category: str | None = None) -> tuple[RepoVerdict, list[str]]:
     """Source-aware classification that separates dependency, adapter, reference, and rejection bins."""
-    owner = repo_meta.get("owner", "")
-    name = repo_meta.get("name", "")
-    full = f"{owner}/{name}"
     reasons: list[str] = []
     license_id = repo_meta.get("license")
     pushed_at = repo_meta.get("pushed_at")

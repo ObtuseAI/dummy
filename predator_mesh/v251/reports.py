@@ -6,6 +6,7 @@ from typing import Any
 
 from predator_mesh import staged_gate_common as sgc
 from predator_mesh.v251 import MILESTONE
+from predator_mesh.v31.probes import CAPS_HASH, LIVE_SUBMIT_HASH
 
 ARTIFACTS = sgc.ARTIFACTS
 
@@ -33,7 +34,6 @@ VERIFICATION_COMMANDS = [
 
 CONTROLLER_REPORT = "v251_pre_execution_freeze_controller_report.json"
 
-from predator_mesh.v31.probes import CAPS_HASH, LIVE_SUBMIT_HASH
 LIVE_PROOF_ACK = "FULL_AUTHORITY_OPERATOR_APPROVED_LIVE_PROOF_ONLY"
 
 

@@ -99,7 +99,6 @@ def _common(ctx) -> dict[str, Any]:
         "total_real_live_orders_submitted": 0,
         "real_broker_contacted": False,
         "autonomous_trading_enabled": False,
-        "approval_files_written": 0,
         "readiness_governor_v175_status": "PASS",
         "execution_lock_deep_recheck_v174_status": "PASS",
         "current_next_action": ctx.next_action,

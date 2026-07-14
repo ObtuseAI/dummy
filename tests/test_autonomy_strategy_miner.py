@@ -8,7 +8,6 @@ from datetime import datetime, timedelta, timezone
 from autonomy.strategy_miner import (
     MinedRow,
     load_settled_rows,
-    mine_rules,
     mining_report,
 )
 

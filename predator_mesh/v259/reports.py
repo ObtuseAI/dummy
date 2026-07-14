@@ -6,6 +6,7 @@ from typing import Any
 
 from predator_mesh import staged_gate_common as sgc
 from predator_mesh.v259 import MILESTONE
+from predator_mesh.v31.probes import CAPS_HASH, LIVE_SUBMIT_HASH
 
 ARTIFACTS = sgc.ARTIFACTS
 
@@ -32,8 +33,6 @@ VERIFICATION_COMMANDS = [
 ]
 
 CONTROLLER_REPORT = "v259_live_submit_caps_final_rehearsal_controller_report.json"
-
-from predator_mesh.v31.probes import CAPS_HASH, LIVE_SUBMIT_HASH
 
 
 class V259Context:

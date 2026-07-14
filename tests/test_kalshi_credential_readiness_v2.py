@@ -1,5 +1,4 @@
 import os
-import pytest
 
 
 def test_kalshi_credential_readiness_v2():

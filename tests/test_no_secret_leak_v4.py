@@ -1,4 +1,3 @@
-import pytest
 from core.secret_guard import redact
 
 

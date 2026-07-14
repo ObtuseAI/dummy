@@ -11,7 +11,7 @@ exposes the reconciliation truth spine. No execution bridge is introduced.
 
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass
 from typing import Any
 
 from predator_mesh.v31.probes import (
@@ -54,10 +54,7 @@ from predator_mesh.v33.run import (
     SportsProbeExclusionGuardResult,
     SportsProbeExclusionGuardV4,
     V33OperatorEnabledProbeRunControllerV1,
-    V33ProbeRunExecutionPlan,
-    V33ProbeRunOperatorPacket,
     V33ProbeRunResult,
-    V33ProbeRunSafetyProof,
     WeatherEnabledProbeRunV1,
     CryptoEnabledProbeRunV1,
     PublicEventEnabledProbeRunV1,
@@ -317,7 +314,6 @@ class V34PartialReductionLedgerResult:
 class V34PartialReductionLedger:
     def evaluate(self, state: dict[str, Any]) -> V34PartialReductionLedgerResult:
         gate = state["exact_gate_ack"]
-        observation = state["due_forecast_observation_run"]
         before = {"PROBE_DISABLED_BY_DEFAULT": 1, "ACK_MISSING": 1, "NO_LIVE_PUBLIC_EVIDENCE": 1, "NO_LIVE_SCORE": 1}
         after = dict(before)
         after["SPORTS_TERMS_FIXTURE_ONLY"] = 1

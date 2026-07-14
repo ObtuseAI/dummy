@@ -100,11 +100,13 @@ def test_v267_default_absent_fixture_ready_fuzzy_broad_invalid() -> None:
     ok = generate_all_v267_reports_for_tests(manifest=valid_manifest())[ctrl]
     assert ok["approval_manifest_schema_verifier_controller_status"] == "PASS_APPROVAL_MANIFEST_SCHEMA_VERIFIED_READY_FOR_RESOLVER"
     assert ok["schema_state"] == "SCHEMA_VALID_READY_FOR_RESOLVER"
-    fuzzy_m = valid_manifest(); fuzzy_m["approvals"] = {"exact_phrase": "bad"}
+    fuzzy_m = valid_manifest()
+    fuzzy_m["approvals"] = {"exact_phrase": "bad"}
     fuzzy = generate_all_v267_reports_for_tests(manifest=fuzzy_m)[ctrl]
     assert fuzzy["approval_manifest_schema_verifier_controller_status"] == "PARTIAL_APPROVAL_MANIFEST_SCHEMA_ABSENT_OR_INVALID"
     assert fuzzy["phrase_exact"] is False and fuzzy["schema_state"] == "SCHEMA_INVALID"
-    broad_m = valid_manifest(); broad_m["reason"] = "enable live submit and trade live markets"
+    broad_m = valid_manifest()
+    broad_m["reason"] = "enable live submit and trade live markets"
     broad = generate_all_v267_reports_for_tests(manifest=broad_m)[ctrl]
     assert broad["approval_manifest_schema_verifier_controller_status"] == "PARTIAL_APPROVAL_MANIFEST_SCHEMA_ABSENT_OR_INVALID"
     assert broad["broad_language_rejected"] is True

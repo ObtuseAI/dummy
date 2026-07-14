@@ -6,7 +6,7 @@ from predator_mesh.budget import build_default_budget
 from predator_mesh.data_inflow.models import DataSourceCandidate, SourceCategory, SourceStatus
 from predator_mesh.lanes.signal_normalization import SignalNormalizationLane
 from predator_mesh.models import LaneState, MeshContext, MeshTimeout
-from predator_mesh.signals.models import NormalizedSignal, SignalType
+from predator_mesh.signals.models import SignalType
 from predator_mesh.signals.normalizer import SignalNormalizer
 
 

@@ -28,6 +28,21 @@ records the full lifecycle in an auditable ledger.
 Live execution remains fail-closed, evidence-gated, and subject to explicit
 operator authorization.
 
+## vNext: sovereign forecasting architecture
+
+Dummy's next architecture is a deterministic, typed forecasting ecology:
+market-specific agent organisms consume versioned world state, generate
+competing futures, challenge one another, estimate their knowledge boundary,
+and either issue a fully replayable forecast or abstain. The system may evolve
+research components, but it may never evolve its truth rules, promotion
+standards, credential boundaries, execution firewall, or operator authority.
+
+The implementation is an adapter-first migration—not a rewrite of proven
+specialists—and every new subsystem starts as
+`EXPERIMENTAL_SOVEREIGN_FORECASTING`. The reviewed architecture, staged
+delivery plan, benchmark claims, and exit gates are documented in
+[`docs/VNEXT_MASTER_PLAN_INTEGRATION.md`](docs/VNEXT_MASTER_PLAN_INTEGRATION.md).
+
 ## Current paper operation
 
 The market-horizon paper twin runs every five minutes through the Windows
@@ -265,6 +280,10 @@ default), reconciles settlements, and grades every source against reality.
 - Circuit breakers quarantine failing sources; errors are eaten as
   evidence, never stalls.
 - The kill file stops everything, instantly and unconditionally.
+- **Repository quality gate**: `python -m ruff check .` must pass
+  repository-wide. Exceptions are restricted to immutable vendored snapshots,
+  archived historical layouts, and executable path-bootstrap scripts; active
+  forecasting, safety, and test code remains fully checked.
 
 ## Operator surface
 
@@ -309,3 +328,4 @@ Training protocol: [docs/SIMULATION_TRAINING_REGIMEN.md](docs/SIMULATION_TRAININ
 Crypto audit: [docs/CRYPTO_PERFORMANCE_AUDIT.md](docs/CRYPTO_PERFORMANCE_AUDIT.md).
 Evidence governance review: [docs/EVIDENCE_GOVERNANCE_REVIEW_2026-07-14.md](docs/EVIDENCE_GOVERNANCE_REVIEW_2026-07-14.md).
 Crypto paper twin: [docs/CRYPTO_PAPER_TWIN.md](docs/CRYPTO_PAPER_TWIN.md).
+vNext integration plan: [docs/VNEXT_MASTER_PLAN_INTEGRATION.md](docs/VNEXT_MASTER_PLAN_INTEGRATION.md).

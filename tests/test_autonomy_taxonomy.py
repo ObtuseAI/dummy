@@ -1,7 +1,6 @@
 """WS-15 taxonomy: horizon buckets, scope keys, registry completeness tripwire."""
 from __future__ import annotations
 
-import pytest
 
 from autonomy.backtest import run_backtest
 from autonomy.ledger import AutonomyLedger

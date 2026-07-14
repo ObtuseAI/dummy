@@ -1,4 +1,5 @@
-import asyncio, json
+import asyncio
+import json
 from pathlib import Path
 from fastapi import FastAPI, WebSocket, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
@@ -6,7 +7,7 @@ from contextlib import asynccontextmanager
 from core.state import STATE
 from core.config_loader import load_caps
 from core.ontology import AccountMode
-from services.sqlite_store import init_db, get_orders, get_positions, insert_order
+from services.sqlite_store import init_db, get_orders, get_positions
 from repo_harvester.runner import run_harvester
 from core.logger import logger
 from core.secret_guard import redact
@@ -182,7 +183,7 @@ async def logs(limit: int = 100):
     if log_file.exists():
         with log_file.open() as f:
             lines = f.readlines()[-limit:]
-    return {"logs": [json.loads(l) for l in lines if l.strip()]}
+    return {"logs": [json.loads(line) for line in lines if line.strip()]}
 
 @app.get("/repo-harvester/status")
 async def repo_harvester_status():

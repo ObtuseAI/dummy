@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import pytest
 
 from model_router.credential_readiness import CredentialReadiness, ModelCredentialStatus
 

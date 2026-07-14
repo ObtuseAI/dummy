@@ -100,7 +100,7 @@ async def generate_model_provider_resolution_report_v1() -> dict[str, Any]:
 
 
 async def generate_model_alias_resolution_report_v1() -> dict[str, Any]:
-    from model_router.resolver import ModelProviderResolver, _DEFAULT_ALIASES, _DEFAULT_BASE_URLS
+    from model_router.resolver import ModelProviderResolver, _DEFAULT_ALIASES
 
     resolver = ModelProviderResolver()
     ds_aliases = [a.model_name for a in resolver._aliases("deepseek_v4_flash", _DEFAULT_ALIASES["deepseek_v4_flash"])]
@@ -444,7 +444,7 @@ async def main() -> dict[str, Any]:
             "model/endpoint configuration needs operator review."
         ),
     }
-    final_path = _write_report("final_report_v8_1.json", final)
+    _write_report("final_report_v8_1.json", final)
     print(json.dumps(final, indent=2, default=str))
     return final
 

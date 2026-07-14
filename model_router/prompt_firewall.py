@@ -1,8 +1,7 @@
 from __future__ import annotations
 import re
 from dataclasses import dataclass
-from typing import Any
-from core.secret_guard import redact, redact_text
+from core.secret_guard import redact_text
 
 _BLOCKED_PATTERNS = {
     "order_endpoint": [r"\bcreate_order\s*\(", r"\bcancel_order\s*\(", r"post\s+/orders", r"put\s+/orders"],
