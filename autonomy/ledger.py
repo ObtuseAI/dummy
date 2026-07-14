@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import Any
 
 from autonomy.ontology import Decision, Signal, TradeOutcome
+from autonomy.retention import install_signal_history
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS decisions (
@@ -150,10 +151,15 @@ class AutonomyLedger:
     def __init__(self, db_path: Path | str = Path("runtime/autonomy/ledger.db")):
         self.db_path = Path(db_path)
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
-        self._conn = sqlite3.connect(str(self.db_path))
+        resolved = self.db_path.resolve()
+        mode = "rw" if resolved.exists() else "rwc"
+        self._conn = sqlite3.connect(
+            f"file:{resolved.as_posix()}?mode={mode}", uri=True,
+        )
         self._conn.executescript(_SCHEMA)
         self._migrate()
         self._conn.commit()
+        install_signal_history(self._conn)
 
     def _migrate(self) -> None:
         """Additive migrations for ledgers created before a column existed."""
@@ -307,7 +313,7 @@ class AutonomyLedger:
             exists = False
             if error is None:
                 exists = self._conn.execute(
-                    "SELECT 1 FROM signals WHERE source=? AND market_ticker=?"
+                    "SELECT 1 FROM signal_history WHERE source=? AND market_ticker=?"
                     " AND created_at=? AND mode=? LIMIT 1",
                     (signal.source, signal.market_ticker, signal.created_at, mode),
                 ).fetchone() is not None
@@ -579,7 +585,8 @@ class AutonomyLedger:
 
     def signals_for_market(self, market_ticker: str) -> list[dict[str, Any]]:
         rows = self._conn.execute(
-            "SELECT source, probability_yes, uncertainty, created_at FROM signals WHERE market_ticker=?",
+            "SELECT source, probability_yes, uncertainty, created_at"
+            " FROM signal_history WHERE market_ticker=?",
             (market_ticker,),
         ).fetchall()
         return [
@@ -603,7 +610,7 @@ class AutonomyLedger:
             rows = self._conn.execute(
                 """
                 SELECT source, probability_yes, uncertainty, created_at, features
-                FROM signals WHERE market_ticker=? AND created_at<=?
+                FROM signal_history WHERE market_ticker=? AND created_at<=?
                 ORDER BY id
                 """,
                 (market_ticker, decision_time),
@@ -615,7 +622,7 @@ class AutonomyLedger:
             rows = self._conn.execute(
                 """
                 SELECT source, probability_yes, uncertainty, created_at, features
-                FROM signals WHERE market_ticker=? ORDER BY id
+                FROM signal_history WHERE market_ticker=? ORDER BY id
                 """,
                 (market_ticker,),
             ).fetchall()
@@ -650,7 +657,7 @@ class AutonomyLedger:
         cutoff = (datetime.now(timezone.utc) - timedelta(days=max_age_days)).isoformat()
         rows = self._conn.execute(
             """
-            SELECT DISTINCT s.market_ticker FROM signals s
+            SELECT DISTINCT s.market_ticker FROM signal_history s
             WHERE s.created_at >= ?
               AND s.market_ticker NOT IN (SELECT market_ticker FROM settlements)
             """,
@@ -663,16 +670,16 @@ class AutonomyLedger:
         live = self._conn.execute(
             """
             SELECT COUNT(DISTINCT st.market_ticker) FROM settlements st
-            WHERE EXISTS (SELECT 1 FROM signals s
+            WHERE EXISTS (SELECT 1 FROM signal_history s
                           WHERE s.market_ticker = st.market_ticker AND s.mode = 'live')
             """
         ).fetchone()
         retro_only = self._conn.execute(
             """
             SELECT COUNT(DISTINCT st.market_ticker) FROM settlements st
-            WHERE NOT EXISTS (SELECT 1 FROM signals s
+            WHERE NOT EXISTS (SELECT 1 FROM signal_history s
                               WHERE s.market_ticker = st.market_ticker AND s.mode = 'live')
-              AND EXISTS (SELECT 1 FROM signals s
+              AND EXISTS (SELECT 1 FROM signal_history s
                           WHERE s.market_ticker = st.market_ticker AND s.mode = 'retro')
             """
         ).fetchone()
@@ -684,27 +691,27 @@ class AutonomyLedger:
             "SELECT COUNT(*), COUNT(DISTINCT market_ticker), COUNT(DISTINCT source),"
             " SUM(CASE WHEN ingest_version>=2 THEN 1 ELSE 0 END),"
             " SUM(CASE WHEN ingest_version>=2 AND features!='{}' THEN 1 ELSE 0 END)"
-            " FROM signals"
+            " FROM signal_history"
         ).fetchone()
         invalid_stored = int(self._conn.execute(
-            "SELECT COUNT(*) FROM signals WHERE probability_yes<0 OR probability_yes>1"
+            "SELECT COUNT(*) FROM signal_history WHERE probability_yes<0 OR probability_yes>1"
             " OR uncertainty<0 OR uncertainty>0.5"
         ).fetchone()[0])
         duplicate_groups = int(self._conn.execute(
             "SELECT COUNT(*) FROM (SELECT source,market_ticker,created_at,mode,COUNT(*) n"
-            " FROM signals GROUP BY source,market_ticker,created_at,mode HAVING n>1)"
+            " FROM signal_history GROUP BY source,market_ticker,created_at,mode HAVING n>1)"
         ).fetchone()[0])
         future_rows = int(self._conn.execute(
-            "SELECT COUNT(*) FROM signals"
+            "SELECT COUNT(*) FROM signal_history"
             " WHERE julianday(created_at)>julianday('now','+5 minutes')"
         ).fetchone()[0])
         post_settlement_rows = int(self._conn.execute(
-            "SELECT COUNT(*) FROM signals s JOIN settlements st USING(market_ticker)"
+            "SELECT COUNT(*) FROM signal_history s JOIN settlements st USING(market_ticker)"
             " WHERE julianday(s.created_at)>julianday(st.settled_at)"
         ).fetchone()[0])
         decisions_without_prior_signal = int(self._conn.execute(
             "SELECT COUNT(*) FROM decisions d WHERE NOT EXISTS"
-            " (SELECT 1 FROM signals s WHERE s.market_ticker=d.market_ticker"
+            " (SELECT 1 FROM signal_history s WHERE s.market_ticker=d.market_ticker"
             " AND s.created_at<=d.created_at)"
         ).fetchone()[0])
         rejection_total = int(self._conn.execute(
@@ -717,18 +724,18 @@ class AutonomyLedger:
         }
         by_mode = {
             str(mode): int(count) for mode, count in self._conn.execute(
-                "SELECT mode,COUNT(*) FROM signals GROUP BY mode ORDER BY mode"
+                "SELECT mode,COUNT(*) FROM signal_history GROUP BY mode ORDER BY mode"
             )
         }
         by_source = {
             str(source): int(count) for source, count in self._conn.execute(
-                "SELECT source,COUNT(*) FROM signals GROUP BY source ORDER BY COUNT(*) DESC"
+                "SELECT source,COUNT(*) FROM signal_history GROUP BY source ORDER BY COUNT(*) DESC"
             )
         }
         receipt = self._conn.execute(
             "SELECT AVG(MAX(0,(julianday(ingested_at)-julianday(created_at))*86400.0)),"
             " MAX(MAX(0,(julianday(ingested_at)-julianday(created_at))*86400.0)), COUNT(*)"
-            " FROM signals WHERE ingest_version>=2 AND mode='live'"
+            " FROM signal_history WHERE ingest_version>=2 AND mode='live'"
         ).fetchone()
 
         blocking_issues: list[str] = []

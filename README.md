@@ -279,7 +279,18 @@ powershell -ExecutionPolicy Bypass -File scripts/install_simulation_training_tas
 python scripts/run_dummy_crypto_paper_twin.py --summary
 powershell -ExecutionPolicy Bypass -File scripts/install_crypto_paper_twin_task.ps1
 Get-ScheduledTaskInfo -TaskName DummyCryptoPaperTwin
+python scripts/run_dummy_ledger_retention.py                 # dry-run: settled signals older than 7d
+python scripts/run_dummy_ledger_retention.py --apply --vacuum # verified archive, then reclaim hot DB pages
 ```
+
+Ledger retention moves only immutable signal rows for markets settled longer
+than seven days into `runtime/autonomy/archive/signals_archive.db`. Every batch
+must match exact row counts and a SHA-256 content digest before the hot rows are
+deleted in the same SQLite transaction. Research readers use the unioned
+`signal_history` view, so calibration/readiness evidence remains unchanged;
+decisions, outcomes, settlements, trust, promotions, and execution files are
+never eligible. Dry-run is the default. Stop ledger-writing tasks before an
+`--apply --vacuum` maintenance pass.
 
 The hourly trainer also runs the quarantined recursive evolution lab. It
 mutates bounded research genomes, replays them causally, stress-tests degraded

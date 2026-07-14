@@ -208,6 +208,7 @@ documented in full in `docs/MARKET_STATE_ROUTING.md`.
 | `autonomy/statistics_intake.py` | Public BLS macro, Deribit DVOL, and NWS station observations stored as deduplicated raw facts with timestamps, units, and provenance; no probability conversion |
 | `autonomy/portfolio_challenger.py` | OR-Tools CP-SAT report-only candidate selection with budget, payout sanity, event-cluster, and position constraints; no executor wiring |
 | `autonomy/research_snapshot.py` | Polars Parquet export through SQLite `mode=ro` + `query_only`, with row/column/size/SHA-256 manifest and atomic directory cleanup |
+| `autonomy/retention.py` | Fail-closed hot/cold signal retention: markets settled for seven days are eligible for a companion SQLite archive; exact count + SHA-256 verification precedes same-transaction hot deletion, while the `signal_history` union preserves full research evidence and excludes every execution/governance table |
 | `autonomy/simulation_training.py` | Hourly report-only curriculum: nested settlement-lagged/event-purged forecast challengers, witnessed-fill execution filters, and event-cluster bootstrap compounding stress; read-only ledger and zero execution authority |
 | `autonomy/evolution_lab.py` | Recursive report-only research evolution: evidence fingerprints, bounded genome mutation, causal/event-purged tournament replay, execution stress chamber, paired cluster bootstrap, immutable forward epochs, and trace replay; can rotate research JSON but has zero code/deployment/weight/risk/order/capital authority |
 | `autonomy/crypto_paper_twin.py` | Permanent public-read-only market-horizon twin: exact BTC/ETH/SOL 15m/hourly/daily/weekly allowlist plus vertically isolated WTI/natural-gas/gold daily/weekly cohorts; unavailable listings abstain explicitly; immutable explanations, one position per vertical/asset/expiry/lane, quote-executable taker simulation, public-print maker diagnostics, frozen epochs, paper-canary gates, and stress-only compounding proposals; independent of SHADOW/LIVE and zero broker/capital authority |
@@ -221,6 +222,34 @@ documented in full in `docs/MARKET_STATE_ROUTING.md`.
 | `autonomy/reconciler.py` | Cumulative/partial fill truth + settlement detection; shadow fills use public standard-book prints with captured queue depth, strict print-through, or observed quote/candle crosses; stale maker quotes expire via order-level `expiration_ts` |
 | `autonomy/learner.py` | Decision-time-aligned Brier trust weights (reward = beating the contemporaneous market prior), Reflexion lessons via ModelRouter |
 | `autonomy/ledger.py` | SQLite: feature-preserving signal provenance + quarantine, decisions, outcomes, settlements, trust, bankroll curve, lessons, intake-quality and execution-quality summaries |
+
+### Ledger retention
+
+The live ledger can accumulate millions of repeated signal observations while
+open markets are monitored. Retention keeps the operational database bounded
+without deleting research evidence:
+
+```powershell
+python scripts/run_dummy_ledger_retention.py
+# Stop ledger-writing Dummy tasks after reviewing the dry-run, then:
+python scripts/run_dummy_ledger_retention.py --apply --vacuum
+```
+
+Only `signals` rows whose market settlement is at least seven days old are
+eligible. Unsettled and recently settled markets always remain hot. Apply mode
+uses bounded batches and refuses a WAL-backed source because SQLite would not
+guarantee an atomic cross-database commit. For every batch it copies exact row
+IDs and values, verifies count and SHA-256 digest in the archive, and only then
+deletes the hot copies in the same transaction. `PRAGMA integrity_check` must
+pass for both databases. The archive retains a manifest for every batch.
+
+`AutonomyLedger`, backtests, the strategy miner, tuner, loss attribution,
+readiness reporting, market debiasing, retro duplicate detection, and the
+simulation trainer read the connection-local `signal_history` union. Archival
+therefore changes storage location, not sample history. It never touches
+decisions, outcomes, settlements, source trust, bankroll, lessons, promotion
+registries, risk state, orders, or capital. The command has no broker client
+and reports `execution_authority=false`.
 
 ## Recursive improvement loops
 

@@ -453,7 +453,7 @@ class RetroEvidenceEngine:
                     decision_ts, tz=timezone.utc,
                 ).isoformat()
                 exists = self.ledger._conn.execute(  # noqa: SLF001
-                    "SELECT 1 FROM signals WHERE source='crypto_empirical_regime'"
+                    "SELECT 1 FROM signal_history WHERE source='crypto_empirical_regime'"
                     " AND market_ticker=? AND mode='retro' LIMIT 1",
                     (ticker,),
                 ).fetchone()
@@ -536,7 +536,7 @@ class RetroEvidenceEngine:
                     stats["skipped_no_model"] += 1
                     continue
                 exists = self.ledger._conn.execute(  # noqa: SLF001
-                    "SELECT 1 FROM signals WHERE source='crypto_dvol_implied'"
+                    "SELECT 1 FROM signal_history WHERE source='crypto_dvol_implied'"
                     " AND market_ticker=? AND mode='retro' LIMIT 1",
                     (ticker,),
                 ).fetchone()
@@ -639,7 +639,7 @@ class RetroEvidenceEngine:
                     stats["skipped_no_model"] += 1
                     continue
                 exists = self.ledger._conn.execute(  # noqa: SLF001
-                    "SELECT 1 FROM signals WHERE source='crypto_technical_composite'"
+                    "SELECT 1 FROM signal_history WHERE source='crypto_technical_composite'"
                     " AND market_ticker=? AND mode='retro' LIMIT 1",
                     (ticker,),
                 ).fetchone()

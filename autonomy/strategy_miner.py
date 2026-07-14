@@ -30,7 +30,6 @@ Discipline (propose-then-promote, spec section 3.4):
 from __future__ import annotations
 
 import json
-import math
 import sqlite3
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -159,10 +158,14 @@ def load_settled_rows(
     # plus bisect approach is deterministic and easy to audit.
     import bisect
 
+    from autonomy.retention import install_signal_history
+
+    install_signal_history(conn)
+
     _ts = _parse_ts
     priors: dict[str, list[tuple[float, float]]] = {}
     for ticker, created_at, probability in conn.execute(
-        "SELECT market_ticker, created_at, probability_yes FROM signals"
+        "SELECT market_ticker, created_at, probability_yes FROM signal_history"
         " WHERE source = 'market_prior'",
     ):
         stamp = _ts(created_at)
@@ -190,7 +193,7 @@ def load_settled_rows(
     query = (
         "SELECT s.source, s.market_ticker, s.created_at, s.probability_yes,"
         " s.features, st.result_yes"
-        " FROM signals s JOIN settlements st ON st.market_ticker = s.market_ticker"
+        " FROM signal_history s JOIN settlements st ON st.market_ticker = s.market_ticker"
         " WHERE s.source != 'market_prior'"
     )
     parameters: list[Any] = []

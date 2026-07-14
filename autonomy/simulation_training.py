@@ -26,6 +26,7 @@ from typing import Any, Iterable, Sequence
 
 from autonomy.correlation import group_key
 from autonomy.fees import kalshi_taker_fee_cents
+from autonomy.retention import install_signal_history
 from autonomy.stats import mean_ci95 as _mean_ci95
 
 
@@ -52,6 +53,7 @@ def connect_readonly(db_path: Path | str) -> sqlite3.Connection:
         f"file:{path.as_posix()}?mode=ro", uri=True, timeout=30.0,
     )
     connection.row_factory = sqlite3.Row
+    install_signal_history(connection)
     connection.execute("PRAGMA query_only=ON")
     return connection
 
@@ -683,7 +685,7 @@ def run_simulation_training(
             evolution=evolution,
         )
         latest = {
-            "signals": int(connection.execute("SELECT COUNT(*) FROM signals").fetchone()[0]),
+            "signals": int(connection.execute("SELECT COUNT(*) FROM signal_history").fetchone()[0]),
             "decisions": int(connection.execute("SELECT COUNT(*) FROM decisions").fetchone()[0]),
             "settlements": int(connection.execute("SELECT COUNT(*) FROM settlements").fetchone()[0]),
             "outcomes": int(connection.execute("SELECT COUNT(*) FROM outcomes").fetchone()[0]),
