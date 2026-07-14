@@ -45,7 +45,10 @@ def _event_with_ml(home, away, home_close, away_close, home_open=None, away_open
 def test_american_odds_parser():
     assert _american("+101") == 101
     assert _american("-149") == -149
+    assert _american(-103.0) == -103
+    assert _american("+120.0") == 120
     assert _american("EVEN") == 100
+    assert _american(-103.5) is None
     assert _american(None) is None
     assert _american("n/a") is None
 

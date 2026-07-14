@@ -111,6 +111,20 @@ def test_parse_scoreboard_resolves_winner():
     assert pre.status == "pre" and pre.home_won is None
 
 
+def test_parse_scoreboard_preserves_completed_tie_instead_of_home_win():
+    event = _event("tie", "NYG", "WAS", "post", home_winner=False, away_winner=False)
+    competitors = event["competitions"][0]["competitors"]
+    competitors[0]["score"] = "20"
+    competitors[1]["score"] = "20"
+
+    game = parse_scoreboard("nfl", _scoreboard([event]))[0]
+
+    assert game.status == "post"
+    assert game.home_score == game.away_score == 20
+    assert game.home_won is None
+    assert game.is_tie is True
+
+
 def test_find_matchup_ignores_order():
     client = EspnClient(fetch_scoreboard=lambda l, d: _scoreboard([_event("1", "DET", "PHI", "pre")]))
     game = client.find_matchup("mlb", "PHI", "DET")

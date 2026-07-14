@@ -8,13 +8,14 @@ from autonomy.opportunist import OpportunistEngine, _favored
 def _assess(
     ticker="G", *, model_prob, market_prob, side="NONE", edge=0.0,
     agreement="model_only", confidence="medium", book_prob=None,
-    conviction_tier=None, power_divergence=None,
+    conviction_tier=None, power_divergence=None, ejection_events=(),
 ) -> MispricingAssessment:
     return MispricingAssessment(
         market_ticker=ticker, side=side, model_prob=model_prob,
         market_prob=market_prob, book_prob=book_prob, edge=edge,
         agreement=agreement, confidence=confidence, rationale="test",
         conviction_tier=conviction_tier, power_divergence=power_divergence,
+        ejection_events=tuple(ejection_events),
     )
 
 
@@ -115,6 +116,35 @@ def test_missing_market_price_is_fail_closed():
     eng = OpportunistEngine()
     assert eng.observe(_assess(model_prob=0.80, market_prob=None)) is None
     assert eng.candidates == {}
+
+
+def test_ejection_evidence_surfaces_without_changing_opportunist_gating():
+    event = {
+        "event_type": "ejection", "text": "Draymond Green ejected",
+        "source": "espn_summary_plays", "received_at": "2026-07-14T00:00:00Z",
+    }
+
+    def strike(events):
+        eng = OpportunistEngine()
+        eng.observe(_assess(model_prob=0.75, market_prob=0.70, side="YES", edge=0.03))
+        return eng.observe(_assess(
+            model_prob=0.75, market_prob=0.60, side="YES", edge=0.12,
+            ejection_events=events,
+        ))
+
+    plain = strike(())
+    observed = strike((event,))
+    assert plain is not None and observed is not None
+    assert (
+        observed.side, observed.edge, observed.deviation, observed.entry_prob,
+        observed.conviction, observed.confidence,
+    ) == (
+        plain.side, plain.edge, plain.deviation, plain.entry_prob,
+        plain.conviction, plain.confidence,
+    )
+    assert plain.ejection_events == ()
+    assert observed.ejection_events == (event,)
+    assert "live ejection observation" in observed.rationale
 
 
 # --------------------------------------------------------------------------

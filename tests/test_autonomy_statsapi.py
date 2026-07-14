@@ -269,6 +269,51 @@ def test_client_assembles_projected_context_with_pitcher_rates():
     assert lad.park_run_factor == 0.98  # Dodger Stadium from the table
 
 
+def test_client_targeted_matchup_hydrates_only_requested_pitchers_and_caches_schedule():
+    import copy
+
+    schedule = copy.deepcopy(_SCHEDULE_FIXTURE)
+    second = schedule["dates"][0]["games"][1]
+    second["teams"]["home"]["probablePitcher"] = {"id": 1}
+    second["teams"]["away"]["probablePitcher"] = {"id": 2}
+    schedule_calls = []
+    people_calls = []
+
+    def fetch_schedule(date_iso):
+        schedule_calls.append(date_iso)
+        return schedule
+
+    def fetch_people(player_id):
+        people_calls.append(player_id)
+        return _PEOPLE_FIXTURE
+
+    client = StatsApiClient(
+        fetch_schedule=fetch_schedule,
+        fetch_people=fetch_people,
+        fetch_pitcher_splits=lambda _pid: {"people": []},
+    )
+    first = client.projected_context_for_matchup(
+        "2026-07-11", home="LAD", away="SF",
+        captured_at="2026-07-11T18:00:00+00:00",
+    )
+    again = client.projected_context_for_matchup(
+        "2026-07-11", home="LAD", away="SF",
+        captured_at="2026-07-11T18:01:00+00:00",
+    )
+    assert first is not None and again is not None and first.game_pk == 717465
+    assert set(people_calls) == {477132, 592789}
+    assert 1 not in people_calls and 2 not in people_calls
+    assert schedule_calls == ["2026-07-11"]
+
+
+def test_client_targeted_matchup_returns_none_when_home_away_do_not_match():
+    client = StatsApiClient(fetch_schedule=lambda _date: _SCHEDULE_FIXTURE)
+    assert client.projected_context_for_matchup(
+        "2026-07-11", home="BOS", away="NYY",
+        captured_at="2026-07-11T18:00:00+00:00",
+    ) is None
+
+
 def test_client_confirms_lineups_via_boxscore():
     client = StatsApiClient(fetch_boxscore=lambda pk: _BOX_FIXTURE)
     base = MlbGameContext(
@@ -420,6 +465,60 @@ def test_client_hydrate_batter_rates_fills_lineup_and_swallows_failures():
     assert set(hydrated.batter_rates) == {605141, 592885}  # 999 failed -> absent
     assert hydrated.batter_rates[605141].k_pct == round(100 / 500, 4)
     assert ctx.batter_rates == {}  # original untouched (frozen)
+
+
+def test_client_batches_confirmed_lineup_batter_hydration():
+    from autonomy.sports.statsapi import StatsApiClient, MlbGameContext, LineupSlot
+
+    bulk_calls = []
+
+    def person(player_id, *, splits=False):
+        stats = ({
+            "splits": [{
+                "split": {"code": "vr"},
+                "stat": {
+                    "plateAppearances": 100, "strikeOuts": 20,
+                    "baseOnBalls": 10, "obp": "0.340", "slg": "0.450",
+                    "avg": "0.270",
+                },
+            }],
+        } if splits else {
+            "splits": [{"stat": {
+                "plateAppearances": 500, "strikeOuts": 100,
+                "baseOnBalls": 50, "obp": "0.340", "slg": "0.450",
+                "avg": "0.270",
+            }}],
+        })
+        return {"id": player_id, "batSide": {"code": "R"}, "stats": [stats]}
+
+    def bulk_people(ids):
+        bulk_calls.append(("people", ids))
+        return {"people": [person(player_id) for player_id in ids]}
+
+    def bulk_splits(ids):
+        bulk_calls.append(("splits", ids))
+        return {"people": [person(player_id, splits=True) for player_id in ids]}
+
+    def individual_must_not_run(_player_id):
+        raise AssertionError("bulk hydration should populate the cache")
+
+    client = StatsApiClient(
+        fetch_batter_people=individual_must_not_run,
+        fetch_batter_splits=individual_must_not_run,
+        fetch_batter_people_bulk=bulk_people,
+        fetch_batter_splits_bulk=bulk_splits,
+    )
+    ctx = MlbGameContext(
+        game_pk=1, snapshot="confirmed", captured_at="2026-07-11T22:40:00Z",
+        home="LAD", away="SF",
+        home_lineup=(LineupSlot(1, 10), LineupSlot(2, 11)),
+        away_lineup=(LineupSlot(1, 20), LineupSlot(2, 21)),
+    )
+    hydrated = client.hydrate_batter_rates(ctx)
+    assert set(hydrated.batter_rates) == {10, 11, 20, 21}
+    assert hydrated.batter_rates[10].vs_rhp is not None
+    expected_ids = (10, 11, 20, 21)
+    assert bulk_calls == [("people", expected_ids), ("splits", expected_ids)]
 
 
 def test_client_clear_cache_forces_batter_refetch():

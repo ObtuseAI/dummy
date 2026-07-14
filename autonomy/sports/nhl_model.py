@@ -108,9 +108,9 @@ directly-observed join key in both payloads.
 Live: time-scaled Poisson over minutes remaining (mirrors MLB's
 `remaining_innings` -> "innings left / 9" ratio, here "minutes left / 60"),
 plus a pulled-goalie empty-net inflation in the final
-PULLED_GOALIE_FINAL_MINUTES that affects ONLY the live totals/spread lambdas
--- never the live winner probability (see `pulled_goalie_lambdas` and its
-callers below).
+PULLED_GOALIE_FINAL_MINUTES.  Winner, spread, and total all consume the same
+inflated remaining-goal lambdas so the live lattice cannot disagree with
+itself during the exact empty-net window where scoring hazard changes most.
 """
 from __future__ import annotations
 
@@ -540,8 +540,8 @@ def pulled_goalie_lambdas(
     bounds). The TRAILING team pulls its own goalie for an extra attacker
     (a modest boost to ITS OWN scoring rate); the LEADING team suddenly faces
     an empty net (a much larger boost to ITS scoring rate on any clean look).
-    Affects live totals/spread ONLY -- see `NhlModel.live_win_probability_for`,
-    which deliberately does NOT call this.
+    Winner, spread, and total live paths all consume this same adjusted pair
+    so their probabilities remain coherent in the pulled-goalie window.
     """
     if minutes_remaining > PULLED_GOALIE_FINAL_MINUTES:
         return lambda_home, lambda_away
@@ -783,13 +783,14 @@ class NhlModel:
     def live_win_probability_for(
         self, prediction: NhlPrediction, home_score: int, away_score: int, minutes_remaining: float,
     ) -> float:
-        """Time-scaled Poisson remaining, shifted by the current lead --
-        deliberately NEVER pulled-goalie-inflated (see module docstring)."""
+        """Time-scaled remaining goals with the shared pulled-goalie state."""
         fraction = max(0.0, float(minutes_remaining)) / REGULATION_MINUTES
         remaining_home = prediction.lambda_home * fraction
         remaining_away = prediction.lambda_away * fraction
+        adjusted_home, adjusted_away = pulled_goalie_lambdas(
+            remaining_home, remaining_away, home_score, away_score, minutes_remaining)
         lead = int(home_score) - int(away_score)
-        split = goal_split(lead, remaining_home, remaining_away)
+        split = goal_split(lead, adjusted_home, adjusted_away)
         return home_win_probability(split)
 
     def live_spread_probability_for(

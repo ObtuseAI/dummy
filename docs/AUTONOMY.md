@@ -80,12 +80,48 @@ Council build-out (WS-8, WS-9, WS-14, WS-15). Every vertical — MLB, NBA, NFL,
 NCAAF, NHL, NCAAMB, and crypto — is owned end-to-end by its own subagent
 behind one protocol (`autonomy/specialists/base.py`: `Specialist` /
 `SpecialistRegistry`): `applicable`/`forecast`/`live_forecast`/`book`/
-`on_cycle_start`/`health`. `autonomy/specialists/factory.py` assembles the
+`ejection_events`/`on_cycle_start`/`health`. `autonomy/specialists/factory.py` assembles the
 registry over the brain's already-registered signal instances (no second copy
 of the model state); registration order is routing order, and series prefixes
 are disjoint by design so at most one specialist ever claims a market. A
 specialist that raises during routing or warmup is skipped — one broken
 vertical can never take the council down.
+
+**Live team-sport triangulation.** MLB and all five team-league specialists
+expose their in-play winner, spread, and total models to the mispricing
+monitor. `EspnSummaryBook` reads one event-summary cache and de-vigs the
+two-way `pickcenter` moneyline, point spread, or over/under. Spread and total
+odds are accepted only when ESPN's current main line exactly equals the Kalshi
+strike; the book abstains on every unmatched alternate rung rather than
+extrapolating one sportsbook line into a distribution.
+NBA/NHL use their existing residual score models. NFL and NCAAF use distinct
+compound-Poisson scoring-event distributions, and NCAAMB uses its own
+40-minute/two-half normal remainder model (`autonomy/sports/live_team_models.py`).
+All winner, spread, and total views remain challenger-only and fail closed on
+missing score/period/clock; football overtime abstains because possession and
+league-specific overtime state are not yet modeled. The summary play feed also supplies raw ejection observations when ESPN
+publishes an explicit play. Each observation records the source event time and
+the monitor's receipt time and is surfaced as opportunist evidence only: it
+does not shift a probability, widen uncertainty, change a strike gate, or
+create execution authority. Article prose is excluded as postgame knowledge.
+
+**MLB StatsAPI PA live challenger.** When a live MLB event can be matched to
+StatsAPI and has confirmed nine-player lineups, both starters, and at least
+75% batter-rate coverage, `BaseballIntelligenceSignal` runs the deterministic
+plate-appearance simulator once per game/cycle. Its expected home/away runs
+condition the observed score and remaining innings, while the existing
+division/rivalry table applies the bounded winner regression. These opinions
+use distinct `mlb_pa_live_winner|total|spread` source names and model version
+`mlb_pa_sim_live_v1`, so they accrue a new forward record instead of rewriting
+the incumbent `mlb_live_*` evidence. Missing hydration fails back to the
+incumbent source. All outputs remain challenger-only and human-promotion-only.
+
+**Loss attribution.** `autonomy/loss_engine.py` deconstructs settled,
+market-benchmarked forecast history by grading scope and event cluster, surfaces
+the worst adequately sampled feature regimes, and supplies only a non-gating
+priority order to the tuner. The nightly strategy-miner task runs it after the
+miner and CLV grader. It writes `runtime/autonomy/loss_attribution.json`; it
+cannot mutate model constants, source weights, promotions, execution, or capital.
 
 **Season gating.** `autonomy/specialists/seasons.py`'s `SeasonMonitor` decides
 whether a league is active from ESPN's own scoreboard (any game inside a
@@ -172,6 +208,7 @@ documented in full in `docs/MARKET_STATE_ROUTING.md`.
 | `autonomy/statistics_intake.py` | Public BLS macro, Deribit DVOL, and NWS station observations stored as deduplicated raw facts with timestamps, units, and provenance; no probability conversion |
 | `autonomy/portfolio_challenger.py` | OR-Tools CP-SAT report-only candidate selection with budget, payout sanity, event-cluster, and position constraints; no executor wiring |
 | `autonomy/research_snapshot.py` | Polars Parquet export through SQLite `mode=ro` + `query_only`, with row/column/size/SHA-256 manifest and atomic directory cleanup |
+| `autonomy/retention.py` | Fail-closed hot/cold signal retention: markets settled for seven days are eligible for a companion SQLite archive; exact count + SHA-256 verification precedes same-transaction hot deletion, while the `signal_history` union preserves full research evidence and excludes every execution/governance table |
 | `autonomy/simulation_training.py` | Hourly report-only curriculum: nested settlement-lagged/event-purged forecast challengers, witnessed-fill execution filters, and event-cluster bootstrap compounding stress; read-only ledger and zero execution authority |
 | `autonomy/evolution_lab.py` | Recursive report-only research evolution: evidence fingerprints, bounded genome mutation, causal/event-purged tournament replay, execution stress chamber, paired cluster bootstrap, immutable forward epochs, and trace replay; can rotate research JSON but has zero code/deployment/weight/risk/order/capital authority |
 | `autonomy/crypto_paper_twin.py` | Permanent public-read-only market-horizon twin: exact BTC/ETH/SOL 15m/hourly/daily/weekly allowlist plus vertically isolated WTI/natural-gas/gold daily/weekly cohorts; unavailable listings abstain explicitly; immutable explanations, one position per vertical/asset/expiry/lane, quote-executable taker simulation, public-print maker diagnostics, frozen epochs, paper-canary gates, and stress-only compounding proposals; independent of SHADOW/LIVE and zero broker/capital authority |
@@ -185,6 +222,34 @@ documented in full in `docs/MARKET_STATE_ROUTING.md`.
 | `autonomy/reconciler.py` | Cumulative/partial fill truth + settlement detection; shadow fills use public standard-book prints with captured queue depth, strict print-through, or observed quote/candle crosses; stale maker quotes expire via order-level `expiration_ts` |
 | `autonomy/learner.py` | Decision-time-aligned Brier trust weights (reward = beating the contemporaneous market prior), Reflexion lessons via ModelRouter |
 | `autonomy/ledger.py` | SQLite: feature-preserving signal provenance + quarantine, decisions, outcomes, settlements, trust, bankroll curve, lessons, intake-quality and execution-quality summaries |
+
+### Ledger retention
+
+The live ledger can accumulate millions of repeated signal observations while
+open markets are monitored. Retention keeps the operational database bounded
+without deleting research evidence:
+
+```powershell
+python scripts/run_dummy_ledger_retention.py
+# Stop ledger-writing Dummy tasks after reviewing the dry-run, then:
+python scripts/run_dummy_ledger_retention.py --apply --vacuum
+```
+
+Only `signals` rows whose market settlement is at least seven days old are
+eligible. Unsettled and recently settled markets always remain hot. Apply mode
+uses bounded batches and refuses a WAL-backed source because SQLite would not
+guarantee an atomic cross-database commit. For every batch it copies exact row
+IDs and values, verifies count and SHA-256 digest in the archive, and only then
+deletes the hot copies in the same transaction. `PRAGMA integrity_check` must
+pass for both databases. The archive retains a manifest for every batch.
+
+`AutonomyLedger`, backtests, the strategy miner, tuner, loss attribution,
+readiness reporting, market debiasing, retro duplicate detection, and the
+simulation trainer read the connection-local `signal_history` union. Archival
+therefore changes storage location, not sample history. It never touches
+decisions, outcomes, settlements, source trust, bankroll, lessons, promotion
+registries, risk state, orders, or capital. The command has no broker client
+and reports `execution_authority=false`.
 
 ## Recursive improvement loops
 

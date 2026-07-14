@@ -419,3 +419,68 @@ def test_divergence_surfaces_on_opportunity_row():
     )  # price dips -> strike, divergence surfaced
     assert report["opportunities"]
     assert report["opportunities"][0]["power_divergence"] == _div(3.0)
+
+
+# ---------------------------------------------------------------------------
+# Live ejections: point-in-time raw evidence, never a pricing/strike gate
+# ---------------------------------------------------------------------------
+
+
+def _ejection():
+    return {
+        "event_type": "ejection",
+        "source": "espn_summary_plays",
+        "play_id": "40158567750",
+        "source_event_time": "2024-03-27T23:17:20Z",
+        "text": "Draymond Green ejected",
+    }
+
+
+def test_ejection_fn_attaches_receipt_timestamp_without_changing_assessment():
+    market = _mkt("B", 30, 72)
+    plain = run_mispricing_sweep([market], lambda m: 0.70, now_iso=NOW)
+    observed = run_mispricing_sweep(
+        [market], lambda m: 0.70, now_iso=NOW,
+        ejection_fn=lambda m: [_ejection()],
+    )
+
+    plain_row = plain["shortlist"][0]
+    observed_row = observed["shortlist"][0]
+    assert {k: v for k, v in observed_row.items() if k != "ejection_events"} == {
+        k: v for k, v in plain_row.items() if k != "ejection_events"
+    }
+    assert plain_row["ejection_events"] == []
+    event = observed_row["ejection_events"][0]
+    assert event["received_at"] == NOW
+    assert event["point_in_time"] is True
+    assert event["evidence_only"] is True
+
+
+def test_ejection_fn_is_fail_closed_on_raise_and_malformed_rows():
+    def boom(_market):
+        raise RuntimeError("summary down")
+
+    raised = run_mispricing_sweep(
+        [_mkt("B", 30, 72)], lambda m: 0.70, now_iso=NOW, ejection_fn=boom,
+    )
+    malformed = run_mispricing_sweep(
+        [_mkt("B", 30, 72)], lambda m: 0.70, now_iso=NOW,
+        ejection_fn=lambda m: [None, {"event_type": "injury"}, "bad"],
+    )
+    assert raised["shortlist"][0]["ejection_events"] == []
+    assert malformed["shortlist"][0]["ejection_events"] == []
+
+
+def test_ejection_evidence_surfaces_on_opportunity_without_changing_trigger():
+    eng = OpportunistEngine()
+    run_mispricing_sweep(
+        [_mkt("B", 68, 34)], lambda m: 0.75, now_iso=NOW, opportunist=eng,
+    )
+    report = run_mispricing_sweep(
+        [_mkt("B", 58, 44)], lambda m: 0.75, now_iso=NOW,
+        opportunist=eng, ejection_fn=lambda m: [_ejection()],
+    )
+    assert report["opportunity_count"] == 1
+    opportunity = report["opportunities"][0]
+    assert opportunity["ejection_events"][0]["text"] == "Draymond Green ejected"
+    assert "live ejection observation" in opportunity["rationale"]

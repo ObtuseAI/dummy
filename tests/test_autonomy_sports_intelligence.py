@@ -398,6 +398,117 @@ def test_live_signal_prices_live_total_and_spread(tmp_path):
     assert spread.probability_yes > 0.5     # TEX (home) up 3, covering +1.5 likely
 
 
+def test_statsapi_pa_simulator_registers_as_separately_graded_live_source(tmp_path):
+    from dataclasses import replace
+
+    from autonomy.live_odds import EspnSummaryBook
+    from autonomy.sports.statsapi import (
+        BatterRates, LineupSlot, MlbGameContext, PitcherRates,
+    )
+
+    lineup_home = tuple(LineupSlot(i + 1, 100 + i, bats="R") for i in range(9))
+    lineup_away = tuple(LineupSlot(i + 1, 200 + i, bats="L") for i in range(9))
+    batter_rates = {
+        slot.player_id: BatterRates(
+            player_id=slot.player_id, bats=slot.bats, plate_appearances=500,
+            k_pct=0.20, bb_pct=0.09, obp=0.34, slg=0.45, iso=0.18,
+        )
+        for slot in (*lineup_home, *lineup_away)
+    }
+    context = MlbGameContext(
+        game_pk=999, snapshot="projected", captured_at=NOW.isoformat(),
+        home="TEX", away="HOU",
+        home_pitcher=PitcherRates(1, throws="R", k_pct=0.24, bb_pct=0.07, hr9=1.0),
+        away_pitcher=PitcherRates(2, throws="L", k_pct=0.25, bb_pct=0.08, hr9=1.1),
+        home_lineup=lineup_home, away_lineup=lineup_away,
+        batter_rates=batter_rates, park_run_factor=1.0, park_hr_factor=1.0,
+    )
+
+    class StubStatsApi:
+        def __init__(self):
+            self.context_calls = 0
+
+        def projected_context_for_matchup(self, date_iso, **kwargs):
+            self.context_calls += 1
+            assert date_iso == "2026-07-10"
+            assert kwargs["home"] == "TEX" and kwargs["away"] == "HOU"
+            return context
+
+        def confirm_lineups(self, ctx, *, captured_at):
+            return replace(ctx, snapshot="confirmed", captured_at=captured_at)
+
+        def hydrate_batter_rates(self, ctx):
+            return ctx
+
+        def clear_schedule_cache(self):
+            pass
+
+    simulator_calls = []
+
+    def fake_simulator(ctx, **kwargs):
+        simulator_calls.append(kwargs)
+        assert ctx.snapshot == "confirmed"
+        assert kwargs["divisional"] is True
+        assert kwargs["rivalry"] is True
+        return {
+            "home_win": 0.68, "yrfi": 0.52,
+            "expected_home_runs": 5.4, "expected_away_runs": 3.6,
+        }
+
+    client = EspnClient(fetch_scoreboard=lambda _l, _d: {"events": []})
+    client._cache[("mlb", "20260710")] = [
+        _mlb_game(status="in", home_score=5, away_score=2, current_period=7)
+    ]
+    statsapi = StubStatsApi()
+    source = BaseballIntelligenceSignal(
+        espn=client, model=BaseballRunModel(), model_path=tmp_path / "mlb.json",
+        live_book=EspnSummaryBook(league="mlb", fetch_summary=lambda _l, _e: {}),
+        statsapi=statsapi, pa_simulator=fake_simulator, pa_sims=200,
+    )
+    markets = (
+        _market("KXMLBGAME-26JUL102005HOUTEX-TEX", "Winner?"),
+        _market("KXMLBTOTAL-26JUL102005HOUTEX-9", "Total?", floor_strike=8.5),
+        _market(
+            "KXMLBSPREAD-26JUL102005HOUTEX-TEX2", "Texas by 1.5?",
+            floor_strike=1.5,
+        ),
+    )
+    signals = [source.generate(market) for market in markets]
+    assert [signal.source for signal in signals] == [
+        "mlb_pa_live_winner", "mlb_pa_live_total", "mlb_pa_live_spread",
+    ]
+    assert len(simulator_calls) == 1 and statsapi.context_calls == 1
+    for signal in signals:
+        assert signal.features["model_version"] == "mlb_pa_sim_live_v1"
+        assert signal.features["pa_simulator"]["game_pk"] == 999
+        assert signal.features["pa_simulator"]["batter_rate_coverage"] == 1.0
+        assert signal.features["challenger_only"] is True
+        assert signal.features["promotion_eligible"] is False
+
+
+def test_statsapi_pa_failure_falls_back_to_incumbent_live_source(tmp_path):
+    class EmptyStatsApi:
+        def projected_context_for_matchup(self, *args, **kwargs):
+            return None
+
+        def clear_schedule_cache(self):
+            pass
+
+    client = EspnClient(fetch_scoreboard=lambda _l, _d: {"events": []})
+    client._cache[("mlb", "20260710")] = [
+        _mlb_game(status="in", home_score=5, away_score=2, current_period=7)
+    ]
+    source = BaseballIntelligenceSignal(
+        espn=client, model=BaseballRunModel(), model_path=tmp_path / "mlb.json",
+        statsapi=EmptyStatsApi(), pa_simulator=lambda *_a, **_k: {},
+    )
+    signal = source.generate(_market(
+        "KXMLBGAME-26JUL102005HOUTEX-TEX", "Winner?",
+    ))
+    assert signal.source == "mlb_live_winner"
+    assert signal.features["pa_simulator"] is None
+
+
 def test_live_winner_fails_closed_without_live_state(tmp_path):
     client = EspnClient(fetch_scoreboard=lambda _l, _d: {"events": []})
     # In-progress but the payload lacks the inning -> abstain, never guess.

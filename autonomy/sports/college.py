@@ -1,12 +1,13 @@
-"""WS-4: NCAAF + NCAAMB college engines -- reparameterizations, not forks.
+"""NCAAF + NCAAMB college engines.
 
-NCAAF reuses autonomy/sports/nfl_margin.py's key-number-tilted margin kernel
-wholesale (the bisection/tilt machinery is NOT duplicated here -- see
-``margin_distribution``'s ``base_pmf`` hook), swapping in a shallower college
-|margin| base table (``BASE_ABS_MARGIN_PMF_COLLEGE``) and feeding it an
-expected margin that blends this season's team EWMA form with a talent-gap
-prior from ``autonomy/sports/elo.py`` early in the season (see
-``talent_gap_margin``).
+NCAAF owns a college scoring-event kernel.  Independent compound-Poisson
+team-score distributions use the college scoring mix (more two-point plays
+and non-seven touchdown outcomes than the NFL model), then one joint score
+grid produces winner, spread, and total probabilities.  This preserves
+football key numbers without importing the NFL absolute-margin tilt and
+naturally gives college the shallower spikes and longer blowout tails its
+higher-possession game requires.  The expected margin still blends current
+season EWMA form with an Elo talent-gap prior early in the season.
 
 NCAAMB reuses autonomy/sports/nba_model.py's pace x efficiency engine
 wholesale via its ``PaceParams`` reparameterization hook (``NCAAMB_PARAMS``
@@ -60,40 +61,76 @@ import math
 from dataclasses import dataclass
 from typing import Any
 
+from autonomy.sports.live_team_models import NCAAF_SCORING_MIX, compound_poisson_points
 from autonomy.sports.nba_model import PaceParams
-from autonomy.sports.nfl_margin import (
-    margin_distribution,
-    normal_over_probability,
-    spread_cover_probability,
-    win_probability,
-)
 from autonomy.sports.team_scores import LEAGUE_SCORE_CONFIGS, TeamScorePrediction
 
-NCAAF_MODEL_VERSION = "ncaaf_college_kernel_v1"
+NCAAF_MODEL_VERSION = "ncaaf_college_compound_poisson_v2"
 NCAAMB_MODEL_VERSION = "ncaamb_pace_efficiency_v1"
+# The power-ratings challenger owns an expected margin but not a total.  A
+# transparent league-average total supplies only the variance scale for that
+# independent evidence lane; it does not alter the requested expected margin.
+NCAAF_POWER_RATINGS_TOTAL = 56.0
 
 # =========================================================== NCAAF kernel
 
-# College final |margin| frequencies: key numbers 3 (field goal) and 7
-# (touchdown) still spike -- college games still end on the same scoring
-# plays -- but roughly 40% shallower than NFL's (more possessions, more
-# 2-point/onside-kick/garbage-time variance smear the spike out), and mass
-# extends further into the tail (60 vs NFL's 45) since college blowouts run
-# much bigger. Curated from public long-run college-football margin shapes,
-# same auditable-static-table discipline as nfl_margin.py's own table
-# (a propose-then-promote tuning target, not independently fit here).
-BASE_ABS_MARGIN_PMF_COLLEGE: dict[int, float] = {
-    1: 0.026, 2: 0.021, 3: 0.059, 4: 0.030, 5: 0.022, 6: 0.033, 7: 0.044,
-    8: 0.026, 9: 0.017, 10: 0.032, 11: 0.020, 12: 0.017, 13: 0.019,
-    14: 0.028, 15: 0.016, 16: 0.017, 17: 0.021, 18: 0.016, 19: 0.014,
-    20: 0.020, 21: 0.022, 22: 0.015, 23: 0.014, 24: 0.016, 25: 0.013,
-    26: 0.012, 27: 0.013, 28: 0.014, 29: 0.010, 30: 0.012, 31: 0.011,
-    32: 0.010, 33: 0.009, 34: 0.009, 35: 0.009, 36: 0.008, 37: 0.007,
-    38: 0.008, 39: 0.006, 40: 0.007, 41: 0.006, 42: 0.006, 43: 0.005,
-    44: 0.005, 45: 0.005, 46: 0.005, 47: 0.004, 48: 0.004, 49: 0.004,
-    50: 0.004, 51: 0.003, 52: 0.003, 53: 0.003, 54: 0.003, 55: 0.003,
-    56: 0.002, 57: 0.002, 58: 0.002, 59: 0.002, 60: 0.004,
-}
+def ncaaf_score_distributions(
+    expected_home_score: float, expected_away_score: float,
+) -> tuple[dict[int, float], dict[int, float]]:
+    """Return coherent ``(margin_pmf, total_pmf)`` from college score events.
+
+    This deliberately shares the NCAAF scoring mix with the active live model
+    so pre-game and live phases do not disagree about the sport's scoring
+    grammar.  It does not share the NFL margin distribution or its tilting
+    algorithm.  The compound-Poisson helper normalizes a tail truncated more
+    than eight standard deviations out; invalid negative means conservatively
+    clamp to zero inside that helper.
+    """
+    home_points = compound_poisson_points(expected_home_score, NCAAF_SCORING_MIX)
+    away_points = compound_poisson_points(expected_away_score, NCAAF_SCORING_MIX)
+    margins: dict[int, float] = {}
+    totals: dict[int, float] = {}
+    for home_score, home_mass in home_points.items():
+        for away_score, away_mass in away_points.items():
+            mass = home_mass * away_mass
+            margin = home_score - away_score
+            total = home_score + away_score
+            margins[margin] = margins.get(margin, 0.0) + mass
+            totals[total] = totals.get(total, 0.0) + mass
+    # Inputs are normalized, but normalize again to contain floating-point
+    # drift and keep this public boundary fail-closed if the helper changes.
+    margin_mass = sum(margins.values())
+    total_mass = sum(totals.values())
+    if margin_mass <= 0.0 or total_mass <= 0.0:
+        return {0: 1.0}, {0: 1.0}
+    return (
+        {value: mass / margin_mass for value, mass in margins.items()},
+        {value: mass / total_mass for value, mass in totals.items()},
+    )
+
+
+def _clamp_probability(value: float) -> float:
+    return min(0.995, max(0.005, float(value)))
+
+
+def ncaaf_margin_distribution(
+    expected_margin: float, expected_total: float = NCAAF_POWER_RATINGS_TOTAL,
+) -> dict[int, float]:
+    """College margin PMF for evidence lanes that only own a point margin."""
+    home = max(0.0, (float(expected_total) + float(expected_margin)) / 2.0)
+    away = max(0.0, (float(expected_total) - float(expected_margin)) / 2.0)
+    return ncaaf_score_distributions(home, away)[0]
+
+
+def margin_win_probability(distribution: dict[int, float]) -> float:
+    positive = sum(mass for margin, mass in distribution.items() if margin > 0)
+    return _clamp_probability(positive + 0.5 * distribution.get(0, 0.0))
+
+
+def margin_cover_probability(distribution: dict[int, float], line: float) -> float:
+    return _clamp_probability(sum(
+        mass for margin, mass in distribution.items() if margin > float(line)
+    ))
 
 # Talent-gap blend (brief's exact formula): margin = w*ewma_margin +
 # (1-w)*elo_margin_pts, w = min(1, games/6). games=0 -> pure Elo (a team's
@@ -118,18 +155,7 @@ def talent_gap_margin(ewma_margin: float, elo_diff: float, games: int) -> tuple[
 
 
 class NcaafCollegeModel:
-    """Winner/spread/total pricing for one NCAAF matchup off the college
-    key-number kernel.
-
-    Identical machinery to nfl_margin.py::NflMarginModel (same tilted-PMF
-    distribution, same win/cover/total helpers, reused by direct import --
-    NOT copy-pasted), parameterized with ``BASE_ABS_MARGIN_PMF_COLLEGE`` via
-    ``margin_distribution``'s ``base_pmf`` hook. Takes the ALREADY-BLENDED
-    margin (talent-gap regression -- see ``talent_gap_margin`` above) and the
-    matchup's expected total directly, rather than two raw home/away scores
-    like NflMarginModel, since NCAAF's expected margin is not simply
-    home_score - away_score.
-    """
+    """Joint winner/spread/total pricing from the NCAAF score-event kernel."""
 
     def __init__(self, expected_margin: float, expected_total: float, total_sigma: float):
         self.expected_margin = float(expected_margin)
@@ -137,23 +163,27 @@ class NcaafCollegeModel:
         self.total_sigma = float(total_sigma)
         self.expected_home_score = (self.expected_total + self.expected_margin) / 2.0
         self.expected_away_score = (self.expected_total - self.expected_margin) / 2.0
-        self.distribution = margin_distribution(
-            self.expected_margin, base_pmf=BASE_ABS_MARGIN_PMF_COLLEGE)
+        self.distribution, self.total_distribution = ncaaf_score_distributions(
+            self.expected_home_score, self.expected_away_score)
 
     def home_win_probability(self) -> float:
-        return min(0.995, max(0.005, win_probability(self.distribution)))
+        return margin_win_probability(self.distribution)
 
     def home_cover_probability(self, line: float) -> float:
         """P(home margin > line); use a negative line for home underdogs."""
-        return min(0.995, max(0.005, spread_cover_probability(self.distribution, line)))
+        return margin_cover_probability(self.distribution, line)
 
     def away_cover_probability(self, line: float) -> float:
         """P(away margin > line) == P(home margin < -line)."""
-        return min(0.995, max(0.005, spread_cover_probability(
-            {-m: p for m, p in self.distribution.items()}, line)))
+        return _clamp_probability(sum(
+            mass for margin, mass in self.distribution.items() if -margin > float(line)
+        ))
 
     def total_over_probability(self, threshold: float) -> float:
-        return normal_over_probability(self.expected_total, self.total_sigma, threshold)
+        return _clamp_probability(sum(
+            mass for total, mass in self.total_distribution.items()
+            if total > float(threshold)
+        ))
 
 
 @dataclass(frozen=True)

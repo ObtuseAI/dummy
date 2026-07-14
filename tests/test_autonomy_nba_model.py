@@ -458,6 +458,29 @@ def test_warm_nba_matchup_prices_from_the_pace_efficiency_engine(tmp_path):
     assert winner.probability_yes >= cover_05.probability_yes
 
 
+def test_warm_nba_uses_structural_uncertainty_for_all_market_types(tmp_path):
+    """Regression: the lone warm engine must not report generic uncertainty."""
+    game = Game("g1", "nba", "LAL", "BOS", "pre", None, "2026-01-12T20:25Z",
+                home_name="Los Angeles Lakers", away_name="Boston Celtics")
+    signal, nba_model = _warm_signal(tmp_path, game)
+    prediction = nba_model.predict(game)
+
+    winner = signal.generate(_market(
+        "KXNBAGAME-26JAN12LALBOS-LAL", "Lakers vs Celtics Winner?"))
+    spread = signal.generate(_market(
+        "KXNBASPREAD-26JAN12LALBOS-LAL7",
+        "Los Angeles Lakers vs Boston Celtics Spread", floor_strike=3.5))
+    total = signal.generate(_market(
+        "KXNBATOTAL-26JAN12LALBOS", "Los Angeles Lakers vs Boston Celtics Total Points",
+        floor_strike=225.5))
+
+    assert winner is not None and spread is not None and total is not None
+    assert winner.uncertainty == pytest.approx(prediction.winner_uncertainty)
+    assert spread.uncertainty == pytest.approx(
+        min(0.44, prediction.winner_uncertainty + 0.02))
+    assert total.uncertainty == pytest.approx(prediction.total_uncertainty)
+
+
 def test_warm_nba_live_game_prices_from_brownian_diffusion(tmp_path):
     game = Game("g1", "nba", "LAL", "BOS", "in", None, "2026-01-12T20:25Z",
                 home_name="Los Angeles Lakers", away_name="Boston Celtics",

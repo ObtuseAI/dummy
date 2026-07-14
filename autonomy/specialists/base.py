@@ -56,6 +56,9 @@ class Specialist(Protocol):
     def book(self, market: MarketView) -> float | None:
         """De-vigged independent sharp estimator P(YES); None means no book."""
 
+    def ejection_events(self, market: MarketView) -> tuple[dict[str, Any], ...]:
+        """Raw point-in-time ejection observations; empty means none/unknown."""
+
     def on_cycle_start(self) -> None:
         """Warm/refresh this specialist's feeds for the coming pass."""
 

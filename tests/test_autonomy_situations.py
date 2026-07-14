@@ -19,9 +19,7 @@ from autonomy.sports.nhl_model import NhlModel
 from autonomy.sports.players import LeagueInjuryBook, RookieBook, classify_status
 from autonomy.sports.situations import (
     CLINCH_UNCERTAINTY,
-    MUST_WIN_GAMES_REMAINING,
     NFL_BYE_ADJUSTMENT,
-    NFL_BYE_MIN_DAYS,
     NFL_SHORT_WEEK_ADJUSTMENT,
     NHL_B2B_ADJUSTMENT,
     ROSTER_EVENT_UNCERTAINTY,
@@ -158,6 +156,56 @@ def test_nfl_rest_effect_no_history_is_zero_no_op():
     assert effect.margin_delta == 0.0
     assert effect.features["nfl_rest_home_rest_days"] is None
     assert effect.features["nfl_rest_away_rest_days"] is None
+
+
+def test_cycle_hydrates_nfl_rest_from_three_week_window_after_daemon_gap(
+    tmp_path, monkeypatch,
+):
+    """A missed prior game must be recovered before bye detection runs."""
+    import autonomy.signals.sports_intelligence as sports_intelligence
+
+    settled = Game(
+        "missed-final", "nfl", "KC", "BUF", "post", True,
+        "2026-09-13T20:00:00Z", home_score=24, away_score=17,
+    )
+
+    class StubEspn:
+        def __init__(self):
+            self.calls = []
+
+        def clear_cache(self):
+            return None
+
+        def games(self, league, dates):
+            self.calls.append((league, dates))
+            return [settled] if league == "nfl" and dates == "range-21" else []
+
+    class StubSeasons:
+        @staticmethod
+        def active(league):
+            return league == "nfl"
+
+    monkeypatch.setattr(
+        sports_intelligence, "_date_range", lambda days_back=2: f"range-{days_back}")
+    espn = StubEspn()
+    injury_books = {"nfl": LeagueInjuryBook("nfl", fetch_fn=lambda: {"injuries": []})}
+    playoff_books = {"nfl": PlayoffBook("nfl", fetch_fn=lambda: {})}
+    roster_books = {"nfl": RosterDriftBook("nfl", fetch_teams=lambda _l: {})}
+    tracker = GameDateTracker(league="nfl")
+    signal = TeamSportsIntelligenceSignal(
+        espn=espn,
+        model_dir=tmp_path,
+        seasons=StubSeasons(),
+        injury_books=injury_books,
+        playoff_books=playoff_books,
+        roster_drift_books=roster_books,
+        rookie_book=RookieBook(
+            "nfl", fetch_teams=lambda _l: {}, fetch_roster=lambda _l, _t: {}),
+        nfl_rest_tracker=tracker,
+    )
+    signal.on_cycle_start()
+    assert ("nfl", "range-21") in espn.calls
+    assert tracker.recent_dates("KC") == ["2026-09-13"]
 
 
 # =========================================================================

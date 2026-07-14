@@ -11,10 +11,12 @@ records the full lifecycle in an auditable ledger.
   order-book, and cross-venue evidence.
 - **Sports arsenal:** MLB winners, totals, spreads, and YRFI/NRFI — with real
   left/right platoon splits, per-team bullpen quality, rivalry/divisional
-  awareness, and probabilistic baserunning; NBA, NCAAB, NFL, NCAAF, and NHL
-  winners and totals, each priced by a league-specific kernel and cross-checked
-  by a power-ratings ensemble challenger (ESPN FPI/BPI, in-house Elo, and
-  in-house Massey and Colley ratings computed from public final scores).
+  awareness, probabilistic baserunning, and a gated StatsAPI plate-appearance
+  simulator for confirmed live lineups and starters; NBA, NCAAB, NFL, NCAAF,
+  and NHL winner/spread/total markets, each priced by a league-specific pregame
+  and live kernel and cross-checked by a power-ratings ensemble challenger
+  (ESPN FPI/BPI, in-house Elo, and in-house Massey and tie-aware Colley ratings
+  computed from public final scores).
   (UFC and Formula One retired 2026-07-12.)
 - **Training arsenal:** point-in-time replay, Monte Carlo simulation,
   adversarial arenas, event-purged walk-forward validation, calibration and
@@ -64,7 +66,18 @@ by its own specialist subagent behind one protocol — pre-game forecast,
 in-play view, independent sharp "book" estimator, feed warmup, and health
 (`autonomy/specialists/`). Routing is disjoint (one market, one specialist)
 and every specialist fails closed: missing data means abstain, never a
-degraded guess. Leagues auto-wake/sleep with their real season (ESPN
+degraded guess. NBA/NHL plus separate NFL, NCAAF, and NCAAMB live-state
+models expose in-play winner/spread/total views; de-vigged ESPN event-summary
+moneylines and exact-strike spread/total lines supply the independent live
+book legs and abstain when an alternate line does not match. Verified hard
+ESPN availability statuses apply bounded position-weighted pregame margin
+adjustments, while soft statuses widen uncertainty only; explicit play-by-play
+ejections are receipt-timestamped, evidence-only
+opportunist context and never double-adjust the live score. MLB can replace its
+incumbent live opinion with a distinct StatsAPI plate-appearance challenger only
+when both starters, confirmed 9-player lineups, and at least 75% batter-rate
+coverage are present; hydration failure preserves the incumbent path. Leagues
+auto-wake/sleep with their real season (ESPN
 scoreboard window, no hardcoded calendar), CLV-vs-closing-line and
 settlement-backed contested Brier both accrue per specialist as challenger
 evidence, and a human-gated propose-then-promote pipeline is the only way
@@ -86,7 +99,11 @@ distribution plus an opportunistic divergence flag when the ensemble and the
 league kernel disagree while sources agree. It is challenger-only: it accrues
 CLV and Brier evidence but never reaches capital until an explicit human
 promotion. No ratings site is scraped; the Massey and Colley methods are
-replicated in-house from public final scores.
+replicated in-house from public final scores. Completed ties remain explicit
+feed facts and enter Colley as half a win plus half a loss for each team;
+unresolved results remain excluded. NCAAF uses its own compound-Poisson
+scoring-event distribution for both its specialist and power-ratings paths,
+not the NFL absolute-margin tilt.
 
 ## The loop
 
@@ -262,7 +279,18 @@ powershell -ExecutionPolicy Bypass -File scripts/install_simulation_training_tas
 python scripts/run_dummy_crypto_paper_twin.py --summary
 powershell -ExecutionPolicy Bypass -File scripts/install_crypto_paper_twin_task.ps1
 Get-ScheduledTaskInfo -TaskName DummyCryptoPaperTwin
+python scripts/run_dummy_ledger_retention.py                 # dry-run: settled signals older than 7d
+python scripts/run_dummy_ledger_retention.py --apply --vacuum # verified archive, then reclaim hot DB pages
 ```
+
+Ledger retention moves only immutable signal rows for markets settled longer
+than seven days into `runtime/autonomy/archive/signals_archive.db`. Every batch
+must match exact row counts and a SHA-256 content digest before the hot rows are
+deleted in the same SQLite transaction. Research readers use the unioned
+`signal_history` view, so calibration/readiness evidence remains unchanged;
+decisions, outcomes, settlements, trust, promotions, and execution files are
+never eligible. Dry-run is the default. Stop ledger-writing tasks before an
+`--apply --vacuum` maintenance pass.
 
 The hourly trainer also runs the quarantined recursive evolution lab. It
 mutates bounded research genomes, replays them causally, stress-tests degraded

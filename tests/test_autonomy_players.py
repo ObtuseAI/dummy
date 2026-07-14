@@ -1,6 +1,8 @@
 """Tests for WS-6: player availability / rookie / mismatch layer."""
 from __future__ import annotations
 
+import pytest
+
 from autonomy.signals.sports_intelligence import TeamSportsIntelligenceSignal
 from autonomy.sports.boxscores import BoxscoreStore, TeamBoxscore
 from autonomy.sports.espn import EspnClient, Game
@@ -8,8 +10,8 @@ from autonomy.sports.nba_model import MIN_GAMES_FOR_ENGINE, NbaModel, NbaTeamSta
 from autonomy.sports.team_scores import LEAGUE_SCORE_CONFIGS, TeamScoreModel
 from autonomy.sports.players import (
     LEAGUE_POINT_SCALE,
+    MISMATCH_INPUT_SCALE,
     POSITION_IMPACT,
-    AvailabilityEffect,
     LeagueInjuryBook,
     RookieBook,
     TeamAvailability,
@@ -278,6 +280,20 @@ def test_mismatch_margin_shift_bounded_and_signed_above_threshold():
     assert abs(mismatch_margin_shift(1.0, 10.0)) == 0.3 * 10.0
 
 
+def test_realistic_league_mismatch_inputs_can_cross_the_action_gate():
+    # NBA/NCAAMB: one team on the capped rest penalty, the other rested.
+    nba_score = bounded_mismatch_score(-2.0, 0.5, MISMATCH_INPUT_SCALE["nba"])
+    ncaamb_score = bounded_mismatch_score(
+        -2.0, 0.5, MISMATCH_INPUT_SCALE["ncaamb"])
+    # NHL: opposite signed special-team shifts at their shipped +/-0.15 cap.
+    nhl_score = bounded_mismatch_score(0.15, -0.15, MISMATCH_INPUT_SCALE["nhl"])
+    assert abs(nba_score) > 0.5
+    assert abs(ncaamb_score) > 0.5
+    assert abs(nhl_score) > 0.5
+    assert mismatch_margin_shift(nba_score, LEAGUE_POINT_SCALE["nba"]) != 0.0
+    assert mismatch_margin_shift(nhl_score, LEAGUE_POINT_SCALE["nhl"]) != 0.0
+
+
 # ------------------------------------------------------------- probability shift
 
 
@@ -420,6 +436,17 @@ def test_engine_qb_out_shifts_nfl_expected_margin_by_exactly_4_5(tmp_path):
     assert healthy_signal is not None and hurt_signal is not None
     assert healthy_signal.features["hard_margin_delta"] == 0.0
     assert hurt_signal.features["hard_margin_delta"] == -4.5
+    healthy_margin = (
+        healthy_signal.features["expected_home_score"]
+        - healthy_signal.features["expected_away_score"]
+    )
+    hurt_margin = (
+        hurt_signal.features["expected_home_score"]
+        - hurt_signal.features["expected_away_score"]
+    )
+    assert hurt_margin - healthy_margin == pytest.approx(-4.5)
+    assert hurt_signal.features["expected_score_margin_delta"] == -4.5
+    assert hurt_signal.features["expected_scores_post_shift"] is True
     # KC is home and the subject -> hurting KC's margin must LOWER KC's win
     # probability relative to the healthy baseline.
     assert hurt_signal.probability_yes < healthy_signal.probability_yes

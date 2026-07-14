@@ -30,10 +30,8 @@ def test_installer_references_both_miner_and_grader():
 
 def test_installer_runs_the_grader_after_the_miner():
     text = INSTALLER.read_text(encoding="utf-8")
-    # In the schtasks bootstrap action the scripts are chained with && so the
-    # grader runs only after the miner, in that order (the loss engine -- see
-    # test_autonomy_loss_engine_scheduled.py -- was appended after WS-B,
-    # still after the grader).
+    # The scripts are declared in their execution order (the loss engine --
+    # see test_autonomy_loss_engine_scheduled.py -- follows the grader).
     miner_at = text.index("run_dummy_strategy_miner.py")
     grader_at = text.index("run_dummy_clv_grader.py")
     assert miner_at < grader_at

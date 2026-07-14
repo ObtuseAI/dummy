@@ -769,7 +769,7 @@ def _crypto_fill_diagnostics(conn) -> dict[str, Any]:
         samples.append(row)
         latest: dict[str, float] = {}
         signal_rows = conn.execute(
-            "SELECT source,probability_yes FROM signals WHERE market_ticker=?"
+            "SELECT source,probability_yes FROM signal_history WHERE market_ticker=?"
             " AND created_at<=? ORDER BY created_at DESC,id DESC",
             (ticker, created_at),
         ).fetchall()
@@ -842,7 +842,7 @@ def _crypto_fill_diagnostics(conn) -> dict[str, Any]:
                        PARTITION BY s.market_ticker,s.source
                        ORDER BY s.created_at,s.id
                    ) AS rank
-            FROM signals s JOIN settlements st USING(market_ticker)
+            FROM signal_history s JOIN settlements st USING(market_ticker)
             WHERE s.source IN ('crypto_spot_vol','crypto_ewma_t')
               AND (s.market_ticker GLOB 'KXBTC*' OR s.market_ticker GLOB 'KXETH*')
         )
@@ -856,7 +856,7 @@ def _crypto_fill_diagnostics(conn) -> dict[str, Any]:
     uncertainty_rows = conn.execute(
         """
         SELECT COUNT(*),SUM(CASE WHEN uncertainty<0.08 THEN 1 ELSE 0 END)
-        FROM signals WHERE source IN ('crypto_spot_vol','crypto_ewma_t')
+        FROM signal_history WHERE source IN ('crypto_spot_vol','crypto_ewma_t')
         """
     ).fetchone()
     return {
@@ -913,7 +913,7 @@ def _crypto_challenger_gates(
     ):
         rows = conn.execute(
             """
-            SELECT s.market_ticker,s.mode FROM signals s
+            SELECT s.market_ticker,s.mode FROM signal_history s
             JOIN settlements st USING(market_ticker)
             WHERE s.source=?
             GROUP BY s.market_ticker,s.mode

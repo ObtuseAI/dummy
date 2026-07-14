@@ -90,6 +90,7 @@ def _assessment_row(a: MispricingAssessment) -> dict[str, Any]:
         "rationale": a.rationale,
         "conviction_tier": a.conviction_tier,
         "power_divergence": a.power_divergence,
+        "ejection_events": list(a.ejection_events),
     }
 
 
@@ -177,7 +178,35 @@ def _opportunity_row(o: Opportunity) -> dict[str, Any]:
         "confidence": o.confidence,
         "rationale": o.rationale,
         "power_divergence": o.power_divergence,
+        "ejection_events": list(o.ejection_events),
     }
+
+
+def _point_in_time_ejections(value: Any, received_at: str) -> tuple[dict[str, Any], ...]:
+    """Normalize raw ejection dicts and stamp the local receipt time.
+
+    The callback is an external-data boundary: malformed rows are quarantined
+    by omission, and callback-provided receipt/proof flags cannot override the
+    monitor's own observation time. These remain tier-1 raw observations.
+    """
+    if not isinstance(value, (list, tuple)):
+        return ()
+    rows: list[dict[str, Any]] = []
+    allowed = (
+        "event_type", "source", "play_id", "sequence_number",
+        "source_event_time", "text", "team_id", "participant_ids",
+        "period", "clock", "home_score", "away_score",
+    )
+    for event in value:
+        if not isinstance(event, dict) or event.get("event_type") != "ejection":
+            continue
+        rows.append({
+            **{key: event.get(key) for key in allowed},
+            "received_at": received_at,
+            "point_in_time": True,
+            "evidence_only": True,
+        })
+    return tuple(rows)
 
 
 def run_mispricing_sweep(
@@ -193,6 +222,7 @@ def run_mispricing_sweep(
     max_items: int = 25,
     specialist_fn: Callable[[Any], str | None] | None = None,
     divergence_fn: Callable[[Any], dict | None] | None = None,
+    ejection_fn: Callable[[Any], Any] | None = None,
 ) -> dict[str, Any]:
     """Run one sweep; return a JSON-able report.
 
@@ -219,6 +249,7 @@ def run_mispricing_sweep(
     assessments_by_ticker: dict[str, MispricingAssessment] = {}
     source_by_ticker: dict[str, str | None] = {}
     divergence_by_ticker: dict[str, dict | None] = {}
+    ejections_by_ticker: dict[str, tuple[dict[str, Any], ...]] = {}
     for market in markets:
         scanned += 1
         assessment = monitor.assess_market(market)
@@ -239,6 +270,16 @@ def run_mispricing_sweep(
                 divergence_by_ticker[assessment.market_ticker] = divergence_fn(market)
             except Exception:
                 divergence_by_ticker[assessment.market_ticker] = None
+        # Live ejections are raw observations, not a fourth estimator. Attach
+        # them after pricing so they cannot alter model/book/Kalshi math, and
+        # stamp the monitor's receipt time for point-in-time provenance.
+        if ejection_fn is not None:
+            try:
+                ejections_by_ticker[assessment.market_ticker] = _point_in_time_ejections(
+                    ejection_fn(market), now_iso,
+                )
+            except Exception:
+                ejections_by_ticker[assessment.market_ticker] = ()
 
     # WS-8: one book-tape row per assessed market (the full universe, not
     # just the shortlist -- CLV grading needs every ticker's price history).
@@ -265,6 +306,9 @@ def run_mispricing_sweep(
         divergence = divergence_by_ticker.get(assessment.market_ticker)
         if divergence is not None:
             assessment = replace(assessment, power_divergence=divergence)
+        ejections = ejections_by_ticker.get(assessment.market_ticker, ())
+        if ejections:
+            assessment = replace(assessment, ejection_events=ejections)
         if opportunist is not None:
             opportunity = opportunist.observe(assessment)
             if opportunity is not None:

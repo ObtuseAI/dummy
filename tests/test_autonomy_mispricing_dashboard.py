@@ -44,6 +44,13 @@ def test_dashboard_renders_the_lattice_conviction_counts():
     assert "cross_confirmed_count" in _HTML
 
 
+def test_dashboard_renders_live_ejection_evidence():
+    from autonomy.dashboard import _HTML
+
+    assert "live ejection evidence" in _HTML
+    assert "ejection_events" in _HTML
+
+
 # -- WS-8: CLV per specialist surfaces in the mispricing panel -----------------
 
 def test_dashboard_exposes_clv_report(tmp_path):

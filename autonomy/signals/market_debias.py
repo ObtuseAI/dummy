@@ -40,9 +40,9 @@ def ledger_samples(ledger: Any) -> list[tuple[float, int]]:
     rows = ledger._conn.execute(  # noqa: SLF001 - trusted ledger consumer
         """
         SELECT s.probability_yes, st.result_yes FROM settlements st
-        JOIN signals s ON s.market_ticker = st.market_ticker
+        JOIN signal_history s ON s.market_ticker = st.market_ticker
         WHERE s.source = 'market_prior'
-          AND s.id = (SELECT MAX(id) FROM signals
+          AND s.id = (SELECT MAX(id) FROM signal_history
                       WHERE market_ticker = st.market_ticker AND source = 'market_prior')
         """
     ).fetchall()

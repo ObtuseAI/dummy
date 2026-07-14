@@ -93,11 +93,10 @@ def margin_distribution(
     Solved by bisection on the tilt parameter -- the tilted mean is strictly
     increasing in lambda, so the root is unique.
 
-    ``base_pmf`` defaults to ``BASE_ABS_MARGIN_PMF`` (NFL) -- passing a
-    different auditable |margin| table (e.g. NCAAF's shallower
-    ``BASE_ABS_MARGIN_PMF_COLLEGE`` in autonomy/sports/college.py) reuses
-    this exact tilt/bisection machinery unchanged rather than forking it;
-    see that module for why this is the DRY-correct reuse path.
+    ``base_pmf`` defaults to ``BASE_ABS_MARGIN_PMF`` (NFL).  The optional
+    hook remains for experiments, but production NCAAF pricing owns a
+    separate compound-Poisson scoring-event kernel in
+    ``autonomy.sports.college``.
     """
     signed_base = _SIGNED_BASE if base_pmf is None else _signed_base(base_pmf)
     target = float(expected_margin)

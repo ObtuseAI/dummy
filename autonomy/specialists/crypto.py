@@ -60,6 +60,9 @@ class CryptoSpecialist:
         except Exception:
             return None
 
+    def ejection_events(self, market: MarketView) -> tuple[dict[str, Any], ...]:
+        return ()
+
     def on_cycle_start(self) -> None:
         # The shared CryptoDataHub is warmed by the brain's registry cycle.
         return None

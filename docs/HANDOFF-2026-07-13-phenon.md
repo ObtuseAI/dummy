@@ -92,23 +92,28 @@ under the old code). Fix = per-source `points_per_unit(league)` contract.
 - ✅ **Massey/Colley re-warm** (CF2, PR #73). `on_cycle_start` re-warms owned sources on a 12h TTL
    (`MASSEY_COLLEY_REWARM_TTL_HOURS`); injected sources untouched; crash-proof/fail-closed.
 
-**Still deferred (logged, non-blocking):**
-1. **Colley tie handling.** `Game.home_won` collapses ties to a home win upstream
-   (`espn.py`), so Colley can't see true ties. Near-zero impact for the 4 Colley leagues
-   (rare NFL ties only); fix at the feed layer if it ever matters.
-2. **NCAAF uses the college key-number table** now (matches WS-C doctrine), but still
-   reuses the NFL margin kernel wholesale otherwise — a shallower college-specific kernel
-   is a future fidelity improvement.
+**Deferred follow-ups resolved (2026-07-14):**
+1. **Colley tie handling.** `Game.is_tie` now preserves a completed tied score at
+   the ESPN feed boundary. Settled ratings intake admits only explicit ties (not
+   unresolved results), and Colley records half a win plus half a loss for each team.
+2. **College-specific NCAAF kernel.** Pre-game specialist and independent
+   power-ratings paths now use the NCAAF compound-Poisson scoring-event model,
+   producing coherent winner/spread/total distributions without the NFL margin tilt.
 
 ## Pre-promotion punch list (from Part I whole-branch review — separate from Phenon)
 
 Logged in memory `dummy-council-of-specialists`; not Phenon scope, but these block
-promoting the sports challengers to capital:
-1. WS-3 NHL live winner omits pulled-goalie λ (winner/cover incoherent final 3 min).
-2. WS-6 expected-score display fields pre-shift while prob is post-shift.
-3. WS-7 NFL bye gap-detect fails open (+1.0 mean) on daemon-missed games.
-4. Mismatch finder inert (tanh gate never crossable, sources hard-capped ≤ 1.5).
-5. NBA WS-2 lone engine still reading generic uncertainty (consistency).
+promoting the sports challengers to capital. **Resolved in the 2026-07-14
+continuation:**
+1. WS-3 NHL live winner now consumes the same pulled-goalie lambdas as spread/total.
+2. WS-6 expected-score evidence is explicitly post-shift and logs its applied margin delta.
+3. WS-7 NFL rest hydration uses a separate 21-day lookback across daemon-missed games.
+4. Mismatch inputs use reachable native-domain scales while retaining bounded output deltas.
+5. Warm NBA winner/spread/total paths now report the NBA engine's own uncertainty.
+
+These code defects are closed, but that is not a promotion verdict. Each
+challenger still needs its required point-in-time forward settlements,
+calibration, contested comparison, and human-authored promotion review.
 
 ## How to resume / process notes
 
