@@ -6,9 +6,11 @@ the game. De-vigging its two-way moneyline, point-spread, and total markets
 gives the sharp-book leg of the triangulated mispricing engine for in-progress
 games, keyless and already-whitelisted (same source as the scoreboard).
 
-Fail-closed: no summary, no pickcenter, no complete two-way prices, or a book
-line that does not exactly match the Kalshi strike -> None. A single ESPN main
-line is never extrapolated across Kalshi's alternate-line ladder.
+Fail-closed: no summary, no pickcenter, or no complete two-way prices -> None.
+Exact line matches use the observed de-vigged price directly. Because ESPN's
+public feed exposes only one current main spread/total, unmatched alternate
+strikes use an explicit league-width normal curve anchored to that de-vigged
+main price; the projection is challenger evidence, never execution authority.
 
 WS-11 build-time PROBE (2026-07-12, network confirmed reachable): the plan
 was to find a live ("in") MLB game and inspect its summary's ``situation``
@@ -47,6 +49,7 @@ from __future__ import annotations
 
 import math
 import re
+from statistics import NormalDist
 from typing import Any, Callable
 
 from autonomy.signals.sportsbook import devig_two_way
@@ -55,6 +58,22 @@ from autonomy.sports.espn import LEAGUE_TO_ESPN, _american
 
 
 _EJECTION_PATTERN = re.compile(r"\b(?:eject(?:ed|ion|ions)?|disqualified)\b", re.IGNORECASE)
+
+# Main-line-to-alternate translation widths. ESPN exposes only the current
+# main spread/total in its public summary/core odds resources (verified again
+# 2026-07-14). Alternate coverage therefore de-vigs that observed main line,
+# locates a league-specific normal distribution at the market-implied
+# quantile, and evaluates the requested strike on the same curve. These are
+# challenger calibration targets; exact ESPN lines always take precedence.
+ALT_LINE_SIGMAS: dict[str, dict[str, float]] = {
+    "mlb": {"spread": 4.0, "total": 3.1},
+    "nba": {"spread": 12.0, "total": 18.0},
+    "nfl": {"spread": 13.5, "total": 14.0},
+    "ncaaf": {"spread": 16.0, "total": 17.0},
+    "nhl": {"spread": 2.2, "total": 2.4},
+    "ncaamb": {"spread": 12.5, "total": 15.0},
+}
+_STANDARD_NORMAL = NormalDist()
 
 
 def devig_summary_home_probability(summary: dict[str, Any] | None) -> float | None:
@@ -88,6 +107,62 @@ def _number(value: Any) -> float | None:
 
 def _same_line(left: float | None, right: float | None) -> bool:
     return left is not None and right is not None and abs(left - right) <= 1e-6
+
+
+def _project_probability(main_probability: float, main_line: float, target: float, sigma: float) -> float:
+    probability = min(0.999, max(0.001, float(main_probability)))
+    implied_mean = float(main_line) + float(sigma) * _STANDARD_NORMAL.inv_cdf(probability)
+    return min(0.999, max(0.001, _STANDARD_NORMAL.cdf((implied_mean - float(target)) / float(sigma))))
+
+
+def project_summary_total_probability(
+    summary: dict[str, Any] | None, threshold: float, *, sigma: float,
+) -> float | None:
+    """Translate complete de-vigged ESPN main totals to an alternate strike."""
+    wanted = _number(threshold)
+    if wanted is None or sigma <= 0.0:
+        return None
+    probabilities: list[float] = []
+    for book in (summary or {}).get("pickcenter", []) or []:
+        if not isinstance(book, dict):
+            continue
+        line = _number(book.get("overUnder"))
+        devigged = devig_two_way(_american(book.get("overOdds")), _american(book.get("underOdds")))
+        if line is not None and devigged is not None:
+            probabilities.append(_project_probability(devigged, line, wanted, sigma))
+    return sum(probabilities) / len(probabilities) if probabilities else None
+
+
+def project_summary_spread_probability(
+    summary: dict[str, Any] | None,
+    *,
+    subject_is_home: bool,
+    threshold: float,
+    sigma: float,
+) -> float | None:
+    """Translate complete de-vigged ESPN main spreads to an alternate rung."""
+    wanted = _number(threshold)
+    if wanted is None or sigma <= 0.0:
+        return None
+    subject_key = "home" if subject_is_home else "away"
+    opponent_key = "away" if subject_is_home else "home"
+    probabilities: list[float] = []
+    for book in (summary or {}).get("pickcenter", []) or []:
+        spread = book.get("pointSpread") if isinstance(book, dict) else None
+        if not isinstance(spread, dict):
+            continue
+        subject = (spread.get(subject_key) or {}).get("close") or {}
+        opponent = (spread.get(opponent_key) or {}).get("close") or {}
+        subject_line = _number(subject.get("line"))
+        opponent_line = _number(opponent.get("line"))
+        if subject_line is None or opponent_line is None or abs(subject_line + opponent_line) > 1e-6:
+            continue
+        devigged = devig_two_way(_american(subject.get("odds")), _american(opponent.get("odds")))
+        if devigged is None:
+            continue
+        # ESPN handicap -x corresponds to Kalshi "wins by > x".
+        probabilities.append(_project_probability(devigged, -subject_line, wanted, sigma))
+    return sum(probabilities) / len(probabilities) if probabilities else None
 
 
 def devig_summary_total_probability(
@@ -307,10 +382,15 @@ class EspnSummaryBook:
     def total_over_probability(
         self, event_id: str | None, threshold: float,
     ) -> float | None:
-        """De-vigged live P(total > threshold), exact main-line match only."""
+        """De-vigged live P(total > threshold), exact line then alt projection."""
         if not event_id:
             return None
-        return devig_summary_total_probability(self._summary(event_id), threshold)
+        summary = self._summary(event_id)
+        exact = devig_summary_total_probability(summary, threshold)
+        if exact is not None:
+            return exact
+        sigma = ALT_LINE_SIGMAS.get(self.league, {}).get("total")
+        return project_summary_total_probability(summary, threshold, sigma=sigma) if sigma else None
 
     def spread_cover_probability(
         self,
@@ -319,14 +399,22 @@ class EspnSummaryBook:
         subject_is_home: bool,
         threshold: float,
     ) -> float | None:
-        """De-vigged live P(subject wins by > threshold), exact line only."""
+        """De-vigged live P(cover), exact line then main-implied alt curve."""
         if not event_id:
             return None
-        return devig_summary_spread_probability(
-            self._summary(event_id),
+        summary = self._summary(event_id)
+        exact = devig_summary_spread_probability(
+            summary,
             subject_is_home=subject_is_home,
             threshold=threshold,
         )
+        if exact is not None:
+            return exact
+        sigma = ALT_LINE_SIGMAS.get(self.league, {}).get("spread")
+        return project_summary_spread_probability(
+            summary, subject_is_home=subject_is_home,
+            threshold=threshold, sigma=sigma,
+        ) if sigma else None
 
     def base_out_state(self, event_id: str | None) -> tuple[str, int] | None:
         """(base_state, outs) for the event's current game state, or None.

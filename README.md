@@ -16,7 +16,9 @@ records the full lifecycle in an auditable ledger.
   and NHL winner/spread/total markets, each priced by a league-specific pregame
   and live kernel and cross-checked by a power-ratings ensemble challenger
   (ESPN FPI/BPI, in-house Elo, and in-house Massey and tie-aware Colley ratings
-  computed from public final scores).
+  computed from public final scores). NFL and NCAAF overtime is possession-aware
+  and fail-closed without ESPN drive state, while NHL uses a
+  positive-shared-component bivariate Poisson.
   (UFC and Formula One retired 2026-07-12.)
 - **Training arsenal:** point-in-time replay, Monte Carlo simulation,
   adversarial arenas, event-purged walk-forward validation, calibration and
@@ -69,7 +71,9 @@ and every specialist fails closed: missing data means abstain, never a
 degraded guess. NBA/NHL plus separate NFL, NCAAF, and NCAAMB live-state
 models expose in-play winner/spread/total views; de-vigged ESPN event-summary
 moneylines and exact-strike spread/total lines supply the independent live
-book legs and abstain when an alternate line does not match. Verified hard
+book legs. ESPN exposes one current main spread/total, so unmatched alternate
+strikes use an explicit league-width challenger curve anchored to that
+de-vigged main price; malformed or one-sided books still abstain. Verified hard
 ESPN availability statuses apply bounded position-weighted pregame margin
 adjustments, while soft statuses widen uncertainty only; explicit play-by-play
 ejections are receipt-timestamped, evidence-only
@@ -137,9 +141,12 @@ default), reconciles settlements, and grades every source against reality.
   bootstrap and refits the debias curve. No operator in the loop.
 - **Model evolution**: challengers run beside champions under their own
   source names and earn their way in or starve.
-- **Crypto correlation control**: Coinbase flat-vol and EWMA-tail models are
-  one evidence family, not two independent votes; crypto retains a 25% market
-  anchor and challengers remain excluded until explicit promotion review.
+- **Crypto correlation control**: Coinbase flat-vol, blend-sigma, and empirical
+  regime transforms share one distribution family; macro-regime and
+  crypto-equity drift share one cross-asset family. Enabling correlated
+  challengers can redistribute family weight but cannot manufacture additional
+  precision. Crypto retains a 25% market anchor and challengers remain excluded
+  until explicit promotion review.
 - **Simulation training**: an hourly read-only curriculum searches
   shrinkage/edge/uncertainty policies with settlement-lagged, event-purged
   walk-forward tests; separately trains witnessed-fill execution filters and
@@ -300,4 +307,5 @@ code, weights, risk, orders, or capital. See `docs/EVOLUTION_LAB.md`.
 Details: [docs/AUTONOMY.md](docs/AUTONOMY.md).
 Training protocol: [docs/SIMULATION_TRAINING_REGIMEN.md](docs/SIMULATION_TRAINING_REGIMEN.md).
 Crypto audit: [docs/CRYPTO_PERFORMANCE_AUDIT.md](docs/CRYPTO_PERFORMANCE_AUDIT.md).
+Evidence governance review: [docs/EVIDENCE_GOVERNANCE_REVIEW_2026-07-14.md](docs/EVIDENCE_GOVERNANCE_REVIEW_2026-07-14.md).
 Crypto paper twin: [docs/CRYPTO_PAPER_TWIN.md](docs/CRYPTO_PAPER_TWIN.md).

@@ -4,6 +4,7 @@ from __future__ import annotations
 import pytest
 
 from autonomy.sports.live_team_models import (
+    FootballOvertimeState,
     NcaafLiveModel,
     NcaambLiveModel,
     NflLiveModel,
@@ -11,6 +12,7 @@ from autonomy.sports.live_team_models import (
     football_minutes_remaining,
     ncaamb_minutes_remaining,
     parse_clock_minutes,
+    parse_football_overtime_state,
 )
 
 
@@ -90,3 +92,56 @@ def test_ncaamb_late_score_dominates_pregame_strength():
     trailing_late = model.forecast(80.0, 60.0, 10.5, 17.0, 40, 50, 1.0)
     assert trailing_early.home_win_probability > trailing_late.home_win_probability
     assert trailing_late.home_win_probability < 0.01
+
+
+def test_parse_nfl_overtime_state_requires_current_possession_and_counts_drives():
+    summary = {"drives": {
+        "previous": [{
+            "team": {"abbreviation": "BUF"},
+            "start": {"period": {"number": 5}},
+        }],
+        "current": {"team": {"abbreviation": "KC"}},
+    }}
+    state = parse_football_overtime_state(
+        summary, league="nfl", period=5, display_clock="6:30")
+    assert state == FootballOvertimeState(5, "KC", ("BUF",), 6.5)
+    assert parse_football_overtime_state(
+        {"drives": {}}, league="nfl", period=5, display_clock="6:30") is None
+
+
+def test_parse_ncaaf_overtime_state_counts_only_current_round():
+    summary = {"drives": {
+        "previous": [
+            {"team": {"abbreviation": "UGA"}, "start": {"period": {"number": 5}}},
+            {"team": {"abbreviation": "ALA"}, "start": {"period": {"number": 6}}},
+        ],
+        "current": {"team": {"abbreviation": "UGA"}},
+    }}
+    state = parse_football_overtime_state(
+        summary, league="ncaaf", period=6, display_clock="0:00")
+    assert state == FootballOvertimeState(6, "UGA", ("ALA",), None)
+
+
+def test_nfl_overtime_forecast_is_possession_aware_and_coherent():
+    model = NflLiveModel()
+    first = model.forecast_overtime(
+        27.0, 24.0, 24, 24, "KC", "BUF",
+        FootballOvertimeState(5, "KC", (), 9.5))
+    second = model.forecast_overtime(
+        27.0, 24.0, 24, 24, "KC", "BUF",
+        FootballOvertimeState(5, "KC", ("BUF",), 5.0))
+    assert first is not None and second is not None
+    assert first.overtime and first.possession_team == "KC"
+    assert second.home_win_probability > first.home_win_probability
+    assert sum(second.margin_pmf.values()) == pytest.approx(1.0)
+    assert sum(second.total_pmf.values()) == pytest.approx(1.0)
+    assert second.cover_probability(True, 0.5) <= second.home_win_probability
+
+
+def test_ncaaf_third_overtime_uses_two_point_outcomes():
+    forecast = NcaafLiveModel().forecast_overtime(
+        31.0, 28.0, 35, 35, "UGA", "ALA",
+        FootballOvertimeState(7, "UGA", (), None))
+    assert forecast is not None and forecast.overtime
+    assert all(total >= 70 for total in forecast.total_pmf)
+    assert all((total - 70) % 2 == 0 for total in forecast.total_pmf)

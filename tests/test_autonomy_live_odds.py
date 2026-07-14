@@ -4,6 +4,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pytest
+
 from autonomy.live_odds import (
     EspnSummaryBook,
     devig_summary_home_probability,
@@ -11,6 +13,8 @@ from autonomy.live_odds import (
     devig_summary_total_probability,
     parse_base_out_state,
     parse_ejection_events,
+    project_summary_spread_probability,
+    project_summary_total_probability,
 )
 
 FIXTURES = Path(__file__).parent / "fixtures"
@@ -131,6 +135,40 @@ def test_summary_book_line_methods_reuse_cached_summary():
     ) is not None
     assert book.total_over_probability(None, 8.5) is None
     assert calls == [("mlb", "g1")]
+
+
+def test_alternate_total_projection_is_anchored_and_monotone():
+    summary = _summary_with_lines(total_line=216.5, over_odds=-105, under_odds=-115)
+    exact = devig_summary_total_probability(summary, 216.5)
+    projected_exact = project_summary_total_probability(summary, 216.5, sigma=18.0)
+    lower = project_summary_total_probability(summary, 210.5, sigma=18.0)
+    higher = project_summary_total_probability(summary, 222.5, sigma=18.0)
+    assert projected_exact == pytest.approx(exact)
+    assert lower > exact > higher
+
+
+def test_alternate_spread_projection_is_anchored_and_monotone():
+    summary = _summary_with_lines(home_line=-3.5, away_line=3.5)
+    exact = devig_summary_spread_probability(
+        summary, subject_is_home=True, threshold=3.5)
+    projected_exact = project_summary_spread_probability(
+        summary, subject_is_home=True, threshold=3.5, sigma=12.0)
+    easier = project_summary_spread_probability(
+        summary, subject_is_home=True, threshold=1.5, sigma=12.0)
+    harder = project_summary_spread_probability(
+        summary, subject_is_home=True, threshold=7.5, sigma=12.0)
+    assert projected_exact == pytest.approx(exact)
+    assert easier > exact > harder
+
+
+def test_summary_book_projects_unmatched_alt_lines_but_unknown_league_abstains():
+    summary = _summary_with_lines(total_line=216.5, home_line=-3.5, away_line=3.5)
+    nba = EspnSummaryBook(league="nba", fetch_summary=lambda _league, _event: summary)
+    assert nba.total_over_probability("g1", 222.5) is not None
+    assert nba.spread_cover_probability(
+        "g1", subject_is_home=True, threshold=7.5) is not None
+    unknown = EspnSummaryBook(league="unknown", fetch_summary=lambda _league, _event: summary)
+    assert unknown.total_over_probability("g1", 222.5) is None
 
 
 def test_summary_book_caches_per_event():

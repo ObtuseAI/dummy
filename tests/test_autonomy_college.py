@@ -349,6 +349,31 @@ def test_ncaaf_live_signal_uses_score_clock_and_discrete_scoring_model(tmp_path)
     assert winner.probability_yes >= spread.probability_yes
 
 
+def test_ncaaf_live_signal_prices_third_overtime_from_alternating_possession(tmp_path):
+    game = Game(
+        "g1", "ncaaf", "KC", "BUF", "in", None, "2026-01-12T20:25Z",
+        home_name="Kansas City Chiefs", away_name="Buffalo Bills",
+        home_score=35, away_score=35, current_period=7, current_clock="0:00",
+    )
+    client = EspnClient(fetch_scoreboard=lambda _l, _d: {"events": []})
+    client._cache[("ncaaf", "20260112")] = [game]
+    summary = {"drives": {
+        "previous": [],
+        "current": {"team": {"abbreviation": "KC"}},
+    }}
+    signal = TeamSportsIntelligenceSignal(
+        espn=client, model_dir=tmp_path, seasons=_AlwaysActive(),
+        fetch_football_summary=lambda _league, _event: summary,
+        ncaaf_elo=EloModel(league="ncaaf", ratings={"KC": 1600.0, "BUF": 1500.0}),
+    )
+    result = signal.generate(_market(
+        "KXNCAAFGAME-26JAN12KCBUF-KC", "Chiefs vs Bills Winner?"))
+    assert result is not None
+    assert result.features["overtime"] is True
+    assert result.features["possession_team"] == "KC"
+    assert result.features["minutes_remaining"] == 0.0
+
+
 def test_ncaamb_signal_falls_back_wholesale_when_cold(tmp_path):
     game = Game("g1", "ncaamb", "DUKE", "UNC", "pre", None, "2026-01-12T20:25Z",
                 home_name="Duke Blue Devils", away_name="North Carolina Tar Heels")

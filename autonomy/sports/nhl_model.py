@@ -9,16 +9,14 @@ of math is the OT/SO branch: Kalshi NHL winner markets settle on the FINAL
 score including overtime and a shootout (see the build-time probe below), so
 a regulation-only Poisson model would misprice every game that goes past 60
 minutes. Every winner/puck-line/totals number in this module is priced off
-ONE regulation-goal matrix (`goal_split`, independent Poissons -- correlation
-term deferred, see below) so the three markets stay coherent by construction,
+ONE regulation-goal matrix (`goal_split`, a bivariate Poisson with a positive
+shared component) so the three markets stay coherent by construction,
 mirroring nfl_margin.py/nba_model.py's single-distribution discipline.
 
-INDEPENDENCE ASSUMPTION (deferred): home and away goals are modeled as
-INDEPENDENT Poissons. A true bivariate Poisson would carry a small positive
-correlation term (score effects, game state affecting both teams' shot rates
-similarly). The brief calls this out explicitly as deferred; MIN_GAMES_FOR_ENGINE
-and the wide uncertainty bands are not a substitute for that term, just a
-documented gap for a future workstream.
+BIVARIATE COMPONENT (2026-07-14): H=U+W and A=V+W, with independent Poisson
+U/V and a small positive shared W. The supplied home/away lambdas remain the
+marginal means, while Cov(H,A)=lambda_W. The shared lambda is an auditable,
+bounded challenger calibration target that scales down with live time.
 
 PROBE 1 (build-time, 2026-07-12, network confirmed reachable) -- Kalshi
 NHL settlement rules, fetched live from
@@ -124,15 +122,21 @@ from typing import Any, Sequence
 from autonomy.sports.boxscores import BoxscoreStore, TeamBoxscore
 from autonomy.sports.espn import Game
 
-# v1: bivariate (independent-Poisson) goals + explicit OT/SO branch, goalie
-# identity, special teams, pulled-goalie live inflation.
-MODEL_VERSION = "nhl_bipoisson_ot_v1"
+# v2: genuine bivariate-Poisson goals (positive shared component) + explicit
+# OT/SO branch, goalie identity, special teams, pulled-goalie live inflation.
+MODEL_VERSION = "nhl_bipoisson_ot_v2"
 
 # -- team goal-rate EWMA + matchup ------------------------------------------
 PRIOR_GOAL_RATE = 3.05          # brief's exact league-average GF/GA prior
 EWMA_ALPHA = 0.10               # brief's exact value
 HOME_EDGE = 0.18                # brief's exact value, goals; split +/- half
 GOAL_MATRIX_TRUNCATION = 12     # brief's exact truncation
+# Shared component W in H=U+W, A=V+W. Four percent of the weaker marginal
+# gives ~0.12 shared goals at ordinary NHL means and scales naturally toward
+# zero in short live windows. Challenger calibration target, not a fitted
+# coefficient; the cap prevents pathological high-rate inputs dominating.
+SHARED_GOAL_FRACTION = 0.04
+SHARED_GOAL_MAX = 0.20
 
 # -- cold-start reliability weighting (mirrors nba_model.py's `_metric`) ----
 COLD_FULL_WEIGHT_GAMES = 25.0
@@ -200,6 +204,40 @@ def _pmf_array(mean: float, truncation: int = GOAL_MATRIX_TRUNCATION) -> list[fl
     return [poisson_pmf(k, mean) for k in range(truncation + 1)]
 
 
+def shared_goal_mean(home_mean: float, away_mean: float) -> float:
+    """Positive shared lambda for the bivariate-Poisson construction."""
+    return min(
+        SHARED_GOAL_MAX,
+        max(0.0, min(float(home_mean), float(away_mean))) * SHARED_GOAL_FRACTION,
+    )
+
+
+def bivariate_poisson_pmf(
+    home_goals: int,
+    away_goals: int,
+    home_mean: float,
+    away_mean: float,
+    shared_mean: float | None = None,
+) -> float:
+    """Joint PMF with the supplied values retained as marginal means.
+
+    H=U+W and A=V+W, where U, V, W are independent Poissons. Therefore
+    Cov(H,A)=E[W]>0 while E[H] and E[A] remain ``home_mean``/``away_mean``.
+    """
+    if home_goals < 0 or away_goals < 0:
+        return 0.0
+    shared = shared_goal_mean(home_mean, away_mean) if shared_mean is None else float(shared_mean)
+    shared = min(max(0.0, shared), max(0.0, float(home_mean)), max(0.0, float(away_mean)))
+    home_independent = max(0.0, float(home_mean) - shared)
+    away_independent = max(0.0, float(away_mean) - shared)
+    return sum(
+        poisson_pmf(home_goals - common, home_independent)
+        * poisson_pmf(away_goals - common, away_independent)
+        * poisson_pmf(common, shared)
+        for common in range(min(home_goals, away_goals) + 1)
+    )
+
+
 @dataclass(frozen=True)
 class RegulationSplit:
     """The full regulation-goal picture for one matchup (or one LIVE
@@ -228,7 +266,7 @@ class RegulationSplit:
 def goal_split(
     lead: int, home_mean: float, away_mean: float, truncation: int = GOAL_MATRIX_TRUNCATION,
 ) -> RegulationSplit:
-    """The joint (home, away) goal matrix -- independent Poissons, truncated
+    """The joint (home, away) goal matrix -- bivariate Poisson, truncated
     at `truncation` -- reduced to win/tie/loss mass, a home-margin PMF, and a
     total PMF, all measured against `lead` (pass lead=0 for a pre-game
     prediction; a live caller passes the CURRENT score lead and `home_mean`/
@@ -236,18 +274,13 @@ def goal_split(
     `live_*_for` below). One function serves both pre-game and live pricing,
     exactly like nba_model.py's single Brownian-bridge formula serves both.
     """
-    home_pmf = _pmf_array(home_mean, truncation)
-    away_pmf = _pmf_array(away_mean, truncation)
     reg_win = reg_tie = reg_loss = 0.0
     margin_pmf: dict[int, float] = {}
     total_pmf = [0.0] * (2 * truncation + 2)
     tie_total_pmf: dict[int, float] = {}
     for h in range(truncation + 1):
-        home_p = home_pmf[h]
-        if home_p <= 0.0:
-            continue
         for a in range(truncation + 1):
-            p = home_p * away_pmf[a]
+            p = bivariate_poisson_pmf(h, a, home_mean, away_mean)
             if p <= 0.0:
                 continue
             total_index = h + a
