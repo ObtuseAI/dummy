@@ -8,13 +8,13 @@ from autonomy.opportunist import OpportunistEngine, _favored
 def _assess(
     ticker="G", *, model_prob, market_prob, side="NONE", edge=0.0,
     agreement="model_only", confidence="medium", book_prob=None,
-    conviction_tier=None,
+    conviction_tier=None, power_divergence=None,
 ) -> MispricingAssessment:
     return MispricingAssessment(
         market_ticker=ticker, side=side, model_prob=model_prob,
         market_prob=market_prob, book_prob=book_prob, edge=edge,
         agreement=agreement, confidence=confidence, rationale="test",
-        conviction_tier=conviction_tier,
+        conviction_tier=conviction_tier, power_divergence=power_divergence,
     )
 
 
@@ -179,3 +179,63 @@ def test_unknown_conviction_tier_is_treated_as_no_drop():
         conviction_tier="some_future_tier",
     )) is None
     assert eng.candidates == {}
+
+
+# ---------------------------------------------------------------------------
+# CF1: power-ratings divergence surfaced as evidence (never a gate)
+# ---------------------------------------------------------------------------
+
+
+def _confirm_div(gap: float) -> dict:
+    return {"sport": "nfl", "gap": gap, "ensemble_margin": 7.0,
+            "our_engine_margin": 7.0 - gap, "dispersion": 1.0, "kalshi_mid": 0.6}
+
+
+def test_confirming_divergence_surfaces_on_opportunity_without_changing_gating():
+    # Same scenario twice: with and without a confirming (same-side) divergence.
+    # The strike, side, edge, deviation, entry, conviction must be byte-identical;
+    # only power_divergence + the rationale annotation differ (evidence, not gate).
+    def _run(divergence):
+        eng = OpportunistEngine()
+        eng.observe(_assess(model_prob=0.75, market_prob=0.70, side="YES", edge=0.03))
+        return eng.observe(_assess(
+            model_prob=0.75, market_prob=0.60, side="YES", edge=0.12,
+            power_divergence=divergence))
+
+    plain = _run(None)
+    withdiv = _run(_confirm_div(gap=3.0))  # YES favored + gap>0 -> confirms
+
+    assert plain is not None and withdiv is not None
+    # Gating fields identical -> the divergence changed nothing actionable.
+    assert (withdiv.side, withdiv.edge, withdiv.deviation, withdiv.entry_prob,
+            withdiv.conviction) == (plain.side, plain.edge, plain.deviation,
+                                    plain.entry_prob, plain.conviction)
+    # Evidence surfaced only on the divergence run.
+    assert plain.power_divergence is None
+    assert withdiv.power_divergence == _confirm_div(gap=3.0)
+    assert "power-ratings ensemble confirms" in withdiv.rationale
+    assert "power-ratings" not in plain.rationale
+
+
+def test_counter_signed_divergence_is_not_surfaced():
+    # YES favored but gap<0 (ensemble leans AWAY/NO) -> not a confirmation:
+    # power_divergence stays None on the Opportunity and nothing else changes.
+    eng = OpportunistEngine()
+    eng.observe(_assess(model_prob=0.75, market_prob=0.70, side="YES", edge=0.03))
+    opp = eng.observe(_assess(
+        model_prob=0.75, market_prob=0.60, side="YES", edge=0.12,
+        power_divergence=_confirm_div(gap=-3.0)))
+    assert opp is not None
+    assert opp.power_divergence is None
+    assert "power-ratings" not in opp.rationale
+
+
+def test_no_favorite_side_confirming_divergence_for_no_side():
+    # NO favored (model 0.30) with gap<0 (ensemble leans away/NO) -> confirms.
+    eng = OpportunistEngine()
+    eng.observe(_assess(model_prob=0.30, market_prob=0.30, side="NO", edge=0.03))
+    opp = eng.observe(_assess(
+        model_prob=0.30, market_prob=0.40, side="NO", edge=0.12,
+        power_divergence=_confirm_div(gap=-4.0)))
+    assert opp is not None and opp.side == "NO"
+    assert opp.power_divergence == _confirm_div(gap=-4.0)

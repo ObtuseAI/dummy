@@ -1965,6 +1965,7 @@ class PowerRatingsSignal:
             if market.yes_bid is not None and market.yes_ask is not None:
                 kalshi_mid = (market.yes_bid + market.yes_ask) / 2.0 / 100.0
             power_divergence = {
+                "sport": parsed.sport,
                 "gap": round(gap, 3),
                 "ensemble_margin": round(consensus.ensemble_margin, 3),
                 "our_engine_margin": round(our_engine_margin, 3),

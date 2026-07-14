@@ -75,6 +75,15 @@ class MispricingAssessment:
     # Absent/None is byte-identical to pre-WS-5 behavior everywhere it is
     # consumed (autonomy/opportunist.py's anchor-threshold relaxation).
     conviction_tier: str | None = None
+    # CF1 (Phenon WS-A2): optional power-ratings divergence evidence for this
+    # market -- the dict PowerRatingsSignal attaches when the external-ratings
+    # ensemble disagrees with our own engine while the ratings sources agree
+    # ({gap, ensemble_margin, our_engine_margin, dispersion, kalshi_mid, sport}).
+    # Surfaced as buy-low EVIDENCE only (opportunist rationale + report rows +
+    # dashboard); it never changes the actionable side/edge/confidence or the
+    # opportunist gating while power_ratings remains an unpromoted challenger.
+    # Absent/None is byte-identical to the field never existing.
+    power_divergence: dict[str, Any] | None = None
 
 
 def _implied_yes_from_quotes(

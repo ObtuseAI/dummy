@@ -108,7 +108,21 @@ def _build():
         except Exception:
             return None
 
-    return brain, council, forecast_fn, book_fn, specialist_fn
+    def divergence_fn(market):
+        # CF1: the power-ratings challenger's own divergence evidence for this
+        # market (None unless the external-ratings ensemble disagreed with our
+        # engine while the ratings sources agreed). Surfaced as buy-low evidence
+        # only; power_ratings stays an unpromoted challenger, so this never gates
+        # a strike. Fail-closed: unrouted/crypto markets and any error -> None.
+        try:
+            for sig in brain.registry.signals_for(market):
+                if sig.source.startswith("power_ratings_"):
+                    return (sig.features or {}).get("power_divergence")
+            return None
+        except Exception:
+            return None
+
+    return brain, council, forecast_fn, book_fn, specialist_fn, divergence_fn
 
 
 FAST_OUT_PATH = Path("runtime/autonomy/mispricing_monitor_fast_latest.json")
@@ -146,7 +160,7 @@ def _persist_council_snapshot(council, report, ticker_specialist, now_iso) -> No
         }))
 
 
-def _one_pass(brain, council, forecast_fn, book_fn, specialist_fn, opportunist, tape_state) -> dict:
+def _one_pass(brain, council, forecast_fn, book_fn, specialist_fn, divergence_fn, opportunist, tape_state) -> dict:
     brain.registry.on_cycle_start()  # warm/refresh source caches for this pass
     council.on_cycle_start()  # per-specialist warmup (isolated; failures skip)
     markets = brain.scanner.scan()
@@ -163,7 +177,7 @@ def _one_pass(brain, council, forecast_fn, book_fn, specialist_fn, opportunist, 
             ticker_specialist[market.ticker] = None
     report = run_mispricing_sweep(
         markets, forecast_fn, now_iso=now_iso, book_fn=book_fn, opportunist=opportunist,
-        specialist_fn=specialist_fn,
+        specialist_fn=specialist_fn, divergence_fn=divergence_fn,
     )
     _persist_evidence(report, tape_state)
     _persist_council_snapshot(council, report, ticker_specialist, now_iso)
@@ -233,7 +247,7 @@ def main() -> int:
                         help="seconds between crypto micro-passes (with --crypto-fast)")
     args = parser.parse_args()
 
-    brain, council, forecast_fn, book_fn, specialist_fn = _build()
+    brain, council, forecast_fn, book_fn, specialist_fn, divergence_fn = _build()
     opportunist = OpportunistEngine()  # stateful across passes within this process
     crypto_scanner = _crypto_scanner(brain)
     # WS-8: last-row-per-ticker tape index, carried across passes (both the
@@ -245,7 +259,8 @@ def main() -> int:
     def _tick() -> None:
         try:
             report = _one_pass(
-                brain, council, forecast_fn, book_fn, specialist_fn, opportunist, tape_state)
+                brain, council, forecast_fn, book_fn, specialist_fn, divergence_fn,
+                opportunist, tape_state)
             print(json.dumps({
                 "status": "OK",
                 "scanned": report["scanned"],

@@ -89,6 +89,7 @@ def _assessment_row(a: MispricingAssessment) -> dict[str, Any]:
         "confidence": a.confidence,
         "rationale": a.rationale,
         "conviction_tier": a.conviction_tier,
+        "power_divergence": a.power_divergence,
     }
 
 
@@ -175,6 +176,7 @@ def _opportunity_row(o: Opportunity) -> dict[str, Any]:
         "deviation": round(o.deviation, 4),
         "confidence": o.confidence,
         "rationale": o.rationale,
+        "power_divergence": o.power_divergence,
     }
 
 
@@ -190,6 +192,7 @@ def run_mispricing_sweep(
     min_confidence: str = "medium",
     max_items: int = 25,
     specialist_fn: Callable[[Any], str | None] | None = None,
+    divergence_fn: Callable[[Any], dict | None] | None = None,
 ) -> dict[str, Any]:
     """Run one sweep; return a JSON-able report.
 
@@ -215,6 +218,7 @@ def run_mispricing_sweep(
     assessed_pairs: list[tuple[Any, MispricingAssessment]] = []
     assessments_by_ticker: dict[str, MispricingAssessment] = {}
     source_by_ticker: dict[str, str | None] = {}
+    divergence_by_ticker: dict[str, dict | None] = {}
     for market in markets:
         scanned += 1
         assessment = monitor.assess_market(market)
@@ -227,6 +231,14 @@ def run_mispricing_sweep(
                 source_by_ticker[assessment.market_ticker] = specialist_fn(market)
             except Exception:
                 source_by_ticker[assessment.market_ticker] = None
+        # CF1: attach the market's power-ratings divergence evidence, if any.
+        # Fail-closed: a missing fn or a raising one leaves it absent (None),
+        # byte-identical to the feature being off.
+        if divergence_fn is not None:
+            try:
+                divergence_by_ticker[assessment.market_ticker] = divergence_fn(market)
+            except Exception:
+                divergence_by_ticker[assessment.market_ticker] = None
 
     # WS-8: one book-tape row per assessed market (the full universe, not
     # just the shortlist -- CLV grading needs every ticker's price history).
@@ -250,6 +262,9 @@ def run_mispricing_sweep(
         tier = tier_by_ticker.get(assessment.market_ticker)
         if tier is not None:
             assessment = replace(assessment, conviction_tier=tier)
+        divergence = divergence_by_ticker.get(assessment.market_ticker)
+        if divergence is not None:
+            assessment = replace(assessment, power_divergence=divergence)
         if opportunist is not None:
             opportunity = opportunist.observe(assessment)
             if opportunity is not None:

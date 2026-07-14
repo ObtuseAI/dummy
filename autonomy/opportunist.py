@@ -45,6 +45,25 @@ def _favored(model_prob: float) -> tuple[str, float]:
     return ("YES", model_prob) if model_prob >= 0.5 else ("NO", 1.0 - model_prob)
 
 
+def _confirming_divergence(divergence: dict | None, side: str) -> dict | None:
+    """Return the divergence dict iff it CONFIRMS the favored side, else None.
+
+    ``divergence`` is the home-signed power-ratings evidence
+    (``{gap, ...}`` where ``gap = ensemble_margin - our_engine_margin``, positive
+    when the external ensemble is more bullish on the home team than our engine).
+    It confirms a YES (home) lean when ``gap > 0`` and a NO (away) lean when
+    ``gap < 0``; a zero/absent/malformed gap or a counter-signed one is not
+    surfaced. Pure evidence — this never changes the strike decision.
+    """
+    if not divergence:
+        return None
+    gap = divergence.get("gap")
+    if not isinstance(gap, (int, float)) or isinstance(gap, bool) or gap == 0:
+        return None
+    confirms = gap > 0 if side == "YES" else gap < 0
+    return divergence if confirms else None
+
+
 @dataclass
 class Candidate:
     ticker: str
@@ -65,6 +84,10 @@ class Opportunity:
     deviation: float       # how far the price moved against the favored side
     confidence: str
     rationale: str
+    # CF1: power-ratings divergence evidence present at the strike, when the
+    # external-ratings ensemble also disagreed with our engine on this market
+    # (surfaced for review only; it does not gate the strike). None otherwise.
+    power_divergence: dict | None = None
 
 
 class OpportunistEngine:
@@ -129,15 +152,27 @@ class OpportunistEngine:
             and deviation >= self.min_deviation
         ):
             candidate.triggered = True
+            rationale = (
+                f"{candidate.side} conviction {candidate.conviction:.2f}; price "
+                f"dipped {deviation:+.2%} from anchor {candidate.anchor_prob:.2f} to "
+                f"{mid:.2f}, opening {assessment.edge:.2%} edge ({assessment.confidence})"
+            )
+            # CF1: surface a same-side power-ratings divergence as extra evidence
+            # (never a gate -- power_ratings is an unpromoted challenger). The
+            # ensemble confirms the favored side when its home-signed gap points
+            # the same way: YES favored -> gap>0 (ensemble even more bullish on
+            # home), NO favored -> gap<0.
+            divergence = _confirming_divergence(assessment.power_divergence, candidate.side)
+            if divergence is not None:
+                rationale += (
+                    f"; power-ratings ensemble confirms ({divergence['gap']:+.1f} pt gap "
+                    f"vs our engine, sources agree)"
+                )
             return Opportunity(
                 ticker=candidate.ticker, side=candidate.side,
                 conviction=candidate.conviction, anchor_prob=candidate.anchor_prob,
                 entry_prob=mid, edge=assessment.edge, deviation=deviation,
-                confidence=assessment.confidence,
-                rationale=(
-                    f"{candidate.side} conviction {candidate.conviction:.2f}; price "
-                    f"dipped {deviation:+.2%} from anchor {candidate.anchor_prob:.2f} to "
-                    f"{mid:.2f}, opening {assessment.edge:.2%} edge ({assessment.confidence})"
-                ),
+                confidence=assessment.confidence, rationale=rationale,
+                power_divergence=divergence,
             )
         return None
