@@ -44,6 +44,7 @@ from autonomy.sports.live_team_models import (
     NflLiveModel,
     football_minutes_remaining,
     ncaamb_minutes_remaining,
+    parse_football_overtime_state,
 )
 from autonomy.sports.nba_model import (
     MARGIN_SIGMA_BASE as NBA_MARGIN_SIGMA_BASE,
@@ -720,6 +721,7 @@ class TeamSportsIntelligenceSignal:
         ncaaf_elo: EloModel | None = None,
         ncaaf_elo_path: Path | None = None,
         fetch_college_scoreboard: Any = None,
+        fetch_football_summary: Any = None,
         injury_books: dict[str, LeagueInjuryBook] | None = None,
         rookie_book: RookieBook | None = None,
         nfl_rest_tracker: GameDateTracker | None = None,
@@ -800,6 +802,11 @@ class TeamSportsIntelligenceSignal:
         # generic; cached per (league, date) within a cycle.
         self._fetch_college_scoreboard = fetch_college_scoreboard or default_fetch_scoreboard
         self._neutral_site_cache: dict[tuple[str, str], dict[str, bool]] = {}
+        # Overtime possession cannot be recovered safely from score/clock
+        # alone. Fetch the live ESPN summary only for NFL/NCAAF OT and cache
+        # it per event for the cycle; regulation behavior remains unchanged.
+        self._fetch_football_summary = fetch_football_summary or boxscores_module.fetch_summary
+        self._football_summary_cache: dict[tuple[str, str], dict[str, Any]] = {}
         # WS-6: per-league HARD/SOFT availability books (independent of
         # injuries.py's MLB-only InjuryBook -- see players.py's module
         # docstring). One book per league in LEAGUE_SCORE_CONFIGS, refreshed
@@ -1018,10 +1025,28 @@ class TeamSportsIntelligenceSignal:
             model.save(self.model_dir / f"team_scores_{league}.json")
         return updated
 
+    def _football_overtime_state(self, league: str, game: Game):
+        if league not in {"nfl", "ncaaf"} or (game.current_period or 0) <= 4:
+            return None
+        key = (league, game.game_id)
+        if key not in self._football_summary_cache:
+            try:
+                self._football_summary_cache[key] = (
+                    self._fetch_football_summary(league, game.game_id) or {})
+            except Exception:
+                self._football_summary_cache[key] = {}
+        return parse_football_overtime_state(
+            self._football_summary_cache[key],
+            league=league,
+            period=game.current_period,
+            display_clock=game.current_clock,
+        )
+
     def on_cycle_start(self) -> None:
         self.espn.clear_cache()
         self._nhl_probables_cache = {}  # probables/lineups can change day to day
         self._neutral_site_cache = {}  # same -- a schedule's neutral-site flag can change
+        self._football_summary_cache = {}
         # Reload (never retrain) the ncaaf Elo ratings SportsEloSignal keeps
         # warm every cycle -- see this signal's __init__ docstring note.
         try:
@@ -1229,13 +1254,24 @@ class TeamSportsIntelligenceSignal:
         if parsed.sport == "nfl" and nfl_live:
             if game.home_score is None or game.away_score is None:
                 return None
-            minutes_remaining = football_minutes_remaining(
-                game.current_period, game.current_clock)
-            if minutes_remaining is None:
-                return None
-            nfl_live_prediction = self.nfl_live_model.forecast(
-                prediction.expected_home_score, prediction.expected_away_score,
-                game.home_score, game.away_score, minutes_remaining)
+            if (game.current_period or 0) > 4:
+                overtime_state = self._football_overtime_state("nfl", game)
+                if overtime_state is None:
+                    return None
+                nfl_live_prediction = self.nfl_live_model.forecast_overtime(
+                    prediction.expected_home_score, prediction.expected_away_score,
+                    game.home_score, game.away_score, game.home, game.away,
+                    overtime_state)
+                if nfl_live_prediction is None:
+                    return None
+            else:
+                minutes_remaining = football_minutes_remaining(
+                    game.current_period, game.current_clock)
+                if minutes_remaining is None:
+                    return None
+                nfl_live_prediction = self.nfl_live_model.forecast(
+                    prediction.expected_home_score, prediction.expected_away_score,
+                    game.home_score, game.away_score, minutes_remaining)
             margin_model_version = nfl_live_prediction.model_version
 
         # NCAAF winner/spread/total price from its own compound-Poisson
@@ -1283,15 +1319,27 @@ class TeamSportsIntelligenceSignal:
             if ncaaf_live:
                 if game.home_score is None or game.away_score is None:
                     return None
-                minutes_remaining = football_minutes_remaining(
-                    game.current_period, game.current_clock)
-                if minutes_remaining is None:
-                    return None
-                ncaaf_live_prediction = self.ncaaf_live_model.forecast(
-                    ncaaf_prediction.expected_home_score,
-                    ncaaf_prediction.expected_away_score,
-                    game.home_score, game.away_score, minutes_remaining,
-                )
+                if (game.current_period or 0) > 4:
+                    overtime_state = self._football_overtime_state("ncaaf", game)
+                    if overtime_state is None:
+                        return None
+                    ncaaf_live_prediction = self.ncaaf_live_model.forecast_overtime(
+                        ncaaf_prediction.expected_home_score,
+                        ncaaf_prediction.expected_away_score,
+                        game.home_score, game.away_score, game.home, game.away,
+                        overtime_state)
+                    if ncaaf_live_prediction is None:
+                        return None
+                else:
+                    minutes_remaining = football_minutes_remaining(
+                        game.current_period, game.current_clock)
+                    if minutes_remaining is None:
+                        return None
+                    ncaaf_live_prediction = self.ncaaf_live_model.forecast(
+                        ncaaf_prediction.expected_home_score,
+                        ncaaf_prediction.expected_away_score,
+                        game.home_score, game.away_score, minutes_remaining,
+                    )
                 margin_model_version = ncaaf_live_prediction.model_version
 
         # NBA winner/spread/total price from the pace x efficiency engine
@@ -1826,6 +1874,10 @@ class TeamSportsIntelligenceSignal:
                 "home_score": game.home_score if any_live else None,
                 "away_score": game.away_score if any_live else None,
                 "minutes_remaining": live_minutes_remaining,
+                "overtime": bool(getattr(live_report, "overtime", False)),
+                "possession_team": getattr(live_report, "possession_team", None),
+                "overtime_possessions_completed": getattr(
+                    live_report, "overtime_possessions_completed", 0),
                 "expected_home_score": report_home_score,
                 "expected_away_score": report_away_score,
                 "expected_total": report_total,

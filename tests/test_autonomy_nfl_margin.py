@@ -211,6 +211,33 @@ def test_nfl_live_signal_abstains_on_overtime_without_possession_state(tmp_path)
         "KXNFLGAME-26SEP132025KCBUF-KC", "Chiefs vs Bills Winner?")) is None
 
 
+def test_nfl_live_signal_prices_overtime_with_summary_possession_state(tmp_path):
+    client = EspnClient(fetch_scoreboard=lambda _league, _dates: {"events": []})
+    client._cache[("nfl", "20260913")] = [Game(
+        "g1", "nfl", "KC", "BUF", "in", None, "2026-09-13T20:25Z",
+        home_name="Kansas City Chiefs", away_name="Buffalo Bills",
+        home_score=24, away_score=24, current_period=5, current_clock="8:00",
+    )]
+    summary = {"drives": {
+        "previous": [{
+            "team": {"abbreviation": "BUF"},
+            "start": {"period": {"number": 5}},
+        }],
+        "current": {"team": {"abbreviation": "KC"}},
+    }}
+    signal = TeamSportsIntelligenceSignal(
+        espn=client, model_dir=tmp_path,
+        fetch_football_summary=lambda _league, _event: summary,
+    )
+    result = signal.generate(_market(
+        "KXNFLGAME-26SEP132025KCBUF-KC", "Chiefs vs Bills Winner?"))
+    assert result is not None
+    assert result.source == "nfl_live_winner"
+    assert result.features["overtime"] is True
+    assert result.features["possession_team"] == "KC"
+    assert result.features["overtime_possessions_completed"] == 1
+
+
 def test_generic_league_spread_uses_normal_margin(tmp_path):
     signal, _models = _signal_with_game(
         "nba", "LAL", "BOS", "Los Angeles Lakers", "Boston Celtics", tmp_path)

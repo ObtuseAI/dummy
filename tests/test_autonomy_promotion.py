@@ -252,3 +252,51 @@ def test_non_challenger_signal_always_active_regardless_of_registry(tmp_path):
         assert fused is not None and fused.probability_yes > 0.5
     finally:
         ledger.close()
+
+
+def test_reviewed_crypto_candidates_share_correlated_family_precision(tmp_path):
+    """Future human promotion cannot count overlapping candidates as independent."""
+
+    class PromoteAll:
+        @staticmethod
+        def is_promoted_signal(_source, _ticker, _features):
+            return True
+
+    ledger = AutonomyLedger(db_path=tmp_path / "l.db")
+    try:
+        market = _crypto_market()
+
+        def opinion(source: str, probability: float) -> Signal:
+            return Signal(
+                source=source,
+                market_ticker=market.ticker,
+                probability_yes=probability,
+                uncertainty=0.1,
+                rationale="family-pooling fixture",
+                features={"challenger_only": True, "hours_to_close": 26.0},
+            )
+
+        signals = [
+            Signal(
+                source="market_prior", market_ticker=market.ticker,
+                probability_yes=0.5, uncertainty=0.1, rationale="prior",
+            ),
+            opinion("crypto_spot_vol", 0.52),
+            opinion("crypto_blend_sigma", 0.54),
+            opinion("crypto_empirical_regime", 0.56),
+            opinion("crypto_macro_regime", 0.58),
+            opinion("crypto_equities_flow", 0.60),
+        ]
+        fused = EnsembleForecaster(ledger, promotion=PromoteAll()).fuse(market, signals)
+
+        assert fused is not None
+        weights = fused.sources_used
+        assert weights["market_prior"] == pytest.approx(1 / 3, abs=1e-4)
+        assert sum(weights[name] for name in (
+            "crypto_spot_vol", "crypto_blend_sigma", "crypto_empirical_regime",
+        )) == pytest.approx(1 / 3, abs=1e-4)
+        assert sum(weights[name] for name in (
+            "crypto_macro_regime", "crypto_equities_flow",
+        )) == pytest.approx(1 / 3, abs=1e-4)
+    finally:
+        ledger.close()

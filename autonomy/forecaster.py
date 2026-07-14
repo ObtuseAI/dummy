@@ -33,6 +33,16 @@ CRYPTO_FUSED_UNCERTAINTY_FLOOR = 0.08
 SOURCE_FAMILIES = {
     "crypto_spot_vol": "crypto_coinbase_distribution",
     "crypto_ewma_t": "crypto_coinbase_distribution",
+    # Alternate volatility/regime transforms of the same crypto tape are not
+    # independent evidence.  If a human later promotes either challenger,
+    # it must share (not add to) the incumbent distribution family's precision.
+    "crypto_blend_sigma": "crypto_coinbase_distribution",
+    "crypto_empirical_regime": "crypto_coinbase_distribution",
+    # Macro and crypto-equity drifts are distinct feeds but both perturb the
+    # same base crypto distribution as a cross-asset risk-appetite view.  Pool
+    # their precision so approving both cannot manufacture certainty.
+    "crypto_macro_regime": "crypto_cross_asset_drift",
+    "crypto_equities_flow": "crypto_cross_asset_drift",
 }
 
 

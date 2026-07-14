@@ -91,16 +91,26 @@ vertical can never take the council down.
 expose their in-play winner, spread, and total models to the mispricing
 monitor. `EspnSummaryBook` reads one event-summary cache and de-vigs the
 two-way `pickcenter` moneyline, point spread, or over/under. Spread and total
-odds are accepted only when ESPN's current main line exactly equals the Kalshi
-strike; the book abstains on every unmatched alternate rung rather than
-extrapolating one sportsbook line into a distribution.
-NBA/NHL use their existing residual score models. NFL and NCAAF use distinct
-compound-Poisson scoring-event distributions, and NCAAMB uses its own
+odds use the observed de-vigged price when ESPN's current main line exactly
+equals the Kalshi strike. ESPN exposes only one current public main
+spread/total, so unmatched alternate rungs use an explicit league-width normal
+curve anchored to that de-vigged main price. This translation remains
+challenger evidence; malformed or one-sided books still abstain.
+NBA uses its residual score model, while NHL uses a positive-shared-component
+bivariate Poisson that preserves both team marginal goal means and scales the
+shared component down with live time. NFL and NCAAF use distinct
+compound-Poisson regulation distributions, and NCAAMB uses its own
 40-minute/two-half normal remainder model (`autonomy/sports/live_team_models.py`).
 All winner, spread, and total views remain challenger-only and fail closed on
-missing score/period/clock; football overtime abstains because possession and
-league-specific overtime state are not yet modeled. The summary play feed also supplies raw ejection observations when ESPN
-publishes an explicit play. Each observation records the source event time and
+missing score/period/clock. NFL and NCAAF overtime fetch ESPN summary state only
+when the scoreboard enters period 5 or later: `drives.current` identifies the
+possessing team and `drives.previous` proves completed possessions. NFL applies
+the 2025 guaranteed-initial-possession structure followed by sudden death;
+NCAAF keeps the first two alternating possessions separate and switches to
+paired two-point attempts from the third overtime. Missing possession history
+abstains rather than inferring it from the score. The summary play feed also
+supplies raw ejection observations when ESPN publishes an explicit play. Each
+observation records the source event time and
 the monitor's receipt time and is surfaced as opportunist evidence only: it
 does not shift a probability, widen uncertainty, change a strike gate, or
 create execution authority. Article prose is excluded as postgame knowledge.
@@ -115,6 +125,15 @@ use distinct `mlb_pa_live_winner|total|spread` source names and model version
 `mlb_pa_sim_live_v1`, so they accrue a new forward record instead of rewriting
 the incumbent `mlb_live_*` evidence. Missing hydration fails back to the
 incumbent source. All outputs remain challenger-only and human-promotion-only.
+
+**Forward live-evidence accumulation.** The `DummyMispricingMonitor` runs the
+live specialist path every two minutes, while `DummySportsSimulation` runs the
+paper simulation path every ten minutes. They record only naturally occurring,
+point-in-time emissions and later settlements; an inactive league, unmatched
+market, missing possession/lineup state, or empty live slate remains an honest
+zero. Retro rows, synthetic games, and lower-quality substitutes cannot be
+inserted to satisfy an evidence counter. Nightly strategy-mining and readiness
+tasks consume the resulting settled rows without promoting a source.
 
 **Loss attribution.** `autonomy/loss_engine.py` deconstructs settled,
 market-benchmarked forecast history by grading scope and event cluster, surfaces

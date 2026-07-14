@@ -32,10 +32,12 @@ from autonomy.sports.nhl_model import (
     PULLED_GOALIE_MAX_DEFICIT,
     PULLED_GOALIE_TRAILING_MULT,
     ROOKIE_GOALIE_START_THRESHOLD,
+    SHARED_GOAL_FRACTION,
     GoalieBoxscore,
     NhlGoalieState,
     NhlModel,
     away_cover_probability,
+    bivariate_poisson_pmf,
     final_total_pmf,
     goal_split,
     goalie_delta,
@@ -77,21 +79,37 @@ def test_poisson_pmf_matches_hand_computed_value():
     assert poisson_pmf(3, 2.0) == pytest.approx(expected, abs=1e-12)
 
 
-def test_goal_matrix_cell_is_independent_poisson_product_hand_computed():
-    # A single (home=4, away=2) cell against a matrix built from independent
-    # Poissons must equal the hand-multiplied closed-form value -- no
-    # correlation term (documented as deferred in the module docstring).
+def test_goal_matrix_cell_has_positive_shared_component():
     lambda_home, lambda_away = 3.2, 2.7
-    hand = (
-        (math.exp(-lambda_home) * lambda_home ** 4 / math.factorial(4))
-        * (math.exp(-lambda_away) * lambda_away ** 2 / math.factorial(2))
-    )
-    assert poisson_pmf(4, lambda_home) * poisson_pmf(2, lambda_away) == pytest.approx(hand, abs=1e-12)
+    independent = poisson_pmf(4, lambda_home) * poisson_pmf(2, lambda_away)
+    joint = bivariate_poisson_pmf(4, 2, lambda_home, lambda_away)
+    assert joint != pytest.approx(independent, abs=1e-12)
+
+
+def test_bivariate_joint_preserves_marginal_means_and_positive_covariance():
+    home_mean, away_mean = 3.0, 2.5
+    cells = {
+        (h, a): bivariate_poisson_pmf(h, a, home_mean, away_mean)
+        for h in range(16) for a in range(16)
+    }
+    mass = sum(cells.values())
+    observed_home = sum(h * p for (h, _), p in cells.items()) / mass
+    observed_away = sum(a * p for (_, a), p in cells.items()) / mass
+    covariance = sum(
+        (h - observed_home) * (a - observed_away) * p
+        for (h, a), p in cells.items()
+    ) / mass
+    assert observed_home == pytest.approx(home_mean, abs=1e-5)
+    assert observed_away == pytest.approx(away_mean, abs=1e-5)
+    assert covariance == pytest.approx(min(home_mean, away_mean) * SHARED_GOAL_FRACTION, abs=1e-4)
 
 
 def test_goal_split_regulation_tie_matches_hand_summed_diagonal():
     split = goal_split(0, 1.0, 1.0)
-    expected_tie = sum(poisson_pmf(k, 1.0) ** 2 for k in range(GOAL_MATRIX_TRUNCATION + 1))
+    expected_tie = sum(
+        bivariate_poisson_pmf(k, k, 1.0, 1.0)
+        for k in range(GOAL_MATRIX_TRUNCATION + 1)
+    )
     assert split.reg_tie == pytest.approx(expected_tie, abs=1e-9)
 
 
