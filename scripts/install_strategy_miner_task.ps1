@@ -39,17 +39,6 @@ if (-not (Test-Path -LiteralPath $lossEngineScript)) {
 $minerArguments = "`"$minerScript`""
 $graderArguments = "`"$graderScript`""
 $lossEngineArguments = "`"$lossEngineScript`""
-$bootstrapAction = (
-    "cmd /c cd /d $repo && $python $minerArguments && $python $graderArguments" +
-    " && $python $lossEngineArguments"
-)
-
-& schtasks.exe /Create /TN $TaskName /TR $bootstrapAction /SC DAILY `
-    /ST $DailyTime /F | Out-Host
-if ($LASTEXITCODE -ne 0) {
-    throw "schtasks.exe failed with exit code $LASTEXITCODE"
-}
-
 $minerAction = New-ScheduledTaskAction `
     -Execute $python `
     -Argument $minerArguments `
@@ -68,10 +57,15 @@ $settings = New-ScheduledTaskSettingsSet `
     -StartWhenAvailable `
     -AllowStartIfOnBatteries `
     -DontStopIfGoingOnBatteries
-# Task Scheduler runs multiple actions sequentially in array order -> miner
-# first, then grader, then the loss engine.
-Set-ScheduledTask -TaskName $TaskName `
-    -Action @($minerAction, $graderAction, $lossEngineAction) -Settings $settings | Out-Null
+$trigger = New-ScheduledTaskTrigger -Daily -At $DailyTime
+# Register the real action array directly.  The old schtasks.exe bootstrap
+# joined all three commands into /TR and exceeded Windows' 261-character
+# command limit, so a clean machine could never create this task. Task
+# Scheduler runs multiple actions sequentially in array order: miner first,
+# then grader, then loss engine.
+Register-ScheduledTask -TaskName $TaskName `
+    -Action @($minerAction, $graderAction, $lossEngineAction) `
+    -Trigger $trigger -Settings $settings -Force | Out-Null
 
 $task = Get-ScheduledTask -TaskName $TaskName
 $info = Get-ScheduledTaskInfo -TaskName $TaskName
