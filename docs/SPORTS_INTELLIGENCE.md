@@ -55,7 +55,15 @@ Each league's kernel is purpose-built to that sport's real scoring shape
 | NHL goal model + goalie identity | `autonomy/sports/nhl_model.py` | Home/away goals modeled as independent Poisson processes (true bivariate correlation is a documented, deferred gap) over one regulation goal matrix, with an explicit OT/shootout branch since Kalshi settles on final score including overtime. Goalie identity (starts-weighted save percentage) shifts the matchup. |
 | NCAAF kernel + talent-gap Elo | `autonomy/sports/college.py` | Reuses the NFL margin kernel wholesale with a shallower college key-number PMF (spikes ~40% shallower than the NFL table). The margin itself blends season EWMA form with an Elo-derived talent-gap prior, weighted toward Elo early season and toward observed form as games accumulate. |
 | NCAAMB pace model | `autonomy/sports/college.py` | Reuses the NBA pace × efficiency engine wholesale via a college parameter set (different cold-start constants) — same classes, same math, no duplication. |
+| NFL live state | `autonomy/sports/live_team_models.py` | Conditions the pre-game team scoring means on ESPN's observed score and regulation clock through an NFL-specific compound-Poisson scoring-event mix. Winner, spread, and total share the same discrete final-score distribution. |
+| NCAAF live state | `autonomy/sports/live_team_models.py` | A separate compound-Poisson model with a college-specific scoring-event mix and model version; it does not alias the NFL distribution. |
+| NCAAMB live state | `autonomy/sports/live_team_models.py` | A separate 40-minute/two-half residual model with NCAAMB margin/total dispersion. It never reuses NBA's 48-minute/four-quarter clock. |
 | Crypto DVOL | `autonomy/signals/crypto_indicators.py`, `autonomy/crypto_implied_book.py` | The crypto analog of a sports sharp book: Deribit's DVOL implied-volatility index (forward-looking) prices an independent P(YES), triangulated against the champion's realized-vol model (backward-looking) and the Kalshi price. Fail-closed to `model_only` on missing or stale (>6h) DVOL data; challenger-only, excluded from the execution ensemble pending promotion. |
+
+Every live-state model is point-in-time and stateless: it learns only from the
+settled-game pre-game engine, then conditions on the current ESPN observation.
+Missing/invalid scores, period, or clock produce an abstention. NFL/NCAAF
+overtime also abstains until possession-aware overtime rules are modeled.
 
 ## 3×3 conviction lattice
 
@@ -89,6 +97,16 @@ in — it turns a count of currently-questionable players into a bounded
 uncertainty-only burden (long-term IL excluded, saturating past six
 players) and was not touched by the newer, richer layer.
 
+Live ejections are intentionally separate from those pre-game availability
+adjustments. `autonomy/live_odds.py::parse_ejection_events` accepts only
+explicit ESPN `summary.plays` events, preserving the play's wall-clock time,
+period/clock, score, team ID, and participant IDs. The mispricing sweep adds a
+local receipt timestamp and surfaces the observation on shortlist and
+opportunist rows. It never applies a second mean/uncertainty adjustment after
+the live score has already reflected the player's absence. If ESPN publishes
+an ejection only later in article prose, Dummy abstains rather than backfill
+future knowledge into a live decision.
+
 ## Situational engine
 
 `autonomy/sports/situations.py` (WS-7) applies the same HARD/SOFT discipline
@@ -100,6 +118,13 @@ specifically — NBA already has its own tested rest engine inside
 `nba_model.py` that this layer deliberately leaves untouched. Every input is
 fail-closed: a missing feed or an offseason gap yields zero adjustment,
 byte-identical to the layer being disabled.
+
+NFL cycle warmup requests a separate 21-day settled-game lookback for the rest
+tracker, so a daemon outage across a prior game or bye does not silently erase
+the verifiable rest state. Mismatch inputs are normalized in their native
+domains (basketball rest points and NHL goal-rate shifts) before the `tanh`
+gate; point/goal conversion remains a separate bounded output step. This keeps
+the gate reachable without increasing the existing maximum margin adjustment.
 
 ## Football weather
 

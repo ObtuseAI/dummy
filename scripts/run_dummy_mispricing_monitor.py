@@ -108,6 +108,16 @@ def _build():
         except Exception:
             return None
 
+    def ejection_fn(market):
+        # Raw ESPN play observations only. The sweep adds its own receipt
+        # timestamp and carries them as evidence; they never reprice a game or
+        # change opportunist gating (the live score already reflects absence).
+        try:
+            specialist = council.route(market)
+            return specialist.ejection_events(market) if specialist is not None else ()
+        except Exception:
+            return ()
+
     # CF1: the single power-ratings source instance, resolved once. divergence_fn
     # queries ONLY this source rather than re-running the whole registry (which
     # forecast_fn already did this pass) -- a full re-run would re-execute every
@@ -133,7 +143,7 @@ def _build():
         except Exception:
             return None
 
-    return brain, council, forecast_fn, book_fn, specialist_fn, divergence_fn
+    return brain, council, forecast_fn, book_fn, specialist_fn, divergence_fn, ejection_fn
 
 
 FAST_OUT_PATH = Path("runtime/autonomy/mispricing_monitor_fast_latest.json")
@@ -171,7 +181,10 @@ def _persist_council_snapshot(council, report, ticker_specialist, now_iso) -> No
         }))
 
 
-def _one_pass(brain, council, forecast_fn, book_fn, specialist_fn, divergence_fn, opportunist, tape_state) -> dict:
+def _one_pass(
+    brain, council, forecast_fn, book_fn, specialist_fn, divergence_fn,
+    ejection_fn, opportunist, tape_state,
+) -> dict:
     brain.registry.on_cycle_start()  # warm/refresh source caches for this pass
     council.on_cycle_start()  # per-specialist warmup (isolated; failures skip)
     markets = brain.scanner.scan()
@@ -189,6 +202,7 @@ def _one_pass(brain, council, forecast_fn, book_fn, specialist_fn, divergence_fn
     report = run_mispricing_sweep(
         markets, forecast_fn, now_iso=now_iso, book_fn=book_fn, opportunist=opportunist,
         specialist_fn=specialist_fn, divergence_fn=divergence_fn,
+        ejection_fn=ejection_fn,
     )
     _persist_evidence(report, tape_state)
     _persist_council_snapshot(council, report, ticker_specialist, now_iso)
@@ -258,7 +272,10 @@ def main() -> int:
                         help="seconds between crypto micro-passes (with --crypto-fast)")
     args = parser.parse_args()
 
-    brain, council, forecast_fn, book_fn, specialist_fn, divergence_fn = _build()
+    (
+        brain, council, forecast_fn, book_fn, specialist_fn, divergence_fn,
+        ejection_fn,
+    ) = _build()
     opportunist = OpportunistEngine()  # stateful across passes within this process
     crypto_scanner = _crypto_scanner(brain)
     # WS-8: last-row-per-ticker tape index, carried across passes (both the
@@ -271,7 +288,7 @@ def main() -> int:
         try:
             report = _one_pass(
                 brain, council, forecast_fn, book_fn, specialist_fn, divergence_fn,
-                opportunist, tape_state)
+                ejection_fn, opportunist, tape_state)
             print(json.dumps({
                 "status": "OK",
                 "scanned": report["scanned"],

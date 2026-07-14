@@ -84,6 +84,10 @@ class MispricingAssessment:
     # opportunist gating while power_ratings remains an unpromoted challenger.
     # Absent/None is byte-identical to the field never existing.
     power_divergence: dict[str, Any] | None = None
+    # Raw, receipt-timestamped ESPN play observations for live ejections.
+    # Evidence only: these never change probability, side, edge, agreement,
+    # confidence, uncertainty, or any execution/promotion decision.
+    ejection_events: tuple[dict[str, Any], ...] = ()
 
 
 def _implied_yes_from_quotes(

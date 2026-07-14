@@ -197,6 +197,20 @@ LEAGUE_POINT_SCALE: dict[str, float] = {
     "nhl": 2.0,
 }
 
+# Source-domain scales for ``bounded_mismatch_score``.  These are NOT point
+# spreads: NBA/NCAAMB feed rest-adjustment points capped around +/-2, while
+# NHL feeds special-team goal shifts capped at +/-0.15 per side.  The old
+# implementation divided those already-bounded inputs by the much larger
+# final-score ``LEAGUE_POINT_SCALE`` (12/11/2), making |tanh(.)| > 0.5
+# mathematically unreachable in normal operation and leaving the mismatch
+# challenger inert.  Keep the input normalization in its native domain; only
+# ``mismatch_margin_shift`` converts a fired score into league points/goals.
+MISMATCH_INPUT_SCALE: dict[str, float] = {
+    "nba": 2.0,
+    "ncaamb": 2.0,
+    "nhl": 0.25,
+}
+
 # Defensive cap on total hard-margin points per team (2x the league's own QB/
 # DEFAULT weight) so a pathologically injury-riddled payload can't produce an
 # unbounded mean shift. Never binds on the single-QB key test.

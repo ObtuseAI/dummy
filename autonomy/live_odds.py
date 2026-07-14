@@ -44,11 +44,15 @@ becomes "post" instead of an in-progress one):
 """
 from __future__ import annotations
 
+import re
 from typing import Any, Callable
 
 from autonomy.signals.sportsbook import devig_two_way
 from autonomy.sports.baseball import base_state_key
 from autonomy.sports.espn import LEAGUE_TO_ESPN, _american
+
+
+_EJECTION_PATTERN = re.compile(r"\b(?:eject(?:ed|ion|ions)?|disqualified)\b", re.IGNORECASE)
 
 
 def devig_summary_home_probability(summary: dict[str, Any] | None) -> float | None:
@@ -91,6 +95,77 @@ def parse_base_out_state(summary: dict[str, Any] | None) -> tuple[str, int] | No
     if not plays:
         return None
     return _base_state_from_play(plays[-1])
+
+
+def parse_ejection_events(summary: dict[str, Any] | None) -> tuple[dict[str, Any], ...]:
+    """Raw ejection observations from ESPN's point-in-time play feed.
+
+    Only ``summary.plays`` is inspected. Postgame article prose is deliberately
+    excluded because it may be published after the fact and cannot establish
+    that an ejection was knowable during the game. Missing/malformed plays
+    simply produce an empty tuple (fail closed).
+
+    Public read-only probe (NBA event 401585677, 2024-03-27): play 50 carries
+    ``type.text == \"Ejection\"``, ``text == \"Draymond Green ejected\"``, a
+    source wall-clock timestamp, team/participant IDs, period, clock, and the
+    score at observation time. MLB event 401814825 demonstrated the opposite
+    case: its manager ejection appeared in article prose but not in ``plays``,
+    so this parser correctly abstains rather than backfill postgame knowledge.
+    """
+    if not isinstance(summary, dict):
+        return ()
+    observations: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for play in (summary or {}).get("plays", []) or []:
+        if not isinstance(play, dict):
+            continue
+        play_type = play.get("type") or {}
+        if not isinstance(play_type, dict):
+            play_type = {}
+        text = str(play.get("text") or play.get("shortDescription") or "").strip()
+        type_text = str(play_type.get("text") or "").strip()
+        if not _EJECTION_PATTERN.search(f"{type_text} {text}"):
+            continue
+
+        play_id = str(play.get("id") or play.get("sequenceNumber") or "").strip()
+        dedupe_key = play_id or f"{type_text}|{text}"
+        if dedupe_key in seen:
+            continue
+        seen.add(dedupe_key)
+
+        period = play.get("period") or {}
+        clock = play.get("clock") or {}
+        team = play.get("team") or {}
+        if not isinstance(period, dict):
+            period = {}
+        if not isinstance(clock, dict):
+            clock = {}
+        if not isinstance(team, dict):
+            team = {}
+        participant_ids: list[str] = []
+        participants = play.get("participants") or []
+        if isinstance(participants, (list, tuple)):
+            for participant in participants:
+                if not isinstance(participant, dict):
+                    continue
+                athlete = participant.get("athlete") or {}
+                if isinstance(athlete, dict) and athlete.get("id") is not None:
+                    participant_ids.append(str(athlete["id"]))
+        observations.append({
+            "event_type": "ejection",
+            "source": "espn_summary_plays",
+            "play_id": play_id or None,
+            "sequence_number": str(play.get("sequenceNumber") or "") or None,
+            "source_event_time": play.get("wallclock"),
+            "text": text or type_text or "Ejection",
+            "team_id": str(team.get("id")) if team.get("id") is not None else None,
+            "participant_ids": tuple(participant_ids),
+            "period": period.get("number"),
+            "clock": clock.get("displayValue"),
+            "home_score": play.get("homeScore"),
+            "away_score": play.get("awayScore"),
+        })
+    return tuple(observations)
 
 
 def default_fetch_summary(league: str, event_id: str) -> dict[str, Any]:
@@ -148,3 +223,9 @@ class EspnSummaryBook:
         if not event_id:
             return None
         return parse_base_out_state(self._summary(event_id))
+
+    def ejection_events(self, event_id: str | None) -> tuple[dict[str, Any], ...]:
+        """Raw live ejection observations for an event, or an empty tuple."""
+        if not event_id:
+            return ()
+        return parse_ejection_events(self._summary(event_id))

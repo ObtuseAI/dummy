@@ -11,8 +11,8 @@ from autonomy.signals.sports_intelligence import (
     parse_sports_contract,
 )
 from autonomy.sports.espn import EspnClient, Game
+from autonomy.sports.live_team_models import NFL_LIVE_MODEL_VERSION
 from autonomy.sports.nfl_margin import (
-    BASE_ABS_MARGIN_PMF,
     NflMarginModel,
     margin_distribution,
     spread_cover_probability,
@@ -159,6 +159,56 @@ def test_nfl_spread_and_winner_price_from_the_kernel(tmp_path):
         "Kansas City Chiefs vs Buffalo Bills Spread", floor_strike=0.5))
     assert cover_05 is not None
     assert winner.probability_yes >= cover_05.probability_yes  # tie mass split
+
+
+def test_nfl_live_signal_prices_winner_spread_total_from_one_state_model(tmp_path):
+    client = EspnClient(fetch_scoreboard=lambda _league, _dates: {"events": []})
+    game = Game(
+        "g1", "nfl", "KC", "BUF", "in", None, "2026-09-13T20:25Z",
+        home_name="Kansas City Chiefs", away_name="Buffalo Bills",
+        home_score=20, away_score=17, current_period=4, current_clock="2:00",
+    )
+    client._cache[("nfl", "20260913")] = [game]
+    models = {key: TeamScoreModel(key) for key in LEAGUE_SCORE_CONFIGS}
+
+    class _AlwaysActive:
+        def active(self, _league):
+            return True
+
+    signal = TeamSportsIntelligenceSignal(
+        espn=client, models=models, model_dir=tmp_path, seasons=_AlwaysActive(),
+    )
+    winner = signal.generate(_market(
+        "KXNFLGAME-26SEP132025KCBUF-KC", "Chiefs vs Bills Winner?"))
+    spread = signal.generate(_market(
+        "KXNFLSPREAD-26SEP132025KCBUF-KC1",
+        "Kansas City Chiefs vs Buffalo Bills Spread", floor_strike=0.5))
+    total = signal.generate(_market(
+        "KXNFLTOTAL-26SEP132025KCBUF", "Chiefs vs Bills Total Points",
+        floor_strike=40.5))
+
+    assert winner is not None and spread is not None and total is not None
+    assert winner.source == "nfl_live_winner"
+    assert spread.source == "nfl_live_spread"
+    assert total.source == "nfl_live_total"
+    for result in (winner, spread, total):
+        assert result.features["live"] is True
+        assert result.features["live_model_version"] == NFL_LIVE_MODEL_VERSION
+        assert result.features["minutes_remaining"] == pytest.approx(2.0)
+        assert result.features["expected_scores_post_shift"] is True
+    assert winner.probability_yes >= spread.probability_yes
+
+
+def test_nfl_live_signal_abstains_on_overtime_without_possession_state(tmp_path):
+    client = EspnClient(fetch_scoreboard=lambda _league, _dates: {"events": []})
+    client._cache[("nfl", "20260913")] = [Game(
+        "g1", "nfl", "KC", "BUF", "in", None, "2026-09-13T20:25Z",
+        home_name="Kansas City Chiefs", away_name="Buffalo Bills",
+        home_score=24, away_score=24, current_period=5, current_clock="8:00",
+    )]
+    signal = TeamSportsIntelligenceSignal(espn=client, model_dir=tmp_path)
+    assert signal.generate(_market(
+        "KXNFLGAME-26SEP132025KCBUF-KC", "Chiefs vs Bills Winner?")) is None
 
 
 def test_generic_league_spread_uses_normal_margin(tmp_path):

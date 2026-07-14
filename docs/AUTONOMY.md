@@ -80,12 +80,27 @@ Council build-out (WS-8, WS-9, WS-14, WS-15). Every vertical — MLB, NBA, NFL,
 NCAAF, NHL, NCAAMB, and crypto — is owned end-to-end by its own subagent
 behind one protocol (`autonomy/specialists/base.py`: `Specialist` /
 `SpecialistRegistry`): `applicable`/`forecast`/`live_forecast`/`book`/
-`on_cycle_start`/`health`. `autonomy/specialists/factory.py` assembles the
+`ejection_events`/`on_cycle_start`/`health`. `autonomy/specialists/factory.py` assembles the
 registry over the brain's already-registered signal instances (no second copy
 of the model state); registration order is routing order, and series prefixes
 are disjoint by design so at most one specialist ever claims a market. A
 specialist that raises during routing or warmup is skipped — one broken
 vertical can never take the council down.
+
+**Live team-sport triangulation.** MLB and all five team-league specialists
+expose their in-play winner models to the mispricing monitor. For live winner
+contracts, `EspnSummaryBook` reads the same event-summary cache and de-vigs the
+two-way `pickcenter` moneyline; it is never reused as a spread/total book.
+NBA/NHL use their existing residual score models. NFL and NCAAF use distinct
+compound-Poisson scoring-event distributions, and NCAAMB uses its own
+40-minute/two-half normal remainder model (`autonomy/sports/live_team_models.py`).
+All winner, spread, and total views remain challenger-only and fail closed on
+missing score/period/clock; football overtime abstains because possession and
+league-specific overtime state are not yet modeled. The summary play feed also supplies raw ejection observations when ESPN
+publishes an explicit play. Each observation records the source event time and
+the monitor's receipt time and is surfaced as opportunist evidence only: it
+does not shift a probability, widen uncertainty, change a strike gate, or
+create execution authority. Article prose is excluded as postgame knowledge.
 
 **Season gating.** `autonomy/specialists/seasons.py`'s `SeasonMonitor` decides
 whether a league is active from ESPN's own scoreboard (any game inside a

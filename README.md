@@ -64,7 +64,11 @@ by its own specialist subagent behind one protocol — pre-game forecast,
 in-play view, independent sharp "book" estimator, feed warmup, and health
 (`autonomy/specialists/`). Routing is disjoint (one market, one specialist)
 and every specialist fails closed: missing data means abstain, never a
-degraded guess. Leagues auto-wake/sleep with their real season (ESPN
+degraded guess. NBA/NHL plus separate NFL, NCAAF, and NCAAMB live-state
+models expose in-play winner/spread/total views; the de-vigged ESPN
+event-summary moneyline supplies the independent live winner leg. Explicit
+ESPN play-by-play ejections are receipt-timestamped, evidence-only opportunist
+context and never double-adjust the live score. Leagues auto-wake/sleep with their real season (ESPN
 scoreboard window, no hardcoded calendar), CLV-vs-closing-line and
 settlement-backed contested Brier both accrue per specialist as challenger
 evidence, and a human-gated propose-then-promote pipeline is the only way

@@ -29,6 +29,13 @@ from autonomy.sports.elo import EloModel
 from autonomy.sports.espn import EspnClient, Game, canonical_team, default_fetch_scoreboard
 from autonomy.sports.football_weather import default_fetch_football_weather, football_weather_adjustment
 from autonomy.sports.injuries import InjuryBook
+from autonomy.sports.live_team_models import (
+    NcaafLiveModel,
+    NcaambLiveModel,
+    NflLiveModel,
+    football_minutes_remaining,
+    ncaamb_minutes_remaining,
+)
 from autonomy.sports.nba_model import (
     MARGIN_SIGMA_BASE as NBA_MARGIN_SIGMA_BASE,
     MODEL_VERSION as NBA_MODEL_VERSION,
@@ -52,7 +59,6 @@ from autonomy.sports.nhl_model import (
     parse_probable_goalies,
 )
 from autonomy.sports.power_ratings import (
-    ConsensusMargin,
     EloSource,
     EspnBpiSource,
     EspnFpiSource,
@@ -61,6 +67,7 @@ from autonomy.sports.power_ratings import (
 from autonomy.sports.ratings_solvers import ColleyRatingSource, MasseyRatingSource
 from autonomy.sports.players import (
     LEAGUE_POINT_SCALE,
+    MISMATCH_INPUT_SCALE,
     LeagueInjuryBook,
     RookieBook,
     TeamAvailability,
@@ -92,6 +99,12 @@ from autonomy.sports.team_scores import LEAGUE_SCORE_CONFIGS, TeamScoreModel
 NBA_BOXSCORE_FETCH_BUDGET = 16
 NHL_BOXSCORE_FETCH_BUDGET = 16
 NCAAMB_BOXSCORE_FETCH_BUDGET = 16
+# A daemon can be down longer than the generic two-day warm window.  NFL bye
+# detection needs the last settled game, so hydrate a bounded three-week
+# schedule window each active cycle; GameDateTracker remains settlement-only
+# and idempotent.  Twenty-one days covers a normal week plus a bye with room
+# for a missed cycle without turning warmup into a season backfill.
+NFL_REST_LOOKBACK_DAYS = 21
 
 MODEL_DIR = Path("runtime/autonomy")
 # WS-4: shared with autonomy/signals/sports_elo.py's own ELO_DIR -- this
@@ -584,6 +597,9 @@ class TeamSportsIntelligenceSignal:
         playoff_books: dict[str, PlayoffBook] | None = None,
         roster_drift_books: dict[str, RosterDriftBook] | None = None,
         fetch_football_weather: Any = None,
+        nfl_live_model: NflLiveModel | None = None,
+        ncaaf_live_model: NcaafLiveModel | None = None,
+        ncaamb_live_model: NcaambLiveModel | None = None,
     ) -> None:
         from autonomy.specialists.seasons import SeasonMonitor
 
@@ -702,6 +718,13 @@ class TeamSportsIntelligenceSignal:
         # from the "total" market branch below -- winner/spread pricing
         # never touches it, so it's never invoked for those market types.
         self._fetch_football_weather = fetch_football_weather or default_fetch_football_weather
+        # League-specific live-state challengers.  They are stateless and
+        # consume only the point-in-time Game score/clock plus the already-
+        # built pre-game prediction; no live observation ever enters model
+        # learning or persistence.
+        self.nfl_live_model = nfl_live_model or NflLiveModel()
+        self.ncaaf_live_model = ncaaf_live_model or NcaafLiveModel()
+        self.ncaamb_live_model = ncaamb_live_model or NcaambLiveModel()
 
     def _warmup_nba(self, date_ranges: list[str]) -> int:
         """Ingest WS-1 boxscores + update the NBA pace model for newly-final
@@ -923,9 +946,17 @@ class TeamSportsIntelligenceSignal:
                     # today's slate only -- reuses `league_games`/`league_teams`
                     # computed above (same cache hit, no extra fetch).
                     self.rookie_book.refresh(league_teams)
-                    # WS-7: shared rest tracker, same settlement-only gate as NHL.
+                    # WS-7 repair: hydrate a bounded window long enough to
+                    # include the pre-bye game even when the daemon missed
+                    # one or more cycles.  The former two-day-only window
+                    # silently left the tracker empty and then treated the
+                    # missing history as a genuine no-bye state (+1.0 mean
+                    # failed open).  GameDateTracker.update still accepts
+                    # completed finals only and is idempotent by game id.
+                    nfl_rest_games = self.espn.games(
+                        "nfl", _date_range(NFL_REST_LOOKBACK_DAYS))
                     nfl_updated = False
-                    for game in league_games:
+                    for game in nfl_rest_games:
                         nfl_updated = self.nfl_rest_tracker.update(game) or nfl_updated
                     if nfl_updated:
                         self.nfl_rest_tracker.save(self.model_dir / "situations_rest_nfl.json")
@@ -981,8 +1012,8 @@ class TeamSportsIntelligenceSignal:
         hard_margin_delta = player_effect.hard_margin_delta
         # WS-7: HARD rest states (NFL bye/Thursday-short-week, NHL back-to-
         # back), computed unconditionally so the miner always sees the state
-        # even when a later gate (NHL's live branch, see nba_live/nhl_live
-        # below) skips APPLYING it to price. Every other league has no
+        # even when a later live gate below skips APPLYING it to price.
+        # Every other league has no
         # tracker wired at all (situations.py deliberately leaves NBA's own
         # in-model rest engine untouched -- see its module docstring), so
         # this is a genuine 0.0/no-op there, fail-closed.
@@ -1028,14 +1059,16 @@ class TeamSportsIntelligenceSignal:
         # source metric wired), and a COLD nba/nhl/ncaamb game (no warm
         # engine yet) correctly stays "unavailable" too.
         mismatch_unavailable = True
-        # NBA and NHL alone carry an in-play branch (WS-2/WS-3); every other
-        # league in this signal stays pre-game only, unchanged from before WS-2.
+        # League-specific in-play branches.  A live flag is true only when
+        # ESPN marks the game in progress; every branch below additionally
+        # requires a parseable score/period/clock and otherwise abstains.
         nba_live = parsed.sport == "nba" and game.status == "in"
         nhl_live = parsed.sport == "nhl" and game.status == "in"
-        if parsed.sport in ("nba", "nhl"):
-            if game.status not in ("pre", "in"):
-                return None
-        elif game.status != "pre":
+        nfl_live = parsed.sport == "nfl" and game.status == "in"
+        ncaaf_live = parsed.sport == "ncaaf" and game.status == "in"
+        ncaamb_live = parsed.sport == "ncaamb" and game.status == "in"
+        any_live = nba_live or nhl_live or nfl_live or ncaaf_live or ncaamb_live
+        if game.status not in ("pre", "in"):
             return None
         prediction = self.models[parsed.sport].predict(game)
         # NFL winner/spread price from the key-number margin kernel (mass at
@@ -1043,6 +1076,7 @@ class TeamSportsIntelligenceSignal:
         # winner cell and every spread rung share ONE tilted distribution,
         # so the 3x3 lattice's margin column is coherent by construction.
         nfl_kernel = None
+        nfl_live_prediction = None
         margin_model_version = None
         if parsed.sport == "nfl" and parsed.market_type in ("winner", "spread"):
             from autonomy.sports.nfl_margin import NflMarginModel
@@ -1055,11 +1089,24 @@ class TeamSportsIntelligenceSignal:
             # delta_margin == 0.0 is a literal no-op (both scores
             # unchanged), so a healthy/rested roster is byte-identical to
             # before WS-6/WS-7.
+            nfl_pregame_delta = (
+                0.0 if nfl_live else hard_margin_delta + situational_margin_delta)
             adj_home_score, adj_away_score = apply_margin_shift_to_scores(
                 prediction.expected_home_score, prediction.expected_away_score,
-                hard_margin_delta + situational_margin_delta)
+                nfl_pregame_delta)
             nfl_kernel = NflMarginModel(adj_home_score, adj_away_score)
             margin_model_version = "nfl_key_number_kernel_v1"
+        if parsed.sport == "nfl" and nfl_live:
+            if game.home_score is None or game.away_score is None:
+                return None
+            minutes_remaining = football_minutes_remaining(
+                game.current_period, game.current_clock)
+            if minutes_remaining is None:
+                return None
+            nfl_live_prediction = self.nfl_live_model.forecast(
+                prediction.expected_home_score, prediction.expected_away_score,
+                game.home_score, game.away_score, minutes_remaining)
+            margin_model_version = nfl_live_prediction.model_version
 
         # NCAAF winner/spread price from the college key-number kernel
         # (WS-4) -- reuses nfl_margin.py's tilted-PMF machinery wholesale
@@ -1071,6 +1118,7 @@ class TeamSportsIntelligenceSignal:
         # rather than needing a cold gate (see college.py::talent_gap_margin).
         ncaaf_kernel = None
         ncaaf_prediction = None
+        ncaaf_live_prediction = None
         if parsed.sport == "ncaaf":
             dates = (game.date or "")[:10].replace("-", "")
             neutral_lookup = self._neutral_site_for("ncaaf", dates) if dates else {}
@@ -1085,16 +1133,36 @@ class TeamSportsIntelligenceSignal:
             # directly (not raw home/away scores) -- rebuild the kernel with
             # margin + hard_margin_delta; expected_total is untouched, so
             # this is an exact shift of the margin only, same as NFL's.
-            # `ncaaf_prediction` (used for reporting/uncertainty) is left
-            # pointing at the pre-shift kernel's numbers on purpose -- the
-            # shift itself is separately logged via hard_margin_delta.
-            if hard_margin_delta != 0.0:
+            # Rebuild the immutable reporting prediction alongside the
+            # kernel so expected-score evidence is post-shift too; otherwise
+            # the displayed mean and the priced probability disagree.
+            if hard_margin_delta != 0.0 and not ncaaf_live:
                 from autonomy.sports.college import NcaafCollegeModel
 
                 ncaaf_kernel = NcaafCollegeModel(
                     ncaaf_kernel.expected_margin + hard_margin_delta,
                     ncaaf_kernel.expected_total, ncaaf_kernel.total_sigma,
                 )
+                ncaaf_prediction = replace(
+                    ncaaf_prediction,
+                    home_win_probability=ncaaf_kernel.home_win_probability(),
+                    expected_home_score=ncaaf_kernel.expected_home_score,
+                    expected_away_score=ncaaf_kernel.expected_away_score,
+                    expected_margin=ncaaf_kernel.expected_margin,
+                )
+            if ncaaf_live:
+                if game.home_score is None or game.away_score is None:
+                    return None
+                minutes_remaining = football_minutes_remaining(
+                    game.current_period, game.current_clock)
+                if minutes_remaining is None:
+                    return None
+                ncaaf_live_prediction = self.ncaaf_live_model.forecast(
+                    ncaaf_prediction.expected_home_score,
+                    ncaaf_prediction.expected_away_score,
+                    game.home_score, game.away_score, minutes_remaining,
+                )
+                margin_model_version = ncaaf_live_prediction.model_version
 
         # NBA winner/spread/total price from the pace x efficiency engine
         # (WS-2) once WS-1's BoxscoreStore has >= MIN_GAMES_FOR_ENGINE games
@@ -1129,7 +1197,7 @@ class TeamSportsIntelligenceSignal:
                 # signal -- see players.py's module docstring probe #3.)
                 mismatch_score = bounded_mismatch_score(
                     nba_prediction.rest_adjustment_home, nba_prediction.rest_adjustment_away,
-                    LEAGUE_POINT_SCALE["nba"],
+                    MISMATCH_INPUT_SCALE["nba"],
                 )
                 mismatch_delta = mismatch_margin_shift(mismatch_score, LEAGUE_POINT_SCALE["nba"])
                 mismatch_unavailable = False
@@ -1170,7 +1238,7 @@ class TeamSportsIntelligenceSignal:
                 # units) -- bounded/symmetric via bounded_mismatch_score.
                 mismatch_score = bounded_mismatch_score(
                     nhl_prediction.special_teams_shift_home, nhl_prediction.special_teams_shift_away,
-                    LEAGUE_POINT_SCALE["nhl"],
+                    MISMATCH_INPUT_SCALE["nhl"],
                 )
                 mismatch_delta = mismatch_margin_shift(mismatch_score, LEAGUE_POINT_SCALE["nhl"])
                 mismatch_unavailable = False
@@ -1189,10 +1257,15 @@ class TeamSportsIntelligenceSignal:
         # edge via the same neutralSite flag lookup as NCAAF above.
         ncaamb_engine = None
         ncaamb_prediction = None
+        ncaamb_live_prediction = None
         ncaamb_neutral_site = None
         if parsed.sport == "ncaamb":
+            if ncaamb_live and (game.home_score is None or game.away_score is None):
+                return None
             home_abbr, away_abbr = game.home.upper(), game.away.upper()
             warm = nba_is_warm(self.ncaamb_boxscores, home_abbr, away_abbr)
+            if ncaamb_live and not warm:
+                return None
             if warm:
                 ncaamb_engine = self.ncaamb_model
                 dates = (game.date or "")[:10].replace("-", "")
@@ -1204,10 +1277,23 @@ class TeamSportsIntelligenceSignal:
                 # NbaPrediction dataclass, NCAAMB_PARAMS-parameterized).
                 mismatch_score = bounded_mismatch_score(
                     ncaamb_prediction.rest_adjustment_home, ncaamb_prediction.rest_adjustment_away,
-                    LEAGUE_POINT_SCALE["ncaamb"],
+                    MISMATCH_INPUT_SCALE["ncaamb"],
                 )
                 mismatch_delta = mismatch_margin_shift(mismatch_score, LEAGUE_POINT_SCALE["ncaamb"])
                 mismatch_unavailable = False
+                if ncaamb_live:
+                    minutes_remaining = ncaamb_minutes_remaining(
+                        game.current_period, game.current_clock)
+                    if minutes_remaining is None:
+                        return None
+                    ncaamb_live_prediction = self.ncaamb_live_model.forecast(
+                        ncaamb_prediction.expected_home_score,
+                        ncaamb_prediction.expected_away_score,
+                        ncaamb_prediction.margin_sigma,
+                        ncaamb_prediction.total_sigma,
+                        game.home_score, game.away_score, minutes_remaining,
+                    )
+                    margin_model_version = ncaamb_live_prediction.model_version
 
         # Report numbers from whichever model actually priced this signal
         # (NbaModel/NhlModel/NCAAMB's NbaModel when warm, the college NCAAF
@@ -1225,6 +1311,45 @@ class TeamSportsIntelligenceSignal:
             report = ncaaf_prediction
         else:
             report = prediction
+
+        # Reporting must describe the same mean that the probability path
+        # consumed.  WS-6 previously shifted probabilities for hard
+        # availability/rest/mismatch while leaving expected-score fields at
+        # their pre-shift values, corrupting the evidence row.  Keep the
+        # model object immutable and derive explicit post-shift display
+        # values here.  Live branches instead report their score-conditioned
+        # expected finals and apply no pre-game mean delta a second time.
+        report_home_score = float(report.expected_home_score)
+        report_away_score = float(report.expected_away_score)
+        report_total = float(report.expected_total)
+        expected_score_margin_delta = 0.0
+        live_report = (
+            nfl_live_prediction or ncaaf_live_prediction or ncaamb_live_prediction)
+        if live_report is not None:
+            report_home_score = float(live_report.expected_home_score)
+            report_away_score = float(live_report.expected_away_score)
+            report_total = float(live_report.expected_total)
+        elif not any_live:
+            if parsed.sport == "nfl":
+                expected_score_margin_delta = hard_margin_delta + situational_margin_delta
+            elif parsed.sport == "ncaaf":
+                expected_score_margin_delta = hard_margin_delta
+            elif parsed.sport in ("nba", "nhl", "ncaamb"):
+                expected_score_margin_delta = (
+                    hard_margin_delta + mismatch_delta + situational_margin_delta)
+            # NCAAF's immutable reporting prediction was replaced alongside
+            # its rebuilt kernel above, so its hard shift is already present.
+            if expected_score_margin_delta != 0.0 and parsed.sport != "ncaaf":
+                report_home_score, report_away_score = apply_margin_shift_to_scores(
+                    report_home_score, report_away_score, expected_score_margin_delta)
+                report_total = report_home_score + report_away_score
+        live_minutes_remaining = None
+        if live_report is not None:
+            live_minutes_remaining = float(live_report.minutes_remaining)
+        elif nba_live_state is not None:
+            live_minutes_remaining = float(nba_live_state[2])
+        elif nhl_live_state is not None:
+            live_minutes_remaining = float(nhl_live_state[2])
 
         # WS-10: NFL/NCAAF outdoor-weather TOTALS-only mean shift. Populated
         # ONLY inside the "total" branch below for parsed.sport in
@@ -1247,7 +1372,7 @@ class TeamSportsIntelligenceSignal:
                     nba_prediction, home_score, away_score, minutes_remaining)
                 source = "nba_live_winner"
                 detail = f"{subject} live win ({away_score}-{home_score}, period {game.current_period})"
-                uncertainty = min(0.45, prediction.winner_uncertainty + 0.05)
+                uncertainty = min(0.45, nba_prediction.winner_uncertainty + 0.05)
             elif nhl_engine is not None and nhl_live_state is not None:
                 home_score, away_score, minutes_remaining = nhl_live_state
                 home_win = nhl_engine.live_win_probability_for(
@@ -1255,6 +1380,27 @@ class TeamSportsIntelligenceSignal:
                 source = "nhl_live_winner"
                 detail = f"{subject} live win ({away_score}-{home_score}, period {game.current_period})"
                 uncertainty = min(0.45, nhl_prediction.winner_uncertainty + 0.05)
+            elif nfl_live_prediction is not None:
+                home_win = nfl_live_prediction.home_win_probability
+                source = "nfl_live_winner"
+                detail = (
+                    f"{subject} live win ({game.away_score}-{game.home_score}, "
+                    f"period {game.current_period})")
+                uncertainty = min(0.45, prediction.winner_uncertainty + 0.06)
+            elif ncaaf_live_prediction is not None:
+                home_win = ncaaf_live_prediction.home_win_probability
+                source = "ncaaf_live_winner"
+                detail = (
+                    f"{subject} live win ({game.away_score}-{game.home_score}, "
+                    f"period {game.current_period})")
+                uncertainty = min(0.45, ncaaf_prediction.winner_uncertainty + 0.07)
+            elif ncaamb_live_prediction is not None:
+                home_win = ncaamb_live_prediction.home_win_probability
+                source = "ncaamb_live_winner"
+                detail = (
+                    f"{subject} live win ({game.away_score}-{game.home_score}, "
+                    f"period {game.current_period})")
+                uncertainty = min(0.45, ncaamb_prediction.winner_uncertainty + 0.05)
             else:
                 if nba_engine is not None:
                     home_win = nba_prediction.home_win_probability
@@ -1276,7 +1422,9 @@ class TeamSportsIntelligenceSignal:
                 # actually priced this signal); ncaaf's kernel is never
                 # "cold" the way NBA/NHL/NCAAMB can be (see the talent-gap
                 # blend above), so it always reports its own uncertainty.
-                if nhl_engine is not None:
+                if nba_engine is not None:
+                    uncertainty = nba_prediction.winner_uncertainty
+                elif nhl_engine is not None:
                     uncertainty = nhl_prediction.winner_uncertainty
                 elif ncaamb_engine is not None:
                     uncertainty = ncaamb_prediction.winner_uncertainty
@@ -1291,13 +1439,12 @@ class TeamSportsIntelligenceSignal:
             # nudge the already-computed probability via a bounded logit-
             # space shift instead (see players.shift_probability_by_margin
             # -- an exact no-op when the combined delta is 0.0).
-            # Pre-game only: once nba_live/nhl_live's `live_win_probability_for`
-            # is pricing off the actual live score, the injured player's
+            # Pre-game only: once a league-specific live model is pricing
+            # off the actual live score, the injured player's
             # absence is already baked into that score -- re-applying the
             # pre-game availability/mismatch delta here would double-count
-            # it. NCAAMB has no live path (nba_live/nhl_live are always False
-            # for it), so it keeps the shift unconditionally, same as before.
-            if parsed.sport in ("nba", "nhl", "ncaamb") and not (nba_live or nhl_live):
+            # it.  Every live league skips this second adjustment.
+            if parsed.sport in ("nba", "nhl", "ncaamb") and not any_live:
                 probability = shift_probability_by_margin(
                     probability, hard_margin_delta + mismatch_delta + situational_margin_delta,
                     LEAGUE_POINT_SCALE[parsed.sport], subject_is_home,
@@ -1317,7 +1464,7 @@ class TeamSportsIntelligenceSignal:
                     home_score, away_score, minutes_remaining)
                 source = "nba_live_spread"
                 detail = f"{subject} live by >{parsed.threshold:g} (period {game.current_period})"
-                uncertainty = min(0.45, prediction.winner_uncertainty + 0.07)
+                uncertainty = min(0.45, nba_prediction.winner_uncertainty + 0.07)
             elif nhl_engine is not None and nhl_live_state is not None:
                 home_score, away_score, minutes_remaining = nhl_live_state
                 probability = nhl_engine.live_spread_probability_for(
@@ -1326,6 +1473,24 @@ class TeamSportsIntelligenceSignal:
                 source = "nhl_live_spread"
                 detail = f"{subject} live by >{parsed.threshold:g} (period {game.current_period})"
                 uncertainty = min(0.45, nhl_prediction.winner_uncertainty + 0.07)
+            elif nfl_live_prediction is not None:
+                probability = nfl_live_prediction.cover_probability(
+                    subject_is_home, parsed.threshold)
+                source = "nfl_live_spread"
+                detail = f"{subject} live by >{parsed.threshold:g} (period {game.current_period})"
+                uncertainty = min(0.45, prediction.winner_uncertainty + 0.08)
+            elif ncaaf_live_prediction is not None:
+                probability = ncaaf_live_prediction.cover_probability(
+                    subject_is_home, parsed.threshold)
+                source = "ncaaf_live_spread"
+                detail = f"{subject} live by >{parsed.threshold:g} (period {game.current_period})"
+                uncertainty = min(0.45, ncaaf_prediction.winner_uncertainty + 0.09)
+            elif ncaamb_live_prediction is not None:
+                probability = ncaamb_live_prediction.cover_probability(
+                    subject_is_home, parsed.threshold)
+                source = "ncaamb_live_spread"
+                detail = f"{subject} live by >{parsed.threshold:g} (period {game.current_period})"
+                uncertainty = min(0.45, ncaamb_prediction.winner_uncertainty + 0.07)
             else:
                 if nba_engine is not None:
                     probability = nba_engine.cover_probability(
@@ -1359,7 +1524,9 @@ class TeamSportsIntelligenceSignal:
                     sigma = LEAGUE_SCORE_CONFIGS[parsed.sport].margin_sigma
                     z = (parsed.threshold - subject_margin) / max(0.25, sigma)
                     probability = min(0.995, max(0.005, 1.0 - 0.5 * (1.0 + math.erf(z / math.sqrt(2.0)))))
-                if nhl_engine is not None:
+                if nba_engine is not None:
+                    uncertainty = min(0.44, nba_prediction.winner_uncertainty + 0.02)
+                elif nhl_engine is not None:
                     uncertainty = min(0.44, nhl_prediction.winner_uncertainty + 0.02)
                 elif ncaamb_engine is not None:
                     uncertainty = min(0.44, ncaamb_prediction.winner_uncertainty + 0.02)
@@ -1373,10 +1540,10 @@ class TeamSportsIntelligenceSignal:
             # NFL/NCAAF are exact via their kernel (nfl_kernel/ncaaf_kernel
             # already reflect hard_margin_delta), NBA/NHL/NCAAMB get the
             # bounded approximation. Same live-double-count gate as the
-            # winner branch: skip on the nba_live/nhl_live in-play path,
-            # since live_spread_probability_for already prices off the
+            # winner branch: skip on every in-play path, since the live
+            # model already prices off the
             # actual (injury-affected) live score.
-            if parsed.sport in ("nba", "nhl", "ncaamb") and not (nba_live or nhl_live):
+            if parsed.sport in ("nba", "nhl", "ncaamb") and not any_live:
                 probability = shift_probability_by_margin(
                     probability, hard_margin_delta + mismatch_delta + situational_margin_delta,
                     LEAGUE_POINT_SCALE[parsed.sport], subject_is_home,
@@ -1391,7 +1558,7 @@ class TeamSportsIntelligenceSignal:
                     f"live over {parsed.threshold:g} ({home_score + away_score} so far, "
                     f"period {game.current_period})"
                 )
-                uncertainty = min(0.45, prediction.total_uncertainty + 0.05)
+                uncertainty = min(0.45, nba_prediction.total_uncertainty + 0.05)
             elif nhl_engine is not None and nhl_live_state is not None:
                 home_score, away_score, minutes_remaining = nhl_live_state
                 probability = nhl_engine.live_total_probability_for(
@@ -1403,9 +1570,30 @@ class TeamSportsIntelligenceSignal:
                     f"period {game.current_period})"
                 )
                 uncertainty = min(0.45, nhl_prediction.total_uncertainty + 0.05)
+            elif nfl_live_prediction is not None:
+                probability = nfl_live_prediction.total_probability(parsed.threshold)
+                source = "nfl_live_total"
+                detail = (
+                    f"live over {parsed.threshold:g} ({game.home_score + game.away_score} so far, "
+                    f"period {game.current_period})")
+                uncertainty = min(0.45, prediction.total_uncertainty + 0.08)
+            elif ncaaf_live_prediction is not None:
+                probability = ncaaf_live_prediction.total_probability(parsed.threshold)
+                source = "ncaaf_live_total"
+                detail = (
+                    f"live over {parsed.threshold:g} ({game.home_score + game.away_score} so far, "
+                    f"period {game.current_period})")
+                uncertainty = min(0.45, ncaaf_prediction.total_uncertainty + 0.09)
+            elif ncaamb_live_prediction is not None:
+                probability = ncaamb_live_prediction.total_probability(parsed.threshold)
+                source = "ncaamb_live_total"
+                detail = (
+                    f"live over {parsed.threshold:g} ({game.home_score + game.away_score} so far, "
+                    f"period {game.current_period})")
+                uncertainty = min(0.45, ncaamb_prediction.total_uncertainty + 0.07)
             elif nba_engine is not None:
                 probability = nba_engine.total_probability(nba_prediction, parsed.threshold)
-                uncertainty = prediction.total_uncertainty
+                uncertainty = nba_prediction.total_uncertainty
                 source = "nba_game_total"
                 detail = f"over {parsed.threshold:g}"
             elif nhl_engine is not None:
@@ -1487,8 +1675,8 @@ class TeamSportsIntelligenceSignal:
             uncertainty=uncertainty,
             rationale=(
                 f"{parsed.sport.upper()} {detail}: {game.away}@{game.home}; expected "
-                f"{report.expected_away_score:.2f}+{report.expected_home_score:.2f}="
-                f"{report.expected_total:.2f}; paired sample={report.sample_games}"
+                f"{report_away_score:.2f}+{report_home_score:.2f}="
+                f"{report_total:.2f}; paired sample={report.sample_games}"
             ),
             features={
                 "challenger_only": True,
@@ -1501,9 +1689,18 @@ class TeamSportsIntelligenceSignal:
                 "event_start": game.date,
                 "home": game.home,
                 "away": game.away,
-                "expected_home_score": report.expected_home_score,
-                "expected_away_score": report.expected_away_score,
-                "expected_total": report.expected_total,
+                "live": any_live,
+                "live_model_version": margin_model_version if any_live else None,
+                "current_period": game.current_period if any_live else None,
+                "current_clock": game.current_clock if any_live else None,
+                "home_score": game.home_score if any_live else None,
+                "away_score": game.away_score if any_live else None,
+                "minutes_remaining": live_minutes_remaining,
+                "expected_home_score": report_home_score,
+                "expected_away_score": report_away_score,
+                "expected_total": report_total,
+                "expected_score_margin_delta": round(expected_score_margin_delta, 4),
+                "expected_scores_post_shift": True,
                 "threshold": parsed.threshold,
                 # WS-6: player availability / rookie / mismatch layer.
                 **player_effect.features,
@@ -1574,6 +1771,10 @@ class TeamSportsIntelligenceSignal:
                         "expected_margin": (
                             ncaaf_prediction.expected_margin if ncaaf_prediction else None
                         ),
+                        "ncaaf_live_model": (
+                            ncaaf_live_prediction.model_version
+                            if ncaaf_live_prediction else None
+                        ),
                     }
                     if parsed.sport == "ncaaf" else {}
                 ),
@@ -1584,8 +1785,21 @@ class TeamSportsIntelligenceSignal:
                         "expected_pace": ncaamb_prediction.expected_pace if ncaamb_prediction else None,
                         "rest_days_home": ncaamb_prediction.rest_days_home if ncaamb_prediction else None,
                         "rest_days_away": ncaamb_prediction.rest_days_away if ncaamb_prediction else None,
+                        "ncaamb_live_model": (
+                            ncaamb_live_prediction.model_version
+                            if ncaamb_live_prediction else None
+                        ),
                     }
                     if parsed.sport == "ncaamb" else {}
+                ),
+                **(
+                    {
+                        "nfl_live_model": (
+                            nfl_live_prediction.model_version
+                            if nfl_live_prediction else None
+                        ),
+                    }
+                    if parsed.sport == "nfl" else {}
                 ),
             },
         )
@@ -1614,8 +1828,8 @@ class TeamSportsIntelligenceSignal:
 #   high dispersion suppresses the flag rather than trusting a noisy read.
 #
 # Pre-game only (first pass, per the WS-A2 brief): this sidesteps the
-# nba_live/nhl_live double-count question WS-6/7 had to solve -- a later
-# pass can extend live coverage the same way if this is ever promoted.
+# live-state double-count question WS-6/7 had to solve -- a later pass can
+# extend power-rating coverage live if this is ever promoted.
 
 FOOTBALL_POWER_LEAGUES = ("nfl", "ncaaf")
 BASKETBALL_POWER_LEAGUES = ("nba", "ncaamb")

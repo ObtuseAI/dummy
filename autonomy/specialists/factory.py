@@ -53,7 +53,7 @@ def build_specialist_registry(source_registry: Any) -> SpecialistRegistry:
     for league in TEAM_LEAGUES:
         registry.register(TeamLeagueSpecialist(
             league=league, intelligence=team_signal, sportsbook=sportsbook,
-            seasons=seasons,
+            seasons=seasons, espn=getattr(team_signal, "espn", None),
         ))
     registry.register(CryptoSpecialist(
         champion=crypto_champion, implied_book=implied_book,

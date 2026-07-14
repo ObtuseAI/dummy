@@ -26,6 +26,10 @@ from autonomy.sports.college import (
 )
 from autonomy.sports.elo import EloModel
 from autonomy.sports.espn import EspnClient, Game
+from autonomy.sports.live_team_models import (
+    NCAAF_LIVE_MODEL_VERSION,
+    NCAAMB_LIVE_MODEL_VERSION,
+)
 from autonomy.sports.nba_model import MIN_GAMES_FOR_ENGINE, NbaModel, NbaTeamState
 from autonomy.sports.nfl_margin import BASE_ABS_MARGIN_PMF, margin_distribution
 from autonomy.sports.team_scores import LEAGUE_SCORE_CONFIGS, TeamScoreModel, TeamScorePrediction
@@ -299,6 +303,40 @@ def test_ncaaf_signal_prices_winner_spread_total_with_challenger_only(tmp_path):
     assert winner.probability_yes >= spread.probability_yes
 
 
+def test_ncaaf_live_signal_uses_score_clock_and_discrete_scoring_model(tmp_path):
+    game = Game(
+        "g1", "ncaaf", "KC", "BUF", "in", None, "2026-01-12T20:25Z",
+        home_name="Kansas City Chiefs", away_name="Buffalo Bills",
+        home_score=28, away_score=24, current_period=4, current_clock="3:30",
+    )
+    client = EspnClient(fetch_scoreboard=lambda _l, _d: {"events": []})
+    client._cache[("ncaaf", "20260112")] = [game]
+    models = {key: TeamScoreModel(key) for key in LEAGUE_SCORE_CONFIGS}
+    signal = TeamSportsIntelligenceSignal(
+        espn=client, models=models, model_dir=tmp_path, seasons=_AlwaysActive(),
+        ncaaf_elo=EloModel(league="ncaaf", ratings={"KC": 1600.0, "BUF": 1500.0}),
+    )
+
+    winner = signal.generate(_market(
+        "KXNCAAFGAME-26JAN12KCBUF-KC", "Chiefs vs Bills Winner?"))
+    spread = signal.generate(_market(
+        "KXNCAAFSPREAD-26JAN12KCBUF-KC1", "Chiefs vs Bills Spread",
+        floor_strike=0.5))
+    total = signal.generate(_market(
+        "KXNCAAFTOTAL-26JAN12KCBUF", "Chiefs vs Bills Total Points",
+        floor_strike=55.5))
+
+    assert winner is not None and spread is not None and total is not None
+    assert (winner.source, spread.source, total.source) == (
+        "ncaaf_live_winner", "ncaaf_live_spread", "ncaaf_live_total")
+    for result in (winner, spread, total):
+        assert result.features["live_model_version"] == NCAAF_LIVE_MODEL_VERSION
+        assert result.features["minutes_remaining"] == pytest.approx(3.5)
+        assert result.features["expected_home_score"] >= 28
+        assert result.features["expected_away_score"] >= 24
+    assert winner.probability_yes >= spread.probability_yes
+
+
 def test_ncaamb_signal_falls_back_wholesale_when_cold(tmp_path):
     game = Game("g1", "ncaamb", "DUKE", "UNC", "pre", None, "2026-01-12T20:25Z",
                 home_name="Duke Blue Devils", away_name="North Carolina Tar Heels")
@@ -345,3 +383,52 @@ def test_ncaamb_signal_prices_from_the_pace_engine_when_warm(tmp_path):
     assert winner.features["margin_model_version"] == NCAAMB_MODEL_VERSION
     assert winner.features["ncaamb_model_fallback"] is False
     assert winner.probability_yes == pytest.approx(reference.home_win_probability, abs=1e-9)
+
+
+def test_ncaamb_live_signal_uses_40_minute_state_model(tmp_path):
+    game = Game(
+        "g1", "ncaamb", "DUKE", "UNC", "in", None, "2026-01-12T20:25Z",
+        home_name="Duke Blue Devils", away_name="North Carolina Tar Heels",
+        home_score=38, away_score=35, current_period=2, current_clock="12:00",
+    )
+    client = EspnClient(fetch_scoreboard=lambda _l, _d: {"events": []})
+    client._cache[("ncaamb", "20260112")] = [game]
+    models = {key: TeamScoreModel(key) for key in LEAGUE_SCORE_CONFIGS}
+    store = BoxscoreStore("ncaamb", path=tmp_path / "boxscores_ncaamb.json")
+    store.ingest([
+        _box("DUKE", "UNC", True, 62.0, 11.0, 12.0, 18.0, f"gh{i}")
+        for i in range(MIN_GAMES_FOR_ENGINE)
+    ])
+    store.ingest([
+        _box("UNC", "DUKE", False, 60.0, 10.0, 13.0, 16.0, f"ga{i}")
+        for i in range(MIN_GAMES_FOR_ENGINE)
+    ])
+    ncaamb_model = NbaModel(params=NCAAMB_PARAMS)
+    ncaamb_model.teams["DUKE"] = NbaTeamState(
+        games=10, pace_ewma=71.0, ortg_ewma=112.0, drtg_ewma=100.0)
+    ncaamb_model.teams["UNC"] = NbaTeamState(
+        games=10, pace_ewma=69.0, ortg_ewma=108.0, drtg_ewma=103.0)
+    signal = TeamSportsIntelligenceSignal(
+        espn=client, models=models, model_dir=tmp_path, seasons=_AlwaysActive(),
+        ncaamb_boxscores=store, ncaamb_model=ncaamb_model,
+    )
+
+    winner = signal.generate(_market(
+        "KXNCAAMBGAME-26JAN12DUKEUNC-DUKE", "Duke vs UNC Winner?"))
+    spread = signal.generate(_market(
+        "KXNCAAMBSPREAD-26JAN12DUKEUNC-DUKE3",
+        "Duke Blue Devils vs North Carolina Tar Heels Spread",
+        floor_strike=2.5))
+    total = signal.generate(_market(
+        "KXNCAAMBTOTAL-26JAN12DUKEUNC",
+        "Duke Blue Devils vs North Carolina Tar Heels Total Points",
+        floor_strike=145.5))
+
+    assert winner is not None and spread is not None and total is not None
+    assert (winner.source, spread.source, total.source) == (
+        "ncaamb_live_winner", "ncaamb_live_spread", "ncaamb_live_total")
+    for result in (winner, spread, total):
+        assert result.features["live_model_version"] == NCAAMB_LIVE_MODEL_VERSION
+        assert result.features["minutes_remaining"] == pytest.approx(12.0)
+        assert result.features["expected_scores_post_shift"] is True
+    assert winner.probability_yes >= spread.probability_yes

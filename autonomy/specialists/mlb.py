@@ -97,6 +97,16 @@ class MlbSpecialist:
         except Exception:
             return None
 
+    def ejection_events(self, market: MarketView) -> tuple[dict[str, Any], ...]:
+        try:
+            resolved = self._live_game(market)
+            if resolved is None:
+                return ()
+            _, game = resolved
+            return self.live_book.ejection_events(game.game_id)
+        except Exception:
+            return ()
+
     def on_cycle_start(self) -> None:
         # Shared signal instances are warmed by the brain's own registry
         # cycle; the specialist only clears its private live-book cache so a

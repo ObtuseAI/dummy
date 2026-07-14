@@ -16,7 +16,7 @@ real move away from the anchor before triggering).
 """
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 from autonomy.mispricing import MispricingAssessment, _CONFIDENCE_RANK
 
@@ -94,6 +94,9 @@ class Opportunity:
     # external-ratings ensemble also disagreed with our engine on this market
     # (surfaced for review only; it does not gate the strike). None otherwise.
     power_divergence: dict | None = None
+    # Raw ESPN live-play observations present at the strike. Evidence-only;
+    # never part of the trigger predicate or any probability adjustment.
+    ejection_events: tuple[dict, ...] = ()
 
 
 class OpportunistEngine:
@@ -174,11 +177,17 @@ class OpportunistEngine:
                     f"; power-ratings ensemble confirms ({divergence['gap']:+.1f} pt gap "
                     f"vs our engine, sources agree)"
                 )
+            if assessment.ejection_events:
+                rationale += (
+                    f"; {len(assessment.ejection_events)} live ejection "
+                    f"observation{'s' if len(assessment.ejection_events) != 1 else ''}"
+                )
             return Opportunity(
                 ticker=candidate.ticker, side=candidate.side,
                 conviction=candidate.conviction, anchor_prob=candidate.anchor_prob,
                 entry_prob=mid, edge=assessment.edge, deviation=deviation,
                 confidence=assessment.confidence, rationale=rationale,
                 power_divergence=divergence,
+                ejection_events=assessment.ejection_events,
             )
         return None

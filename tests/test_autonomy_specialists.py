@@ -59,12 +59,16 @@ class _StubSportsbook:
 
 
 class _StubLiveBook:
-    def __init__(self, home_probability: float | None):
+    def __init__(self, home_probability: float | None, ejections=()):
         self.home_probability = home_probability
+        self.ejections = tuple(ejections)
         self.cleared = 0
 
     def home_win_probability(self, event_id: str | None) -> float | None:
         return self.home_probability
+
+    def ejection_events(self, event_id: str | None):
+        return self.ejections if event_id else ()
 
     def clear(self) -> None:
         self.cleared += 1
@@ -83,6 +87,26 @@ def _espn_with_game(status: str) -> EspnClient:
 
 def _mlb_winner_market() -> MarketView:
     return _market("KXMLBGAME-26JUL122005HOUTEX-HOU", "Astros vs Rangers Winner?")
+
+
+def _espn_with_team_game(league: str, status: str) -> EspnClient:
+    client = EspnClient(fetch_scoreboard=lambda _league, _dates: {"events": []})
+    home, away = {
+        "nba": ("LAL", "BOS"),
+        "nhl": ("NYR", "BOS"),
+        "nfl": ("KC", "BUF"),
+        "ncaaf": ("TEX", "OU"),
+        "ncaamb": ("DUKE", "UNC"),
+    }[league]
+    game = Game(
+        "g-team", league, home, away, status, None, "2026-07-12T20:05Z",
+        home_score=60 if status == "in" else None,
+        away_score=50 if status == "in" else None,
+        current_period=3 if status == "in" else None,
+        current_clock="6:00" if status == "in" else None,
+    )
+    client._cache[(league, "20260712")] = [game]
+    return client
 
 
 # -- routing -----------------------------------------------------------------
@@ -181,16 +205,101 @@ def test_mlb_cycle_start_clears_only_the_live_book():
 
 # -- team-league + crypto specialists ----------------------------------------
 
-def test_team_league_specialist_abstains_live_and_books_consensus():
-    specialist = TeamLeagueSpecialist(
-        league="nba", intelligence=_StubIntelligence("team_sports_intelligence"),
-        sportsbook=_StubSportsbook(0.61),
-    )
+def test_team_league_specialist_exposes_existing_nba_live_view_and_summary_book():
     market = _market("KXNBAGAME-26JUL12LALBOS-LAL", "Lakers vs Celtics Winner?")
+    live_signal = _signal("nba_live_winner", market.ticker, 0.74, live=True)
+    specialist = TeamLeagueSpecialist(
+        league="nba", intelligence=_StubIntelligence("team_sports_intelligence", live_signal),
+        sportsbook=_StubSportsbook(0.61),
+        espn=_espn_with_team_game("nba", "in"), live_book=_StubLiveBook(0.66),
+    )
     assert specialist.applicable(market)
-    assert specialist.live_forecast(market) is None
-    assert specialist.book(market) == 0.61
-    assert TeamLeagueSpecialist("nba", None, None).book(market) is None
+    assert specialist.live_forecast(market) == live_signal
+    assert specialist.book(market) == 0.66
+
+    away = _market("KXNBAGAME-26JUL12LALBOS-BOS", "Lakers vs Celtics Winner?")
+    assert abs(specialist.book(away) - 0.34) < 1e-9
+
+
+def test_team_league_specialist_exposes_existing_nhl_live_view_and_summary_book():
+    market = _market("KXNHLGAME-26JUL12NYRBOS-NYR", "Rangers vs Bruins Winner?")
+    live_signal = _signal("nhl_live_winner", market.ticker, 0.63, live=True)
+    specialist = TeamLeagueSpecialist(
+        "nhl", _StubIntelligence("team_sports_intelligence", live_signal),
+        _StubSportsbook(0.55), espn=_espn_with_team_game("nhl", "in"),
+        live_book=_StubLiveBook(0.62),
+    )
+    assert specialist.live_forecast(market) == live_signal
+    assert specialist.book(market) == 0.62
+
+
+def test_team_league_specialist_exposes_new_live_team_model_views():
+    cases = (
+        ("nfl", "KXNFLGAME-26JUL12KCBUF-KC", "nfl_live_winner"),
+        ("ncaaf", "KXNCAAFGAME-26JUL12TEXOU-TEX", "ncaaf_live_winner"),
+        ("ncaamb", "KXNCAAMBGAME-26JUL12DUKEUNC-DUKE", "ncaamb_live_winner"),
+    )
+    for league, ticker, source in cases:
+        market = _market(ticker, "Alpha vs Beta Winner?")
+        live_signal = _signal(source, ticker, 0.64, live=True)
+        specialist = TeamLeagueSpecialist(
+            league, _StubIntelligence("team_sports_intelligence", live_signal),
+            _StubSportsbook(0.55), espn=_espn_with_team_game(league, "in"),
+            live_book=_StubLiveBook(0.60),
+        )
+        assert specialist.live_forecast(market) == live_signal
+
+
+def test_team_league_live_view_remains_fail_closed_for_missing_models_and_pregame():
+    market = _market("KXNBAGAME-26JUL12LALBOS-LAL", "Lakers vs Celtics Winner?")
+    signal_without_live_feature = _signal("nba_structural_winner", market.ticker, 0.60)
+    stale = TeamLeagueSpecialist(
+        "nba", _StubIntelligence("team_sports_intelligence", signal_without_live_feature),
+        _StubSportsbook(0.61), espn=_espn_with_team_game("nba", "in"),
+        live_book=_StubLiveBook(None),
+    )
+    assert stale.live_forecast(market) is None
+    assert stale.book(market) == 0.61
+
+    pre = TeamLeagueSpecialist(
+        "nba", _StubIntelligence("team_sports_intelligence", signal_without_live_feature),
+        _StubSportsbook(0.61), espn=_espn_with_team_game("nba", "pre"),
+        live_book=_StubLiveBook(0.66),
+    )
+    assert pre.live_forecast(market) is None
+    assert pre.book(market) == 0.61
+
+    nfl_market = _market("KXNFLGAME-26JUL12KCBUF-KC", "Chiefs vs Bills Winner?")
+    nfl = TeamLeagueSpecialist(
+        "nfl", _StubIntelligence("team_sports_intelligence", None), None,
+        espn=_espn_with_team_game("nfl", "in"), live_book=_StubLiveBook(0.60),
+    )
+    assert nfl.live_forecast(nfl_market) is None
+
+
+def test_team_league_ejections_are_evidence_only_and_cache_clears_each_cycle():
+    market = _market("KXNBAGAME-26JUL12LALBOS-LAL", "Lakers vs Celtics Winner?")
+    event = {"event_type": "ejection", "text": "Player ejected"}
+    live_book = _StubLiveBook(0.66, [event])
+    specialist = TeamLeagueSpecialist(
+        "nba", _StubIntelligence("team_sports_intelligence"), _StubSportsbook(),
+        espn=_espn_with_team_game("nba", "in"), live_book=live_book,
+    )
+    assert specialist.ejection_events(market) == (event,)
+    specialist.on_cycle_start()
+    assert live_book.cleared == 1
+
+
+def test_team_league_book_never_maps_moneyline_to_spread_or_total():
+    spread = _market(
+        "KXNBASPREAD-26JUL12LALBOS-LAL5", "Lakers win by over 4.5 points?",
+        floor_strike=4.5,
+    )
+    specialist = TeamLeagueSpecialist(
+        "nba", _StubIntelligence("team_sports_intelligence"), None,
+        espn=_espn_with_team_game("nba", "in"), live_book=_StubLiveBook(0.66),
+    )
+    assert specialist.book(spread) is None
 
 
 def test_crypto_specialist_routes_and_abstains_from_book_when_unwired():

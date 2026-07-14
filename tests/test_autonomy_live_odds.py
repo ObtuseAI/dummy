@@ -8,6 +8,7 @@ from autonomy.live_odds import (
     EspnSummaryBook,
     devig_summary_home_probability,
     parse_base_out_state,
+    parse_ejection_events,
 )
 
 FIXTURES = Path(__file__).parent / "fixtures"
@@ -43,7 +44,9 @@ def test_summary_book_provider_fail_closed():
         raise RuntimeError("espn down")
     assert EspnSummaryBook(fetch_summary=boom).home_win_probability("x") is None
     # No event id -> None, no fetch.
-    assert EspnSummaryBook(fetch_summary=lambda l, e: _summary(-150, 130)).home_win_probability(None) is None
+    assert EspnSummaryBook(
+        fetch_summary=lambda _league, _event: _summary(-150, 130)
+    ).home_win_probability(None) is None
 
 
 def test_summary_book_caches_per_event():
@@ -60,6 +63,63 @@ def test_summary_book_caches_per_event():
     book.clear()
     book.home_win_probability("g1")
     assert calls == ["g1", "g1"]
+
+
+def test_parse_ejection_events_reads_point_in_time_play_fields():
+    summary = {"plays": [{
+        "id": "40158567750",
+        "sequenceNumber": "50",
+        "type": {"id": "517", "text": "Ejection"},
+        "text": "Draymond Green ejected",
+        "awayScore": 6,
+        "homeScore": 6,
+        "period": {"number": 1, "displayValue": "1st Quarter"},
+        "clock": {"displayValue": "8:24"},
+        "team": {"id": "9"},
+        "participants": [{"athlete": {"id": "6589"}}],
+        "wallclock": "2024-03-27T23:17:20Z",
+    }]}
+
+    events = parse_ejection_events(summary)
+
+    assert len(events) == 1
+    assert events[0] == {
+        "event_type": "ejection",
+        "source": "espn_summary_plays",
+        "play_id": "40158567750",
+        "sequence_number": "50",
+        "source_event_time": "2024-03-27T23:17:20Z",
+        "text": "Draymond Green ejected",
+        "team_id": "9",
+        "participant_ids": ("6589",),
+        "period": 1,
+        "clock": "8:24",
+        "home_score": 6,
+        "away_score": 6,
+    }
+
+
+def test_parse_ejections_ignores_postgame_article_and_malformed_plays():
+    summary = {
+        "article": {"story": "A manager was ejected after arguing."},
+        "plays": [None, "bad", {"type": {"text": "Pitch"}, "text": "called strike"}],
+    }
+    assert parse_ejection_events(summary) == ()
+    assert parse_ejection_events(None) == ()
+
+
+def test_summary_book_ejection_events_reuse_the_cached_summary():
+    calls = []
+
+    def fetch(league, event_id):
+        calls.append((league, event_id))
+        return {"plays": [{"id": "1", "type": {"text": "Ejection"}, "text": "Player ejected"}]}
+
+    book = EspnSummaryBook(league="nba", fetch_summary=fetch)
+    assert book.home_win_probability("g1") is None
+    assert len(book.ejection_events("g1")) == 1
+    assert book.ejection_events(None) == ()
+    assert calls == [("nba", "g1")]
 
 
 # -- WS-11: live base-out state (plays[].onFirst/onSecond/onThird + outs) --

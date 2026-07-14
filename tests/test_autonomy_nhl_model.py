@@ -35,7 +35,6 @@ from autonomy.sports.nhl_model import (
     GoalieBoxscore,
     NhlGoalieState,
     NhlModel,
-    NhlTeamState,
     away_cover_probability,
     final_total_pmf,
     goal_split,
@@ -350,6 +349,28 @@ def test_pulled_goalie_only_applies_in_live_final_three_minutes_boundary():
     just_inside = pulled_goalie_lambdas(1.0, 1.0, home_score=1, away_score=2, minutes_remaining=3.0)
     assert just_outside == (1.0, 1.0)
     assert just_inside != (1.0, 1.0)
+
+
+def test_live_winner_uses_same_pulled_goalie_lambdas_as_spread_and_total():
+    model = NhlModel()
+    game = Game("g-live", "nhl", "BOS", "BUF", "pre", None, "2026-01-12T20:00Z")
+    prediction = model.predict(game)
+    minutes_remaining = 2.0
+    fraction = minutes_remaining / 60.0
+    unadjusted = home_win_probability(goal_split(
+        -1, prediction.lambda_home * fraction, prediction.lambda_away * fraction))
+    adjusted_home, adjusted_away = pulled_goalie_lambdas(
+        prediction.lambda_home * fraction,
+        prediction.lambda_away * fraction,
+        2,
+        3,
+        minutes_remaining,
+    )
+    adjusted = home_win_probability(goal_split(-1, adjusted_home, adjusted_away))
+    actual = model.live_win_probability_for(
+        prediction, home_score=2, away_score=3, minutes_remaining=minutes_remaining)
+    assert actual == pytest.approx(adjusted)
+    assert actual != pytest.approx(unadjusted)
 
 
 # ============================================= model: settlement invariant
