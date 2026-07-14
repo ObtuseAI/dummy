@@ -81,19 +81,22 @@ dimensionally-broken live output. When combining sources on different native sca
 **realistic-magnitude sanity test** (the fix added one: KC−DEN Elo → 3.0, would be 1875
 under the old code). Fix = per-source `points_per_unit(league)` contract.
 
-## Deferred follow-ups (logged, non-blocking)
+## Follow-ups
 
-1. **`power_divergence` unconsumed.** It's emitted into the challenger `Signal.features`
-   but `opportunist.py` / `mispricing.py` don't read it yet. Wire it into the opportunist
-   path to actually act on ensemble-vs-kernel divergence as buy-low evidence.
-2. **Massey/Colley freeze at construction.** The solve runs once at `PowerRatingsSignal`
-   construction and is cached; unlike Elo/TeamScoreModel it doesn't refresh on
-   `on_cycle_start`. Fine only if `PowerRatingsSignal` is periodically reconstructed —
-   confirm the daemon's reconstruction cadence, or add a periodic re-warm.
-3. **Colley tie handling.** `Game.home_won` collapses ties to a home win upstream
+**Done (2026-07-13):**
+- ✅ **`power_divergence` consumed** (CF1, PR #74). Threaded through `mispricing.py` /
+   `mispricing_monitor.py` / `opportunist.py` as surfaced buy-low **evidence** (subject-oriented
+   confirming divergence on the `Opportunity` + report rows). Evidence-only — it does not gate the
+   strike while `power_ratings` is an unpromoted challenger; gating influence stays deferred until
+   promotion.
+- ✅ **Massey/Colley re-warm** (CF2, PR #73). `on_cycle_start` re-warms owned sources on a 12h TTL
+   (`MASSEY_COLLEY_REWARM_TTL_HOURS`); injected sources untouched; crash-proof/fail-closed.
+
+**Still deferred (logged, non-blocking):**
+1. **Colley tie handling.** `Game.home_won` collapses ties to a home win upstream
    (`espn.py`), so Colley can't see true ties. Near-zero impact for the 4 Colley leagues
    (rare NFL ties only); fix at the feed layer if it ever matters.
-4. **NCAAF uses the college key-number table** now (matches WS-C doctrine), but still
+2. **NCAAF uses the college key-number table** now (matches WS-C doctrine), but still
    reuses the NFL margin kernel wholesale otherwise — a shallower college-specific kernel
    is a future fidelity improvement.
 
