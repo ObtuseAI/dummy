@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 
 from autonomy.signals.weather_openmeteo import OpenMeteoWeatherSignal
 from autonomy.weather_calibration import (

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from tests.v52_test_helpers import assert_v52_report_named, v52_reports
+from tests.v52_test_helpers import assert_v52_report_named
 
 
 VALID_PHRASE = "I approve Dummy to create inert quarantined rehearsal artifacts only, with no broker submission, no live trading, no live-submit enablement, and no caps modification"

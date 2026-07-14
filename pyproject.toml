@@ -32,6 +32,17 @@ asyncio_mode = "auto"
 testpaths = ["tests"]
 timeout = 60
 
+[tool.ruff]
+target-version = "py311"
+
+[tool.ruff.lint.per-file-ignores]
+# Archived milestone snapshots preserve their historical import/bootstrap layout.
+"archive/**/*.py" = ["E402"]
+# This subtree is a hash-pinned copy of Blunder and must remain byte-identical.
+"core/inherited_blunder/**/*.py" = ["F401"]
+# Executable scripts insert the repository root into sys.path before project imports.
+"scripts/*.py" = ["E402"]
+
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["core*", "kalshi*", "live_firewall*", "compliance*", "forecasting*", "strategies*", "risk*", "repo_harvester*", "dashboard*", "services*", "adapters*", "proof*", "execution*", "model_router*", "predator_mesh*", "calibration*", "autonomy*", "archive*"]

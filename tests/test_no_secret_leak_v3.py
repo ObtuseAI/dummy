@@ -1,6 +1,7 @@
 """Scan logs and artifacts for leaked Kalshi secrets."""
 
 import os
+import sys
 from pathlib import Path
 
 import pytest
@@ -26,18 +27,42 @@ def _real_secret_values():
     return values
 
 
+_SCAN_CHUNK_BYTES = 1024 * 1024
+
+
+def _file_matches(path: Path, needles: list[tuple[str, bytes]]) -> set[str]:
+    """Search once in bounded chunks while preserving cross-chunk matches."""
+    remaining = dict(needles)
+    matches: set[str] = set()
+    overlap = max((len(value) - 1 for value in remaining.values()), default=0)
+    tail = b""
+    with path.open("rb") as handle:
+        while chunk := handle.read(_SCAN_CHUNK_BYTES):
+            window = tail + chunk
+            for key, value in tuple(remaining.items()):
+                if value in window:
+                    matches.add(key)
+                    del remaining[key]
+            if not remaining:
+                break
+            tail = window[-overlap:] if overlap else b""
+    return matches
+
+
 def _find_offenders(paths, secrets):
     offenders = []
+    encoded_secrets = [
+        (key, value.encode("utf-8"))
+        for key, value in secrets
+    ]
     for path in paths:
         if not path.is_file():
             continue
         try:
-            text = path.read_text(encoding="utf-8", errors="ignore")
-        except Exception:
+            matches = _file_matches(path, encoded_secrets)
+        except OSError:
             continue
-        for key, value in secrets:
-            if value in text:
-                offenders.append((key, str(path)))
+        offenders.extend((key, str(path)) for key, _value in encoded_secrets if key in matches)
     return offenders
 
 
@@ -48,6 +73,17 @@ def test_secret_leak_detector_catches_planted_value(tmp_path):
     (tmp_path / "clean.log").write_text("nothing to see", encoding="utf-8")
     offenders = _find_offenders(
         sorted(tmp_path.rglob("*")), [("KALSHI_API_KEY_ID", "sentinel-key-value-123456")]
+    )
+    assert offenders == [("KALSHI_API_KEY_ID", str(leaked))]
+
+
+def test_secret_leak_detector_catches_cross_chunk_value(tmp_path, monkeypatch):
+    """Chunk boundaries must not create a blind spot in the detector."""
+    monkeypatch.setattr(sys.modules[__name__], "_SCAN_CHUNK_BYTES", 8)
+    leaked = tmp_path / "boundary.bin"
+    leaked.write_bytes(b"1234567sentinel-secret-value")
+    offenders = _find_offenders(
+        [leaked], [("KALSHI_API_KEY_ID", "sentinel-secret-value")]
     )
     assert offenders == [("KALSHI_API_KEY_ID", str(leaked))]
 

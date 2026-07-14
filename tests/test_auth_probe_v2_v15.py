@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import time
 
 from predator_mesh.v15.auth_probe_v2 import (
     KalshiAuthProbeDecision,

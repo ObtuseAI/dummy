@@ -10,7 +10,6 @@ from typing import Any
 
 from predator_mesh.v22.reports import (
     ForecastWriteBreakthroughEngine,
-    NoTradeWriteProof,
     ObserverQueueItem,
     OutcomeObserverQueueV1,
 )

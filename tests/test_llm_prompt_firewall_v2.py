@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from model_router.prompt_firewall import FirewallDecision, PromptFirewallV2
+from model_router.prompt_firewall import PromptFirewallV2
 
 
 @pytest.fixture

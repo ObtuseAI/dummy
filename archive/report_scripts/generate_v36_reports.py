@@ -20,7 +20,6 @@ if str(ROOT) not in sys.path:
 
 from predator_mesh.v36 import MILESTONE
 from predator_mesh.v36.reports import DEFAULT_REQUIRED_REPORT_NAMES, V36ReportFactory
-from predator_mesh.v36.run import EXACT_GATE_ENV
 
 V35_SMOKE_ENDPOINTS = [
     "/api/v35/v34-qc",

@@ -115,7 +115,8 @@ def test_verify_fails_modified_phrase(tmp_path):
     _build(out)
     p = out / app.APPROVAL_FILENAME
     import json
-    d = json.loads(p.read_text(encoding="utf-8")); d["exact_phrase"] = "tampered"
+    d = json.loads(p.read_text(encoding="utf-8"))
+    d["exact_phrase"] = "tampered"
     p.write_text(json.dumps(d), encoding="utf-8")
     v = app.verify_authority_pack(out)
     assert v["ok"] is False and v["checks"]["exact_approval_phrase"] is False
@@ -123,14 +124,16 @@ def test_verify_fails_modified_phrase(tmp_path):
 
 # --- install: requires confirmation, writes only temp runtime ---
 def test_install_requires_confirmation(tmp_path):
-    out = tmp_path / "o"; _build(out)
+    out = tmp_path / "o"
+    _build(out)
     r = app.install_authority_pack(source_dir=out, operator_confirm_install="nope", runtime_approvals_dir=tmp_path / "rt")
     assert r["ok"] is False and r["error"] == "INSTALL_CONFIRMATION_NOT_EXACT"
     assert not (tmp_path / "rt").exists()
 
 
 def test_install_writes_only_temp_runtime(tmp_path):
-    out = tmp_path / "o"; _build(out)
+    out = tmp_path / "o"
+    _build(out)
     rt = tmp_path / "rt" / "approvals"
     r = app.install_authority_pack(source_dir=out, operator_confirm_install=app.INSTALL_CONFIRM_PHRASE, runtime_approvals_dir=rt)
     assert r["ok"] is True

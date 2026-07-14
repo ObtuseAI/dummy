@@ -17,7 +17,7 @@ import re
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
-from unittest.mock import patch
+from typing import Any
 
 ROOT = Path(__file__).parent.parent.parent
 if str(ROOT) not in sys.path:

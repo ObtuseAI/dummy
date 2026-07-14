@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass as _dc
 
-from autonomy.sports.mlb_validation import HeadVerdict, MlbEngineScorecard, SettledDecision, settled_decisions_for, beat_close_head, calibration_head, paper_pnl_head, score_engine
+from autonomy.sports.mlb_validation import HeadVerdict, MlbEngineScorecard, SettledDecision, settled_decisions_for, beat_close_head, calibration_head, paper_pnl_head, score_engine, scorecard_to_dict
 
 
 def test_scorecard_champion_ready_tracks_primary_head_only():
@@ -159,9 +159,6 @@ def test_score_engine_no_decisions_is_unproven():
     assert card.settled == 0
     assert card.is_champion_ready is False
     assert card.beat_close.n == 0
-
-
-from autonomy.sports.mlb_validation import scorecard_to_dict
 
 
 def test_scorecard_to_dict_is_json_safe():

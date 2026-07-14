@@ -12,11 +12,11 @@ from decimal import Decimal
 from unittest.mock import AsyncMock, patch
 
 from core import state as state_module
-from core.state import DummyState, STATE
-from core.ontology import AccountMode, LiveOrderRequest, OrderBook, OrderBookLevel, Forecast, EdgeEstimate
+from core.state import DummyState
+from core.ontology import AccountMode, LiveOrderRequest, OrderBook, OrderBookLevel, Forecast
 from live_firewall.firewall import LiveBrokerFirewall, REJECTED_ADAPTERS, mark_adapter_rejected
 from live_firewall.exposure_tracker import ExposureTracker
-from repo_harvester.adapter_planner import generate_adapter_plan_v3, classify_repo_source
+from repo_harvester.adapter_planner import generate_adapter_plan_v3
 from repo_harvester.incorporation_engine import get_allowed_adapter_names, approve_adapter_tests
 from repo_harvester.incorporation_registry import load_registry, save_registry
 from core.ontology import RepoVerdict

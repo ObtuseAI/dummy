@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Any
 
 from predator_mesh.v14.credential_forensics import KalshiCredentialForensics
-from predator_mesh.v15.retry_gate_v2 import RealTerrainRetryDecisionV2, RealTerrainRetryGateV2
+from predator_mesh.v15.retry_gate_v2 import RealTerrainRetryGateV2
 from predator_mesh.v15.terrain_closure_v3 import RealOrderbookTerrainClosureV3
 
 ROOT = Path(__file__).resolve().parents[2]

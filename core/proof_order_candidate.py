@@ -14,7 +14,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from core.kalshi_market_validator import MarketMetadata, ValidationResult, validate_payload_against_metadata
+from core.kalshi_market_validator import MarketMetadata, validate_payload_against_metadata
 
 
 @dataclass(frozen=True)

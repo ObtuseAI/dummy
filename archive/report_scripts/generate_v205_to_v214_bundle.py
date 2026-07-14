@@ -29,11 +29,15 @@ def main() -> dict[str, Any]:
     from predator_mesh.v207.reports import build_cockpit_snapshot
     from predator_mesh.v208.reports import resolve_authority
     from predator_mesh.v213.reports import build_scoreboard
-    cockpit = build_cockpit_snapshot(); cockpit["generated_at"] = sgc.now_iso(); cockpit["read_only"] = True
+    cockpit = build_cockpit_snapshot()
+    cockpit["generated_at"] = sgc.now_iso()
+    cockpit["read_only"] = True
     sgc.write_report("activation_cockpit_v207.json", cockpit)
-    resolver = resolve_authority(); resolver["generated_at"] = sgc.now_iso()
+    resolver = resolve_authority()
+    resolver["generated_at"] = sgc.now_iso()
     sgc.write_report("authority_resolver_v208.json", resolver)
-    scoreboard = build_scoreboard(); scoreboard["generated_at"] = sgc.now_iso()
+    scoreboard = build_scoreboard()
+    scoreboard["generated_at"] = sgc.now_iso()
     sgc.write_report("completion_scoreboard_v213.json", scoreboard)
 
     verdicts = [e["verdict"] for e in stage_finals.values()]

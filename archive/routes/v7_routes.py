@@ -4,7 +4,6 @@ from core.state import STATE
 from core.ontology import AccountMode, OrderBook, OrderBookLevel
 from forecasting.hybrid_engine import HybridForecastEngine
 from strategies.intelligence import StrategyIntelligence
-from strategies.disagreement import HybridDisagreementEngine
 from execution.hybrid_path import HybridAutonomousExecutionPath
 from archive.routes.v6_routes import identity as v6_identity
 from datetime import datetime, timezone
@@ -23,7 +22,6 @@ async def identity():
 
 @router.get("/model-router/status")
 async def model_router_status():
-    from model_router.router import ModelRouter
     from model_router.config import load_model_routing_config
     cfg = load_model_routing_config()
     return {

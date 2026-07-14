@@ -10,7 +10,6 @@ from enum import Enum
 from typing import Any
 
 from core.live_submit_state import (
-    LIVE_SUBMIT_REQUIRED_ACK,
     validate_default_disabled,
     validate_operator_one_proof_enabled,
 )

@@ -117,7 +117,6 @@ async def test_smoke_v2_reports_no_raw_prompts_or_keys(clean_env, smoke_v2_runne
 
 @pytest.mark.asyncio
 async def test_smoke_v2_total_timeout_is_bounded(clean_env, no_project_env, monkeypatch, smoke_v2_runner):
-    import asyncio
     import model_router.smoke as smoke_module
 
     monkeypatch.setattr(smoke_module, "SMOKE_TOTAL_TIMEOUT", 1)

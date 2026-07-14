@@ -1,5 +1,4 @@
 from datetime import datetime, timezone, timedelta
-from collections import defaultdict
 from core.ontology import Position
 
 

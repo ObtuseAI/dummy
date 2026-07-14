@@ -1,6 +1,5 @@
 """Tests for the edge intelligence engine."""
 
-import pytest
 
 from predator_mesh.edge.engine import EdgeIntelligenceEngine
 from predator_mesh.edge.models import (

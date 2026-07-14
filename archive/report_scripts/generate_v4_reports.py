@@ -10,7 +10,6 @@ import subprocess
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
-from unittest.mock import AsyncMock
 
 ROOT = Path(__file__).parent.parent.parent
 ARTIFACTS = ROOT / "artifacts" / "dumby"
@@ -201,7 +200,7 @@ async def generate_firewall_rehearsal_report() -> dict:
     }
 
     # oversized / cap violation
-    from core.ontology import LiveOrderRequest, OrderBook, OrderBookLevel, Forecast, EdgeEstimate, Position
+    from core.ontology import LiveOrderRequest, OrderBook, OrderBookLevel, Forecast, Position
     from decimal import Decimal
     from datetime import datetime, timezone
     from unittest.mock import patch

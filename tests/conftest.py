@@ -87,7 +87,6 @@ def no_project_env(monkeypatch, tmp_path):
     """Point the credential resolver at a directory with no .env file."""
     import model_router.credential_source as cred
 
-    original = cred.PROJECT_ENV_PATH
     fake = tmp_path / "no_env_here"
     monkeypatch.setattr(cred, "PROJECT_ENV_PATH", fake)
     # Reset module-level caches if any resolver instances reuse them.

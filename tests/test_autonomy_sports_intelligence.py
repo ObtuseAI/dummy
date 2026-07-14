@@ -3,7 +3,6 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 
-import pytest
 
 from autonomy.forecaster import EnsembleForecaster
 from autonomy.ontology import MarketView, Signal, Vertical
@@ -385,7 +384,7 @@ def test_live_signal_prices_live_total_and_spread(tmp_path):
         # Hermetic stub -- no plays -> base_out_state is None, a no-op; this
         # test only cares about the live total/spread pricing baseline, and
         # must not make a real network call.
-        live_book=EspnSummaryBook(league="mlb", fetch_summary=lambda l, e: {}),
+        live_book=EspnSummaryBook(league="mlb", fetch_summary=lambda _league, _event: {}),
     )
     total = source.generate(_market(
         "KXMLBTOTAL-26JUL102005HOUTEX-9", "Total Runs?", floor_strike=8.5))
@@ -722,7 +721,7 @@ def test_live_total_signal_base_out_absent_is_byte_identical(tmp_path):
     client._cache[("mlb", "20260710")] = [
         _mlb_game(status="in", home_score=6, away_score=3, current_period=8)
     ]
-    empty_book = EspnSummaryBook(league="mlb", fetch_summary=lambda l, e: {})
+    empty_book = EspnSummaryBook(league="mlb", fetch_summary=lambda _league, _event: {})
 
     def boom(_l, _e):
         raise RuntimeError("espn down")

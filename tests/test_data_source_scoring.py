@@ -1,6 +1,5 @@
 """Tests for the data source scorer."""
 
-import pytest
 
 from predator_mesh.data_inflow.models import DataSourceCandidate, SourceCategory
 from predator_mesh.data_inflow.scoring import (

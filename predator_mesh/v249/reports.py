@@ -6,6 +6,7 @@ from typing import Any
 
 from predator_mesh import staged_gate_common as sgc
 from predator_mesh.v249 import MILESTONE
+from predator_mesh.v31.probes import CAPS_HASH, LIVE_SUBMIT_HASH
 
 ARTIFACTS = sgc.ARTIFACTS
 
@@ -32,8 +33,6 @@ VERIFICATION_COMMANDS = [
 ]
 
 CONTROLLER_REPORT = "v249_live_submit_caps_rehearsal_controller_report.json"
-
-from predator_mesh.v31.probes import CAPS_HASH, LIVE_SUBMIT_HASH
 
 REHEARSAL_CASE_NAMES = ["absent_config", "disabled_config", "valid_fixture", "missing_operator_metadata", "caps_too_broad", "caps_missing_limit", "kill_switch_missing", "hash_changed_fail_closed"]
 

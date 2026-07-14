@@ -16,7 +16,6 @@ from pathlib import Path
 import pytest
 
 from autonomy.sports.power_ratings import (
-    ConsensusMargin,
     ELO_POINTS_PER_MARGIN,
     EloSource,
     EspnBpiSource,

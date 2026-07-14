@@ -32,13 +32,11 @@ from pathlib import Path
 from typing import Any
 
 from fastapi import APIRouter
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
 from core.live_submit_state import (
     LIVE_SUBMIT_REQUIRED_ACK,
     LIVE_SUBMIT_TYPED_CONFIRMATION,
-    classify_live_submit_state,
-    validate_default_disabled,
     validate_operator_one_proof_enabled,
 )
 from core import proof_lock

@@ -14,7 +14,6 @@ from pathlib import Path
 from typing import Any
 
 from predator_mesh.v31.probes import CAPS_HASH, LIVE_SUBMIT_HASH
-from predator_mesh.v36.run import EXACT_GATE_ENV
 from predator_mesh.v55.reports import (
     DEFAULT_APPROVAL_INPUT_PATH,
     EXACT_APPROVAL_PHRASE,

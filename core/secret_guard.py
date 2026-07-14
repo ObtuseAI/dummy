@@ -1,4 +1,4 @@
-import os, re
+import os
 from typing import Any
 
 _SENSITIVE_KEYS = {

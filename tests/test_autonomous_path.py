@@ -1,9 +1,8 @@
 import json
 import os
 from datetime import datetime, timezone
-from decimal import Decimal
 from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
@@ -22,7 +21,6 @@ from execution.autonomous_path import (
     generate_autonomous_live_capped_path_report,
     generate_firewall_order_path_report,
 )
-from forecasting.engine import ForecastEngine
 from live_firewall.exposure_tracker import ExposureTracker
 from live_firewall.firewall import LiveBrokerFirewall
 import live_firewall.firewall as firewall_module

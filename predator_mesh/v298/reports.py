@@ -11,7 +11,6 @@ from pathlib import Path
 from typing import Any
 
 from core.env_loader import kalshi_credential_status
-from core.live_execution_mode import LIVE_PROOF_ENV_ACK
 from core.ontology import LiveOrderResult
 from core.proof_lock import proof_lock_clear as _proof_lock_clear
 from live_firewall.exposure_tracker import ExposureTracker
@@ -274,7 +273,6 @@ def _controller(baseline_status: str, arm: dict[str, Any] | None = None, **kw: A
     broker_rejection_captured = bool(not result.success and result.error and result.error != "RUNNER_EXCEPTION")
     broker_order_id = result.order_id if result.success else None
     broker_rejection_reason = result.error if broker_rejection_captured else None
-    non_broker_double_used = False
     proof_is_real = real_broker_contacted
 
     # Structured broker-rejection diagnostics (legacy-safe fallback).

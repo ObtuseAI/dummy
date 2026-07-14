@@ -34,18 +34,21 @@ def main() -> dict[str, Any]:
     from predator_mesh.v223.reports import build_scoreboard_v2
 
     packet = dict(sgc.load_artifact("v215_operator_activation_packet_controller_report.json"))
-    packet["generated_at"] = sgc.now_iso(); packet["read_only"] = True
+    packet["generated_at"] = sgc.now_iso()
+    packet["read_only"] = True
     sgc.write_report("operator_activation_packet_v215.json", packet)
 
     dry = dict(sgc.load_artifact("v217_zero_broker_dry_validation_controller_report.json"))
-    dry["generated_at"] = sgc.now_iso(); dry["broker_contacted"] = False
+    dry["generated_at"] = sgc.now_iso()
+    dry["broker_contacted"] = False
     sgc.write_report("zero_broker_dry_validation_v217.json", dry)
 
     arming = dict(sgc.load_artifact("v218_final_live_proof_arming_check_controller_report.json"))
     arming["generated_at"] = sgc.now_iso()
     sgc.write_report("final_arming_check_v218.json", arming)
 
-    scoreboard = build_scoreboard_v2(); scoreboard["generated_at"] = sgc.now_iso()
+    scoreboard = build_scoreboard_v2()
+    scoreboard["generated_at"] = sgc.now_iso()
     sgc.write_report("completion_scoreboard_v223.json", scoreboard)
 
     verdicts = [e["verdict"] for e in stage_finals.values()]

@@ -17,9 +17,9 @@ from typing import Any
 
 import httpx
 
-from repo_harvester.manifest import ALL_REPOS_V2, REPOS_V2
-from repo_harvester.source_scanner import SCAN_CATEGORIES, categorize_text, scan_text
-from repo_harvester.adapter_planner import classify_repo_source, generate_adapter_plan_v3
+from repo_harvester.manifest import ALL_REPOS_V2
+from repo_harvester.source_scanner import SCAN_CATEGORIES, categorize_text
+from repo_harvester.adapter_planner import generate_adapter_plan_v3
 from core.ontology import RepoVerdict
 
 OUT = Path("C:/src/engine/dummy/artifacts/repo_harvester")

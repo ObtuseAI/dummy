@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import json
 
-import pytest
 
 from archive.report_scripts.generate_v8_1_reports import (
     generate_model_provider_operator_repair_recommendations_v1,

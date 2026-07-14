@@ -1,4 +1,3 @@
-import pytest
 from repo_harvester.source_scanner import scan_text, DIRECT_ORDER_PATTERNS, SECRET_PATTERNS
 from repo_harvester.adapter_planner import generate_adapter_plan
 from core.ontology import RepoVerdict

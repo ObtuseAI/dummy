@@ -1,4 +1,3 @@
-import os
 
 import pytest
 from forecasting.real_market_loop import RealMarketForecastLoop

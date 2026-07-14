@@ -580,8 +580,6 @@ def generate_dashboard_v28_report_v1() -> dict[str, Any]:
 
 
 def dummy_mission_state_report_v14(reports: dict[str, dict[str, Any]]) -> dict[str, Any]:
-    candidates = github_candidate_manifest()
-    counts = _counts()
     partial_causes = _partial_causes()
     partials = sorted(name for name, report in reports.items() if report.get("verdict") == "PARTIAL")
     return _safe_payload(

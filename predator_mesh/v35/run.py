@@ -2131,14 +2131,11 @@ class DomainMarketClassScoreboardV20Result:
 
 class DomainMarketClassScoreboardV20:
     def build(self, state: dict[str, Any]) -> DomainMarketClassScoreboardV20Result:
-        d = state["v34_default_state"]
         e = state["v34_enabled_state"]
         elig = state["live_score_sample_eligibility"]
         mode = state["enabled_evidence_mode_record"].evidence_mode
-        default_obs = d["due_forecast_observation_run"].observed_forecast_count
         enabled_obs = e["due_forecast_observation_run"].observed_forecast_count
         enabled_scored = e["live_score_observation_run"].live_scored_count
-        default_scored = d["live_score_observation_run"].live_scored_count
         base_rows = [
             {"market_class": "WEATHER_THRESHOLD", "source_family": "weather"},
             {"market_class": "CRYPTO_PRICE_THRESHOLD", "source_family": "crypto"},

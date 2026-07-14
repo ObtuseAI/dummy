@@ -1,5 +1,50 @@
 # Bundle 2 evidence and governance review — 2026-07-14
 
+## Items 4–6 refresh — 2026-07-14 19:52Z
+
+**Completed decision: keep both experiment and promotion gates closed.** This
+refresh supersedes the point-in-time counts below where they differ. The ledger
+added 694 settled markets since the earlier review (85,367 to 86,061), but it
+added no witnessed settled trades and no fill-conditioned calibration rows.
+Operational results therefore remain 22 witnessed settled shadow trades across
+19 event clusters, net **-380 cents**, with a 0.4062 profit factor and -48.72%
+ROI on entry cost.
+
+Fill-conditioned calibration also remains negative: forecast Brier is
+0.242447 versus market Brier 0.208959, a mean advantage of **-0.033488** with
+95% interval [-0.084257, 0.017280]. Forecast log loss is 0.726554 versus market
+log loss 0.614914. The crypto witnessed-fill subset remains 11 decisions, net
+**-282 cents**, with ensemble Brier 0.253315 versus market Brier 0.185064.
+
+The refreshed mechanical readiness report lists only two promotion candidates:
+
+| Scope | Clusters | Mean edge | 95% interval | Decision |
+|---|---:|---:|---:|---|
+| `crypto_equities_flow|15m_direction|15m` | 485 | 0.011316 | [0.003178, 0.019454] | Mechanically eligible; experiment deferred |
+| `crypto_blend_sigma|15m_direction|15m` | 440 | 0.009803 | [0.001465, 0.018141] | Mechanically eligible; experiment deferred |
+
+Item 5's bounded crypto shadow experiment is **not launched**. The preferred
+first candidate, `crypto_empirical_regime`, is no longer mechanically eligible
+in the refreshed report, while the two eligible scopes do not overcome the
+negative witnessed-fill evidence. Launching a new treatment now would add
+another correlated comparison before the current execution problem has
+accumulated enough new fills to distinguish signal quality from fill selection.
+
+Item 6's promotion review is **NO-GO**. The explicit prerequisites—positive
+fill-conditioned calibration and positive settled P&L—are both unmet. No
+`promotions.json` exists, no source weight was written, no automatic demotion
+was produced, and execution/capital authority remains closed. Re-open items 5
+and 6 only after materially more witnessed fills settle and both operational
+gates turn positive.
+
+Refreshed artifacts:
+
+- `runtime/autonomy/strategy_mining_report.json` (686,967 settled rows; 12 candidates)
+- `runtime/autonomy/clv_report.json` (96 graded entries; 37 event clusters)
+- `runtime/autonomy/loss_attribution.json` (24 scopes; 13 bleeding scopes)
+- `runtime/autonomy/readiness_report.json` (54 scopes; two mechanical candidates)
+- `artifacts/dummy/backtests/AUTONOMY_BACKTEST_20260714T195201110138.json`
+
 ## Decision
 
 **DEFER every promotion and every sports retune.** The four crypto scopes pass

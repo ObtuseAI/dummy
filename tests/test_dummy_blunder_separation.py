@@ -1,6 +1,5 @@
 from pathlib import Path
 import json
-import pytest
 
 ROOT = Path(__file__).parent.parent
 BLUNDER_ROOT = Path("C:/src/engine/obtuse/blunder")

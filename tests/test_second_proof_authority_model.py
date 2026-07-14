@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-from pathlib import Path
 
 import pytest
 
@@ -21,7 +20,6 @@ from core.second_proof_lock import (
     consume_second_proof_lock,
     create_second_proof_lock,
     is_second_proof_lock_consumed,
-    second_proof_lock_path,
 )
 
 

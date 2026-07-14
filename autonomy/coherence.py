@@ -62,7 +62,7 @@ from dataclasses import dataclass
 from typing import Any, Iterable
 
 from autonomy.mispricing import MispricingAssessment
-from autonomy.signals.sports_intelligence import SportsContract, parse_sports_contract
+from autonomy.signals.sports_intelligence import parse_sports_contract
 
 # Rung-gap must exceed this combined fee/spread slack to count as a real
 # monotonicity break (not just bid/ask noise).

@@ -140,7 +140,7 @@ async def main(run_tests: bool = True) -> dict[str, Any]:
         generate_v8_rehearsal_reports,
     )
 
-    model_paths = await _safe_generate(
+    await _safe_generate(
         "V8: Model Provider Reports", generate_v8_model_provider_reports.main()
     )
     firewall_prompt_results, firewall_output_results, firewall_leak = (

@@ -19,7 +19,7 @@ import shlex
 import subprocess
 import sys
 from pathlib import Path
-from typing import Any, Callable
+from typing import Callable
 
 APPLIANCE_DIR = Path(__file__).resolve().parent
 APPLIANCE_CLI = APPLIANCE_DIR / "operator_authority_appliance.py"

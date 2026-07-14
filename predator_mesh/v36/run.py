@@ -19,17 +19,8 @@ from predator_mesh.v31.probes import (
     AdapterProbeRunPlanV1,
     AdapterProbeRunSummaryV1,
     AdapterProbeTaskV1,
-    CAPS_HASH,
-    FakePublicProbeTransportV1,
     HttpJsonPublicProbeTransportV1,
-    LIVE_SUBMIT_HASH,
     ProbeTransportFailure,
-    PublicProbeGateDecisionV1,
-    PublicProbeEnvironmentFlagV1,
-    PublicProbeOperatorAcknowledgementV1,
-    PublicProbeGateSafetyProofV1,
-    PublicProbeGateConfigDiffProofV1,
-    PublicProbeGateIntentV1,
 )
 from predator_mesh.v34.run import build_default_v34_state
 from predator_mesh.v35 import MILESTONE as V35_MILESTONE
@@ -970,7 +961,6 @@ class V36CompoundingControlPlaneV20Result:
 class V36CompoundingControlPlaneV20:
     def build(self, state: dict[str, Any]) -> V36CompoundingControlPlaneV20Result:
         gate = state["exact_operator_gate_runtime_v5"]
-        next_action = state["source_truth_v17_real_probe_and_sample_readiness"].next_action
         return V36CompoundingControlPlaneV20Result(
             "PASS",
             ["exact-gate recheck", "bounded real read-only probe pass"],

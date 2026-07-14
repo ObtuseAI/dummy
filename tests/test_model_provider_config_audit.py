@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import pytest
 
 from archive.report_scripts.generate_v8_1_reports import generate_model_provider_config_audit_report_v1
 

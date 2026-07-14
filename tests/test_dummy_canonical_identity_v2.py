@@ -1,5 +1,4 @@
 import os
-import pytest
 
 
 def test_dummy_canonical_identity_v2():

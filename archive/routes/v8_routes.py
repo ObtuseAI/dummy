@@ -128,7 +128,7 @@ def _synthetic_opinion(market_ticker: str = "DASHBOARD-V8", contract_ticker: str
 # ---------------------------------------------------------------------------
 
 @router.get("/status")
-async def status() -> dict[str, Any]:
+async def status_report() -> dict[str, Any]:
     return {
         "project": "Dummy",
         "milestone": "DUMMY_V8_MODEL_ROUTING_FIREWALL_GOVERNOR_REHEARSAL_V1",
@@ -277,7 +277,7 @@ async def strategy_governor() -> dict[str, Any]:
     report_path = paths["report"]
     manifest_path = paths["manifest"]
     report = json.loads(report_path.read_text())
-    manifest = json.loads(manifest_path.read_text())
+    json.loads(manifest_path.read_text())
     return {
         "report_present": report_path.exists(),
         "manifest_present": manifest_path.exists(),

@@ -8,7 +8,6 @@ import pytest
 from model_router.config import ProviderConfig
 from model_router.providers import BaseModelProvider
 from model_router.smoke import LiveModelSmoke
-from model_router.tasks import ModelTask
 from archive.report_scripts.generate_v8_reports import main as orchestrator_main, ORCHESTRATOR_TIMEOUT_SECONDS
 
 

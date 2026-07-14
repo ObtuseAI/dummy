@@ -5,7 +5,6 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-import pytest
 
 from core.second_proof_intake import (
     ROUTE_CLASSIFIED_REJECTION_NEW_AUTHORITY_REQUIRED,

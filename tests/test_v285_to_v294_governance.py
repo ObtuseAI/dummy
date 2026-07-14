@@ -64,10 +64,12 @@ def test_v286_authority_seal_absent_fixture_fuzzy_broad() -> None:
     assert ok["seal_state"] == "SEAL_READY_FOR_ARMABILITY"
     assert sgc.CONTROLLED_PILOT_PHRASE not in str(ok.get("approval_hash", ""))
     assert ok["raw_phrase_serialized"] is False
-    fuzzy_m = valid_manifest(); fuzzy_m["approvals"] = {"exact_phrase": "bad"}
+    fuzzy_m = valid_manifest()
+    fuzzy_m["approvals"] = {"exact_phrase": "bad"}
     fuzzy = generate_all_v286_reports_for_tests(manifest=fuzzy_m)[ctrl]
     assert fuzzy["external_authority_seal_verifier_controller_status"] == "FAIL_CLOSED_AUTHORITY_SEAL_APPROVAL_PHRASE_INVALID"
-    broad_m = valid_manifest(); broad_m["reason"] = "grant full live trading approval to trade live markets"
+    broad_m = valid_manifest()
+    broad_m["reason"] = "grant full live trading approval to trade live markets"
     broad = generate_all_v286_reports_for_tests(manifest=broad_m)[ctrl]
     assert broad["external_authority_seal_verifier_controller_status"] == "FAIL_CLOSED_AUTHORITY_SEAL_BROAD_APPROVAL_REJECTED"
     assert broad["broad_language_rejected"] is True
@@ -128,7 +130,8 @@ def test_v289_execute_once_final_run_block_cases() -> None:
         "not_repeat": "EXECUTE_ONCE_FINAL_RUN_BLOCKED_REPEAT_AUTO_LOCKED",
     }
     for missing, expected in cases.items():
-        arm = full_authority_arm(); arm[missing] = False
+        arm = full_authority_arm()
+        arm[missing] = False
         d = generate_all_v289_reports_for_tests(arm=arm)[ctrl]
         assert d["execute_once_final_run_wrapper_v6_controller_status"] == expected, missing
         assert d["real_live_orders_submitted_count"] == 0

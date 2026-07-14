@@ -16,7 +16,6 @@ from predator_mesh.edge.models import MarketTerrainSnapshot
 from predator_mesh.lane_registry import build_default_lanes
 from predator_mesh.lanes.mesh_health import MeshHealthLane
 from predator_mesh.models import (
-    LaneState,
     MeshBudget,
     MeshContext,
     MeshResult,

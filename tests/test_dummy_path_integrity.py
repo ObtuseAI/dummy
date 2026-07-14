@@ -1,4 +1,3 @@
-from pathlib import Path
 
 
 def test_dummy_path_integrity():

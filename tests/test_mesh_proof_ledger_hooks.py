@@ -10,25 +10,17 @@ Tests are split into:
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
-from decimal import Decimal
 from pathlib import Path
 
 import pytest
 
-from core.ontology import Forecast, ForecastOpinion, OrderBook, OrderBookLevel
-from predator_mesh.aggression.models import AggressionAllocation
 from predator_mesh.budget import build_default_budget
 from predator_mesh.data_inflow.adapters import (
     BaseDataAdapter,
     KalshiReadOnlyAdapter,
-    MockDataAdapter,
 )
 from predator_mesh.data_inflow.models import DataSourceCandidate, SourceCategory
-from predator_mesh.edge.engine import EdgeIntelligenceEngine
-from predator_mesh.edge.models import MarketTerrainSnapshot
 from predator_mesh.hybrid_router import MeshHybridRouter
-from predator_mesh.lane_registry import LANE_REGISTRY, build_default_lanes
 from predator_mesh.lanes.anomaly_mining import AnomalyMiningLane
 from predator_mesh.lanes.calibration import CalibrationLane
 from predator_mesh.lanes.firewall_rehearsal import FirewallRehearsalLane
@@ -43,7 +35,6 @@ from predator_mesh.models import (
     LaneState,
     MeshContext,
     MeshPriority,
-    MeshProofRef,
     MeshResult,
     MeshTimeout,
 )

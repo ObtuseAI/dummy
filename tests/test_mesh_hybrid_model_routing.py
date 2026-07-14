@@ -11,9 +11,8 @@ import pytest
 from model_router.envelope import ModelResponseEnvelope, ModelRouteDecision
 from model_router.output_firewall import ModelOutputFirewall
 from model_router.prompt_firewall import PromptFirewallV2
-from model_router.router import ModelRouter
 from model_router.tasks import ModelTask
-from predator_mesh.hybrid_router import HybridModelResult, MeshHybridRouter
+from predator_mesh.hybrid_router import MeshHybridRouter
 
 
 class FakeRouter:

@@ -3,7 +3,6 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-import pytest
 
 from archive.report_scripts.generate_v8_1_reports import generate_no_live_submit_still_disabled_report_v8_1
 

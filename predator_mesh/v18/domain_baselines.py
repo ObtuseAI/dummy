@@ -8,7 +8,6 @@ from dataclasses import dataclass
 from typing import Any
 
 from predator_mesh.v17.forecasts import ForecastSnapshot, ForecastSnapshotLedger
-from predator_mesh.v18 import DOMAINS
 from predator_mesh.v18.research_packets import ResearchPacketFactory
 
 

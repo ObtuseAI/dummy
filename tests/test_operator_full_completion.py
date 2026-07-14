@@ -88,14 +88,16 @@ def test_doctor_read_only_writes_report(tmp_path):
 
 # --- one-shot-prepare rejects fuzzy / broad / market / scale ---
 def test_one_shot_prepare_rejects_fuzzy(tmp_path):
-    a = _prep_args(tmp_path / "pack"); a[a.index("--typed-approval") + 1] = "wrong"
+    a = _prep_args(tmp_path / "pack")
+    a[a.index("--typed-approval") + 1] = "wrong"
     rc, out = _run(a)
     assert rc == fc.EXIT_SAFETY
 
 
 def test_one_shot_prepare_rejects_broad_market_scale(tmp_path):
     for reason in ("grant full live trading", "pilot allow market order", "pilot enable scale"):
-        a = _prep_args(tmp_path / "pack"); a[a.index("--reason") + 1] = reason
+        a = _prep_args(tmp_path / "pack")
+        a[a.index("--reason") + 1] = reason
         rc, out = _run(a)
         assert rc == fc.EXIT_SAFETY
 

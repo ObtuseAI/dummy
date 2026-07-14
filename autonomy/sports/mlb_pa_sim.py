@@ -12,6 +12,14 @@ import random
 from dataclasses import dataclass
 from typing import Any
 
+from autonomy.sports.statsapi import (
+    BatterRates,
+    MlbGameContext,
+    PitcherRates,
+    batter_rates_vs,
+    pitcher_rates_vs,
+)
+
 # Approximate MLB-wide per-plate-appearance outcome rates (2020s). These are the
 # fallback for missing player rates and the denominator for the log5 combination.
 LEAGUE: dict[str, float] = {
@@ -80,10 +88,6 @@ def log5(batter: float, pitcher: float, league: float) -> float:
         return min(1.0, max(0.0, 0.5 * (batter + pitcher)))
     return min(1.0, max(0.0, numerator / denominator))
 
-
-from autonomy.sports.statsapi import (
-    BatterRates, MlbGameContext, PitcherRates, batter_rates_vs, pitcher_rates_vs,
-)
 
 PA_OUTCOMES = ("k", "bb", "hbp", "single", "double", "triple", "hr", "out")
 

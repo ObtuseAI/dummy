@@ -8,7 +8,6 @@ stored or returned.
 """
 from __future__ import annotations
 
-import asyncio
 import os
 from dataclasses import dataclass, field
 from typing import Any
@@ -20,7 +19,6 @@ from model_router.credential_source import ProviderCredentialSourceResolver
 from model_router.error_classifier import classify_provider_error_v2
 from model_router.prompt_firewall import PromptFirewallV2
 from model_router.route_mode import ProviderRouteModeResolver
-from model_router.tasks import ModelTask
 
 
 _DEFAULT_BASE_URLS: dict[str, str] = {

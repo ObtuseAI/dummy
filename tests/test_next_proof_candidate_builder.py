@@ -1,15 +1,10 @@
-import json
-import os
-from pathlib import Path
 
-import pytest
 
 from core.kalshi_market_validator import MarketMetadata, ContractMetadata
 from core.proof_order_candidate import (
     build_validated_proof_candidate,
     write_candidate_packet,
     safe_preview,
-    compute_candidate_hash,
 )
 
 

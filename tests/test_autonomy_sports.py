@@ -7,7 +7,7 @@ from datetime import datetime, timedelta, timezone
 from autonomy.ontology import MarketView, Vertical
 from autonomy.signals.sports_elo import SportsEloSignal, parse_game_ticker
 from autonomy.sports.elo import BASE_RATING, EloModel, win_probability
-from autonomy.sports.espn import EspnClient, Game, parse_scoreboard
+from autonomy.sports.espn import EspnClient, parse_scoreboard
 
 
 # ---------------------------------------------------------------- Elo model
@@ -126,7 +126,7 @@ def test_parse_scoreboard_preserves_completed_tie_instead_of_home_win():
 
 
 def test_find_matchup_ignores_order():
-    client = EspnClient(fetch_scoreboard=lambda l, d: _scoreboard([_event("1", "DET", "PHI", "pre")]))
+    client = EspnClient(fetch_scoreboard=lambda _league, _date: _scoreboard([_event("1", "DET", "PHI", "pre")]))
     game = client.find_matchup("mlb", "PHI", "DET")
     assert game is not None and game.home == "DET"
 
@@ -144,7 +144,7 @@ def _market(ticker="KXMLBGAME-26JUL111810PHIDET-PHI"):
 
 def test_sports_signal_uses_home_edge(tmp_path):
     # DET is home; equal ratings -> DET (opponent) favored, so PHI (subject, away) < 0.5.
-    client = EspnClient(fetch_scoreboard=lambda l, d: _scoreboard([_event("1", "DET", "PHI", "pre")]))
+    client = EspnClient(fetch_scoreboard=lambda _league, _date: _scoreboard([_event("1", "DET", "PHI", "pre")]))
     signal = SportsEloSignal(espn=client, elo_dir=tmp_path)
     result = signal.generate(_market())
     assert result is not None
@@ -153,13 +153,13 @@ def test_sports_signal_uses_home_edge(tmp_path):
 
 
 def test_sports_signal_skips_started_game(tmp_path):
-    client = EspnClient(fetch_scoreboard=lambda l, d: _scoreboard([_event("1", "DET", "PHI", "in")]))
+    client = EspnClient(fetch_scoreboard=lambda _league, _date: _scoreboard([_event("1", "DET", "PHI", "in")]))
     signal = SportsEloSignal(espn=client, elo_dir=tmp_path)
     assert signal.generate(_market()) is None
 
 
 def test_sports_signal_neutral_when_game_not_found(tmp_path):
-    client = EspnClient(fetch_scoreboard=lambda l, d: _scoreboard([]))
+    client = EspnClient(fetch_scoreboard=lambda _league, _date: _scoreboard([]))
     signal = SportsEloSignal(espn=client, elo_dir=tmp_path)
     result = signal.generate(_market())
     assert result is not None
@@ -168,7 +168,7 @@ def test_sports_signal_neutral_when_game_not_found(tmp_path):
 
 
 def test_sports_signal_reflects_trained_ratings(tmp_path):
-    client = EspnClient(fetch_scoreboard=lambda l, d: _scoreboard([_event("1", "DET", "PHI", "pre")]))
+    client = EspnClient(fetch_scoreboard=lambda _league, _date: _scoreboard([_event("1", "DET", "PHI", "pre")]))
     signal = SportsEloSignal(espn=client, elo_dir=tmp_path)
     model = signal._model("mlb")
     for _ in range(30):
@@ -184,7 +184,7 @@ def test_warmup_replays_completed_games(tmp_path):
         _event("2", "PHI", "DET", "post", home_winner=True, date="2026-07-02T00:00Z"),
         _event("3", "NYY", "BOS", "pre", date="2026-07-11T00:00Z"),
     ]
-    client = EspnClient(fetch_scoreboard=lambda l, d: _scoreboard(events))
+    client = EspnClient(fetch_scoreboard=lambda _league, _date: _scoreboard(events))
     signal = SportsEloSignal(espn=client, elo_dir=tmp_path)
     model = signal.warmup("mlb", ["20260701-20260710"])
     assert model.games_seen == 2  # only the two 'post' games

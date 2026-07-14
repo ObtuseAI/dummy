@@ -9,7 +9,7 @@ from enum import Enum
 from typing import Any
 
 from core.secret_guard import redact
-from kalshi.live_data import KalshiCredentialsMissing, KalshiRealReadOnly
+from kalshi.live_data import KalshiRealReadOnly
 from predator_mesh.v11.orderbook import OrderbookLiquidityModel
 
 

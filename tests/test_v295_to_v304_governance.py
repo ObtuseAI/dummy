@@ -107,7 +107,8 @@ def test_v298_final_proof_runner_block_cases() -> None:
         "not_repeat": "EXECUTE_ONCE_FINAL_PROOF_RUNNER_BLOCKED_REPEAT_AUTO_LOCKED",
     }
     for missing, expected in cases.items():
-        arm = full_authority_arm(); arm[missing] = False
+        arm = full_authority_arm()
+        arm[missing] = False
         d = generate_all_v298_reports_for_tests(arm=arm)[ctrl]
         assert d["execute_once_final_proof_runner_v7_controller_status"] == expected, missing
         assert d["real_live_orders_submitted_count"] == 0

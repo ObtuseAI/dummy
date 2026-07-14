@@ -11,7 +11,6 @@ from predator_mesh.v12.orderbook_snapshot import (
     OrderbookSnapshotRequest,
     OrderbookSnapshotResult,
     RealKalshiOrderbookSnapshotAdapter,
-    default_snapshot_request,
 )
 from predator_mesh.v12.orderbook_v2 import OrderbookLiquidityModelV2
 from predator_mesh.v13.credential_bridge import KalshiReadOnlyCredentialBridge

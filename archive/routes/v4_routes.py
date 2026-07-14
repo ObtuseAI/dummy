@@ -14,8 +14,7 @@ from core.ontology import AccountMode, OrderBook, OrderBookLevel
 from core.secret_guard import redact
 from core.state import STATE
 from forecasting.engine import ForecastEngine
-from kalshi.live_data import KalshiRealReadOnly, KalshiCredentialsMissing
-from kalshi.normalizer import KalshiNormalizer
+from kalshi.live_data import KalshiRealReadOnly
 from strategies.scan import StrategyScanner
 
 router = APIRouter(prefix="/v4", tags=["v4"])

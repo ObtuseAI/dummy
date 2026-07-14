@@ -1,8 +1,6 @@
 import json
 from datetime import datetime, timezone
 from pathlib import Path
-from core.state import STATE
-from core.config_loader import load_caps
 
 ARTIFACTS = Path("C:/src/engine/dummy/artifacts/dummy")
 ARTIFACTS.mkdir(parents=True, exist_ok=True)
