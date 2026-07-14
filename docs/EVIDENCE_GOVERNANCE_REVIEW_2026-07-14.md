@@ -33,6 +33,24 @@ No retro rows, synthetic games, or lower-quality substitutes were inserted to
 make the counters move. The running monitor will record the first qualifying
 forward observations automatically.
 
+### Forward activation verification — 2026-07-14 19:33Z
+
+The two accumulation tasks were explicitly triggered after the live-model
+bundle was published. Both completed with Windows Task Scheduler result `0`:
+
+- `DummyMispricingMonitor` scanned 1,466 markets, produced one shortlist row
+  and zero actionable opportunities, and remains scheduled every two minutes.
+- `DummySportsSimulation` cycle `sports-20260714T193259` saw 87 sports markets,
+  wrote 61 point-in-time observations, reported no errors, and remains
+  scheduled every ten minutes.
+
+The sports cycle's authority record remained fully closed: public GET only,
+challenger only, no credentials, no broker contact, no execution authority,
+and no capital authority. The newly registered live source count remained zero
+because the slate contained no qualifying in-progress state. This verifies the
+forward collection path without mislabeling ordinary pregame observations as
+live evidence.
+
 ## Sports diagnosis
 
 No sports scope has the required 300 independent event clusters. The current
