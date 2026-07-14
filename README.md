@@ -53,7 +53,15 @@ Phase 2 adds the inactive, research-only
 [`agent control plane`](docs/VNEXT_PHASE2_AGENTIZATION.md) and its canonical
 [`contract catalog`](docs/VNEXT_PHASE2_CONTRACT_CATALOG.json): versioned
 contracts, lifecycle, health, permissions, deterministic mailbox/runtime, and
-read-only incumbent adapters. Phase 3 organism orchestration is not yet claimed.
+read-only incumbent adapters. Phase 3 adds the first deterministic,
+[`shadow-only forecast organism`](docs/VNEXT_PHASE3_ORGANISM.md) and compact
+[`template catalog`](docs/VNEXT_PHASE3_TEMPLATE_CATALOG.json) for native BTC
+15-minute direction and MLB pregame winner markets. Each episode freezes
+point-in-time evidence, generates and attacks competing futures, emits a typed
+forecast or abstention, simulates witnessed-depth paper execution, settles and
+grades every role, replays bounded proposals on distinct held-out clusters,
+and then dissolves. It cannot substitute for the incumbent or modify weights,
+orders, promotion, or capital.
 
 ## Current paper operation
 
