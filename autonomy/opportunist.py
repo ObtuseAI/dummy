@@ -48,19 +48,25 @@ def _favored(model_prob: float) -> tuple[str, float]:
 def _confirming_divergence(divergence: dict | None, side: str) -> dict | None:
     """Return the divergence dict iff it CONFIRMS the favored side, else None.
 
-    ``divergence`` is the home-signed power-ratings evidence
-    (``{gap, ...}`` where ``gap = ensemble_margin - our_engine_margin``, positive
-    when the external ensemble is more bullish on the home team than our engine).
-    It confirms a YES (home) lean when ``gap > 0`` and a NO (away) lean when
-    ``gap < 0``; a zero/absent/malformed gap or a counter-signed one is not
-    surfaced. Pure evidence — this never changes the strike decision.
+    ``divergence`` carries a HOME-signed ``gap = ensemble_margin -
+    our_engine_margin`` (positive when the external ensemble is more bullish on
+    the HOME team than our engine) plus ``subject_is_home`` telling us how this
+    market's YES side relates to the home team. The opportunist's ``side`` is
+    SUBJECT-oriented, so we re-sign the gap to the subject first: a YES on an
+    away-subject market ("Will [away] win?") is confirmed by a gap that favors
+    the AWAY team (home-signed gap < 0). A YES lean is confirmed by a positive
+    subject-oriented gap, a NO lean by a negative one. Zero/absent/malformed or
+    counter-signed gaps are not surfaced. Pure evidence — never gates the strike.
     """
     if not divergence:
         return None
     gap = divergence.get("gap")
     if not isinstance(gap, (int, float)) or isinstance(gap, bool) or gap == 0:
         return None
-    confirms = gap > 0 if side == "YES" else gap < 0
+    # Re-sign the home-signed gap to this market's subject. Absent orientation
+    # defaults to home-subject (backward-compatible with a home-implied dict).
+    subject_gap = gap if divergence.get("subject_is_home", True) else -gap
+    confirms = subject_gap > 0 if side == "YES" else subject_gap < 0
     return divergence if confirms else None
 
 

@@ -108,17 +108,28 @@ def _build():
         except Exception:
             return None
 
+    # CF1: the single power-ratings source instance, resolved once. divergence_fn
+    # queries ONLY this source rather than re-running the whole registry (which
+    # forecast_fn already did this pass) -- a full re-run would re-execute every
+    # source's generate() and double-count failures toward its circuit breaker.
+    power_signal = next(
+        (s for s in brain.registry.sources() if getattr(s, "name", "") == "power_ratings"),
+        None,
+    )
+
     def divergence_fn(market):
-        # CF1: the power-ratings challenger's own divergence evidence for this
-        # market (None unless the external-ratings ensemble disagreed with our
-        # engine while the ratings sources agreed). Surfaced as buy-low evidence
-        # only; power_ratings stays an unpromoted challenger, so this never gates
-        # a strike. Fail-closed: unrouted/crypto markets and any error -> None.
-        try:
-            for sig in brain.registry.signals_for(market):
-                if sig.source.startswith("power_ratings_"):
-                    return (sig.features or {}).get("power_divergence")
+        # The power-ratings challenger's own divergence evidence for this market
+        # (None unless the external-ratings ensemble disagreed with our engine
+        # while the ratings sources agreed). Surfaced as buy-low evidence only;
+        # power_ratings stays an unpromoted challenger, so this never gates a
+        # strike. Fail-closed: no source / unrouted / crypto / any error -> None.
+        if power_signal is None:
             return None
+        try:
+            if not power_signal.applicable(market):
+                return None
+            signal = power_signal.generate(market)
+            return (signal.features or {}).get("power_divergence") if signal else None
         except Exception:
             return None
 

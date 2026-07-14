@@ -186,9 +186,10 @@ def test_unknown_conviction_tier_is_treated_as_no_drop():
 # ---------------------------------------------------------------------------
 
 
-def _confirm_div(gap: float) -> dict:
-    return {"sport": "nfl", "gap": gap, "ensemble_margin": 7.0,
-            "our_engine_margin": 7.0 - gap, "dispersion": 1.0, "kalshi_mid": 0.6}
+def _confirm_div(gap: float, subject_is_home: bool = True) -> dict:
+    return {"sport": "nfl", "subject_is_home": subject_is_home, "gap": gap,
+            "ensemble_margin": 7.0, "our_engine_margin": 7.0 - gap,
+            "dispersion": 1.0, "kalshi_mid": 0.6}
 
 
 def test_confirming_divergence_surfaces_on_opportunity_without_changing_gating():
@@ -239,3 +240,23 @@ def test_no_favorite_side_confirming_divergence_for_no_side():
         power_divergence=_confirm_div(gap=-4.0)))
     assert opp is not None and opp.side == "NO"
     assert opp.power_divergence == _confirm_div(gap=-4.0)
+
+
+def test_away_subject_reorients_the_home_signed_gap():
+    # Away-subject market ("Will [away] win?"): YES favored, but a HOME-signed
+    # gap>0 means the ensemble leans HOME -> it CONTRADICTS a YES-on-away lean,
+    # so it must NOT surface. Only a gap<0 (ensemble leans away) confirms.
+    div_home_lean = _confirm_div(gap=3.0, subject_is_home=False)   # ensemble -> home
+    div_away_lean = _confirm_div(gap=-3.0, subject_is_home=False)  # ensemble -> away
+
+    def _strike(divergence):
+        eng = OpportunistEngine()
+        eng.observe(_assess(model_prob=0.75, market_prob=0.70, side="YES", edge=0.03))
+        return eng.observe(_assess(
+            model_prob=0.75, market_prob=0.60, side="YES", edge=0.12,
+            power_divergence=divergence))
+
+    contradicting = _strike(div_home_lean)
+    confirming = _strike(div_away_lean)
+    assert contradicting is not None and contradicting.power_divergence is None
+    assert confirming is not None and confirming.power_divergence == div_away_lean
