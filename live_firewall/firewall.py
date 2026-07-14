@@ -13,6 +13,7 @@ from core.live_execution_mode import LiveExecutionMode, classify_live_execution_
 from core.ontology import AccountMode, LiveOrderRequest, FirewallVerdict, LiveOrderResult, OrderBook, Forecast, Position
 from core.proof_lock import proof_lock_clear as _proof_lock_clear
 from live_firewall.exposure_tracker import ExposureTracker
+from live_firewall.secret_sentinel import scan_text_for_risk
 from compliance.governor import assess_compliance
 from core.logger import logger
 from core.live_submit_state import is_live_submit_armed, LIVE_SUBMIT_REQUIRED_ACK
@@ -120,16 +121,7 @@ class RehearsalVerdict:
 
 
 def _check_secret_redaction(text: str) -> bool:
-    # Load the inherited Blunder sentinel module directly from its file path so
-    # we do not trigger the original package __init__ (which still references the
-    # original `blunder` namespace).
-    import importlib.util
-    import pathlib
-    sentinel_path = pathlib.Path(__file__).parent.parent / "core" / "inherited_blunder" / "inflow" / "secret_sentinel.py"
-    spec = importlib.util.spec_from_file_location("inherited_secret_sentinel", sentinel_path)
-    sentinel = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(sentinel)
-    return len(sentinel.scan_text_for_risk(text)) == 0
+    return not scan_text_for_risk(text)
 
 
 class LiveBrokerFirewall:

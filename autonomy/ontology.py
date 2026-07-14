@@ -22,7 +22,7 @@ class SessionMode(str, Enum):
 
 
 class Stage(int, Enum):
-    """Self-promotion ladder. The system graduates itself on evidence."""
+    """Risk stage ladder; advancement requires explicit human promotion."""
 
     SHADOW_ONLY = 0
     CANARY = 1  # tiny notional, few markets

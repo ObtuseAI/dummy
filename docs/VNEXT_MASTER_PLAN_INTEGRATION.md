@@ -22,6 +22,19 @@ All vNext components carry the maturity label
 `EXPERIMENTAL_SOVEREIGN_FORECASTING` until the required internal claims are
 demonstrated.
 
+## Implementation status
+
+| Phase | Status | Evidence |
+|---|---|---|
+| Phase 0 — incumbent baseline and governance | Complete (2026-07-14) | `VNEXT_PHASE0_BASELINE.json`, `VNEXT_PHASE0_GOVERNANCE_AUDIT.md`, `VNEXT_PROTECTED_SURFACES.json` |
+| Phase 1 — constitution, protocols, causal time | Complete (2026-07-14) | `dummy/constitution`, `dummy/protocols`, `dummy/chronos`, focused replay/import/firewall tests |
+| Phase 2 — agent adapters and lifecycle | Next | No implementation claim yet |
+| Phases 3–8 | Pending | No implementation or performance claim yet |
+
+“Complete” here means the phase contract and its local exit gate are satisfied;
+it does not mean vNext is production-promoted. The frozen baseline remains
+`NOT_READY`, and no vNext component has capital or execution authority.
+
 ## Why this design is strong
 
 - It makes evidence, causal time, abstention, and settlement truth foundational.

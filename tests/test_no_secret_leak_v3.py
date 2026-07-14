@@ -2,6 +2,7 @@
 
 import os
 import sys
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 import pytest
@@ -50,19 +51,41 @@ def _file_matches(path: Path, needles: list[tuple[str, bytes]]) -> set[str]:
 
 
 def _find_offenders(paths, secrets):
-    offenders = []
+    """Scan the corpus concurrently without putting secrets in process args.
+
+    The artifact store contains thousands of immutable snapshots.  One Python
+    file-open loop eventually exceeds the repository's per-test timeout as the
+    store grows.  Threads keep the same exhaustive byte scan while overlapping
+    Windows file-open/Defender latency; secrets never leave this process.
+    """
+
     encoded_secrets = [
         (key, value.encode("utf-8"))
         for key, value in secrets
     ]
-    for path in paths:
-        if not path.is_file():
-            continue
+    files = sorted(path for path in paths if path.is_file())
+
+    def scan(path: Path) -> tuple[Path, set[str], str | None]:
         try:
-            matches = _file_matches(path, encoded_secrets)
-        except OSError:
-            continue
-        offenders.extend((key, str(path)) for key, _value in encoded_secrets if key in matches)
+            return path, _file_matches(path, encoded_secrets), None
+        except FileNotFoundError:
+            # Scheduled artifact rotation may remove a path after enumeration;
+            # a file that no longer exists is no longer part of the corpus.
+            return path, set(), None
+        except OSError as exc:
+            return path, set(), type(exc).__name__
+
+    worker_count = min(32, max(4, (os.cpu_count() or 4) * 2), len(files) or 1)
+    offenders: list[tuple[str, str]] = []
+    with ThreadPoolExecutor(max_workers=worker_count) as pool:
+        for path, matches, scan_error in pool.map(scan, files):
+            if scan_error is not None:
+                offenders.append(("SCAN_ERROR", f"{path}:{scan_error}"))
+            offenders.extend(
+                (key, str(path))
+                for key, _value in encoded_secrets
+                if key in matches
+            )
     return offenders
 
 
@@ -86,6 +109,21 @@ def test_secret_leak_detector_catches_cross_chunk_value(tmp_path, monkeypatch):
         [leaked], [("KALSHI_API_KEY_ID", "sentinel-secret-value")]
     )
     assert offenders == [("KALSHI_API_KEY_ID", str(leaked))]
+
+
+def test_secret_leak_detector_fails_closed_on_unreadable_file(tmp_path, monkeypatch):
+    artifact = tmp_path / "unreadable.json"
+    artifact.write_text("{}", encoding="utf-8")
+
+    def unreadable(_path, _needles):
+        raise PermissionError("fixture")
+
+    monkeypatch.setattr(sys.modules[__name__], "_file_matches", unreadable)
+    offenders = _find_offenders(
+        [artifact],
+        [("KALSHI_API_KEY_ID", "sentinel-secret-value")],
+    )
+    assert offenders == [("SCAN_ERROR", f"{artifact}:PermissionError")]
 
 
 def test_no_real_secret_values_in_logs_and_artifacts():
