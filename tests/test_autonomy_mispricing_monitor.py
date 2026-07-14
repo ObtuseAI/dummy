@@ -370,3 +370,52 @@ def test_persist_paper_entries_no_entries_is_a_noop(tmp_path):
     written = persist_paper_entries(path, report)
     assert written == 0
     assert not path.exists()
+
+
+# ---------------------------------------------------------------------------
+# CF1: power_divergence threaded through the sweep as evidence
+# ---------------------------------------------------------------------------
+
+
+def _div(gap):
+    return {"sport": "nfl", "gap": gap, "ensemble_margin": 7.0,
+            "our_engine_margin": 7.0 - gap, "dispersion": 1.0, "kalshi_mid": 0.6}
+
+
+def test_divergence_fn_attaches_to_shortlist_rows():
+    report = run_mispricing_sweep(
+        [_mkt("B", 30, 72)], lambda m: 0.70, now_iso=NOW,
+        divergence_fn=lambda m: _div(3.0),
+    )
+    assert report["shortlist"][0]["power_divergence"] == _div(3.0)
+
+
+def test_divergence_absent_when_no_fn():
+    report = run_mispricing_sweep([_mkt("B", 30, 72)], lambda m: 0.70, now_iso=NOW)
+    assert report["shortlist"][0]["power_divergence"] is None
+
+
+def test_divergence_fn_fail_closed_on_raise():
+    def _boom(market):
+        raise RuntimeError("power signal down")
+
+    report = run_mispricing_sweep(
+        [_mkt("B", 30, 72)], lambda m: 0.70, now_iso=NOW, divergence_fn=_boom,
+    )
+    # A raising divergence_fn leaves the field absent; the sweep still works.
+    assert report["shortlist"][0]["power_divergence"] is None
+
+
+def test_divergence_surfaces_on_opportunity_row():
+    eng = OpportunistEngine()
+    # Lock a YES favorite, then strike on the dip with a confirming divergence.
+    run_mispricing_sweep(
+        [_mkt("B", 68, 34)], lambda m: 0.75, now_iso=NOW, opportunist=eng,
+        divergence_fn=lambda m: _div(3.0),
+    )  # anchor ~0.67 -> locks, no strike
+    report = run_mispricing_sweep(
+        [_mkt("B", 58, 44)], lambda m: 0.75, now_iso=NOW, opportunist=eng,
+        divergence_fn=lambda m: _div(3.0),
+    )  # price dips -> strike, divergence surfaced
+    assert report["opportunities"]
+    assert report["opportunities"][0]["power_divergence"] == _div(3.0)

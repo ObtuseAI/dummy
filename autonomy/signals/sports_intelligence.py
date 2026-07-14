@@ -1965,6 +1965,13 @@ class PowerRatingsSignal:
             if market.yes_bid is not None and market.yes_ask is not None:
                 kalshi_mid = (market.yes_bid + market.yes_ask) / 2.0 / 100.0
             power_divergence = {
+                "sport": parsed.sport,
+                # `gap` is HOME-signed (ensemble_margin - our_engine_margin).
+                # `subject_is_home` lets a subject-oriented consumer (the
+                # opportunist, whose YES/NO is about THIS market's subject)
+                # re-sign it: a YES on an away-subject market is confirmed by a
+                # gap that favors the away team (gap < 0), not gap > 0.
+                "subject_is_home": subject_is_home,
                 "gap": round(gap, 3),
                 "ensemble_margin": round(consensus.ensemble_margin, 3),
                 "our_engine_margin": round(our_engine_margin, 3),
