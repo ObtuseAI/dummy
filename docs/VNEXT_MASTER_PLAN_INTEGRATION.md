@@ -30,8 +30,9 @@ demonstrated.
 | Phase 1 — constitution, protocols, causal time | Complete (2026-07-14) | `dummy/constitution`, `dummy/protocols`, `dummy/chronos`, focused replay/import/firewall tests |
 | Phase 2 — agent adapters and lifecycle | Complete (2026-07-14) | `dummy/agents`, `VNEXT_PHASE2_CONTRACT_CATALOG.json`, `VNEXT_PHASE2_AGENTIZATION.md` |
 | Phase 3 — first forecast organism | Complete (2026-07-14) | `dummy/organisms`, `VNEXT_PHASE3_ORGANISM.md`, `VNEXT_PHASE3_TEMPLATE_CATALOG.json`, 5,611-test full-suite gate |
-| Phase 4 — versioned world models | Next | No implementation or performance claim yet |
-| Phases 5–8 | Pending | No implementation or performance claim yet |
+| Phase 4 — versioned world models | Complete (2026-07-14) | `dummy/world_model`, `VNEXT_PHASE4_WORLD_MODELS.md`, schema/ablation/regime artifacts, 5,626-test full-suite gate |
+| Phase 5 — shadows, synthesis, metacognition | Next | No implementation or performance claim yet |
+| Phases 6–8 | Pending | No implementation or performance claim yet |
 
 “Complete” here means the phase contract and its local exit gate are satisfied;
 it does not mean vNext is production-promoted. The frozen baseline remains

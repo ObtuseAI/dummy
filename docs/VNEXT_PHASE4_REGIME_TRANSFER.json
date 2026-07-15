@@ -1,0 +1,14 @@
+{
+  "case_count": 0,
+  "limitations": [
+    "no_transfer_claim_without_verified_settled_evidence"
+  ],
+  "minimum_cases_per_transfer": 30,
+  "report_id": "bb9988c26f09330551f57c4b781c5673b6eb41f33bedf3611ee86fa254242669",
+  "report_kind": "world_model_regime_transfer",
+  "schema_version": 1,
+  "settlement_verified_only": true,
+  "status": "INSUFFICIENT_SETTLED_EVIDENCE",
+  "transfers": [],
+  "unique_event_cluster_count": 0
+}

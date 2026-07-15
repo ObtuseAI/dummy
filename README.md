@@ -63,6 +63,17 @@ grades every role, replays bounded proposals on distinct held-out clusters,
 and then dissolves. It cannot substitute for the incumbent or modify weights,
 orders, promotion, or capital.
 
+Phase 4 adds the immutable
+[`horizon- and league-specific world model`](docs/VNEXT_PHASE4_WORLD_MODELS.md)
+and its canonical [`schema catalog`](docs/VNEXT_PHASE4_WORLD_MODEL_SCHEMAS.json).
+Every fact, derived value, hypothesis, contradiction, and missing value carries
+typed uncertainty and provenance. Critical state is lease-bound and fails
+closed when stale or incoherent; every organism role propagates the same frozen
+content version. Current [`ablation`](docs/VNEXT_PHASE4_WORLD_STATE_ABLATION.json)
+and [`regime-transfer`](docs/VNEXT_PHASE4_REGIME_TRANSFER.json) artifacts
+honestly report insufficient settled evidence, so they make no performance or
+readiness claim.
+
 ## Current paper operation
 
 The market-horizon paper twin runs every five minutes through the Windows

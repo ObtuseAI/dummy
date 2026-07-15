@@ -1,0 +1,1049 @@
+{
+  "authoritative_definitions": "dummy.world_model.schemas:schema_for",
+  "catalog_kind": "content_addressed_world_state_schemas",
+  "schema_digests": {
+    "dummy-crypto-daily-world-state-v1": "0a36ebbfb74f32a77ecdbb5e6fb09d5f9d6279d84dcb4984727f6bb639769b9c",
+    "dummy-crypto-expiry-world-state-v1": "969b43cfc65c239e03a4ff48d840e7dd7504a0a0f85b062ecf6c8b0fa9906e37",
+    "dummy-crypto-fifteen_minute-world-state-v1": "f2e998dd431161e84be3dc7f84fa85392915cf7c8097ca319e3f9f760f4f2999",
+    "dummy-crypto-five_minute-world-state-v1": "eaeb0cd7c6114403e756078d4fe8aa56e600174ece02b99c619ac0b7e42a4815",
+    "dummy-crypto-hourly-world-state-v1": "4b18ac67e3b8d8da0abb28cd89973434839e1acb07d9ed1965633ad60039e6a3",
+    "dummy-crypto-one_minute-world-state-v1": "83c1e5f45bfa7204c42e9dd25ecae2f53c1443725eff1d8da5f1809f62955147",
+    "dummy-crypto-quote-world-state-v1": "2ee0c5ce05205199642256673204b768dfa0228021956f9e1b0cccf31e2041a8",
+    "dummy-crypto-weekly-world-state-v1": "5c4ce51e10af396a723c67c6c4441153ce55317e4238992e3229a6e8a81c014f",
+    "dummy-mlb-game_start-world-state-v1": "c57ff443d52c807c93bb864aa715da695242f0d37850d36f77f6c4c2f2117725",
+    "dummy-mlb-inning-world-state-v1": "c891200ca015ff21d582fb3e4017536677cd458d94098aa434ad85fdbaef0a9a",
+    "dummy-mlb-lineup_confirmation-world-state-v1": "be7667af8e45ecfeb0e8178c13e66d4ef08d1403ba13c39cf6835213c275477e",
+    "dummy-mlb-pregame-world-state-v1": "29982a4c11bae66ef4ec45a827415bda22d838647f7a7d0a4d867553a7446335",
+    "dummy-mlb-warmup-world-state-v1": "ed75793a27e9df8276a8012e668e387ee380dcdb237f56c7d6ee3c4c366786b7",
+    "dummy-nba-game_start-world-state-v1": "4c5dff09cd715679ab3bba0609d3a6fc7d63d1f4e4727607a56ca9057c62eb4e",
+    "dummy-nba-halftime-world-state-v1": "1302a34860abfde3022bd13bb2d673ec7b3ac5f00108d2c00ec221c7d93e3ebe",
+    "dummy-nba-lineup_confirmation-world-state-v1": "28abbb6d5147d80c876a2c45bafd66e1398e8fac417aa3f1dc20a04d9669c151",
+    "dummy-nba-overtime-world-state-v1": "a5a459c57b6e0b44a8ba6efa05ca08db5cb51ae5ddc632064432cbedbafd2c0b",
+    "dummy-nba-period-world-state-v1": "b2723b0471d51a8112d16d201fa3806fa5b9d7bd1eedc5cce7ac35c4ececdfaa",
+    "dummy-nba-possession-world-state-v1": "ae69e365e0618c84feb798c24ceb17d1859875fffc1f272f745a8c2a6c4fadbb",
+    "dummy-nba-pregame-world-state-v1": "db846046ce0e669e37ff62384586ee553ef7acd169bbd33037cd61982f41dd39",
+    "dummy-nba-warmup-world-state-v1": "2dfcee580b8be0f2cf18c700bb1fb91030a88fa0777f7facb747671131538a1a",
+    "dummy-ncaaf-game_start-world-state-v1": "8d055f719a8930e92eb0aa0a7c5e0dad937c600d1e0e31dbbd7c7ec561dee046",
+    "dummy-ncaaf-halftime-world-state-v1": "da04e173dced38a71357bdcc62008c95b8d87c711aef8c0d940370096767a073",
+    "dummy-ncaaf-lineup_confirmation-world-state-v1": "239c9368876280a0384f1281a532136e5d393b85d014a3b322315362f4f2c271",
+    "dummy-ncaaf-overtime-world-state-v1": "411c34bf24e8d58caf3365d6d6ea71dfef6c6d4d654bbd6176f74f49ee78912d",
+    "dummy-ncaaf-period-world-state-v1": "aa66b3f888f9f9214eccbd12d01c2eb5b6b2ede91f3eeb4e6fe2b66b869e69a1",
+    "dummy-ncaaf-possession-world-state-v1": "2234ccaef3590ab6bc72bd592f58fb596986c17830ba7b72263baf6aff498919",
+    "dummy-ncaaf-pregame-world-state-v1": "4f207a0b5a5f586c60b87cab8e11115d8fef62fbc8ba51189533287fc912f7f4",
+    "dummy-ncaaf-warmup-world-state-v1": "ee8b14f906dab73d94e6be0a33760fe479766c2675b6bc1d51c34cdd1814bd4c",
+    "dummy-ncaamb-game_start-world-state-v1": "fcb0ee09d60814bded6c64612b0207f9d399cd39c4cb358b97275899e98618b2",
+    "dummy-ncaamb-halftime-world-state-v1": "ceb0732db862b9ebc7595e875236cc47ef73ecd347cc948df8cb20f3d87c9ddc",
+    "dummy-ncaamb-lineup_confirmation-world-state-v1": "eef268af7037e1c58fa0381ddfbcceb161acb6601a58d17f7318095b2bca8997",
+    "dummy-ncaamb-overtime-world-state-v1": "a2a54b55201dcc1566e5aed7243fb09af463a52a4b524a37d667b26281633022",
+    "dummy-ncaamb-period-world-state-v1": "75c0931489c45e7e282ce3e17d217bcebf611449c3f2c9eaa709c1e87e677ef8",
+    "dummy-ncaamb-possession-world-state-v1": "055c77ce285c0f3707c1efd6fd5f2fbc337ebac0ae47b73995e5bbba72016487",
+    "dummy-ncaamb-pregame-world-state-v1": "d468a05079840430f7554cb067ea005c771e819b4664ef9f216fb11e6dee5cd8",
+    "dummy-ncaamb-warmup-world-state-v1": "193abe313e735667853bccf5191ab163fac56098cfc3fe6216189e2fd4c537b0",
+    "dummy-nfl-game_start-world-state-v1": "daa8aeb644d1790323b2a896454586f18813d5b2ab5fc11f7369d76c92c48967",
+    "dummy-nfl-halftime-world-state-v1": "e93c93bd46b3e252728b73306c10b5422121d9c930a65de660512dc3c94cbe12",
+    "dummy-nfl-lineup_confirmation-world-state-v1": "888a6ac6c3e22516e0a535a9727edff0e82ef31a6a4769ea258285d6368c2b29",
+    "dummy-nfl-overtime-world-state-v1": "321ac3ceb5218ac20e5ddd6ee1699f7a984a4ebcd7b30b2d722066863db66e13",
+    "dummy-nfl-period-world-state-v1": "ed96a50c0ded9c02e7c13617aed407c54796c82dbf952fae84b0cdddeb8c1dd8",
+    "dummy-nfl-possession-world-state-v1": "44546c1e64ee1ca3958febd9a3df4026a223fc3e26acc45241d6cf30f264096e",
+    "dummy-nfl-pregame-world-state-v1": "e1773cb2293447ca020bf7b1d57bca923c2ea4445c53d7e87f278301c4a47a85",
+    "dummy-nfl-warmup-world-state-v1": "eb2974bf0390800c209971ce777dab4f34ffaedbaaefbd5c6b7c73da1897425e",
+    "dummy-nhl-game_start-world-state-v1": "8533cca8495ddef71cd537674015ec664228c4c3b1e9f84ffd8c3c00f25c220b",
+    "dummy-nhl-lineup_confirmation-world-state-v1": "4eae2493ae62e17b96302bddeb390e3b6eca8e6c2af3fa74361c563a2a53c2b5",
+    "dummy-nhl-overtime-world-state-v1": "67c0f28a3d214e7e09abf0424dd332a8133cafa5697066b028c5cbeda62760ef",
+    "dummy-nhl-period-world-state-v1": "5d7e2f865fc8e1ca1690fbbc153c6999c8ae5f0b4c26b1c42e53ccdeed041f8b",
+    "dummy-nhl-possession-world-state-v1": "a31e1935ea09c4a235be34917817bc2e737d8546ab3fa4506e89a17954eb2021",
+    "dummy-nhl-pregame-world-state-v1": "749ba79e356c8d7828a9da2686e6f7a6144dd8a993fa53e6d741ff671b823327",
+    "dummy-nhl-warmup-world-state-v1": "c23aff2b0b06b04de60f6c9aea8db18f24f44c14fb9a891ebe278b9e2371fbbe"
+  },
+  "schema_version": 1,
+  "schemas": [
+    {
+      "critical_fields": [
+        "incumbent.probability_yes",
+        "incumbent.uncertainty",
+        "market.no_ask_cents",
+        "market.no_ask_depth",
+        "market.no_bid_cents",
+        "market.status",
+        "market.yes_ask_cents",
+        "market.yes_ask_depth",
+        "market.yes_bid_cents"
+      ],
+      "domain": "crypto",
+      "field_count": 25,
+      "schema_digest": "2ee0c5ce05205199642256673204b768dfa0228021956f9e1b0cccf31e2041a8",
+      "schema_id": "dummy-crypto-quote-world-state-v1",
+      "schema_version": "1.0.0",
+      "scope": "crypto_horizon:quote"
+    },
+    {
+      "critical_fields": [
+        "incumbent.probability_yes",
+        "incumbent.uncertainty",
+        "market.no_ask_cents",
+        "market.no_ask_depth",
+        "market.no_bid_cents",
+        "market.status",
+        "market.yes_ask_cents",
+        "market.yes_ask_depth",
+        "market.yes_bid_cents"
+      ],
+      "domain": "crypto",
+      "field_count": 25,
+      "schema_digest": "83c1e5f45bfa7204c42e9dd25ecae2f53c1443725eff1d8da5f1809f62955147",
+      "schema_id": "dummy-crypto-one_minute-world-state-v1",
+      "schema_version": "1.0.0",
+      "scope": "crypto_horizon:one_minute"
+    },
+    {
+      "critical_fields": [
+        "incumbent.probability_yes",
+        "incumbent.uncertainty",
+        "market.no_ask_cents",
+        "market.no_ask_depth",
+        "market.no_bid_cents",
+        "market.status",
+        "market.yes_ask_cents",
+        "market.yes_ask_depth",
+        "market.yes_bid_cents"
+      ],
+      "domain": "crypto",
+      "field_count": 25,
+      "schema_digest": "eaeb0cd7c6114403e756078d4fe8aa56e600174ece02b99c619ac0b7e42a4815",
+      "schema_id": "dummy-crypto-five_minute-world-state-v1",
+      "schema_version": "1.0.0",
+      "scope": "crypto_horizon:five_minute"
+    },
+    {
+      "critical_fields": [
+        "incumbent.probability_yes",
+        "incumbent.uncertainty",
+        "market.no_ask_cents",
+        "market.no_ask_depth",
+        "market.no_bid_cents",
+        "market.status",
+        "market.yes_ask_cents",
+        "market.yes_ask_depth",
+        "market.yes_bid_cents"
+      ],
+      "domain": "crypto",
+      "field_count": 25,
+      "schema_digest": "f2e998dd431161e84be3dc7f84fa85392915cf7c8097ca319e3f9f760f4f2999",
+      "schema_id": "dummy-crypto-fifteen_minute-world-state-v1",
+      "schema_version": "1.0.0",
+      "scope": "crypto_horizon:fifteen_minute"
+    },
+    {
+      "critical_fields": [
+        "incumbent.probability_yes",
+        "incumbent.uncertainty",
+        "market.no_ask_cents",
+        "market.no_ask_depth",
+        "market.no_bid_cents",
+        "market.status",
+        "market.yes_ask_cents",
+        "market.yes_ask_depth",
+        "market.yes_bid_cents"
+      ],
+      "domain": "crypto",
+      "field_count": 25,
+      "schema_digest": "4b18ac67e3b8d8da0abb28cd89973434839e1acb07d9ed1965633ad60039e6a3",
+      "schema_id": "dummy-crypto-hourly-world-state-v1",
+      "schema_version": "1.0.0",
+      "scope": "crypto_horizon:hourly"
+    },
+    {
+      "critical_fields": [
+        "incumbent.probability_yes",
+        "incumbent.uncertainty",
+        "market.no_ask_cents",
+        "market.no_ask_depth",
+        "market.no_bid_cents",
+        "market.status",
+        "market.yes_ask_cents",
+        "market.yes_ask_depth",
+        "market.yes_bid_cents"
+      ],
+      "domain": "crypto",
+      "field_count": 25,
+      "schema_digest": "0a36ebbfb74f32a77ecdbb5e6fb09d5f9d6279d84dcb4984727f6bb639769b9c",
+      "schema_id": "dummy-crypto-daily-world-state-v1",
+      "schema_version": "1.0.0",
+      "scope": "crypto_horizon:daily"
+    },
+    {
+      "critical_fields": [
+        "incumbent.probability_yes",
+        "incumbent.uncertainty",
+        "market.no_ask_cents",
+        "market.no_ask_depth",
+        "market.no_bid_cents",
+        "market.status",
+        "market.yes_ask_cents",
+        "market.yes_ask_depth",
+        "market.yes_bid_cents"
+      ],
+      "domain": "crypto",
+      "field_count": 25,
+      "schema_digest": "5c4ce51e10af396a723c67c6c4441153ce55317e4238992e3229a6e8a81c014f",
+      "schema_id": "dummy-crypto-weekly-world-state-v1",
+      "schema_version": "1.0.0",
+      "scope": "crypto_horizon:weekly"
+    },
+    {
+      "critical_fields": [
+        "incumbent.probability_yes",
+        "incumbent.uncertainty",
+        "market.no_ask_cents",
+        "market.no_ask_depth",
+        "market.no_bid_cents",
+        "market.status",
+        "market.yes_ask_cents",
+        "market.yes_ask_depth",
+        "market.yes_bid_cents"
+      ],
+      "domain": "crypto",
+      "field_count": 25,
+      "schema_digest": "969b43cfc65c239e03a4ff48d840e7dd7504a0a0f85b062ecf6c8b0fa9906e37",
+      "schema_id": "dummy-crypto-expiry-world-state-v1",
+      "schema_version": "1.0.0",
+      "scope": "crypto_horizon:expiry"
+    },
+    {
+      "critical_fields": [
+        "incumbent.probability_yes",
+        "incumbent.uncertainty",
+        "market.no_ask_cents",
+        "market.no_ask_depth",
+        "market.no_bid_cents",
+        "market.status",
+        "market.yes_ask_cents",
+        "market.yes_ask_depth",
+        "market.yes_bid_cents"
+      ],
+      "domain": "mlb",
+      "field_count": 31,
+      "schema_digest": "29982a4c11bae66ef4ec45a827415bda22d838647f7a7d0a4d867553a7446335",
+      "schema_id": "dummy-mlb-pregame-world-state-v1",
+      "schema_version": "1.0.0",
+      "scope": "league:mlb;clock:pregame"
+    },
+    {
+      "critical_fields": [
+        "incumbent.probability_yes",
+        "incumbent.uncertainty",
+        "market.no_ask_cents",
+        "market.no_ask_depth",
+        "market.no_bid_cents",
+        "market.status",
+        "market.yes_ask_cents",
+        "market.yes_ask_depth",
+        "market.yes_bid_cents"
+      ],
+      "domain": "mlb",
+      "field_count": 31,
+      "schema_digest": "be7667af8e45ecfeb0e8178c13e66d4ef08d1403ba13c39cf6835213c275477e",
+      "schema_id": "dummy-mlb-lineup_confirmation-world-state-v1",
+      "schema_version": "1.0.0",
+      "scope": "league:mlb;clock:lineup_confirmation"
+    },
+    {
+      "critical_fields": [
+        "incumbent.probability_yes",
+        "incumbent.uncertainty",
+        "market.no_ask_cents",
+        "market.no_ask_depth",
+        "market.no_bid_cents",
+        "market.status",
+        "market.yes_ask_cents",
+        "market.yes_ask_depth",
+        "market.yes_bid_cents"
+      ],
+      "domain": "mlb",
+      "field_count": 31,
+      "schema_digest": "ed75793a27e9df8276a8012e668e387ee380dcdb237f56c7d6ee3c4c366786b7",
+      "schema_id": "dummy-mlb-warmup-world-state-v1",
+      "schema_version": "1.0.0",
+      "scope": "league:mlb;clock:warmup"
+    },
+    {
+      "critical_fields": [
+        "incumbent.probability_yes",
+        "incumbent.uncertainty",
+        "market.no_ask_cents",
+        "market.no_ask_depth",
+        "market.no_bid_cents",
+        "market.status",
+        "market.yes_ask_cents",
+        "market.yes_ask_depth",
+        "market.yes_bid_cents"
+      ],
+      "domain": "mlb",
+      "field_count": 31,
+      "schema_digest": "c57ff443d52c807c93bb864aa715da695242f0d37850d36f77f6c4c2f2117725",
+      "schema_id": "dummy-mlb-game_start-world-state-v1",
+      "schema_version": "1.0.0",
+      "scope": "league:mlb;clock:game_start"
+    },
+    {
+      "critical_fields": [
+        "incumbent.probability_yes",
+        "incumbent.uncertainty",
+        "market.no_ask_cents",
+        "market.no_ask_depth",
+        "market.no_bid_cents",
+        "market.status",
+        "market.yes_ask_cents",
+        "market.yes_ask_depth",
+        "market.yes_bid_cents"
+      ],
+      "domain": "mlb",
+      "field_count": 31,
+      "schema_digest": "c891200ca015ff21d582fb3e4017536677cd458d94098aa434ad85fdbaef0a9a",
+      "schema_id": "dummy-mlb-inning-world-state-v1",
+      "schema_version": "1.0.0",
+      "scope": "league:mlb;clock:inning"
+    },
+    {
+      "critical_fields": [
+        "incumbent.probability_yes",
+        "incumbent.uncertainty",
+        "market.no_ask_cents",
+        "market.no_ask_depth",
+        "market.no_bid_cents",
+        "market.status",
+        "market.yes_ask_cents",
+        "market.yes_ask_depth",
+        "market.yes_bid_cents"
+      ],
+      "domain": "nba",
+      "field_count": 30,
+      "schema_digest": "db846046ce0e669e37ff62384586ee553ef7acd169bbd33037cd61982f41dd39",
+      "schema_id": "dummy-nba-pregame-world-state-v1",
+      "schema_version": "1.0.0",
+      "scope": "league:nba;clock:pregame"
+    },
+    {
+      "critical_fields": [
+        "incumbent.probability_yes",
+        "incumbent.uncertainty",
+        "market.no_ask_cents",
+        "market.no_ask_depth",
+        "market.no_bid_cents",
+        "market.status",
+        "market.yes_ask_cents",
+        "market.yes_ask_depth",
+        "market.yes_bid_cents"
+      ],
+      "domain": "nba",
+      "field_count": 30,
+      "schema_digest": "28abbb6d5147d80c876a2c45bafd66e1398e8fac417aa3f1dc20a04d9669c151",
+      "schema_id": "dummy-nba-lineup_confirmation-world-state-v1",
+      "schema_version": "1.0.0",
+      "scope": "league:nba;clock:lineup_confirmation"
+    },
+    {
+      "critical_fields": [
+        "incumbent.probability_yes",
+        "incumbent.uncertainty",
+        "market.no_ask_cents",
+        "market.no_ask_depth",
+        "market.no_bid_cents",
+        "market.status",
+        "market.yes_ask_cents",
+        "market.yes_ask_depth",
+        "market.yes_bid_cents"
+      ],
+      "domain": "nba",
+      "field_count": 30,
+      "schema_digest": "2dfcee580b8be0f2cf18c700bb1fb91030a88fa0777f7facb747671131538a1a",
+      "schema_id": "dummy-nba-warmup-world-state-v1",
+      "schema_version": "1.0.0",
+      "scope": "league:nba;clock:warmup"
+    },
+    {
+      "critical_fields": [
+        "incumbent.probability_yes",
+        "incumbent.uncertainty",
+        "market.no_ask_cents",
+        "market.no_ask_depth",
+        "market.no_bid_cents",
+        "market.status",
+        "market.yes_ask_cents",
+        "market.yes_ask_depth",
+        "market.yes_bid_cents"
+      ],
+      "domain": "nba",
+      "field_count": 30,
+      "schema_digest": "4c5dff09cd715679ab3bba0609d3a6fc7d63d1f4e4727607a56ca9057c62eb4e",
+      "schema_id": "dummy-nba-game_start-world-state-v1",
+      "schema_version": "1.0.0",
+      "scope": "league:nba;clock:game_start"
+    },
+    {
+      "critical_fields": [
+        "incumbent.probability_yes",
+        "incumbent.uncertainty",
+        "market.no_ask_cents",
+        "market.no_ask_depth",
+        "market.no_bid_cents",
+        "market.status",
+        "market.yes_ask_cents",
+        "market.yes_ask_depth",
+        "market.yes_bid_cents"
+      ],
+      "domain": "nba",
+      "field_count": 30,
+      "schema_digest": "ae69e365e0618c84feb798c24ceb17d1859875fffc1f272f745a8c2a6c4fadbb",
+      "schema_id": "dummy-nba-possession-world-state-v1",
+      "schema_version": "1.0.0",
+      "scope": "league:nba;clock:possession"
+    },
+    {
+      "critical_fields": [
+        "incumbent.probability_yes",
+        "incumbent.uncertainty",
+        "market.no_ask_cents",
+        "market.no_ask_depth",
+        "market.no_bid_cents",
+        "market.status",
+        "market.yes_ask_cents",
+        "market.yes_ask_depth",
+        "market.yes_bid_cents"
+      ],
+      "domain": "nba",
+      "field_count": 30,
+      "schema_digest": "b2723b0471d51a8112d16d201fa3806fa5b9d7bd1eedc5cce7ac35c4ececdfaa",
+      "schema_id": "dummy-nba-period-world-state-v1",
+      "schema_version": "1.0.0",
+      "scope": "league:nba;clock:period"
+    },
+    {
+      "critical_fields": [
+        "incumbent.probability_yes",
+        "incumbent.uncertainty",
+        "market.no_ask_cents",
+        "market.no_ask_depth",
+        "market.no_bid_cents",
+        "market.status",
+        "market.yes_ask_cents",
+        "market.yes_ask_depth",
+        "market.yes_bid_cents"
+      ],
+      "domain": "nba",
+      "field_count": 30,
+      "schema_digest": "1302a34860abfde3022bd13bb2d673ec7b3ac5f00108d2c00ec221c7d93e3ebe",
+      "schema_id": "dummy-nba-halftime-world-state-v1",
+      "schema_version": "1.0.0",
+      "scope": "league:nba;clock:halftime"
+    },
+    {
+      "critical_fields": [
+        "incumbent.probability_yes",
+        "incumbent.uncertainty",
+        "market.no_ask_cents",
+        "market.no_ask_depth",
+        "market.no_bid_cents",
+        "market.status",
+        "market.yes_ask_cents",
+        "market.yes_ask_depth",
+        "market.yes_bid_cents"
+      ],
+      "domain": "nba",
+      "field_count": 30,
+      "schema_digest": "a5a459c57b6e0b44a8ba6efa05ca08db5cb51ae5ddc632064432cbedbafd2c0b",
+      "schema_id": "dummy-nba-overtime-world-state-v1",
+      "schema_version": "1.0.0",
+      "scope": "league:nba;clock:overtime"
+    },
+    {
+      "critical_fields": [
+        "incumbent.probability_yes",
+        "incumbent.uncertainty",
+        "market.no_ask_cents",
+        "market.no_ask_depth",
+        "market.no_bid_cents",
+        "market.status",
+        "market.yes_ask_cents",
+        "market.yes_ask_depth",
+        "market.yes_bid_cents"
+      ],
+      "domain": "nfl",
+      "field_count": 31,
+      "schema_digest": "e1773cb2293447ca020bf7b1d57bca923c2ea4445c53d7e87f278301c4a47a85",
+      "schema_id": "dummy-nfl-pregame-world-state-v1",
+      "schema_version": "1.0.0",
+      "scope": "league:nfl;clock:pregame"
+    },
+    {
+      "critical_fields": [
+        "incumbent.probability_yes",
+        "incumbent.uncertainty",
+        "market.no_ask_cents",
+        "market.no_ask_depth",
+        "market.no_bid_cents",
+        "market.status",
+        "market.yes_ask_cents",
+        "market.yes_ask_depth",
+        "market.yes_bid_cents"
+      ],
+      "domain": "nfl",
+      "field_count": 31,
+      "schema_digest": "888a6ac6c3e22516e0a535a9727edff0e82ef31a6a4769ea258285d6368c2b29",
+      "schema_id": "dummy-nfl-lineup_confirmation-world-state-v1",
+      "schema_version": "1.0.0",
+      "scope": "league:nfl;clock:lineup_confirmation"
+    },
+    {
+      "critical_fields": [
+        "incumbent.probability_yes",
+        "incumbent.uncertainty",
+        "market.no_ask_cents",
+        "market.no_ask_depth",
+        "market.no_bid_cents",
+        "market.status",
+        "market.yes_ask_cents",
+        "market.yes_ask_depth",
+        "market.yes_bid_cents"
+      ],
+      "domain": "nfl",
+      "field_count": 31,
+      "schema_digest": "eb2974bf0390800c209971ce777dab4f34ffaedbaaefbd5c6b7c73da1897425e",
+      "schema_id": "dummy-nfl-warmup-world-state-v1",
+      "schema_version": "1.0.0",
+      "scope": "league:nfl;clock:warmup"
+    },
+    {
+      "critical_fields": [
+        "incumbent.probability_yes",
+        "incumbent.uncertainty",
+        "market.no_ask_cents",
+        "market.no_ask_depth",
+        "market.no_bid_cents",
+        "market.status",
+        "market.yes_ask_cents",
+        "market.yes_ask_depth",
+        "market.yes_bid_cents"
+      ],
+      "domain": "nfl",
+      "field_count": 31,
+      "schema_digest": "daa8aeb644d1790323b2a896454586f18813d5b2ab5fc11f7369d76c92c48967",
+      "schema_id": "dummy-nfl-game_start-world-state-v1",
+      "schema_version": "1.0.0",
+      "scope": "league:nfl;clock:game_start"
+    },
+    {
+      "critical_fields": [
+        "incumbent.probability_yes",
+        "incumbent.uncertainty",
+        "market.no_ask_cents",
+        "market.no_ask_depth",
+        "market.no_bid_cents",
+        "market.status",
+        "market.yes_ask_cents",
+        "market.yes_ask_depth",
+        "market.yes_bid_cents"
+      ],
+      "domain": "nfl",
+      "field_count": 31,
+      "schema_digest": "44546c1e64ee1ca3958febd9a3df4026a223fc3e26acc45241d6cf30f264096e",
+      "schema_id": "dummy-nfl-possession-world-state-v1",
+      "schema_version": "1.0.0",
+      "scope": "league:nfl;clock:possession"
+    },
+    {
+      "critical_fields": [
+        "incumbent.probability_yes",
+        "incumbent.uncertainty",
+        "market.no_ask_cents",
+        "market.no_ask_depth",
+        "market.no_bid_cents",
+        "market.status",
+        "market.yes_ask_cents",
+        "market.yes_ask_depth",
+        "market.yes_bid_cents"
+      ],
+      "domain": "nfl",
+      "field_count": 31,
+      "schema_digest": "ed96a50c0ded9c02e7c13617aed407c54796c82dbf952fae84b0cdddeb8c1dd8",
+      "schema_id": "dummy-nfl-period-world-state-v1",
+      "schema_version": "1.0.0",
+      "scope": "league:nfl;clock:period"
+    },
+    {
+      "critical_fields": [
+        "incumbent.probability_yes",
+        "incumbent.uncertainty",
+        "market.no_ask_cents",
+        "market.no_ask_depth",
+        "market.no_bid_cents",
+        "market.status",
+        "market.yes_ask_cents",
+        "market.yes_ask_depth",
+        "market.yes_bid_cents"
+      ],
+      "domain": "nfl",
+      "field_count": 31,
+      "schema_digest": "e93c93bd46b3e252728b73306c10b5422121d9c930a65de660512dc3c94cbe12",
+      "schema_id": "dummy-nfl-halftime-world-state-v1",
+      "schema_version": "1.0.0",
+      "scope": "league:nfl;clock:halftime"
+    },
+    {
+      "critical_fields": [
+        "incumbent.probability_yes",
+        "incumbent.uncertainty",
+        "market.no_ask_cents",
+        "market.no_ask_depth",
+        "market.no_bid_cents",
+        "market.status",
+        "market.yes_ask_cents",
+        "market.yes_ask_depth",
+        "market.yes_bid_cents"
+      ],
+      "domain": "nfl",
+      "field_count": 31,
+      "schema_digest": "321ac3ceb5218ac20e5ddd6ee1699f7a984a4ebcd7b30b2d722066863db66e13",
+      "schema_id": "dummy-nfl-overtime-world-state-v1",
+      "schema_version": "1.0.0",
+      "scope": "league:nfl;clock:overtime"
+    },
+    {
+      "critical_fields": [
+        "incumbent.probability_yes",
+        "incumbent.uncertainty",
+        "market.no_ask_cents",
+        "market.no_ask_depth",
+        "market.no_bid_cents",
+        "market.status",
+        "market.yes_ask_cents",
+        "market.yes_ask_depth",
+        "market.yes_bid_cents"
+      ],
+      "domain": "ncaaf",
+      "field_count": 31,
+      "schema_digest": "4f207a0b5a5f586c60b87cab8e11115d8fef62fbc8ba51189533287fc912f7f4",
+      "schema_id": "dummy-ncaaf-pregame-world-state-v1",
+      "schema_version": "1.0.0",
+      "scope": "league:ncaaf;clock:pregame"
+    },
+    {
+      "critical_fields": [
+        "incumbent.probability_yes",
+        "incumbent.uncertainty",
+        "market.no_ask_cents",
+        "market.no_ask_depth",
+        "market.no_bid_cents",
+        "market.status",
+        "market.yes_ask_cents",
+        "market.yes_ask_depth",
+        "market.yes_bid_cents"
+      ],
+      "domain": "ncaaf",
+      "field_count": 31,
+      "schema_digest": "239c9368876280a0384f1281a532136e5d393b85d014a3b322315362f4f2c271",
+      "schema_id": "dummy-ncaaf-lineup_confirmation-world-state-v1",
+      "schema_version": "1.0.0",
+      "scope": "league:ncaaf;clock:lineup_confirmation"
+    },
+    {
+      "critical_fields": [
+        "incumbent.probability_yes",
+        "incumbent.uncertainty",
+        "market.no_ask_cents",
+        "market.no_ask_depth",
+        "market.no_bid_cents",
+        "market.status",
+        "market.yes_ask_cents",
+        "market.yes_ask_depth",
+        "market.yes_bid_cents"
+      ],
+      "domain": "ncaaf",
+      "field_count": 31,
+      "schema_digest": "ee8b14f906dab73d94e6be0a33760fe479766c2675b6bc1d51c34cdd1814bd4c",
+      "schema_id": "dummy-ncaaf-warmup-world-state-v1",
+      "schema_version": "1.0.0",
+      "scope": "league:ncaaf;clock:warmup"
+    },
+    {
+      "critical_fields": [
+        "incumbent.probability_yes",
+        "incumbent.uncertainty",
+        "market.no_ask_cents",
+        "market.no_ask_depth",
+        "market.no_bid_cents",
+        "market.status",
+        "market.yes_ask_cents",
+        "market.yes_ask_depth",
+        "market.yes_bid_cents"
+      ],
+      "domain": "ncaaf",
+      "field_count": 31,
+      "schema_digest": "8d055f719a8930e92eb0aa0a7c5e0dad937c600d1e0e31dbbd7c7ec561dee046",
+      "schema_id": "dummy-ncaaf-game_start-world-state-v1",
+      "schema_version": "1.0.0",
+      "scope": "league:ncaaf;clock:game_start"
+    },
+    {
+      "critical_fields": [
+        "incumbent.probability_yes",
+        "incumbent.uncertainty",
+        "market.no_ask_cents",
+        "market.no_ask_depth",
+        "market.no_bid_cents",
+        "market.status",
+        "market.yes_ask_cents",
+        "market.yes_ask_depth",
+        "market.yes_bid_cents"
+      ],
+      "domain": "ncaaf",
+      "field_count": 31,
+      "schema_digest": "2234ccaef3590ab6bc72bd592f58fb596986c17830ba7b72263baf6aff498919",
+      "schema_id": "dummy-ncaaf-possession-world-state-v1",
+      "schema_version": "1.0.0",
+      "scope": "league:ncaaf;clock:possession"
+    },
+    {
+      "critical_fields": [
+        "incumbent.probability_yes",
+        "incumbent.uncertainty",
+        "market.no_ask_cents",
+        "market.no_ask_depth",
+        "market.no_bid_cents",
+        "market.status",
+        "market.yes_ask_cents",
+        "market.yes_ask_depth",
+        "market.yes_bid_cents"
+      ],
+      "domain": "ncaaf",
+      "field_count": 31,
+      "schema_digest": "aa66b3f888f9f9214eccbd12d01c2eb5b6b2ede91f3eeb4e6fe2b66b869e69a1",
+      "schema_id": "dummy-ncaaf-period-world-state-v1",
+      "schema_version": "1.0.0",
+      "scope": "league:ncaaf;clock:period"
+    },
+    {
+      "critical_fields": [
+        "incumbent.probability_yes",
+        "incumbent.uncertainty",
+        "market.no_ask_cents",
+        "market.no_ask_depth",
+        "market.no_bid_cents",
+        "market.status",
+        "market.yes_ask_cents",
+        "market.yes_ask_depth",
+        "market.yes_bid_cents"
+      ],
+      "domain": "ncaaf",
+      "field_count": 31,
+      "schema_digest": "da04e173dced38a71357bdcc62008c95b8d87c711aef8c0d940370096767a073",
+      "schema_id": "dummy-ncaaf-halftime-world-state-v1",
+      "schema_version": "1.0.0",
+      "scope": "league:ncaaf;clock:halftime"
+    },
+    {
+      "critical_fields": [
+        "incumbent.probability_yes",
+        "incumbent.uncertainty",
+        "market.no_ask_cents",
+        "market.no_ask_depth",
+        "market.no_bid_cents",
+        "market.status",
+        "market.yes_ask_cents",
+        "market.yes_ask_depth",
+        "market.yes_bid_cents"
+      ],
+      "domain": "ncaaf",
+      "field_count": 31,
+      "schema_digest": "411c34bf24e8d58caf3365d6d6ea71dfef6c6d4d654bbd6176f74f49ee78912d",
+      "schema_id": "dummy-ncaaf-overtime-world-state-v1",
+      "schema_version": "1.0.0",
+      "scope": "league:ncaaf;clock:overtime"
+    },
+    {
+      "critical_fields": [
+        "incumbent.probability_yes",
+        "incumbent.uncertainty",
+        "market.no_ask_cents",
+        "market.no_ask_depth",
+        "market.no_bid_cents",
+        "market.status",
+        "market.yes_ask_cents",
+        "market.yes_ask_depth",
+        "market.yes_bid_cents"
+      ],
+      "domain": "nhl",
+      "field_count": 30,
+      "schema_digest": "749ba79e356c8d7828a9da2686e6f7a6144dd8a993fa53e6d741ff671b823327",
+      "schema_id": "dummy-nhl-pregame-world-state-v1",
+      "schema_version": "1.0.0",
+      "scope": "league:nhl;clock:pregame"
+    },
+    {
+      "critical_fields": [
+        "incumbent.probability_yes",
+        "incumbent.uncertainty",
+        "market.no_ask_cents",
+        "market.no_ask_depth",
+        "market.no_bid_cents",
+        "market.status",
+        "market.yes_ask_cents",
+        "market.yes_ask_depth",
+        "market.yes_bid_cents"
+      ],
+      "domain": "nhl",
+      "field_count": 30,
+      "schema_digest": "4eae2493ae62e17b96302bddeb390e3b6eca8e6c2af3fa74361c563a2a53c2b5",
+      "schema_id": "dummy-nhl-lineup_confirmation-world-state-v1",
+      "schema_version": "1.0.0",
+      "scope": "league:nhl;clock:lineup_confirmation"
+    },
+    {
+      "critical_fields": [
+        "incumbent.probability_yes",
+        "incumbent.uncertainty",
+        "market.no_ask_cents",
+        "market.no_ask_depth",
+        "market.no_bid_cents",
+        "market.status",
+        "market.yes_ask_cents",
+        "market.yes_ask_depth",
+        "market.yes_bid_cents"
+      ],
+      "domain": "nhl",
+      "field_count": 30,
+      "schema_digest": "c23aff2b0b06b04de60f6c9aea8db18f24f44c14fb9a891ebe278b9e2371fbbe",
+      "schema_id": "dummy-nhl-warmup-world-state-v1",
+      "schema_version": "1.0.0",
+      "scope": "league:nhl;clock:warmup"
+    },
+    {
+      "critical_fields": [
+        "incumbent.probability_yes",
+        "incumbent.uncertainty",
+        "market.no_ask_cents",
+        "market.no_ask_depth",
+        "market.no_bid_cents",
+        "market.status",
+        "market.yes_ask_cents",
+        "market.yes_ask_depth",
+        "market.yes_bid_cents"
+      ],
+      "domain": "nhl",
+      "field_count": 30,
+      "schema_digest": "8533cca8495ddef71cd537674015ec664228c4c3b1e9f84ffd8c3c00f25c220b",
+      "schema_id": "dummy-nhl-game_start-world-state-v1",
+      "schema_version": "1.0.0",
+      "scope": "league:nhl;clock:game_start"
+    },
+    {
+      "critical_fields": [
+        "incumbent.probability_yes",
+        "incumbent.uncertainty",
+        "market.no_ask_cents",
+        "market.no_ask_depth",
+        "market.no_bid_cents",
+        "market.status",
+        "market.yes_ask_cents",
+        "market.yes_ask_depth",
+        "market.yes_bid_cents"
+      ],
+      "domain": "nhl",
+      "field_count": 30,
+      "schema_digest": "a31e1935ea09c4a235be34917817bc2e737d8546ab3fa4506e89a17954eb2021",
+      "schema_id": "dummy-nhl-possession-world-state-v1",
+      "schema_version": "1.0.0",
+      "scope": "league:nhl;clock:possession"
+    },
+    {
+      "critical_fields": [
+        "incumbent.probability_yes",
+        "incumbent.uncertainty",
+        "market.no_ask_cents",
+        "market.no_ask_depth",
+        "market.no_bid_cents",
+        "market.status",
+        "market.yes_ask_cents",
+        "market.yes_ask_depth",
+        "market.yes_bid_cents"
+      ],
+      "domain": "nhl",
+      "field_count": 30,
+      "schema_digest": "5d7e2f865fc8e1ca1690fbbc153c6999c8ae5f0b4c26b1c42e53ccdeed041f8b",
+      "schema_id": "dummy-nhl-period-world-state-v1",
+      "schema_version": "1.0.0",
+      "scope": "league:nhl;clock:period"
+    },
+    {
+      "critical_fields": [
+        "incumbent.probability_yes",
+        "incumbent.uncertainty",
+        "market.no_ask_cents",
+        "market.no_ask_depth",
+        "market.no_bid_cents",
+        "market.status",
+        "market.yes_ask_cents",
+        "market.yes_ask_depth",
+        "market.yes_bid_cents"
+      ],
+      "domain": "nhl",
+      "field_count": 30,
+      "schema_digest": "67c0f28a3d214e7e09abf0424dd332a8133cafa5697066b028c5cbeda62760ef",
+      "schema_id": "dummy-nhl-overtime-world-state-v1",
+      "schema_version": "1.0.0",
+      "scope": "league:nhl;clock:overtime"
+    },
+    {
+      "critical_fields": [
+        "incumbent.probability_yes",
+        "incumbent.uncertainty",
+        "market.no_ask_cents",
+        "market.no_ask_depth",
+        "market.no_bid_cents",
+        "market.status",
+        "market.yes_ask_cents",
+        "market.yes_ask_depth",
+        "market.yes_bid_cents"
+      ],
+      "domain": "ncaamb",
+      "field_count": 30,
+      "schema_digest": "d468a05079840430f7554cb067ea005c771e819b4664ef9f216fb11e6dee5cd8",
+      "schema_id": "dummy-ncaamb-pregame-world-state-v1",
+      "schema_version": "1.0.0",
+      "scope": "league:ncaamb;clock:pregame"
+    },
+    {
+      "critical_fields": [
+        "incumbent.probability_yes",
+        "incumbent.uncertainty",
+        "market.no_ask_cents",
+        "market.no_ask_depth",
+        "market.no_bid_cents",
+        "market.status",
+        "market.yes_ask_cents",
+        "market.yes_ask_depth",
+        "market.yes_bid_cents"
+      ],
+      "domain": "ncaamb",
+      "field_count": 30,
+      "schema_digest": "eef268af7037e1c58fa0381ddfbcceb161acb6601a58d17f7318095b2bca8997",
+      "schema_id": "dummy-ncaamb-lineup_confirmation-world-state-v1",
+      "schema_version": "1.0.0",
+      "scope": "league:ncaamb;clock:lineup_confirmation"
+    },
+    {
+      "critical_fields": [
+        "incumbent.probability_yes",
+        "incumbent.uncertainty",
+        "market.no_ask_cents",
+        "market.no_ask_depth",
+        "market.no_bid_cents",
+        "market.status",
+        "market.yes_ask_cents",
+        "market.yes_ask_depth",
+        "market.yes_bid_cents"
+      ],
+      "domain": "ncaamb",
+      "field_count": 30,
+      "schema_digest": "193abe313e735667853bccf5191ab163fac56098cfc3fe6216189e2fd4c537b0",
+      "schema_id": "dummy-ncaamb-warmup-world-state-v1",
+      "schema_version": "1.0.0",
+      "scope": "league:ncaamb;clock:warmup"
+    },
+    {
+      "critical_fields": [
+        "incumbent.probability_yes",
+        "incumbent.uncertainty",
+        "market.no_ask_cents",
+        "market.no_ask_depth",
+        "market.no_bid_cents",
+        "market.status",
+        "market.yes_ask_cents",
+        "market.yes_ask_depth",
+        "market.yes_bid_cents"
+      ],
+      "domain": "ncaamb",
+      "field_count": 30,
+      "schema_digest": "fcb0ee09d60814bded6c64612b0207f9d399cd39c4cb358b97275899e98618b2",
+      "schema_id": "dummy-ncaamb-game_start-world-state-v1",
+      "schema_version": "1.0.0",
+      "scope": "league:ncaamb;clock:game_start"
+    },
+    {
+      "critical_fields": [
+        "incumbent.probability_yes",
+        "incumbent.uncertainty",
+        "market.no_ask_cents",
+        "market.no_ask_depth",
+        "market.no_bid_cents",
+        "market.status",
+        "market.yes_ask_cents",
+        "market.yes_ask_depth",
+        "market.yes_bid_cents"
+      ],
+      "domain": "ncaamb",
+      "field_count": 30,
+      "schema_digest": "055c77ce285c0f3707c1efd6fd5f2fbc337ebac0ae47b73995e5bbba72016487",
+      "schema_id": "dummy-ncaamb-possession-world-state-v1",
+      "schema_version": "1.0.0",
+      "scope": "league:ncaamb;clock:possession"
+    },
+    {
+      "critical_fields": [
+        "incumbent.probability_yes",
+        "incumbent.uncertainty",
+        "market.no_ask_cents",
+        "market.no_ask_depth",
+        "market.no_bid_cents",
+        "market.status",
+        "market.yes_ask_cents",
+        "market.yes_ask_depth",
+        "market.yes_bid_cents"
+      ],
+      "domain": "ncaamb",
+      "field_count": 30,
+      "schema_digest": "75c0931489c45e7e282ce3e17d217bcebf611449c3f2c9eaa709c1e87e677ef8",
+      "schema_id": "dummy-ncaamb-period-world-state-v1",
+      "schema_version": "1.0.0",
+      "scope": "league:ncaamb;clock:period"
+    },
+    {
+      "critical_fields": [
+        "incumbent.probability_yes",
+        "incumbent.uncertainty",
+        "market.no_ask_cents",
+        "market.no_ask_depth",
+        "market.no_bid_cents",
+        "market.status",
+        "market.yes_ask_cents",
+        "market.yes_ask_depth",
+        "market.yes_bid_cents"
+      ],
+      "domain": "ncaamb",
+      "field_count": 30,
+      "schema_digest": "ceb0732db862b9ebc7595e875236cc47ef73ecd347cc948df8cb20f3d87c9ddc",
+      "schema_id": "dummy-ncaamb-halftime-world-state-v1",
+      "schema_version": "1.0.0",
+      "scope": "league:ncaamb;clock:halftime"
+    },
+    {
+      "critical_fields": [
+        "incumbent.probability_yes",
+        "incumbent.uncertainty",
+        "market.no_ask_cents",
+        "market.no_ask_depth",
+        "market.no_bid_cents",
+        "market.status",
+        "market.yes_ask_cents",
+        "market.yes_ask_depth",
+        "market.yes_bid_cents"
+      ],
+      "domain": "ncaamb",
+      "field_count": 30,
+      "schema_digest": "a2a54b55201dcc1566e5aed7243fb09af463a52a4b524a37d667b26281633022",
+      "schema_id": "dummy-ncaamb-overtime-world-state-v1",
+      "schema_version": "1.0.0",
+      "scope": "league:ncaamb;clock:overtime"
+    }
+  ]
+}
