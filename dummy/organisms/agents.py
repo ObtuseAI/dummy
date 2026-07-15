@@ -5,6 +5,8 @@ from __future__ import annotations
 import math
 from typing import Iterable
 
+from autonomy.fees import kalshi_taker_fee_cents
+
 from dummy.agents import (
     AgentContract,
     AgentInvocation,
@@ -12,6 +14,19 @@ from dummy.agents import (
     AgentRuntime,
 )
 from dummy.protocols import MessageEnvelope, MessageType
+from dummy.metabolism import (
+    ResourceBudget,
+    account_messages,
+    calculate_marginal_utility,
+    estimate_costs,
+    estimate_information_gain_proxy,
+)
+from dummy.metacognition import (
+    evaluate_metacognition,
+    unavailable_meta_calibration,
+)
+from dummy.shadows import GuardContext, ShadowReview, review_context
+from dummy.synthesis import FamilyCapPolicy, SynthesisSource, synthesize
 
 from .models import EpisodeValidationError
 from .templates import OrganismTemplate
@@ -339,8 +354,32 @@ class ShadowControllerAgent:
         self.contract = contract
 
     def __call__(self, invocation: AgentInvocation) -> MessageEnvelope:
+        state = _one(invocation, MessageType.MARKET_STATE)
+        material = tuple(
+            message for message in invocation.input_messages if message is not state
+        )
+        usage = account_messages((state, *material))
+        budget = ResourceBudget()
+        review = review_context(
+            GuardContext(
+                decision_at=invocation.invoked_at,
+                state=state,
+                messages=material,
+                resource_usage=usage.guard_mapping(),
+                resource_budget=budget.guard_mapping(),
+            )
+        )
         upstream_vetoes = _messages(invocation, MessageType.VETO)
-        blockers = [str(item.payload.get("reason", "upstream_veto")) for item in upstream_vetoes]
+        blockers = [
+            str(item.payload.get("reason", "upstream_veto"))
+            for item in upstream_vetoes
+        ]
+        if review.hard_veto:
+            blockers.extend(
+                finding.reason
+                for finding in review.findings
+                if finding.action.value >= 50
+            )
         message_type = MessageType.VETO if blockers else MessageType.UNCERTAINTY
         payload = {
             "world_state_version": _world_state_version(invocation),
@@ -354,6 +393,9 @@ class ShadowControllerAgent:
             "promotion_authority": "HUMAN_ONLY",
             "incumbent_substitution_allowed": False,
             "authority_can_only_contract": True,
+            "guard_review": review.to_dict(),
+            "resource_usage": usage.to_dict(),
+            "resource_budget": budget.guard_mapping(),
         }
         if blockers:
             payload["reason"] = "shadow_controller_upstream_veto"
@@ -383,55 +425,149 @@ class SynthesizerAgent:
         self.shadow_agent_id = shadow_agent_id
 
     def __call__(self, invocation: AgentInvocation) -> MessageEnvelope:
+        state = _one(invocation, MessageType.MARKET_STATE)
         prior = _forecast_by_role(invocation, AgentRole.MARKET_PRIOR.value)
         incumbent = _forecast_by_role(invocation, AgentRole.SPECIALIST.value)
         counter = _one(invocation, MessageType.COUNTERFORECAST)
         calibration = _one(invocation, MessageType.CALIBRATION_UPDATE)
-        vetoes = _messages(invocation, MessageType.VETO)
-        uncertainties = tuple(
+        shadow_messages = tuple(
             item
-            for item in _messages(invocation, MessageType.UNCERTAINTY)
-            if item.sender != self.shadow_agent_id
+            for item in invocation.input_messages
+            if item.sender == self.shadow_agent_id
+            and item.message_type in {MessageType.UNCERTAINTY, MessageType.VETO}
         )
+        if len(shadow_messages) != 1:
+            raise EpisodeValidationError("synthesizer requires one shadow review")
+        shadow_message = shadow_messages[0]
+        shadow_review = ShadowReview.from_dict(shadow_message.payload["guard_review"])
+        vetoes = _messages(invocation, MessageType.VETO)
+        adversarial_messages = tuple(
+            item
+            for item in invocation.input_messages
+            if item.payload.get("organism_role") == AgentRole.ADVERSARY.value
+            and item.message_type in {MessageType.UNCERTAINTY, MessageType.VETO}
+        )
+        if len(adversarial_messages) != 1:
+            raise EpisodeValidationError("synthesizer requires one adversarial review")
+        adversary = adversarial_messages[0]
         prior_probability = float(prior.payload["probability"])
         incumbent_probability = float(incumbent.payload["probability"])
         calibrated_probability = float(calibration.payload["calibrated_probability"])
         counter_probability = float(counter.payload["probability"])
-        candidate = round(
-            self.MARKET_WEIGHT * prior_probability
-            + self.SPECIALIST_WEIGHT * calibrated_probability
-            + self.COUNTER_WEIGHT * counter_probability,
+        market = state.payload["market"]
+        fee_probability = max(
+            kalshi_taker_fee_cents(int(market["yes_ask"]), 1, invocation.market_id),
+            kalshi_taker_fee_cents(int(market["no_ask"]), 1, invocation.market_id),
+        ) / 100.0
+        half_spread = max(
+            int(market["yes_ask"]) - int(market["yes_bid"]),
+            int(market["no_ask"]) - int(market["no_bid"]),
+        ) / 200.0
+        sources = (
+            SynthesisSource(
+                agent_id=prior.sender,
+                role=AgentRole.MARKET_PRIOR.value,
+                family_id=str(prior.payload["source_family"]),
+                probability_yes=prior_probability,
+                uncertainty=float(prior.payload["uncertainty"]),
+                proposed_weight=self.MARKET_WEIGHT,
+                calibrated=True,
+                stale=False,
+                regime_relevance=1.0,
+                independence=1.0,
+                evidence_ids=prior.evidence_ids,
+            ),
+            SynthesisSource(
+                agent_id=incumbent.sender,
+                role=AgentRole.SPECIALIST.value,
+                family_id=str(incumbent.payload["source_family"]),
+                probability_yes=calibrated_probability,
+                uncertainty=float(incumbent.payload["uncertainty"]),
+                proposed_weight=self.SPECIALIST_WEIGHT,
+                calibrated=calibration.payload.get("verified_map") is True,
+                stale=False,
+                regime_relevance=1.0,
+                independence=1.0,
+                evidence_ids=incumbent.evidence_ids,
+            ),
+            SynthesisSource(
+                agent_id=counter.sender,
+                role=AgentRole.CONTRARIAN.value,
+                family_id=str(counter.payload["source_family"]),
+                probability_yes=counter_probability,
+                uncertainty=float(counter.payload["uncertainty"]),
+                proposed_weight=self.COUNTER_WEIGHT,
+                calibrated=False,
+                stale=False,
+                regime_relevance=1.0,
+                independence=1.0,
+                evidence_ids=counter.evidence_ids,
+            ),
+        )
+        structured = synthesize(
+            sources,
+            policy=FamilyCapPolicy(
+                market_prior_floor=shadow_review.market_prior_floor,
+            ),
+            family_influence_caps=shadow_review.family_influence_caps,
+            cost_probability=fee_probability + half_spread,
+        )
+        candidate = structured.probability_yes
+        epistemic = round(
+            (structured.uncertainty_interval[1] - structured.uncertainty_interval[0])
+            / 2.0,
             12,
         )
-        spread = round(
-            max(prior_probability, incumbent_probability, counter_probability)
-            - min(prior_probability, incumbent_probability, counter_probability),
-            12,
-        )
-        epistemic = max(
-            [float(incumbent.payload.get("uncertainty", 0.5))]
-            + [float(item.payload.get("epistemic_uncertainty", 0.0)) for item in uncertainties]
-        )
-        epistemic = round(min(0.5, epistemic), 12)
-        confidence = {
-            "evidence_coverage": 1.0,
-            "family_independence": round(2.0 / 3.0, 12),
-            "calibration_support": 0.75 if calibration.payload["verified_map"] else 0.4,
-            "stability": round(max(0.0, 1.0 - 2.0 * epistemic), 12),
-        }
-        confidence["total"] = round(sum(confidence.values()) / 4.0, 12)
         edge = round(candidate - prior_probability, 12)
-        expected_information_gain = round(spread * epistemic, 12)
-        additional_analysis_useful = expected_information_gain >= 0.035
+        families = tuple(source.family_id for source in sources)
+        independence = len(set(families)) / len(families)
+        information_gain = estimate_information_gain_proxy(
+            tuple(source.probability_yes for source in sources),
+            source_independence=independence,
+            calibration_reliability=(
+                0.75 if calibration.payload.get("verified_map") is True else 0.25
+            ),
+        )
+        usage = account_messages(invocation.input_messages)
+        budget = ResourceBudget()
+        costs = estimate_costs(
+            usage,
+            budget,
+            duplication_fraction=1.0 - independence,
+            execution_relevance=(
+                1.0
+                if int(market.get("yes_ask_depth", 0)) > 0
+                and int(market.get("no_ask_depth", 0)) > 0
+                else 0.0
+            ),
+        )
+        marginal_utility = calculate_marginal_utility(
+            information_gain,
+            costs,
+            expected_calibration_value=0.0,
+            expected_decision_improvement=max(0.0, structured.edge_after_costs),
+        )
+        metacognition = evaluate_metacognition(
+            world_state=state.payload["world_state"],
+            messages=(prior, incumbent, counter, calibration, adversary, shadow_message),
+            decision_at=invocation.invoked_at,
+            incumbent_calibration_verified=calibration.payload.get("verified_map") is True,
+            meta_calibration=unavailable_meta_calibration(),
+            shadow_review=shadow_review,
+            synthesis=structured,
+            marginal_utility=marginal_utility,
+        )
         abstain_reasons: list[str] = []
         if vetoes:
             abstain_reasons.append("shadow_or_adversarial_veto")
         if epistemic > 0.22:
             abstain_reasons.append("epistemic_uncertainty_above_limit")
-        if confidence["total"] < 0.45:
-            abstain_reasons.append("decomposed_confidence_below_floor")
+        if structured.edge_after_costs <= 0.0:
+            abstain_reasons.append("edge_not_positive_after_costs")
         if abs(edge) < 0.015:
             abstain_reasons.append("edge_inside_no_edge_band")
+        if metacognition.abstention.applied:
+            abstain_reasons.append("metacognitive_safety_contraction")
         decision = (
             "ABSTAIN"
             if abstain_reasons
@@ -447,25 +583,23 @@ class SynthesizerAgent:
             "incumbent_comparison_delta": round(candidate - incumbent_probability, 12),
             "market_comparison_delta": edge,
             "family_weights": {
-                "market-price": self.MARKET_WEIGHT,
-                "incumbent": self.SPECIALIST_WEIGHT,
-                "countercase": self.COUNTER_WEIGHT,
+                key: value for key, value in structured.family_weights
             },
-            "confidence_decomposition": confidence,
-            "knowledge_boundaries": {
-                "known_unknowns": [
-                    "fillability_after_decision",
-                    "unobserved_regime_change",
-                    "source_family_dependence",
-                ],
-                "epistemic_uncertainty": epistemic,
-                "forecast_spread": spread,
+            "structured_synthesis": structured.to_dict(),
+            "confidence_decomposition": metacognition.confidence.to_dict(),
+            "knowledge_boundaries": metacognition.knowledge_boundary.to_dict(),
+            "metacognition": metacognition.to_dict(),
+            "shadow_review": shadow_review.to_dict(),
+            "metabolism": {
+                "usage": usage.to_dict(),
+                "budget": budget.guard_mapping(),
+                "marginal_utility": marginal_utility.to_dict(),
             },
             "additional_analysis": {
-                "useful": additional_analysis_useful,
-                "expected_information_gain": expected_information_gain,
+                "useful": metacognition.stopping.action.value == "CONTINUE",
+                "expected_information_gain_proxy": information_gain.proxy_value,
                 "performed": False,
-                "reason": "deterministic_phase3_budget_complete",
+                "reason": metacognition.stopping.reasons[0],
             },
             "abstain_reasons": sorted(abstain_reasons),
             "incumbent_substituted": False,

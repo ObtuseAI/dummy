@@ -1,0 +1,16 @@
+{
+  "calibration_verified": false,
+  "case_count": 0,
+  "confidence_brier": null,
+  "difficulty_brier": null,
+  "limitations": [
+    "metacognitive_mappings_remain_uncalibrated_shadow_outputs"
+  ],
+  "minimum_cases": 100,
+  "report_id": "6a28038a097623036ee92ccacbe27fa4b1e00e83f0f650df51795a3cd73724da",
+  "report_kind": "metacognitive_calibration",
+  "schema_version": 1,
+  "settlement_verified_only": true,
+  "status": "INSUFFICIENT_SETTLED_EVIDENCE",
+  "unique_event_cluster_count": 0
+}

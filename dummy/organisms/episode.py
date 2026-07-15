@@ -241,14 +241,22 @@ def _run_agents(
         template=template,
         role=AgentRole.SHADOW,
         request=request,
-        inputs=(prior, incumbent, contrarian, calibration, adversary),
+        inputs=(state, prior, incumbent, contrarian, calibration, adversary),
     )
     synthesis = _invoke(
         runtime=runtime,
         template=template,
         role=AgentRole.SYNTHESIZER,
         request=request,
-        inputs=(prior, incumbent, contrarian, calibration, adversary, shadow),
+        inputs=(
+            state,
+            prior,
+            incumbent,
+            contrarian,
+            calibration,
+            adversary,
+            shadow,
+        ),
     )
     for agent_id in reversed(activation_order):
         runtime.lifecycle(agent_id).transition(
@@ -573,7 +581,8 @@ def _improvement_and_replay(
         "capital_modified": False,
         "applied": False,
         "blockers": [
-            "phases_5_through_8_evidence_gates_incomplete",
+            "phase5_empirical_evidence_gates_unmet",
+            "phases_6_through_8_incomplete",
             "no_cluster_corrected_confidence_interval",
             "no_forward_paper_evidence_for_candidate",
             "human_promotion_review_not_requested",

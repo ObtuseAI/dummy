@@ -1,0 +1,21 @@
+{
+  "baseline_mean_brier": null,
+  "brier_regression": null,
+  "case_count": 0,
+  "claim_supported": false,
+  "cost_reduction_fraction": null,
+  "limitations": [
+    "resource_efficiency_claim_not_proven_on_held_out_clusters"
+  ],
+  "mean_baseline_cost": null,
+  "mean_resource_aware_cost": null,
+  "minimum_cases": 100,
+  "quality_tolerance": 0.002,
+  "report_id": "d7abd1605793184a6ac3ab0b21148dd3b9ed24d0fc9cd3b02aa39d7f13dad8a8",
+  "report_kind": "resource_efficiency_without_quality_regression",
+  "resource_aware_mean_brier": null,
+  "schema_version": 1,
+  "settlement_verified_only": true,
+  "status": "INSUFFICIENT_SETTLED_EVIDENCE",
+  "unique_event_cluster_count": 0
+}

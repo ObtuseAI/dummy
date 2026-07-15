@@ -232,6 +232,50 @@ def test_phase4_world_state_version_is_frozen_and_propagated_to_every_agent() ->
     )
 
 
+def test_phase5_controls_are_structured_conservative_and_shadow_only() -> None:
+    issued = issue_episode(_request().issue).to_dict()
+    decision = issued["decision"]["message"]["payload"]
+    review = decision["shadow_review"]
+    metacognition = decision["metacognition"]
+    metabolism = decision["metabolism"]
+
+    assert {item["guard"] for item in review["findings"]} == {
+        "authority",
+        "confidence",
+        "duplication",
+        "leakage",
+        "market_prior",
+        "provenance",
+        "regime",
+        "resource",
+    }
+    assert review["authority_can_only_contract"] is True
+    assert review["execution_authority"] is False
+    assert review["promotion_authority"] == "HUMAN_ONLY"
+    assert decision["family_weights"]["market-price"] >= 0.50
+    assert sum(decision["family_weights"].values()) == pytest.approx(1.0)
+    assert decision["structured_synthesis"]["market_prior_floor"] == 0.50
+
+    assert metacognition["shadow_only"] is True
+    assert metacognition["execution_authority"] is False
+    assert metacognition["promotion_authority"] == "HUMAN_ONLY"
+    assert metacognition["difficulty"]["calibration"]["state"] == (
+        "UNCALIBRATED_SHADOW"
+    )
+    for recommendation in (
+        "abstention",
+        "resource_allocation",
+        "stopping",
+        "strategy",
+    ):
+        assert metacognition[recommendation]["applied"] is False
+
+    marginal = metabolism["marginal_utility"]
+    assert marginal["status"] == "UNRESOLVED_UNMEASURED_COST"
+    assert marginal["marginal_utility"] is None
+    assert marginal["automatic_resource_expansion"] is False
+
+
 def test_episode_replay_is_byte_identical() -> None:
     request = _request()
     first = run_complete_episode(request, ledger=InMemoryEpisodeLedger())

@@ -1,0 +1,24 @@
+{
+  "abstention_cost": 0.25,
+  "case_count": 0,
+  "claim_supported": false,
+  "coverage": 0.0,
+  "coverage_gate": [
+    0.2,
+    0.9
+  ],
+  "coverage_valid": false,
+  "decision_loss_improvement": null,
+  "fixed_coverage_mean_loss": null,
+  "limitations": [
+    "abstention_value_not_proven_on_required_held_out_clusters"
+  ],
+  "metacognitive_mean_loss": null,
+  "minimum_cases": 100,
+  "report_id": "45022e2daedae1d16ef73dc69084cdc538cfd93647bacc5eb207dcf10b9b3972",
+  "report_kind": "metacognitive_abstention_value",
+  "schema_version": 1,
+  "settlement_verified_only": true,
+  "status": "INSUFFICIENT_SETTLED_EVIDENCE",
+  "unique_event_cluster_count": 0
+}
