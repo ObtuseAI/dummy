@@ -1,0 +1,384 @@
+{
+  "automatic_promotion": false,
+  "claim_count": 8,
+  "evaluator_version": "phase8-claim-evaluator-v1",
+  "evidence": [
+    {
+      "assertion": "research interventions and observatory projections cannot increase authority",
+      "candidate_controlled": false,
+      "event_clusters": 0,
+      "evidence_id": "34a00f29d71a2f80d0d890253d95b4375392d589957e458533f4522a1be7b4df",
+      "held_out": false,
+      "issuer": "PROTECTED_EXTERNAL_AUDIT",
+      "observed_cases": 0,
+      "point_in_time": false,
+      "reality": "GOVERNANCE",
+      "requirement": "authority_nonexpansion",
+      "schema_version": 1,
+      "source_artifact": "docs/VNEXT_PHASE7_HOMEOSTASIS_POLICY.json",
+      "verified": true
+    },
+    {
+      "assertion": "all canonical mechanical arena cases replay byte-identically",
+      "candidate_controlled": false,
+      "event_clusters": 0,
+      "evidence_id": "671091196f78644609e4d1defb999299c1e9155e497f1bf569b41cad7eff679d",
+      "held_out": false,
+      "issuer": "PROTECTED_EXTERNAL_AUDIT",
+      "observed_cases": 0,
+      "point_in_time": false,
+      "reality": "MECHANICAL",
+      "requirement": "deterministic_replay",
+      "schema_version": 1,
+      "source_artifact": "docs/VNEXT_PHASE7_ARENA_REPRODUCIBILITY.json",
+      "verified": true
+    },
+    {
+      "assertion": "forecast evaluation and fill truth are separate and no runtime execution is applied",
+      "candidate_controlled": false,
+      "event_clusters": 0,
+      "evidence_id": "7ed48dcf7e900159f290d5091f0d9832fffd7f317b0b02a1a4a8102c07b2eecf",
+      "held_out": false,
+      "issuer": "PROTECTED_EXTERNAL_AUDIT",
+      "observed_cases": 0,
+      "point_in_time": false,
+      "reality": "GOVERNANCE",
+      "requirement": "execution_realism",
+      "schema_version": 1,
+      "source_artifact": "docs/VNEXT_PHASE6_EVOLUTION_POLICY.json",
+      "verified": true
+    },
+    {
+      "assertion": "truth, evaluation, promotion, credentials, and execution remain outside candidate mutation",
+      "candidate_controlled": false,
+      "event_clusters": 0,
+      "evidence_id": "8caf04e728d534c3232ff4f7e9bf3cc31455b312e8a878cb0836ec49ef1ac491",
+      "held_out": false,
+      "issuer": "PROTECTED_EXTERNAL_AUDIT",
+      "observed_cases": 0,
+      "point_in_time": false,
+      "reality": "GOVERNANCE",
+      "requirement": "governance_tests",
+      "schema_version": 1,
+      "source_artifact": "docs/VNEXT_PROTECTED_SURFACES.json",
+      "verified": true
+    },
+    {
+      "assertion": "verified settlement, witnessed fill, and simulated fill are distinct realities; simulated fills cannot become realized capital PnL",
+      "candidate_controlled": false,
+      "event_clusters": 0,
+      "evidence_id": "8f7e0ff6572d060db8d0b1195bf6b64c8da279384ce2334017cdd38293c5324b",
+      "held_out": false,
+      "issuer": "PROTECTED_EXTERNAL_AUDIT",
+      "observed_cases": 0,
+      "point_in_time": false,
+      "reality": "GOVERNANCE",
+      "requirement": "fill_truth_separation",
+      "schema_version": 1,
+      "source_artifact": "docs/VNEXT_PHASE6_MEMORY_POLICY.json",
+      "verified": true
+    },
+    {
+      "assertion": "vNext research packages are statically prohibited from importing credential and execution modules",
+      "candidate_controlled": false,
+      "event_clusters": 0,
+      "evidence_id": "bbabf04310e4ffeaa0cdb86fb397b4967ec393987085aae57a4eb034c57a730d",
+      "held_out": false,
+      "issuer": "PROTECTED_EXTERNAL_AUDIT",
+      "observed_cases": 0,
+      "point_in_time": false,
+      "reality": "GOVERNANCE",
+      "requirement": "credential_isolation",
+      "schema_version": 1,
+      "source_artifact": "tests/test_vnext_import_boundaries.py",
+      "verified": true
+    }
+  ],
+  "governance_supported_count": 2,
+  "insufficient_evidence_count": 6,
+  "material_improvement_established": false,
+  "performance_supported_count": 0,
+  "phase": 8,
+  "program_id": "26d0b3c8cc3c4f1295d40fc27499390f35da0dd3db7b4ae146b2e31607b7f2fd",
+  "promotion_authority": "HUMAN_ONLY",
+  "reviews": [
+    {
+      "automatic_promotion": false,
+      "blockers": [
+        "event_clusters:0<20",
+        "missing:calibration",
+        "missing:deterministic_replay",
+        "missing:event_cluster_uncertainty",
+        "missing:market_prior_comparison",
+        "missing:point_in_time_held_out"
+      ],
+      "definition": {
+        "code": "claim_1_organism_outperformance",
+        "empirical": true,
+        "minimum_event_clusters": 20,
+        "requirements": [
+          "calibration",
+          "deterministic_replay",
+          "event_cluster_uncertainty",
+          "market_prior_comparison",
+          "point_in_time_held_out"
+        ],
+        "statement": "Dynamic forecast organisms outperform fixed orchestration."
+      },
+      "evidence_ids": [],
+      "missing_requirements": [
+        "calibration",
+        "deterministic_replay",
+        "event_cluster_uncertainty",
+        "market_prior_comparison",
+        "point_in_time_held_out"
+      ],
+      "review_id": "18f2bf2f3185cd13f304137c038b972a70857f3eb48d1ce21ac1d72de48d5200",
+      "satisfied_requirements": [],
+      "schema_version": 1,
+      "verdict": "INSUFFICIENT_EVIDENCE"
+    },
+    {
+      "automatic_promotion": false,
+      "blockers": [
+        "event_clusters:0<20",
+        "missing:abstention_comparator",
+        "missing:calibration",
+        "missing:deterministic_replay",
+        "missing:event_cluster_uncertainty",
+        "missing:point_in_time_held_out"
+      ],
+      "definition": {
+        "code": "claim_2_abstention_value",
+        "empirical": true,
+        "minimum_event_clusters": 20,
+        "requirements": [
+          "abstention_comparator",
+          "calibration",
+          "deterministic_replay",
+          "event_cluster_uncertainty",
+          "point_in_time_held_out"
+        ],
+        "statement": "Metacognitive abstention improves cumulative calibration and decision quality."
+      },
+      "evidence_ids": [],
+      "missing_requirements": [
+        "abstention_comparator",
+        "calibration",
+        "deterministic_replay",
+        "event_cluster_uncertainty",
+        "point_in_time_held_out"
+      ],
+      "review_id": "433b9a5741a7d3eeee7c969ee6a0d5c0c2498e0c0acb37bd54ff99a3498c21a1",
+      "satisfied_requirements": [],
+      "schema_version": 1,
+      "verdict": "INSUFFICIENT_EVIDENCE"
+    },
+    {
+      "automatic_promotion": false,
+      "blockers": [
+        "event_clusters:0<20",
+        "missing:event_cluster_uncertainty",
+        "missing:point_in_time_held_out",
+        "missing:quality_noninferiority",
+        "missing:resource_cost"
+      ],
+      "definition": {
+        "code": "claim_3_resource_efficiency",
+        "empirical": true,
+        "minimum_event_clusters": 20,
+        "requirements": [
+          "event_cluster_uncertainty",
+          "point_in_time_held_out",
+          "quality_noninferiority",
+          "resource_cost"
+        ],
+        "statement": "Resource-aware analysis reduces cost without reducing forecast quality."
+      },
+      "evidence_ids": [],
+      "missing_requirements": [
+        "event_cluster_uncertainty",
+        "point_in_time_held_out",
+        "quality_noninferiority",
+        "resource_cost"
+      ],
+      "review_id": "e714b074ef9edfa9d9b9488e14c4878042798a01df14242b01be94e17c101f8b",
+      "satisfied_requirements": [],
+      "schema_version": 1,
+      "verdict": "INSUFFICIENT_EVIDENCE"
+    },
+    {
+      "automatic_promotion": false,
+      "blockers": [
+        "event_clusters:0<20",
+        "missing:calibration",
+        "missing:event_cluster_uncertainty",
+        "missing:market_prior_comparison",
+        "missing:point_in_time_held_out",
+        "missing:transfer"
+      ],
+      "definition": {
+        "code": "claim_4_world_model_transfer",
+        "empirical": true,
+        "minimum_event_clusters": 20,
+        "requirements": [
+          "calibration",
+          "event_cluster_uncertainty",
+          "market_prior_comparison",
+          "point_in_time_held_out",
+          "transfer"
+        ],
+        "statement": "World-model context improves transfer across market regimes."
+      },
+      "evidence_ids": [],
+      "missing_requirements": [
+        "calibration",
+        "event_cluster_uncertainty",
+        "market_prior_comparison",
+        "point_in_time_held_out",
+        "transfer"
+      ],
+      "review_id": "f90b277393eba67bab843d35b930677777249b3b835e56e50ea53cee15417926",
+      "satisfied_requirements": [],
+      "schema_version": 1,
+      "verdict": "INSUFFICIENT_EVIDENCE"
+    },
+    {
+      "automatic_promotion": false,
+      "blockers": [
+        "event_clusters:0<20",
+        "missing:deterministic_replay",
+        "missing:event_cluster_uncertainty",
+        "missing:forward_paper",
+        "missing:multiple_testing_correction",
+        "missing:point_in_time_held_out",
+        "missing:transfer"
+      ],
+      "definition": {
+        "code": "claim_5_evolution_held_out_improvement",
+        "empirical": true,
+        "minimum_event_clusters": 20,
+        "requirements": [
+          "deterministic_replay",
+          "event_cluster_uncertainty",
+          "forward_paper",
+          "multiple_testing_correction",
+          "point_in_time_held_out",
+          "transfer"
+        ],
+        "statement": "Recursive evolution produces held-out improvement, not merely backtest improvement."
+      },
+      "evidence_ids": [],
+      "missing_requirements": [
+        "deterministic_replay",
+        "event_cluster_uncertainty",
+        "forward_paper",
+        "multiple_testing_correction",
+        "point_in_time_held_out",
+        "transfer"
+      ],
+      "review_id": "c3d26ccbd71e5f1950c3f0ece5063c6c86e3aa6127a4080257b3a1f9319acb18",
+      "satisfied_requirements": [],
+      "schema_version": 1,
+      "verdict": "INSUFFICIENT_EVIDENCE"
+    },
+    {
+      "automatic_promotion": false,
+      "blockers": [
+        "event_clusters:0<20",
+        "missing:contested_filter",
+        "missing:event_cluster_uncertainty",
+        "missing:market_prior_comparison",
+        "missing:multiple_testing_correction",
+        "missing:point_in_time_held_out"
+      ],
+      "definition": {
+        "code": "claim_6_contested_clustered_performance",
+        "empirical": true,
+        "minimum_event_clusters": 20,
+        "requirements": [
+          "contested_filter",
+          "event_cluster_uncertainty",
+          "market_prior_comparison",
+          "multiple_testing_correction",
+          "point_in_time_held_out"
+        ],
+        "statement": "Contested-market performance remains positive after cluster correction."
+      },
+      "evidence_ids": [],
+      "missing_requirements": [
+        "contested_filter",
+        "event_cluster_uncertainty",
+        "market_prior_comparison",
+        "multiple_testing_correction",
+        "point_in_time_held_out"
+      ],
+      "review_id": "15d975e1e7b6c823bfcfc48a6c9732b6a981cbc16b16b77f2d20c28855e96e00",
+      "satisfied_requirements": [],
+      "schema_version": 1,
+      "verdict": "INSUFFICIENT_EVIDENCE"
+    },
+    {
+      "automatic_promotion": false,
+      "blockers": [],
+      "definition": {
+        "code": "claim_7_execution_truth_separation",
+        "empirical": false,
+        "minimum_event_clusters": 0,
+        "requirements": [
+          "deterministic_replay",
+          "execution_realism",
+          "fill_truth_separation"
+        ],
+        "statement": "Execution-aware evidence remains distinct from forecast accuracy."
+      },
+      "evidence_ids": [
+        "671091196f78644609e4d1defb999299c1e9155e497f1bf569b41cad7eff679d",
+        "7ed48dcf7e900159f290d5091f0d9832fffd7f317b0b02a1a4a8102c07b2eecf",
+        "8f7e0ff6572d060db8d0b1195bf6b64c8da279384ce2334017cdd38293c5324b"
+      ],
+      "missing_requirements": [],
+      "review_id": "1268799b2732d841d0120b90d852e6ff4c7f9dacf25d70b565d0c64eb88d95ff",
+      "satisfied_requirements": [
+        "deterministic_replay",
+        "execution_realism",
+        "fill_truth_separation"
+      ],
+      "schema_version": 1,
+      "verdict": "SUPPORTED_GOVERNANCE_ONLY"
+    },
+    {
+      "automatic_promotion": false,
+      "blockers": [],
+      "definition": {
+        "code": "claim_8_governance_preservation",
+        "empirical": false,
+        "minimum_event_clusters": 0,
+        "requirements": [
+          "authority_nonexpansion",
+          "credential_isolation",
+          "deterministic_replay",
+          "governance_tests"
+        ],
+        "statement": "All improvements preserve fail-closed authority boundaries."
+      },
+      "evidence_ids": [
+        "34a00f29d71a2f80d0d890253d95b4375392d589957e458533f4522a1be7b4df",
+        "671091196f78644609e4d1defb999299c1e9155e497f1bf569b41cad7eff679d",
+        "8caf04e728d534c3232ff4f7e9bf3cc31455b312e8a878cb0836ec49ef1ac491",
+        "bbabf04310e4ffeaa0cdb86fb397b4967ec393987085aae57a4eb034c57a730d"
+      ],
+      "missing_requirements": [],
+      "review_id": "d8be2c3639f2f9c2028719694bce4d7c08343d808be294982f3365065d310c8a",
+      "satisfied_requirements": [
+        "authority_nonexpansion",
+        "credential_isolation",
+        "deterministic_replay",
+        "governance_tests"
+      ],
+      "schema_version": 1,
+      "verdict": "SUPPORTED_GOVERNANCE_ONLY"
+    }
+  ],
+  "schema_version": 1
+}

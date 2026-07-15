@@ -34,7 +34,7 @@ demonstrated.
 | Phase 5 — shadows, synthesis, metacognition | Implemented and validated; empirical gates pending (2026-07-14) | `dummy/shadows`, `dummy/synthesis`, `dummy/metacognition`, `dummy/metabolism`, `VNEXT_PHASE5_METACOGNITION.md`, policy and empty evidence artifacts, 5,650-test full-suite gate |
 | Phase 6 — memory, genomes, recursive evolution | Implemented and validated; empirical gates pending (2026-07-14) | `dummy/memory`, `dummy/genome`, `dummy/truth`, `dummy/evolution`, `VNEXT_PHASE6_MEMORY_EVOLUTION.md`, policy/catalog and empty evidence artifacts |
 | Phase 7 — observatory, arenas, homeostasis | Implemented and validated; runtime evidence unavailable (2026-07-14) | `dummy/observatory`, `dummy/arenas`, `dummy/homeostasis`, `VNEXT_PHASE7_OBSERVATORY_ARENAS.md`, GET-only dashboard, deterministic mechanical evidence, 5,685-test full-suite gate |
-| Phase 8 — benchmark claims and promotion review | Next | No claim promoted; all empirical gates remain evidence-bound |
+| Phase 8 — benchmark claims and promotion review | Implemented and validated; material improvement unproven (2026-07-14) | `dummy/benchmarks`, `dummy/claims`, `dummy/promotion`, `VNEXT_PHASE8_CLAIMS_PROMOTION.md`, 32 metrics, eight separate verdicts, blocked human-only review, 5,693-test full-suite gate |
 
 “Complete” here means the phase contract and its local exit gate are satisfied;
 it does not mean vNext is production-promoted. The frozen baseline remains
@@ -328,6 +328,20 @@ Exit gate:
 - all claims link to underlying episode or evidence IDs.
 
 ### Phase 8 — Benchmark claims and subsystem promotion
+
+Implementation status: the protected 32-metric benchmark catalog, eight
+claim-specific evidence contracts, external evaluator, non-skippable 11-state
+promotion lifecycle, deterministic audit, GET-only observatory projections,
+and human-only unapplied promotion packet are implemented. The canonical
+design and boundary record is `VNEXT_PHASE8_CLAIMS_PROMOTION.md`.
+
+Evidence status: claims 1–6 report `INSUFFICIENT_EVIDENCE`; claims 7–8 report
+`SUPPORTED_GOVERNANCE_ONLY`. This establishes structural execution-truth
+separation and fail-closed governance, not material forecasting improvement or
+execution-model accuracy. Zero performance claims are supported. The aggregate
+remains `SHADOW_ONLY`; only replay determinism is true among the 13 promotion
+evidence fields, so transition to `REPLAY_VALIDATED` is blocked. Review remains
+human-only, unrequested, automatic-promotion false, and unapplied.
 
 Each internal claim is reviewed separately:
 

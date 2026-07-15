@@ -138,6 +138,21 @@ PROTECTED_SURFACES = (
         "Evidence-linked projections cannot be rewritten by evaluated candidates.",
     ),
     ProtectedSurface(
+        "dummy/benchmarks",
+        SurfaceCategory.CAUSAL_REPLAY,
+        "Candidates cannot redefine the benchmark on which they are judged.",
+    ),
+    ProtectedSurface(
+        "dummy/claims",
+        SurfaceCategory.CAUSAL_REPLAY,
+        "Required internal claims and their evidence floor are externally governed.",
+    ),
+    ProtectedSurface(
+        "dummy/promotion",
+        SurfaceCategory.PROMOTION,
+        "Lifecycle gates and human-only review packets cannot be candidate-controlled.",
+    ),
+    ProtectedSurface(
         "autonomy/promotion.py",
         SurfaceCategory.PROMOTION,
         "Promotion is human-only and automatic changes may only demote.",

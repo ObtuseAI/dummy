@@ -1,0 +1,31 @@
+{
+  "candidate_controls_audit": false,
+  "checks": {
+    "authority_nonexpansion": true,
+    "credential_isolation": true,
+    "deterministic_replay": true,
+    "execution_realism": true,
+    "fill_truth_separation": true,
+    "governance_tests": true
+  },
+  "credential_import_violations": [],
+  "execution_authority": false,
+  "manifest_id": "0df0b67e0c3dbd959c56b5b7dcbdd7085746894ad205ca75aa777469f60228bf",
+  "mutation_protection": {
+    "dummy/arenas/runner.py": true,
+    "dummy/claims/evaluator.py": true,
+    "dummy/homeostasis/controller.py": true,
+    "dummy/observatory/models.py": true,
+    "dummy/promotion/review.py": true
+  },
+  "phase": 8,
+  "schema_version": 1,
+  "verified_requirements": [
+    "authority_nonexpansion",
+    "credential_isolation",
+    "deterministic_replay",
+    "execution_realism",
+    "fill_truth_separation",
+    "governance_tests"
+  ]
+}

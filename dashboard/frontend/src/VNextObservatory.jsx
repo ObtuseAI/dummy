@@ -9,15 +9,25 @@ const statusTone = (status) => {
 
 export default function VNextObservatory() {
   const [snapshot, setSnapshot] = useState(null);
+  const [claims, setClaims] = useState(null);
+  const [promotion, setPromotion] = useState(null);
   const [error, setError] = useState('');
 
   useEffect(() => {
-    fetch('/api/vnext/observatory')
-      .then((response) => {
-        if (!response.ok) throw new Error(`observatory unavailable (${response.status})`);
-        return response.json();
+    const readJson = (path) => fetch(path).then((response) => {
+      if (!response.ok) throw new Error(`${path} unavailable (${response.status})`);
+      return response.json();
+    });
+    Promise.all([
+      readJson('/api/vnext/observatory'),
+      readJson('/api/vnext/claims'),
+      readJson('/api/vnext/promotion-review'),
+    ])
+      .then(([nextSnapshot, nextClaims, nextPromotion]) => {
+        setSnapshot(nextSnapshot);
+        setClaims(nextClaims);
+        setPromotion(nextPromotion);
       })
-      .then(setSnapshot)
       .catch((reason) => setError(String(reason.message || reason)));
   }, []);
 
@@ -41,6 +51,38 @@ export default function VNextObservatory() {
 
       {error && <div className="rounded-lg border border-red-700 bg-red-950 p-4 text-red-200">{error}</div>}
       {!snapshot && !error && <div className="text-gray-400">Loading evidence projection…</div>}
+
+      {claims && promotion && (
+        <div className="grid gap-4 lg:grid-cols-3">
+          <article className="rounded-xl border border-amber-800 bg-gray-950 p-5 lg:col-span-2">
+            <h2 className="text-lg font-semibold text-white">Claim-by-claim evidence review</h2>
+            <p className="mt-2 text-sm text-gray-400">
+              Performance supported: {claims.performance_supported_count}; governance-only: {claims.governance_supported_count};
+              insufficient evidence: {claims.insufficient_evidence_count}. Material improvement: {String(claims.material_improvement_established)}.
+            </p>
+            <div className="mt-4 grid gap-2 md:grid-cols-2">
+              {claims.reviews.map((review) => (
+                <div key={review.review_id} className="rounded-lg border border-gray-800 bg-gray-900 p-3">
+                  <div className="text-sm text-gray-200">{review.definition.statement}</div>
+                  <div className={`mt-2 text-xs font-semibold ${statusTone(review.verdict)}`}>{review.verdict}</div>
+                  {review.blockers.length > 0 && <div className="mt-1 text-[11px] text-amber-400">{review.blockers.length} evidence blocker(s)</div>}
+                </div>
+              ))}
+            </div>
+          </article>
+          <article className="rounded-xl border border-rose-800 bg-gray-950 p-5">
+            <h2 className="text-lg font-semibold text-white">Promotion review</h2>
+            <div className="mt-3 text-sm text-gray-300">{promotion.current_state} → {promotion.requested_state}</div>
+            <div className="mt-2 text-sm font-semibold text-rose-300">
+              {promotion.transition_eligible ? 'Eligible for human review' : 'Blocked'}
+            </div>
+            <div className="mt-3 text-xs text-gray-400">Human approval required: {String(promotion.human_review_required)}</div>
+            <div className="mt-1 text-xs text-gray-400">Automatic promotion: {String(promotion.automatic_promotion)}</div>
+            <div className="mt-1 text-xs text-gray-400">Applied: {String(promotion.applied)}</div>
+            <div className="mt-3 text-xs text-amber-400">{promotion.blockers.length} unresolved evidence blocker(s)</div>
+          </article>
+        </div>
+      )}
 
       {snapshot && (
         <div className="grid gap-4 lg:grid-cols-2">
