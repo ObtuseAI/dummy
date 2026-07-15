@@ -1,0 +1,40 @@
+{
+  "evidence_realities": [
+    "PUBLIC_OBSERVATION",
+    "VERIFIED_SETTLEMENT",
+    "WITNESSED_FILL",
+    "SIMULATED",
+    "DERIVED",
+    "HYPOTHESIS"
+  ],
+  "execution_authority": false,
+  "ledger": {
+    "append_only": true,
+    "causal_parents_must_preexist": true,
+    "content_addressed_records": true,
+    "empty_head_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+    "hash_chained": true,
+    "recorded_time_monotonic": true
+  },
+  "manifest_id": "72be4a25ed6580fe974a0edc3ed5a810379f43a3398ca334fcd728e143a23554",
+  "memory_kinds": [
+    "OBSERVATION",
+    "EPISODE",
+    "SETTLEMENT",
+    "FILL",
+    "FAILURE",
+    "CALIBRATION",
+    "STRATEGY",
+    "THEORY",
+    "GENOME"
+  ],
+  "performance_claim_supported": false,
+  "phase": 6,
+  "realized_truth_rules": {
+    "settlement_requires_verified_provenance": true,
+    "simulated_fill_realized_capital_pnl": false,
+    "theory_never_promotion_eligible": true,
+    "witnessed_fill_separate_from_simulation": true
+  },
+  "schema_version": 1
+}

@@ -13,6 +13,7 @@ from dummy.constitution.authority import Authority
 
 
 class SurfaceCategory(str, Enum):
+    CAUSAL_REPLAY = "causal_replay"
     CONSTITUTION = "constitution"
     CREDENTIALS = "credentials"
     EXECUTION = "execution"
@@ -53,6 +54,71 @@ PROTECTED_SURFACES = (
         "autonomy/evolution_lab.py",
         SurfaceCategory.SETTLEMENT_TRUTH,
         "Candidate evaluation and held-out fold rules are protected.",
+    ),
+    ProtectedSurface(
+        "dummy/memory",
+        SurfaceCategory.CAUSAL_REPLAY,
+        "Append-only vNext memory, provenance, and hash-chain rules are authoritative.",
+    ),
+    ProtectedSurface(
+        "dummy/truth",
+        SurfaceCategory.CAUSAL_REPLAY,
+        "Cluster inference and multiple-testing correction cannot be candidate-controlled.",
+    ),
+    ProtectedSurface(
+        "dummy/genome/schema.py",
+        SurfaceCategory.CAUSAL_REPLAY,
+        "Genome identity and authority fields are outside the mutation surface.",
+    ),
+    ProtectedSurface(
+        "dummy/genome/registry.py",
+        SurfaceCategory.CAUSAL_REPLAY,
+        "Genome lineage registration and scope isolation are externally governed.",
+    ),
+    ProtectedSurface(
+        "dummy/genome/lineage.py",
+        SurfaceCategory.CAUSAL_REPLAY,
+        "Candidate lineages cannot rewrite their ancestry.",
+    ),
+    ProtectedSurface(
+        "dummy/genome/fitness.py",
+        SurfaceCategory.CAUSAL_REPLAY,
+        "Candidates cannot alter the contract that records their held-out fitness.",
+    ),
+    ProtectedSurface(
+        "dummy/genome/mutation.py",
+        SurfaceCategory.CONSTITUTION,
+        "Mutation levels and constitutional checks cannot be self-modified.",
+    ),
+    ProtectedSurface(
+        "dummy/genome/retirement.py",
+        SurfaceCategory.PROMOTION,
+        "Retirement evidence and reversibility rules cannot be weakened by candidates.",
+    ),
+    ProtectedSurface(
+        "dummy/evolution/evaluator.py",
+        SurfaceCategory.CAUSAL_REPLAY,
+        "The external vNext evaluator cannot be changed by evaluated candidates.",
+    ),
+    ProtectedSurface(
+        "dummy/evolution/candidate.py",
+        SurfaceCategory.CAUSAL_REPLAY,
+        "Held-out purge and point-in-time input rules cannot be candidate-controlled.",
+    ),
+    ProtectedSurface(
+        "dummy/evolution/archive.py",
+        SurfaceCategory.CAUSAL_REPLAY,
+        "Archived evolutionary evidence is immutable to candidates.",
+    ),
+    ProtectedSurface(
+        "dummy/evolution/promotion.py",
+        SurfaceCategory.PROMOTION,
+        "Evolution produces human-review proposals and cannot grant promotion.",
+    ),
+    ProtectedSurface(
+        "dummy/evolution/rollback.py",
+        SurfaceCategory.PROMOTION,
+        "Rollback remains a deterministic contraction-only governance action.",
     ),
     ProtectedSurface(
         "autonomy/promotion.py",

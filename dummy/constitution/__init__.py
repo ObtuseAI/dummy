@@ -20,6 +20,7 @@ from dummy.constitution.mutation_protection import (
     ProtectedSurface,
     SurfaceCategory,
     evaluate_mutation_proposal,
+    protected_manifest_dict,
     protected_manifest_digest,
 )
 
@@ -39,5 +40,6 @@ __all__ = [
     "assert_authority_at_most",
     "can_delegate",
     "evaluate_mutation_proposal",
+    "protected_manifest_dict",
     "protected_manifest_digest",
 ]

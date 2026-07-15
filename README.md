@@ -87,6 +87,20 @@ marginal-utility claim. The checked-in
 honestly contain no settled cases, so Phase 5 remains shadow-only with its
 empirical evidence gates pending.
 
+Phase 6 adds the [`layered causal memory, forecast-genome, and bounded recursive
+evolution system`](docs/VNEXT_PHASE6_MEMORY_EVOLUTION.md). Immutable observation,
+episode, settlement, fill, failure, calibration, strategy, theory, and genome
+records form a tamper-evident causal ledger. Generation-zero BTC 15-minute and
+MLB pregame genomes may produce proposal-only research descendants across six
+recursive levels, but the constitutional manifest prevents mutations from
+reaching truth, evidence, evaluation, promotion, credential, or execution
+surfaces. Candidate families are judged externally using purged held-out event
+clusters, clustered intervals, Holm-Bonferroni correction, and transfer tests.
+The checked-in [`evolution evidence`](docs/VNEXT_PHASE6_EVOLUTION_EVIDENCE.json)
+contains zero genuine settled candidates and reports
+`INSUFFICIENT_SETTLED_EVIDENCE`; no source edit, runtime application,
+performance claim, automatic promotion, or execution authority is granted.
+
 ## Current paper operation
 
 The market-horizon paper twin runs every five minutes through the Windows
