@@ -1,0 +1,90 @@
+{
+  "report_name": "EVIDENCE_PERFORMANCE_CYCLE",
+  "generated_at": "2026-07-15T05:31:24.561903+00:00",
+  "status": "COMPLETE_WITH_EMPIRICAL_BLOCKERS",
+  "source_backtest": "artifacts/dummy/backtests/AUTONOMY_BACKTEST_20260715T053124627085.json",
+  "bundle_1_evidence_refresh": {
+    "ledger_settled_markets": 91991,
+    "decision_policy_snapshots": 4772,
+    "decision_event_clusters": 1312,
+    "forecast_brier": 0.11963,
+    "market_brier": 0.126461,
+    "brier_skill_vs_market": 0.054,
+    "expected_calibration_error": 0.016269,
+    "cluster_robust_brier_advantage_ci95": {
+      "lower": 0.003311,
+      "mean": 0.006831,
+      "upper": 0.010955,
+      "clusters": 1312,
+      "method": "event_cluster_bootstrap_95"
+    },
+    "weights_written": true,
+    "exact_scope_trust_surfaces": 55,
+    "readiness_scopes_evaluated": 54,
+    "new_auto_demotions": 0
+  },
+  "bundle_2_fill_conditioned_crypto": {
+    "filled_decision_snapshots": 12,
+    "event_clusters": 9,
+    "brier_skill_vs_market": -0.2141,
+    "mean_brier_advantage_vs_market": -0.044444,
+    "evidence_status": "INSUFFICIENT_EVIDENCE",
+    "canary_blocked": true,
+    "cannot_be_masked_by_other_verticals": true,
+    "verified_trade_record": {
+      "trades": 26,
+      "net_pnl_cents": -251,
+      "roi_on_entry_cost": -0.2006,
+      "max_drawdown_cents": 463
+    }
+  },
+  "bundle_3_sports_cohorts": {
+    "observed_leagues": [
+      "mlb"
+    ],
+    "unobserved_leagues_not_generalized": [
+      "nba",
+      "nfl",
+      "ncaaf",
+      "nhl",
+      "ncaamb"
+    ],
+    "settled_decision_snapshots": 229,
+    "event_clusters": 78,
+    "brier_skill_vs_market": -0.0553,
+    "expected_calibration_error": 0.128422,
+    "automatic_contraction_quarantines": [
+      "mlb|total|pre|underdog_lt_40",
+      "mlb|winner|pre|balanced_40_60"
+    ],
+    "supported_observational_cohorts": [
+      "mlb|total|pre|favorite_gt_60"
+    ]
+  },
+  "autonomous_recursive_improvement": {
+    "runtime_guard": "runtime/autonomy/performance_quarantines.json",
+    "runtime_report": "runtime/autonomy/self_improvement_report.json",
+    "loop": [
+      "observe point-in-time signals, fills, and settlements",
+      "diagnose source and joint cohort failures",
+      "quarantine decisively negative cohorts while continuing shadow grading",
+      "relearn exact-scope trust from settled outcomes",
+      "evaluate candidate repairs with purged walk-forward and cluster intervals",
+      "retain contractions automatically and require human review for expansion",
+      "repeat from new forward evidence"
+    ],
+    "contraction_only": true,
+    "auto_promote": false,
+    "execution_authority": false,
+    "capital_authority": false
+  },
+  "canary": {
+    "ready": false,
+    "blockers": [
+      "verified shadow PnL is not positive: -251c",
+      "aggregate fill-conditioned Brier skill is not positive: -0.1164",
+      "crypto fill-conditioned Brier skill is not positive: -0.2141"
+    ]
+  },
+  "claim_boundary": "Architecture and contraction-safe repair are complete; positive live-capital performance is not established."
+}

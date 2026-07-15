@@ -69,9 +69,15 @@ def _abstain(
 
 
 class Allocator:
-    def __init__(self, risk_brain: RiskBrain, min_ev_cents: float = MIN_EV_CENTS):
+    def __init__(
+        self,
+        risk_brain: RiskBrain,
+        min_ev_cents: float = MIN_EV_CENTS,
+        performance_guard=None,
+    ):
         self.risk_brain = risk_brain
         self.min_ev_cents = min_ev_cents
+        self.performance_guard = performance_guard
 
     def _maker_price(self, best_bid: int | None, best_ask: int | None, fair_cents: float) -> int | None:
         """Rest one tick inside the current bid, never above our fair value."""
@@ -90,6 +96,10 @@ class Allocator:
                market_exposure_cents: int = 0, group_exposure_cents: int = 0,
                group_open_count: int = 0) -> Decision:
         snapshot: dict = {}
+        if self.performance_guard is not None:
+            reason = self.performance_guard.reason_for(market, forecast)
+            if reason:
+                return _abstain(market, forecast, reason, snapshot)
         if forecast.uncertainty > MAX_UNCERTAINTY:
             return _abstain(market, forecast, f"uncertainty {forecast.uncertainty:.2f} too high", snapshot)
         quotes = (market.yes_bid, market.yes_ask, market.no_bid, market.no_ask)

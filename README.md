@@ -148,6 +148,14 @@ by settled out-of-sample calibration, event-cluster robustness, witnessed-fill
 performance after fees and slippage, drawdown limits, and the canary firewall.
 Elapsed runtime, backtests, or counterfactual quote P&L cannot promote it.
 
+The latest checked-in [`evidence and performance cycle`](docs/EVIDENCE_PERFORMANCE_CYCLE_2026-07-15.json)
+grades 4,772 decision snapshots across 1,312 event clusters. Aggregate Brier
+skill remains positive (+5.40%), but verified fill P&L is -251c and crypto
+fill-conditioned skill is -21.41%, so canary and scale remain blocked. Current
+sports settlement evidence is MLB-only: exact joint-cohort guards quarantine
+pregame underdog totals and balanced-price winners while continuing shadow
+grading; no conclusion is transferred to another league.
+
 The local command-center dashboard at `http://127.0.0.1:8787/` (durable via the
 `DummyDashboard` scheduled task; run `scripts/install_dashboard_task.ps1`, which
 self-elevates through a UAC prompt) tracks scheduler
@@ -228,8 +236,16 @@ default), reconciles settlements, and grades every source against reality.
 ## Recursive improvement
 
 - **Calibration**: every settlement Brier-scores every source that opined —
-  globally and per-vertical (`source@VERTICAL`) — and updates trust
+  globally, per-vertical (`source@VERTICAL`), and at the exact
+  source × market-type × phase/horizon scope — and updates trust
   multiplicatively. Influence is earned by beating the market, nothing else.
+- **Autonomous recursive repair**: every metabolic recalibration diagnoses
+  fill and sports performance by independent event clusters, relearns exact-
+  scope trust, and writes contraction-only joint cohort quarantines. A guarded
+  cohort abstains but keeps producing shadow grading evidence, so recovery can
+  be measured and proposed for human release later. Quarantines are sticky;
+  positive results can request human review, but cannot auto-promote, restore
+  an execution path, enable execution, or increase capital.
 - **Contested truth**: trust and the live gate key on the *contested* record
   (markets where a source disagreed with the market prior by ≥5¢ — the
   population it would actually trade). Agreeing with the market and being

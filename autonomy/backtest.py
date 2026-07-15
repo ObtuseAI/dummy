@@ -292,6 +292,131 @@ def _forecast_metrics(rows: list[dict[str, Any]]) -> dict[str, Any]:
     }
 
 
+def _evidence_disposition(
+    rows: list[dict[str, Any]], *, min_rows: int = 20, min_clusters: int = 10,
+) -> dict[str, Any]:
+    """Cluster-robust cohort gate; evidence only, never execution authority."""
+    advantages: dict[str, list[float]] = {}
+    for row in rows:
+        advantages.setdefault(row["cluster"], []).append(
+            _brier(row["market"], row["result"])
+            - _brier(row["forecast"], row["result"])
+        )
+    interval = _cluster_bootstrap_mean_ci(
+        advantages,
+        seed="cohort:" + "|".join(sorted(advantages)),
+    )
+    clusters = len(advantages)
+    if len(rows) < min_rows or clusters < min_clusters:
+        status = "INSUFFICIENT_EVIDENCE"
+    elif interval is not None and float(interval["upper"]) < 0.0:
+        status = "QUARANTINE_NEGATIVE_EDGE"
+    elif interval is not None and float(interval["lower"]) > 0.0:
+        status = "SUPPORTED_POSITIVE_EDGE"
+    else:
+        status = "OBSERVE_INCONCLUSIVE"
+    return {
+        "status": status,
+        "minimum_rows": min_rows,
+        "minimum_event_clusters": min_clusters,
+        "cluster_robust_brier_advantage": interval,
+        "execution_authority": False,
+        "promotion_authority": False,
+    }
+
+
+_SPORTS_LEAGUE_PREFIXES: tuple[tuple[str, str], ...] = (
+    ("KXNCAAMBGAME", "ncaamb"),
+    ("KXNCAAMBTOTAL", "ncaamb"),
+    ("KXNCAAFGAME", "ncaaf"),
+    ("KXNCAAFTOTAL", "ncaaf"),
+    ("KXWNBAGAME", "wnba"),
+    ("KXNBAGAME", "nba"),
+    ("KXNBATOTAL", "nba"),
+    ("KXNFLGAME", "nfl"),
+    ("KXNFLTOTAL", "nfl"),
+    ("KXNHLGAME", "nhl"),
+    ("KXNHLTOTAL", "nhl"),
+    ("KXMLB", "mlb"),
+)
+
+
+def _sports_dimensions(row: dict[str, Any]) -> dict[str, str] | None:
+    ticker = str(row["ticker"]).upper()
+    league = next(
+        (label for prefix, label in _SPORTS_LEAGUE_PREFIXES if ticker.startswith(prefix)),
+        None,
+    )
+    if league is None:
+        return None
+    series = ticker.split("-", 1)[0]
+    if "SPREAD" in series:
+        market_type = "spread"
+    elif "TOTAL" in series:
+        market_type = "total"
+    elif "RFI" in series:
+        market_type = "yrfi"
+    else:
+        market_type = "winner"
+    sources = row.get("sources_used") or {}
+    phase = "live" if any("live" in str(source) for source in sources) else "pre"
+    market = float(row["market"])
+    if market < 0.40:
+        regime = "underdog_lt_40"
+    elif market > 0.60:
+        regime = "favorite_gt_60"
+    else:
+        regime = "balanced_40_60"
+    return {
+        "league": league,
+        "market_type": market_type,
+        "phase": phase,
+        "market_regime": regime,
+    }
+
+
+def _sports_cohort_report(rows: list[dict[str, Any]]) -> dict[str, Any]:
+    sports_rows: list[dict[str, Any]] = []
+    for row in rows:
+        dimensions = _sports_dimensions(row)
+        if dimensions is not None:
+            sports_rows.append({**row, **dimensions})
+    views: dict[str, dict[str, Any]] = {}
+    for dimension in ("league", "market_type", "phase", "market_regime"):
+        groups: dict[str, list[dict[str, Any]]] = {}
+        for row in sports_rows:
+            groups.setdefault(str(row[dimension]), []).append(row)
+        views[f"by_{dimension}"] = {
+            key: {
+                **_forecast_metrics(group),
+                "evidence_disposition": _evidence_disposition(group),
+            }
+            for key, group in sorted(groups.items())
+        }
+    joint: dict[str, list[dict[str, Any]]] = {}
+    for row in sports_rows:
+        key = "|".join(
+            str(row[name])
+            for name in ("league", "market_type", "phase", "market_regime")
+        )
+        joint.setdefault(key, []).append(row)
+    views["by_joint_scope"] = {
+        key: {
+            **_forecast_metrics(group),
+            "evidence_disposition": _evidence_disposition(group),
+        }
+        for key, group in sorted(joint.items())
+    }
+    return {
+        "settled_decision_snapshots": len(sports_rows),
+        "event_clusters": len({row["cluster"] for row in sports_rows}),
+        "cohort_dimensions": ["league", "market_type", "phase", "market_regime"],
+        "phase_inference": "active fused source name contains 'live'; otherwise pre",
+        "market_regime_is_point_in_time": True,
+        **views,
+    }
+
+
 def _summarize_trades(trades: list[dict[str, Any]]) -> dict[str, Any]:
     pnl = [int(trade["pnl_cents"]) for trade in trades]
     cost = [int(trade["cost_cents"]) for trade in trades]
@@ -435,7 +560,7 @@ def _decision_policy_report(conn) -> dict[str, Any]:
     raw = conn.execute(
         """
         SELECT d.market_ticker, d.probability_yes, d.market_implied_yes,
-               d.created_at, s.result_yes, s.settled_at
+               d.created_at, s.result_yes, s.settled_at, d.sources_used
         FROM decisions d JOIN settlements s ON s.market_ticker = d.market_ticker
         WHERE d.market_implied_yes IS NOT NULL
         ORDER BY d.created_at, d.decision_id
@@ -444,8 +569,11 @@ def _decision_policy_report(conn) -> dict[str, Any]:
     earliest: dict[str, dict[str, Any]] = {}
     from autonomy.correlation import group_key
 
-    for ticker, q, market, created_at, result, settled_at in raw:
+    for ticker, q, market, created_at, result, settled_at, raw_sources in raw:
         try:
+            sources_used = json.loads(raw_sources or "{}")
+            if not isinstance(sources_used, dict):
+                sources_used = {}
             row = {
                 "ticker": str(ticker),
                 "forecast": float(q),
@@ -454,8 +582,9 @@ def _decision_policy_report(conn) -> dict[str, Any]:
                 "settled_at": str(settled_at),
                 "result": int(result),
                 "cluster": group_key(str(ticker)),
+                "sources_used": sources_used,
             }
-        except (TypeError, ValueError):
+        except (json.JSONDecodeError, TypeError, ValueError):
             continue
         if not (0.0 < row["forecast"] < 1.0 and 0.0 < row["market"] < 1.0):
             continue
@@ -520,6 +649,7 @@ def _decision_policy_report(conn) -> dict[str, Any]:
             vertical: _forecast_metrics(vertical_rows)
             for vertical, vertical_rows in sorted(by_vertical.items())
         },
+        "sports_performance_cohorts": _sports_cohort_report(rows),
         "cluster_robust_advantage": {
             "brier": _cluster_bootstrap_mean_ci(
                 brier_by_cluster, seed="decision-policy-brier",
@@ -664,15 +794,28 @@ def _fill_conditioned_policy_report(conn) -> dict[str, Any]:
         """
     ).fetchall()
     from autonomy.correlation import group_key
+    from autonomy.scanner import classify_vertical
 
     samples = [{
         "ticker": str(ticker), "forecast": float(forecast), "market": float(market),
         "created_at": str(created_at), "settled_at": str(settled_at),
         "result": int(result), "cluster": group_key(str(ticker)),
+        "vertical": classify_vertical(str(ticker)).value,
     } for ticker, forecast, market, created_at, result, settled_at in rows]
     metrics = _forecast_metrics(samples)
+    by_vertical: dict[str, list[dict[str, Any]]] = {}
+    for sample in samples:
+        by_vertical.setdefault(sample["vertical"], []).append(sample)
     return {
         **metrics,
+        "evidence_disposition": _evidence_disposition(samples),
+        "by_vertical": {
+            vertical: {
+                **_forecast_metrics(group),
+                "evidence_disposition": _evidence_disposition(group),
+            }
+            for vertical, group in sorted(by_vertical.items())
+        },
         "selection": "decisions_with_witnessed_fill_and_settlement",
         "event_clusters": len({row["cluster"] for row in samples}),
         "warning": (
@@ -737,6 +880,8 @@ def _pearson(pairs: list[tuple[float, float]]) -> float | None:
 
 def _crypto_fill_diagnostics(conn) -> dict[str, Any]:
     """Expose the selection gap hidden by easy full-surface crypto tails."""
+    from autonomy.correlation import group_key
+
     filled_rows = conn.execute(
         """
         SELECT d.decision_id,d.market_ticker,d.probability_yes,d.market_implied_yes,
@@ -764,6 +909,7 @@ def _crypto_fill_diagnostics(conn) -> dict[str, Any]:
             "ev_cents": float(ev), "price_cents": int(price),
             "created_at": str(created_at), "settled_at": str(settled_at),
             "result": int(result), "pnl_cents": int(pnl),
+            "cluster": group_key(str(ticker)),
             "prior_share": float((json.loads(sources_used or "{}") or {}).get("market_prior", 0.0)),
         }
         samples.append(row)
@@ -859,6 +1005,18 @@ def _crypto_fill_diagnostics(conn) -> dict[str, Any]:
         FROM signal_history WHERE source IN ('crypto_spot_vol','crypto_ewma_t')
         """
     ).fetchone()
+    cohort_rows: dict[str, dict[str, list[dict[str, Any]]]] = {
+        "asset": {}, "entry_price": {}, "claimed_ev": {},
+    }
+    for row in samples:
+        asset = "eth" if "ETH" in row["ticker"].upper() else "btc"
+        price = int(row["price_cents"])
+        price_band = "01_25" if price <= 25 else ("26_50" if price <= 50 else "51_75_plus")
+        ev_band = "08_11_99" if row["ev_cents"] < 12 else "12_plus"
+        for dimension, key in (
+            ("asset", asset), ("entry_price", price_band), ("claimed_ev", ev_band),
+        ):
+            cohort_rows[dimension].setdefault(key, []).append(row)
     return {
         "selection": "witnessed_crypto_fills_with_settlement",
         "filled_settled_decisions": len(samples),
@@ -873,6 +1031,18 @@ def _crypto_fill_diagnostics(conn) -> dict[str, Any]:
             for source, errors in sorted(source_errors.items())
         },
         "market_anchor_blends": anchor_blends,
+        "fill_evidence_gate": _evidence_disposition(samples),
+        "fill_cohorts": {
+            dimension: {
+                key: {
+                    **_forecast_metrics(group),
+                    "net_pnl_cents": sum(row["pnl_cents"] for row in group),
+                    "evidence_disposition": _evidence_disposition(group),
+                }
+                for key, group in sorted(groups.items())
+            }
+            for dimension, groups in cohort_rows.items()
+        },
         "source_family_overlap": {
             "family": "crypto_coinbase_distribution",
             "paired_markets": len(pairs),
@@ -1111,6 +1281,9 @@ def run_backtest(ledger: AutonomyLedger, bootstrap_weights: bool = False) -> dic
             ledger.update_weight(source, weight)
         for scoped_key, weight in derived_scoped.items():
             ledger.update_weight(scoped_key, weight)
+        for scope, tracker in scope_trackers.items():
+            # ``scope`` already is the canonical source|market_type|axis key.
+            ledger.update_weight(f"scope:{scope}", round(tracker.derived_weight(), 3))
 
     sources_by_scope = {s: {k: t.summary()[k] for k in
                             ("n", "mean_brier", "contested_n",

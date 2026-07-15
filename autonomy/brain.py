@@ -75,6 +75,7 @@ class PredatorBrain:
         balance_fn: Any | None = None,
         router: Any | None = None,
         exchange_status_fn: Any | None = None,
+        performance_guard: Any | None = None,
     ) -> None:
         self.mode = mode
         self.ledger = ledger
@@ -90,6 +91,7 @@ class PredatorBrain:
         # Optional venue-state probe (autonomy/exchange_status.py); None skips
         # the check entirely (hermetic tests, offline replays).
         self.exchange_status_fn = exchange_status_fn
+        self.performance_guard = performance_guard
         # Position-book scope: a live brain counts only broker positions
         # against its slots/exposure; a shadow brain only the shadow book.
         self.book_scope = "live" if mode is SessionMode.LIVE else "shadow"
@@ -313,6 +315,10 @@ class PredatorBrain:
 
         # Per-cycle source hooks (ESPN cache reset + incremental Elo retrain).
         self.registry.on_cycle_start()
+        if self.performance_guard is not None:
+            reload_guard = getattr(self.performance_guard, "reload", None)
+            if callable(reload_guard):
+                reload_guard()
 
         try:
             markets = self.scanner.scan()
@@ -371,7 +377,9 @@ class PredatorBrain:
 
         from autonomy.correlation import group_key
 
-        allocator = Allocator(self.risk_brain)
+        allocator = Allocator(
+            self.risk_brain, performance_guard=self.performance_guard,
+        )
         # In-cycle group accumulation so successive orders on one correlated
         # cluster see each other, not just prior-cycle open positions.
         cycle_group_cents: dict[str, int] = {}

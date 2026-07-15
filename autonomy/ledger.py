@@ -494,6 +494,29 @@ class AutonomyLedger:
             return float(row[0])
         return self.get_weight(source)
 
+    def get_weight_for_signal(
+        self,
+        source: str,
+        vertical: str,
+        ticker: str,
+        features: dict[str, Any] | None = None,
+    ) -> float:
+        """Most-specific earned trust: exact scope -> vertical -> global.
+
+        Exact-scope rows are created only from settled outcomes (online by the
+        learner, or explicitly via ``backtest --bootstrap``).  A new/sparse
+        scope therefore falls back to the established vertical behavior.
+        """
+        from autonomy.taxonomy import scope_weight_key
+
+        row = self._conn.execute(
+            "SELECT weight FROM source_trust WHERE source=?",
+            (scope_weight_key(source, ticker, features or {}),),
+        ).fetchone()
+        if row:
+            return float(row[0])
+        return self.get_weight_scoped(source, vertical)
+
     def all_weights(self) -> dict[str, float]:
         return {r[0]: float(r[1]) for r in self._conn.execute("SELECT source, weight FROM source_trust")}
 

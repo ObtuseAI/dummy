@@ -479,3 +479,69 @@ def test_backtest_adds_cluster_uncertainty_and_point_in_time_walk_forward(tmp_pa
         assert walk_forward["aggregate_out_of_sample"]["net_pnl_cents"] > 0
     finally:
         ledger.close()
+
+
+def test_backtest_exposes_negative_sports_market_cohort(tmp_path):
+    ledger = AutonomyLedger(tmp_path / "ledger.db")
+    try:
+        for index in range(20):
+            ticker = f"KXMLBTOTAL-26JUL{index + 1:02d}-GAME{index:02d}-T8"
+            ledger.record_decision(_decision(f"sports-{index}", ticker))
+            ledger.record_settlement(ticker, False)
+        report = run_backtest(ledger)
+        totals = report["decision_policy"]["sports_performance_cohorts"][
+            "by_market_type"
+        ]["total"]
+        assert totals["n"] == 20
+        assert totals["mean_brier_advantage_vs_market"] < 0
+        assert totals["evidence_disposition"]["status"] == "QUARANTINE_NEGATIVE_EDGE"
+        assert totals["evidence_disposition"]["execution_authority"] is False
+    finally:
+        ledger.close()
+
+
+def test_fill_conditioned_report_cannot_mask_negative_crypto_vertical(tmp_path):
+    ledger = AutonomyLedger(tmp_path / "ledger.db")
+    try:
+        for index in range(5):
+            ticker = f"KXBTC-26JUL{index + 1:02d}-T{index}"
+            decision = _decision(f"crypto-fill-{index}", ticker)
+            ledger.record_decision(decision)
+            ledger.record_outcome(TradeOutcome(
+                decision_id=decision.decision_id,
+                market_ticker=ticker,
+                kind=OutcomeKind.SHADOW,
+                order_id=f"shadow-{index}",
+                fill_count=0,
+                fill_price_cents=40,
+                pnl_cents=None,
+                broker_contacted=False,
+            ))
+            ledger.record_outcome(TradeOutcome(
+                decision_id=decision.decision_id,
+                market_ticker=ticker,
+                kind=OutcomeKind.FILLED,
+                order_id=f"shadow-{index}",
+                fill_count=1,
+                fill_price_cents=40,
+                pnl_cents=None,
+                broker_contacted=False,
+            ))
+            ledger.record_settlement(ticker, False)
+            ledger.record_outcome(TradeOutcome(
+                decision_id=decision.decision_id,
+                market_ticker=ticker,
+                kind=OutcomeKind.SETTLED_LOSS,
+                order_id=f"shadow-{index}",
+                fill_count=1,
+                fill_price_cents=40,
+                pnl_cents=-40,
+                broker_contacted=False,
+            ))
+        report = run_backtest(ledger)
+        crypto = report["fill_conditioned_decision_policy"]["by_vertical"]["CRYPTO"]
+        assert crypto["n"] == 5
+        assert crypto["brier_skill_vs_market"] < 0
+        assert crypto["evidence_disposition"]["status"] == "INSUFFICIENT_EVIDENCE"
+    finally:
+        ledger.close()
