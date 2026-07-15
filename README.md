@@ -123,6 +123,14 @@ records two governance-only findings, and marks six claims as
 remains `SHADOW_ONLY`, with 12 of 13 promotion evidence gates unsatisfied.
 Promotion is blocked, unrequested, human-only, and unapplied.
 
+The [`final master-plan audit`](docs/VNEXT_MASTER_PLAN_FINAL_AUDIT.md) maps all
+38 design sections to concrete evidence and verifies the complete 20-step
+forecast capability. Its result is `PASS_WITH_EMPIRICAL_GATES_OPEN`: the
+architecture is integrated, but material improvement remains unestablished and
+vNext remains `SHADOW_ONLY`. Historical dashboards are route-lazy-loaded, which
+preserves all 293 archived views while reducing the production entry bundle
+from 720.51 KB to 302.00 KB.
+
 ## Current paper operation
 
 The market-horizon paper twin runs every five minutes through the Windows

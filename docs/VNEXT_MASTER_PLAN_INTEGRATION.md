@@ -22,6 +22,14 @@ All vNext components carry the maturity label
 `EXPERIMENTAL_SOVEREIGN_FORECASTING` until the required internal claims are
 demonstrated.
 
+The final 38-section requirement matrix and 20-step capability audit are in
+`VNEXT_MASTER_PLAN_FINAL_AUDIT.md` and
+`VNEXT_MASTER_PLAN_FINAL_AUDIT.json`. The result is
+`PASS_WITH_EMPIRICAL_GATES_OPEN`: architectural integration is complete, while
+the six material performance claims remain explicitly unproven. Final local
+validation passed 197 cross-vNext tests, the complete 5,696-test repository
+suite, repository-wide Ruff, and a warning-free dashboard production build.
+
 ## Implementation status
 
 | Phase | Status | Evidence |

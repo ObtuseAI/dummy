@@ -1,0 +1,494 @@
+{
+  "audit_id": "df0bba42cdf772ab3303eada0b6b9cf8c32293ccef8d44f475878240c8011100",
+  "claim_program": {
+    "claim_count": 8,
+    "governance_supported_count": 2,
+    "insufficient_evidence_count": 6,
+    "material_improvement_established": false,
+    "performance_supported_count": 0,
+    "program_id": "26d0b3c8cc3c4f1295d40fc27499390f35da0dd3db7b4ae146b2e31607b7f2fd"
+  },
+  "first_complete_capability": {
+    "automatic_promotion": false,
+    "execution_authority": false,
+    "mechanically_validated": true,
+    "step_count": 20,
+    "steps": [
+      "valid_market_detected",
+      "market_prior_frozen",
+      "world_model_built",
+      "deterministic_organism_instantiated",
+      "point_in_time_evidence_gathered",
+      "competing_futures_generated",
+      "adversarial_attacks_executed",
+      "decomposed_confidence_calculated",
+      "knowledge_boundaries_estimated",
+      "additional_analysis_value_decided",
+      "forecast_or_abstention_produced",
+      "decision_state_frozen",
+      "realistic_execution_simulated",
+      "verified_reality_settled",
+      "participating_agents_graded",
+      "calibration_and_trust_update_proposed",
+      "full_episode_stored",
+      "bounded_improvements_proposed",
+      "improvements_replayed_on_held_out_evidence",
+      "promotion_candidates_presented_without_authority_change"
+    ]
+  },
+  "governance": {
+    "capital_authority": false,
+    "dummy_is_standalone_entity": true,
+    "execution_authority": false,
+    "incumbent_modified": false,
+    "legacy_snapshot_is_identity": false,
+    "legacy_snapshot_is_vnext_runtime_dependency": false
+  },
+  "maturity": "EXPERIMENTAL_SOVEREIGN_FORECASTING",
+  "program": "DUMMY vNext Master Plan",
+  "promotion": {
+    "applied": false,
+    "automatic_promotion": false,
+    "current_state": "SHADOW_ONLY",
+    "human_review_requested": false,
+    "human_review_required": true,
+    "requested_state": "REPLAY_VALIDATED",
+    "transition_eligible": false
+  },
+  "repository_identity": "DUMMY_STANDALONE",
+  "requirement_count": 38,
+  "requirements": [
+    {
+      "evidence_paths": [
+        "docs/VNEXT_MASTER_PLAN_INTEGRATION.md"
+      ],
+      "limitation": "The sovereign architecture exists, while trust remains evidence-bound.",
+      "missing_paths": [],
+      "section": 1,
+      "status": "IMPLEMENTED_EVIDENCE_GATED",
+      "title": "Objective"
+    },
+    {
+      "evidence_paths": [
+        "dummy/constitution",
+        "dummy/shadows"
+      ],
+      "limitation": "Evidence, abstention, simulation labeling, external judging, and authority separation are executable invariants.",
+      "missing_paths": [],
+      "section": 2,
+      "status": "IMPLEMENTED",
+      "title": "Core design principles"
+    },
+    {
+      "evidence_paths": [
+        "dummy/agents",
+        "dummy/organisms",
+        "dummy/world_model",
+        "dummy/metacognition"
+      ],
+      "limitation": "Typed agent, organism, world-state, and control planes are present.",
+      "missing_paths": [],
+      "section": 3,
+      "status": "IMPLEMENTED",
+      "title": "Target architecture"
+    },
+    {
+      "evidence_paths": [
+        "dummy",
+        "docs/VNEXT_MASTER_PLAN_INTEGRATION.md"
+      ],
+      "limitation": "The plan is integrated behind adapters instead of replacing proven incumbents.",
+      "missing_paths": [],
+      "section": 4,
+      "status": "IMPLEMENTED_ADAPTER_FIRST",
+      "title": "Repository architecture"
+    },
+    {
+      "evidence_paths": [
+        "dummy/constitution",
+        "docs/VNEXT_PROTECTED_SURFACES.json"
+      ],
+      "limitation": "Authority and protected-surface rules fail closed.",
+      "missing_paths": [],
+      "section": 5,
+      "status": "IMPLEMENTED",
+      "title": "Constitutional kernel"
+    },
+    {
+      "evidence_paths": [
+        "dummy/protocols",
+        "tests/test_vnext_protocols.py"
+      ],
+      "limitation": "Immutable messages carry identity, time, evidence, limitations, and authority.",
+      "missing_paths": [],
+      "section": 6,
+      "status": "IMPLEMENTED",
+      "title": "Typed agent protocol"
+    },
+    {
+      "evidence_paths": [
+        "dummy/agents/runtime.py",
+        "dummy/agents/mailbox.py"
+      ],
+      "limitation": "Registration, budgets, lifecycle, deterministic ordering, and quarantine are enforced.",
+      "missing_paths": [],
+      "section": 7,
+      "status": "IMPLEMENTED",
+      "title": "Multi-agent runtime"
+    },
+    {
+      "evidence_paths": [
+        "dummy/organisms",
+        "docs/VNEXT_PHASE3_TEMPLATE_CATALOG.json"
+      ],
+      "limitation": "BTC 15-minute and MLB pregame pilots prove the reusable morphology; other markets remain incumbent-adapted until separately evidenced.",
+      "missing_paths": [],
+      "section": 8,
+      "status": "IMPLEMENTED_PILOT_SCOPE",
+      "title": "Dynamic forecast organisms"
+    },
+    {
+      "evidence_paths": [
+        "dummy/metacognition",
+        "dummy/homeostasis"
+      ],
+      "limitation": "Routing and intervention can contract or recommend but cannot expand authority.",
+      "missing_paths": [],
+      "section": 9,
+      "status": "IMPLEMENTED",
+      "title": "Sovereign governor"
+    },
+    {
+      "evidence_paths": [
+        "dummy/world_model",
+        "docs/VNEXT_PHASE4_WORLD_MODEL_SCHEMAS.json"
+      ],
+      "limitation": "Facts, derived state, hypotheses, contradictions, missingness, provenance, and leases are typed.",
+      "missing_paths": [],
+      "section": 10,
+      "status": "IMPLEMENTED",
+      "title": "Probabilistic world models"
+    },
+    {
+      "evidence_paths": [
+        "dummy/organisms/models.py",
+        "dummy/organisms/episode.py"
+      ],
+      "limitation": "Episodes create typed competing futures with assumptions and failure conditions.",
+      "missing_paths": [],
+      "section": 11,
+      "status": "IMPLEMENTED",
+      "title": "Competing future generators"
+    },
+    {
+      "evidence_paths": [
+        "dummy/agents/incumbent.py",
+        "autonomy/signals/market_prior.py"
+      ],
+      "limitation": "The market prior is a first-class, family-isolated input with a reviewed synthesis floor.",
+      "missing_paths": [],
+      "section": 12,
+      "status": "IMPLEMENTED",
+      "title": "Market-prior agent"
+    },
+    {
+      "evidence_paths": [
+        "autonomy/signals/crypto_indicators.py",
+        "autonomy/signals/crypto_structure.py",
+        "autonomy/signals/crypto_vol.py"
+      ],
+      "limitation": "The incumbent feature arsenal remains available through read-only specialist adapters.",
+      "missing_paths": [],
+      "section": 13,
+      "status": "IMPLEMENTED_WITH_INCUMBENT_ADAPTERS",
+      "title": "Crypto technical and quantitative expansion"
+    },
+    {
+      "evidence_paths": [
+        "autonomy/specialists/mlb.py",
+        "autonomy/specialists/team_leagues.py",
+        "autonomy/signals/sports_intelligence.py"
+      ],
+      "limitation": "League kernels and live intelligence remain the sports specialist evidence base.",
+      "missing_paths": [],
+      "section": 14,
+      "status": "IMPLEMENTED_WITH_INCUMBENT_ADAPTERS",
+      "title": "Sports feature expansion"
+    },
+    {
+      "evidence_paths": [
+        "dummy/metacognition",
+        "docs/VNEXT_PHASE5_METACOGNITION.md"
+      ],
+      "limitation": "Difficulty, boundaries, stopping, abstention, and strategy advice are typed and shadow-only.",
+      "missing_paths": [],
+      "section": 15,
+      "status": "IMPLEMENTED_EVIDENCE_PENDING",
+      "title": "Metacognitive control system"
+    },
+    {
+      "evidence_paths": [
+        "dummy/metacognition/confidence.py"
+      ],
+      "limitation": "Confidence is decomposed into independently auditable components.",
+      "missing_paths": [],
+      "section": 16,
+      "status": "IMPLEMENTED",
+      "title": "Confidence decomposition"
+    },
+    {
+      "evidence_paths": [
+        "dummy/shadows"
+      ],
+      "limitation": "Eight contraction-only guards can downgrade, veto, quarantine, abstain, or terminate.",
+      "missing_paths": [],
+      "section": 17,
+      "status": "IMPLEMENTED",
+      "title": "Shadow controllers"
+    },
+    {
+      "evidence_paths": [
+        "dummy/synthesis"
+      ],
+      "limitation": "Family-aware synthesis records dependency and preserves market-prior anchoring.",
+      "missing_paths": [],
+      "section": 18,
+      "status": "IMPLEMENTED",
+      "title": "Forecast synthesis"
+    },
+    {
+      "evidence_paths": [
+        "dummy/metabolism",
+        "docs/VNEXT_PHASE5_RESOURCE_EFFICIENCY.json"
+      ],
+      "limitation": "Costs and marginal information value are explicit; quality-preserving savings remain unproven.",
+      "missing_paths": [],
+      "section": 19,
+      "status": "IMPLEMENTED_EVIDENCE_PENDING",
+      "title": "Metabolism and resource economics"
+    },
+    {
+      "evidence_paths": [
+        "dummy/homeostasis",
+        "docs/VNEXT_PHASE7_HOMEOSTASIS_POLICY.json"
+      ],
+      "limitation": "All 19 health variables and bounded interventions are represented.",
+      "missing_paths": [],
+      "section": 20,
+      "status": "IMPLEMENTED",
+      "title": "Homeostasis"
+    },
+    {
+      "evidence_paths": [
+        "dummy/chronos"
+      ],
+      "limitation": "Event, receipt, decision, close, and settlement ordering is explicit and validated.",
+      "missing_paths": [],
+      "section": 21,
+      "status": "IMPLEMENTED",
+      "title": "Chronos and causal time"
+    },
+    {
+      "evidence_paths": [
+        "dummy/memory",
+        "docs/VNEXT_PHASE6_MEMORY_POLICY.json"
+      ],
+      "limitation": "Observation through genome memory uses immutable content-addressed records and causal chains.",
+      "missing_paths": [],
+      "section": 22,
+      "status": "IMPLEMENTED",
+      "title": "Memory architecture"
+    },
+    {
+      "evidence_paths": [
+        "dummy/genome",
+        "docs/VNEXT_PHASE6_GENOME_CATALOG.json"
+      ],
+      "limitation": "Generation-zero genomes, inheritance, lineage, identity, and fitness contracts are present.",
+      "missing_paths": [],
+      "section": 23,
+      "status": "IMPLEMENTED",
+      "title": "Forecast genome"
+    },
+    {
+      "evidence_paths": [
+        "dummy/evolution",
+        "docs/VNEXT_PHASE6_EVOLUTION_EVIDENCE.json"
+      ],
+      "limitation": "Levels 0-5 produce proposal-only challengers judged by a protected external evaluator.",
+      "missing_paths": [],
+      "section": 24,
+      "status": "IMPLEMENTED_EVIDENCE_PENDING",
+      "title": "Recursive evolution engine"
+    },
+    {
+      "evidence_paths": [
+        "dummy/evolution/meta_evolution.py",
+        "dummy/metacognition/meta_evolution.py"
+      ],
+      "limitation": "Meta-policy challengers remain bounded and empirically unpromoted.",
+      "missing_paths": [],
+      "section": 25,
+      "status": "IMPLEMENTED_EVIDENCE_PENDING",
+      "title": "Meta-metacognitive evolution"
+    },
+    {
+      "evidence_paths": [
+        "dummy/arenas",
+        "docs/VNEXT_PHASE7_ARENA_CATALOG.json"
+      ],
+      "limitation": "All 40 required scenarios replay deterministically; runtime resilience is not claimed.",
+      "missing_paths": [],
+      "section": 26,
+      "status": "IMPLEMENTED_MECHANICS_VALIDATED",
+      "title": "Adversarial arenas"
+    },
+    {
+      "evidence_paths": [
+        "dummy/truth"
+      ],
+      "limitation": "Contested truth, clustered statistics, multiple testing, drift, and causal attribution are protected.",
+      "missing_paths": [],
+      "section": 27,
+      "status": "IMPLEMENTED",
+      "title": "Causal truth layer"
+    },
+    {
+      "evidence_paths": [
+        "dummy/memory/fills.py",
+        "proof/ledger.py",
+        "docs/VNEXT_PHASE8_GOVERNANCE_EVIDENCE.json"
+      ],
+      "limitation": "Forecast accuracy, simulated fill, witnessed fill, settlement, and realized capital truth remain separate.",
+      "missing_paths": [],
+      "section": 28,
+      "status": "IMPLEMENTED_GOVERNANCE_ONLY",
+      "title": "Execution-truth hardening"
+    },
+    {
+      "evidence_paths": [
+        "dummy/memory/calibration.py",
+        "autonomy/reliability.py"
+      ],
+      "limitation": "Trust updates are evidence-linked proposals; historical incumbent reliability remains adapted.",
+      "missing_paths": [],
+      "section": 29,
+      "status": "IMPLEMENTED_WITH_INCUMBENT_ADAPTERS",
+      "title": "Trust system upgrade"
+    },
+    {
+      "evidence_paths": [
+        "dummy/organisms/episode.py",
+        "dummy/protocols/messages.py"
+      ],
+      "limitation": "Episodes retain market state, basis, countercase, limitations, decision logic, and evidence IDs.",
+      "missing_paths": [],
+      "section": 30,
+      "status": "IMPLEMENTED",
+      "title": "Prediction explanation system"
+    },
+    {
+      "evidence_paths": [
+        "dummy/observatory",
+        "dashboard/frontend/src/VNextObservatory.jsx"
+      ],
+      "limitation": "Eight evidence-linked panels plus claim and promotion projections are GET-only.",
+      "missing_paths": [],
+      "section": 31,
+      "status": "IMPLEMENTED_READ_ONLY",
+      "title": "Observatory upgrade"
+    },
+    {
+      "evidence_paths": [
+        "dummy/promotion",
+        "docs/VNEXT_PHASE8_PROMOTION_REVIEW.json"
+      ],
+      "limitation": "All 11 states and 13 evidence gates are explicit; current transition is human-only and blocked.",
+      "missing_paths": [],
+      "section": 32,
+      "status": "IMPLEMENTED_BLOCKED",
+      "title": "Promotion lifecycle"
+    },
+    {
+      "evidence_paths": [
+        "dummy/memory/failures.py",
+        "dummy/genome/retirement.py",
+        "dummy/evolution/rollback.py"
+      ],
+      "limitation": "Failure memory, deterministic retirement, degradation, quarantine, and rollback are durable.",
+      "missing_paths": [],
+      "section": 33,
+      "status": "IMPLEMENTED",
+      "title": "Failure and retirement"
+    },
+    {
+      "evidence_paths": [
+        "docs/VNEXT_MASTER_PLAN_INTEGRATION.md"
+      ],
+      "limitation": "Phases 0-8 are implemented in the accepted adapter-first sequence.",
+      "missing_paths": [],
+      "section": 34,
+      "status": "COMPLETE",
+      "title": "Implementation sequence"
+    },
+    {
+      "evidence_paths": [
+        "dummy/benchmarks",
+        "docs/VNEXT_PHASE8_BENCHMARK_CATALOG.json"
+      ],
+      "limitation": "All 32 metrics across six domains are cataloged; empirical observations are not manufactured.",
+      "missing_paths": [],
+      "section": 35,
+      "status": "IMPLEMENTED_EVIDENCE_PENDING",
+      "title": "Benchmark program"
+    },
+    {
+      "evidence_paths": [
+        "dummy/claims",
+        "docs/VNEXT_PHASE8_CLAIM_REVIEW.json"
+      ],
+      "limitation": "All eight claims are reviewed independently: six lack evidence and two are governance-only.",
+      "missing_paths": [],
+      "section": 36,
+      "status": "IMPLEMENTED_SEPARATE_VERDICTS",
+      "title": "Required internal claims"
+    },
+    {
+      "evidence_paths": [
+        "dummy/organisms/episode.py",
+        "tests/test_vnext_organism_episode.py",
+        "docs/VNEXT_PHASE3_ORGANISM.md"
+      ],
+      "limitation": "All 20 steps are executable, persisted, replayed, and promotion-nonapplying.",
+      "missing_paths": [],
+      "section": 37,
+      "status": "COMPLETE_MECHANICALLY_VALIDATED",
+      "title": "First complete vNext capability"
+    },
+    {
+      "evidence_paths": [
+        "README.md",
+        "docs/VNEXT_PHASE8_CLAIMS_PROMOTION.md"
+      ],
+      "limitation": "The ecology is integrated and fail-closed; material forecasting improvement remains explicitly unestablished.",
+      "missing_paths": [],
+      "section": 38,
+      "status": "ARCHITECTURE_INTEGRATED_EMPIRICAL_CLAIMS_OPEN",
+      "title": "End state"
+    }
+  ],
+  "requirements_with_missing_paths": 0,
+  "schema_version": 1,
+  "status": "PASS_WITH_EMPIRICAL_GATES_OPEN",
+  "validation": {
+    "cross_vnext_tests": 197,
+    "dashboard_build": "PASS",
+    "dashboard_entry_bundle_kb": 302.0,
+    "date": "2026-07-14",
+    "focused_final_audit_tests": 16,
+    "oversized_chunk_warning": false,
+    "previous_dashboard_entry_bundle_kb": 720.51,
+    "repository_tests": 5696,
+    "ruff": "PASS"
+  }
+}
