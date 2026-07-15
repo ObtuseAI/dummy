@@ -583,7 +583,8 @@ def _improvement_and_replay(
         "blockers": [
             "phase5_empirical_evidence_gates_unmet",
             "phase6_empirical_evidence_gates_unmet",
-            "phases_7_through_8_incomplete",
+            "phase7_runtime_arena_evidence_unavailable",
+            "phase8_claim_reviews_incomplete",
             "no_cluster_corrected_confidence_interval",
             "no_forward_paper_evidence_for_candidate",
             "human_promotion_review_not_requested",

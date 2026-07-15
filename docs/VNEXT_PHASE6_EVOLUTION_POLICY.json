@@ -29,11 +29,11 @@
     "mutation_policy"
   ],
   "held_out_improvement_claim_supported": false,
-  "manifest_id": "efe1b3bab7c3556cb23b69496132c776f2c86e59d7e5858d6c0f5456fef36b4c",
+  "manifest_id": "2a879198410e7614cd126bc83d73f606fa005a46a9323c45518ae87bc1e2b5fe",
   "mutation": {
     "automatic_promotion": false,
     "candidate_controls_evaluator": false,
-    "protected_manifest_digest": "79afd25f6061f69bd4ee043b3c7144a701d8ee80ac659e8cde5b35385bceb797",
+    "protected_manifest_digest": "b75897f315bc44731ef72b4e9e39e758f8dfbb6b9e1552df5b0101775786adf9",
     "runtime_application": false,
     "source_edits_applied": false
   },

@@ -1,0 +1,702 @@
+{
+  "catalog_id": "d6255158a885cac6f35ef6559b64b98c499b21e30033e0a619eaa3a061887753",
+  "domains": {
+    "crypto": 10,
+    "forecast": 11,
+    "metacognitive": 9,
+    "sports": 10
+  },
+  "empirical_claim_supported": false,
+  "execution_authority": false,
+  "phase": 7,
+  "scenario_count": 40,
+  "scenarios": [
+    {
+      "category": "leakage",
+      "domain": "sports",
+      "empirical": false,
+      "evidence_ids": [
+        "phase7-plan:sports:incomplete-drive-state"
+      ],
+      "expected_responses": [
+        "abstain",
+        "request_evidence"
+      ],
+      "name": "incomplete drive state",
+      "scenario_id": "06b681cc71591dea00569e9c00d9c43e3011d475c834a41e91b37baa08f43777",
+      "schema_version": 1,
+      "severity": 0.95,
+      "signal": "stale_or_missing"
+    },
+    {
+      "category": "adversarial",
+      "domain": "crypto",
+      "empirical": false,
+      "evidence_ids": [
+        "phase7-plan:crypto:false-breakout"
+      ],
+      "expected_responses": [
+        "increase_market_anchor",
+        "widen_uncertainty"
+      ],
+      "name": "false breakout",
+      "scenario_id": "082ac56f2c8f737cf9b2c00a71a29a66f45230cbcd689ab9407722b88fdecaa9",
+      "schema_version": 1,
+      "severity": 0.75,
+      "signal": "market_prior_conflict"
+    },
+    {
+      "category": "meta",
+      "domain": "metacognitive",
+      "empirical": false,
+      "evidence_ids": [
+        "phase7-plan:metacognitive:strategy-selection"
+      ],
+      "expected_responses": [
+        "request_evidence",
+        "widen_uncertainty"
+      ],
+      "name": "strategy selection",
+      "scenario_id": "16c0a04316623e5454c8d4c559628a39ab55a5505e21cd77c5f2d34da482ca97",
+      "schema_version": 1,
+      "severity": 0.75,
+      "signal": "metacognitive"
+    },
+    {
+      "category": "adversarial",
+      "domain": "sports",
+      "empirical": false,
+      "evidence_ids": [
+        "phase7-plan:sports:overtime"
+      ],
+      "expected_responses": [
+        "abstain",
+        "request_evidence"
+      ],
+      "name": "overtime",
+      "scenario_id": "1b050995c742ec123fa367d3ec49d8cd44ece7ced399c96008b2fb6578d4ad92",
+      "schema_version": 1,
+      "severity": 0.85,
+      "signal": "data_integrity"
+    },
+    {
+      "category": "meta",
+      "domain": "metacognitive",
+      "empirical": false,
+      "evidence_ids": [
+        "phase7-plan:metacognitive:premature-stopping"
+      ],
+      "expected_responses": [
+        "request_evidence",
+        "widen_uncertainty"
+      ],
+      "name": "premature stopping",
+      "scenario_id": "1cc1847a9ff9c1bb3b4d1b70d939bd4a2a1e2c7531a52227ac1d4ecdd6e6bbd7",
+      "schema_version": 1,
+      "severity": 0.7,
+      "signal": "metacognitive"
+    },
+    {
+      "category": "leakage",
+      "domain": "sports",
+      "empirical": false,
+      "evidence_ids": [
+        "phase7-plan:sports:confirmed-lineup-failure"
+      ],
+      "expected_responses": [
+        "abstain",
+        "veto"
+      ],
+      "name": "confirmed-lineup failure",
+      "scenario_id": "20cd629bdc7a780a76f9d6b987e125c01dabae5f09d7cbd766577a97cb549c64",
+      "schema_version": 1,
+      "severity": 1.0,
+      "signal": "data_integrity"
+    },
+    {
+      "category": "regime",
+      "domain": "forecast",
+      "empirical": false,
+      "evidence_ids": [
+        "phase7-plan:forecast:regime-shift-arena"
+      ],
+      "expected_responses": [
+        "abstain",
+        "quarantine",
+        "widen_uncertainty"
+      ],
+      "name": "regime-shift arena",
+      "scenario_id": "3d697fcb58ddf029df8adf975ae63ea7b8ca23cd6044194e642f8301c36dbad0",
+      "schema_version": 1,
+      "severity": 0.9,
+      "signal": "regime_shift"
+    },
+    {
+      "category": "drift",
+      "domain": "crypto",
+      "empirical": false,
+      "evidence_ids": [
+        "phase7-plan:crypto:stale-options-surface"
+      ],
+      "expected_responses": [
+        "abstain",
+        "request_refresh"
+      ],
+      "name": "stale options surface",
+      "scenario_id": "44059f9abc1496154de6a3f36fe9982e8fec6e84b25f7d08f12bc599fbc02b05",
+      "schema_version": 1,
+      "severity": 0.9,
+      "signal": "stale_or_missing"
+    },
+    {
+      "category": "regime",
+      "domain": "sports",
+      "empirical": false,
+      "evidence_ids": [
+        "phase7-plan:sports:weather-surprise"
+      ],
+      "expected_responses": [
+        "abstain",
+        "request_refresh",
+        "widen_uncertainty"
+      ],
+      "name": "weather surprise",
+      "scenario_id": "4906902e2c412f62392d4f17d69c8e0847af1a8cddba49d212bfb47ee2da5096",
+      "schema_version": 1,
+      "severity": 0.8,
+      "signal": "regime_shift"
+    },
+    {
+      "category": "regime",
+      "domain": "crypto",
+      "empirical": false,
+      "evidence_ids": [
+        "phase7-plan:crypto:sudden-volatility-spike"
+      ],
+      "expected_responses": [
+        "abstain",
+        "widen_uncertainty"
+      ],
+      "name": "sudden volatility spike",
+      "scenario_id": "4a7245c1ab56b5a4603aeb40be9af481a9ce6d0279d100890d69bce7bdc1ef8b",
+      "schema_version": 1,
+      "severity": 0.95,
+      "signal": "volatility_shock"
+    },
+    {
+      "category": "regime",
+      "domain": "crypto",
+      "empirical": false,
+      "evidence_ids": [
+        "phase7-plan:crypto:liquidation-cascade"
+      ],
+      "expected_responses": [
+        "abstain",
+        "quarantine",
+        "widen_uncertainty"
+      ],
+      "name": "liquidation cascade",
+      "scenario_id": "4f3b7177f636654cd5ec662756036595331c8417956b84e94ce1bc06bee83e2f",
+      "schema_version": 1,
+      "severity": 1.0,
+      "signal": "volatility_shock"
+    },
+    {
+      "category": "drift",
+      "domain": "sports",
+      "empirical": false,
+      "evidence_ids": [
+        "phase7-plan:sports:ejection"
+      ],
+      "expected_responses": [
+        "abstain",
+        "request_refresh"
+      ],
+      "name": "ejection",
+      "scenario_id": "5ad591e3a7f93c1cffcb6bf188daacb7d726fa6d61077653e66b1cdfd841694b",
+      "schema_version": 1,
+      "severity": 0.95,
+      "signal": "stale_or_missing"
+    },
+    {
+      "category": "meta",
+      "domain": "metacognitive",
+      "empirical": false,
+      "evidence_ids": [
+        "phase7-plan:metacognitive:useless-challenger-spawning"
+      ],
+      "expected_responses": [
+        "reduce_resource_budget"
+      ],
+      "name": "useless challenger spawning",
+      "scenario_id": "6210965c8191b7fd81829f846fdac4b8570babc04216aa75228ea7ef06c853a1",
+      "schema_version": 1,
+      "severity": 0.8,
+      "signal": "metacognitive"
+    },
+    {
+      "category": "adversarial",
+      "domain": "forecast",
+      "empirical": false,
+      "evidence_ids": [
+        "phase7-plan:forecast:alternate-strike-arena"
+      ],
+      "expected_responses": [
+        "request_evidence",
+        "widen_uncertainty"
+      ],
+      "name": "alternate-strike arena",
+      "scenario_id": "68edff4adb8f3dac4e27e036170e2a4d7d5d69af2a478f738b8f04845c30deae",
+      "schema_version": 1,
+      "severity": 0.65,
+      "signal": "data_integrity"
+    },
+    {
+      "category": "market_prior",
+      "domain": "forecast",
+      "empirical": false,
+      "evidence_ids": [
+        "phase7-plan:forecast:market-prior-arena"
+      ],
+      "expected_responses": [
+        "increase_market_anchor",
+        "widen_uncertainty"
+      ],
+      "name": "market-prior arena",
+      "scenario_id": "6ccbce6bc3a2705091d81b8d2a83026807b80d872d4d492dd12c090d34af82dc",
+      "schema_version": 1,
+      "severity": 0.75,
+      "signal": "market_prior_conflict"
+    },
+    {
+      "category": "calibration",
+      "domain": "forecast",
+      "empirical": false,
+      "evidence_ids": [
+        "phase7-plan:forecast:extreme-spread-arena"
+      ],
+      "expected_responses": [
+        "abstain",
+        "widen_uncertainty"
+      ],
+      "name": "extreme-spread arena",
+      "scenario_id": "704aaf1ac1d0254294c868357278388127dbe25592a30ea4a90bf0f9000c01bf",
+      "schema_version": 1,
+      "severity": 0.8,
+      "signal": "volatility_shock"
+    },
+    {
+      "category": "adversarial",
+      "domain": "forecast",
+      "empirical": false,
+      "evidence_ids": [
+        "phase7-plan:forecast:news-shock-arena"
+      ],
+      "expected_responses": [
+        "abstain",
+        "request_refresh",
+        "widen_uncertainty"
+      ],
+      "name": "news-shock arena",
+      "scenario_id": "7a5916ccce7275d6c94ff7df861e8bda71c077e302be079ac41641d0929ce187",
+      "schema_version": 1,
+      "severity": 0.95,
+      "signal": "volatility_shock"
+    },
+    {
+      "category": "adversarial",
+      "domain": "crypto",
+      "empirical": false,
+      "evidence_ids": [
+        "phase7-plan:crypto:macro-shock"
+      ],
+      "expected_responses": [
+        "abstain",
+        "request_refresh",
+        "widen_uncertainty"
+      ],
+      "name": "macro shock",
+      "scenario_id": "85c456b2d4dac5a67cd819fe1eb37b00a162b846e4694f4a3a511b5b150c8a3c",
+      "schema_version": 1,
+      "severity": 0.95,
+      "signal": "regime_shift"
+    },
+    {
+      "category": "liquidity",
+      "domain": "forecast",
+      "empirical": false,
+      "evidence_ids": [
+        "phase7-plan:forecast:low-liquidity-arena"
+      ],
+      "expected_responses": [
+        "abstain",
+        "mark_execution_irrelevant"
+      ],
+      "name": "low-liquidity arena",
+      "scenario_id": "85e7817c7e14f7364fb41c1a8f4b618c6adbc0bcea5dc1c12278891f3d0ea86e",
+      "schema_version": 1,
+      "severity": 0.9,
+      "signal": "liquidity"
+    },
+    {
+      "category": "meta",
+      "domain": "metacognitive",
+      "empirical": false,
+      "evidence_ids": [
+        "phase7-plan:metacognitive:excessive-compute"
+      ],
+      "expected_responses": [
+        "reduce_resource_budget"
+      ],
+      "name": "excessive compute",
+      "scenario_id": "89dfc369e978fb60c283d263ad3625a2d37a5994dbd100e239838be5f394186f",
+      "schema_version": 1,
+      "severity": 0.9,
+      "signal": "metacognitive"
+    },
+    {
+      "category": "liquidity",
+      "domain": "crypto",
+      "empirical": false,
+      "evidence_ids": [
+        "phase7-plan:crypto:weekend-illiquidity"
+      ],
+      "expected_responses": [
+        "abstain",
+        "mark_execution_irrelevant"
+      ],
+      "name": "weekend illiquidity",
+      "scenario_id": "8a35fb2865759f9c52a0619c6dc1fdd4ff80bcbd40d164d1dcc2376d88cc6e9f",
+      "schema_version": 1,
+      "severity": 0.85,
+      "signal": "liquidity"
+    },
+    {
+      "category": "calibration",
+      "domain": "metacognitive",
+      "empirical": false,
+      "evidence_ids": [
+        "phase7-plan:metacognitive:abstention-quality"
+      ],
+      "expected_responses": [
+        "request_evidence"
+      ],
+      "name": "abstention quality",
+      "scenario_id": "8cd644c3b0d27a38f66e537f18d85247948f75edad9d1b349c37a372f473c571",
+      "schema_version": 1,
+      "severity": 0.75,
+      "signal": "metacognitive"
+    },
+    {
+      "category": "liquidity",
+      "domain": "crypto",
+      "empirical": false,
+      "evidence_ids": [
+        "phase7-plan:crypto:order-book-vacuum"
+      ],
+      "expected_responses": [
+        "abstain",
+        "mark_execution_irrelevant"
+      ],
+      "name": "order-book vacuum",
+      "scenario_id": "8d2724690335e47fc698f314208bde6ee7ad8a4d2fc20be3654c9ebfb84f761f",
+      "schema_version": 1,
+      "severity": 1.0,
+      "signal": "liquidity"
+    },
+    {
+      "category": "execution",
+      "domain": "crypto",
+      "empirical": false,
+      "evidence_ids": [
+        "phase7-plan:crypto:cross-venue-outage"
+      ],
+      "expected_responses": [
+        "abstain",
+        "mark_execution_irrelevant",
+        "request_refresh"
+      ],
+      "name": "cross-venue outage",
+      "scenario_id": "9701be1db13afcd706fb9fd01dcb0541326b12968e9e698a320f6c475071a949",
+      "schema_version": 1,
+      "severity": 1.0,
+      "signal": "execution_realism"
+    },
+    {
+      "category": "leakage",
+      "domain": "sports",
+      "empirical": false,
+      "evidence_ids": [
+        "phase7-plan:sports:lineup-mismatch"
+      ],
+      "expected_responses": [
+        "abstain",
+        "quarantine",
+        "request_evidence"
+      ],
+      "name": "lineup mismatch",
+      "scenario_id": "972e055c5c8ab0085cb95121eac9064038cf96db5ca3652b42fa291d0dd3e72c",
+      "schema_version": 1,
+      "severity": 0.9,
+      "signal": "data_integrity"
+    },
+    {
+      "category": "calibration",
+      "domain": "metacognitive",
+      "empirical": false,
+      "evidence_ids": [
+        "phase7-plan:metacognitive:overconfidence-detection"
+      ],
+      "expected_responses": [
+        "abstain",
+        "increase_market_anchor"
+      ],
+      "name": "overconfidence detection",
+      "scenario_id": "9b1863ec77056ec8f624d28d91a52834301b2be3e677ed5056911a06d04ef171",
+      "schema_version": 1,
+      "severity": 0.85,
+      "signal": "metacognitive"
+    },
+    {
+      "category": "meta",
+      "domain": "metacognitive",
+      "empirical": false,
+      "evidence_ids": [
+        "phase7-plan:metacognitive:knowledge-boundary-accuracy"
+      ],
+      "expected_responses": [
+        "abstain",
+        "request_evidence"
+      ],
+      "name": "knowledge-boundary accuracy",
+      "scenario_id": "a5453f3c02bc3fa2fb9cca5feb4830d9b8ff7500aecb25df486b9fa3d4656ada",
+      "schema_version": 1,
+      "severity": 0.8,
+      "signal": "metacognitive"
+    },
+    {
+      "category": "market_prior",
+      "domain": "crypto",
+      "empirical": false,
+      "evidence_ids": [
+        "phase7-plan:crypto:exchange-divergence"
+      ],
+      "expected_responses": [
+        "increase_market_anchor",
+        "request_evidence",
+        "widen_uncertainty"
+      ],
+      "name": "exchange divergence",
+      "scenario_id": "aad5b0002febd3bbb38c5dfcf9c9ee9858af934ad148139df48945d305bc6570",
+      "schema_version": 1,
+      "severity": 0.85,
+      "signal": "market_prior_conflict"
+    },
+    {
+      "category": "market_prior",
+      "domain": "forecast",
+      "empirical": false,
+      "evidence_ids": [
+        "phase7-plan:forecast:line-movement-arena"
+      ],
+      "expected_responses": [
+        "increase_market_anchor",
+        "widen_uncertainty"
+      ],
+      "name": "line-movement arena",
+      "scenario_id": "b58ff0a51ea076f9c0aaf5d40cb7f737df6d33b66d3d9711beced982493d3343",
+      "schema_version": 1,
+      "severity": 0.7,
+      "signal": "market_prior_conflict"
+    },
+    {
+      "category": "leakage",
+      "domain": "forecast",
+      "empirical": false,
+      "evidence_ids": [
+        "phase7-plan:forecast:correlated-source-arena"
+      ],
+      "expected_responses": [
+        "cap_influence",
+        "increase_market_anchor"
+      ],
+      "name": "correlated-source arena",
+      "scenario_id": "bd265a1d3284519067a0165d8c301e770e46da8dbf0a7004bc414c60379caa34",
+      "schema_version": 1,
+      "severity": 0.85,
+      "signal": "concentration"
+    },
+    {
+      "category": "drift",
+      "domain": "sports",
+      "empirical": false,
+      "evidence_ids": [
+        "phase7-plan:sports:goalie-change"
+      ],
+      "expected_responses": [
+        "abstain",
+        "request_refresh"
+      ],
+      "name": "goalie change",
+      "scenario_id": "c3696260f774336b750739e198e6fe20b1800da6394730bf377f1ccb48e65dcb",
+      "schema_version": 1,
+      "severity": 0.9,
+      "signal": "stale_or_missing"
+    },
+    {
+      "category": "regime",
+      "domain": "sports",
+      "empirical": false,
+      "evidence_ids": [
+        "phase7-plan:sports:bullpen-exhaustion"
+      ],
+      "expected_responses": [
+        "request_evidence",
+        "widen_uncertainty"
+      ],
+      "name": "bullpen exhaustion",
+      "scenario_id": "c67483988ef2309210c7769685d36cfd0964dc259866f4f27688ebb33619a54a",
+      "schema_version": 1,
+      "severity": 0.75,
+      "signal": "regime_shift"
+    },
+    {
+      "category": "drift",
+      "domain": "metacognitive",
+      "empirical": false,
+      "evidence_ids": [
+        "phase7-plan:metacognitive:calibration-drift"
+      ],
+      "expected_responses": [
+        "abstain",
+        "quarantine"
+      ],
+      "name": "calibration drift",
+      "scenario_id": "cb360d824cd7b414d6340586918a952583b70b947294cd934d677acf9f17f39e",
+      "schema_version": 1,
+      "severity": 0.9,
+      "signal": "metacognitive"
+    },
+    {
+      "category": "market_prior",
+      "domain": "sports",
+      "empirical": false,
+      "evidence_ids": [
+        "phase7-plan:sports:malformed-book"
+      ],
+      "expected_responses": [
+        "quarantine",
+        "veto"
+      ],
+      "name": "malformed book",
+      "scenario_id": "cf6cc0e9d5ea2c5b679c000a9703e6e453695ebe8fcc380d8f879a2d22d48525",
+      "schema_version": 1,
+      "severity": 1.0,
+      "signal": "data_integrity"
+    },
+    {
+      "category": "drift",
+      "domain": "sports",
+      "empirical": false,
+      "evidence_ids": [
+        "phase7-plan:sports:late-scratch"
+      ],
+      "expected_responses": [
+        "abstain",
+        "request_refresh"
+      ],
+      "name": "late scratch",
+      "scenario_id": "df920e57d4060c7c388dea83b29d6bd9640cc4546a140f5e46c34cba75af2332",
+      "schema_version": 1,
+      "severity": 0.9,
+      "signal": "stale_or_missing"
+    },
+    {
+      "category": "leakage",
+      "domain": "forecast",
+      "empirical": false,
+      "evidence_ids": [
+        "phase7-plan:forecast:missing-source-arena"
+      ],
+      "expected_responses": [
+        "abstain",
+        "request_evidence",
+        "request_refresh"
+      ],
+      "name": "missing-source arena",
+      "scenario_id": "e450bedfae69955e0354ca8579d4a99c3c1faa5f5a61eb81fabc5633bdde9f42",
+      "schema_version": 1,
+      "severity": 0.9,
+      "signal": "stale_or_missing"
+    },
+    {
+      "category": "leakage",
+      "domain": "metacognitive",
+      "empirical": false,
+      "evidence_ids": [
+        "phase7-plan:metacognitive:false-consensus"
+      ],
+      "expected_responses": [
+        "cap_influence",
+        "increase_market_anchor"
+      ],
+      "name": "false consensus",
+      "scenario_id": "e5cb1f373b040b8c4f3ab0d5e56bd05c5d3444c9065cbd3ad9a4637dcab63487",
+      "schema_version": 1,
+      "severity": 0.9,
+      "signal": "concentration"
+    },
+    {
+      "category": "drift",
+      "domain": "forecast",
+      "empirical": false,
+      "evidence_ids": [
+        "phase7-plan:forecast:stale-data-arena"
+      ],
+      "expected_responses": [
+        "abstain",
+        "request_refresh"
+      ],
+      "name": "stale-data arena",
+      "scenario_id": "e8633609e6ee8516aa8257330b29072bb8be7c094ccaa8b45264780dd1b45c56",
+      "schema_version": 1,
+      "severity": 0.85,
+      "signal": "stale_or_missing"
+    },
+    {
+      "category": "calibration",
+      "domain": "forecast",
+      "empirical": false,
+      "evidence_ids": [
+        "phase7-plan:forecast:random-entry-arena"
+      ],
+      "expected_responses": [
+        "abstain",
+        "request_evidence"
+      ],
+      "name": "random-entry arena",
+      "scenario_id": "ea54bea1e33e889406195a683e4dfd2c0234883da0c37dbe69cb011c7c34cdb5",
+      "schema_version": 1,
+      "severity": 0.9,
+      "signal": "data_integrity"
+    },
+    {
+      "category": "regime",
+      "domain": "crypto",
+      "empirical": false,
+      "evidence_ids": [
+        "phase7-plan:crypto:funding-inversion"
+      ],
+      "expected_responses": [
+        "request_evidence",
+        "widen_uncertainty"
+      ],
+      "name": "funding inversion",
+      "scenario_id": "fa8bfa0a96b41cd9a0cba0d76926bfc8bf58a1d22943741afee90bc111f9a90b",
+      "schema_version": 1,
+      "severity": 0.8,
+      "signal": "regime_shift"
+    }
+  ],
+  "schema_version": 1
+}

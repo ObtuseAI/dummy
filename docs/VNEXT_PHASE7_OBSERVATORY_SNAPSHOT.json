@@ -1,0 +1,310 @@
+{
+  "authority": "OBSERVE",
+  "execution_authority": false,
+  "generated_at": "2026-07-15T00:00:00Z",
+  "panels": [
+    {
+      "claim_count": 2,
+      "claims": [
+        {
+          "claim_id": "2664db53ff88207e855f84206e48ec8fe30850b9e019645a123a5d74432056a1",
+          "evidence_ids": [
+            "b52763dd37ef84f5bffe730e68a2eafec2e9eac6750d235b93c589d63ac6bc82"
+          ],
+          "label": "evolution_candidate_count",
+          "limitations": [],
+          "schema_version": 1,
+          "status": "INSUFFICIENT_SETTLED_EVIDENCE",
+          "value": 0
+        },
+        {
+          "claim_id": "d55a62981ffa0243bef4160cee87f3f4699468732d2203d64553e2b7bb4a53d3",
+          "evidence_ids": [
+            "docs/VNEXT_PHASE5_METACOGNITION_CALIBRATION.json"
+          ],
+          "label": "metacognitive_calibration_claim",
+          "limitations": [],
+          "schema_version": 1,
+          "status": "INSUFFICIENT_SETTLED_EVIDENCE",
+          "value": false
+        }
+      ],
+      "panel": "calibration"
+    },
+    {
+      "claim_count": 3,
+      "claims": [
+        {
+          "claim_id": "8a95c5f8b91d772e689003c35c1ddb32e8b53347640d08ffac260e3b507a1f08",
+          "evidence_ids": [
+            "phase7-static-audit"
+          ],
+          "label": "active_vnext_organisms",
+          "limitations": [],
+          "schema_version": 1,
+          "status": "POINT_IN_TIME",
+          "value": 0
+        },
+        {
+          "claim_id": "e9fc24032f4b889f292a565864551166744344bebc0c4517670eea798c258204",
+          "evidence_ids": [
+            "phase7-static-audit"
+          ],
+          "label": "runtime_health",
+          "limitations": [
+            "no live vNext telemetry is checked in"
+          ],
+          "schema_version": 1,
+          "status": "UNKNOWN",
+          "value": "NOT_OBSERVED"
+        },
+        {
+          "claim_id": "fad0cd2b33b484d8a1d08998dbf61e908b75b75ec65613b69e45daf0e1aab165",
+          "evidence_ids": [
+            "b75897f315bc44731ef72b4e9e39e758f8dfbb6b9e1552df5b0101775786adf9"
+          ],
+          "label": "execution_seal",
+          "limitations": [],
+          "schema_version": 1,
+          "status": "VERIFIED",
+          "value": true
+        }
+      ],
+      "panel": "command_center"
+    },
+    {
+      "claim_count": 3,
+      "claims": [
+        {
+          "claim_id": "60e17cb1c4b4579c85fa435cb100c9b29d9bf3afe5d2b9145b2bd7d3aed3a271",
+          "evidence_ids": [
+            "76f1e7be8e90335665d23c8a52e837d37543768a4d983952052221fbec86fda2"
+          ],
+          "label": "arena_replay",
+          "limitations": [
+            "mechanical fixtures do not establish empirical resilience"
+          ],
+          "schema_version": 1,
+          "status": "MECHANICS_VALIDATED_NO_EMPIRICAL_CLAIM",
+          "value": 40
+        },
+        {
+          "claim_id": "84bb61b58c1a34f93419e5b854acc869aae7d617cb3d644a8260f034c3036407",
+          "evidence_ids": [
+            "b75897f315bc44731ef72b4e9e39e758f8dfbb6b9e1552df5b0101775786adf9"
+          ],
+          "label": "protected_manifest_digest",
+          "limitations": [],
+          "schema_version": 1,
+          "status": "VERIFIED",
+          "value": "b75897f315bc44731ef72b4e9e39e758f8dfbb6b9e1552df5b0101775786adf9"
+        },
+        {
+          "claim_id": "febfeacb96c9944be85aab8014b24f6ac1ca646592d605bf3608ba8281beb247",
+          "evidence_ids": [
+            "d6255158a885cac6f35ef6559b64b98c499b21e30033e0a619eaa3a061887753"
+          ],
+          "label": "arena_scenarios",
+          "limitations": [],
+          "schema_version": 1,
+          "status": "CATALOGED",
+          "value": 40
+        }
+      ],
+      "panel": "constitution"
+    },
+    {
+      "claim_count": 3,
+      "claims": [
+        {
+          "claim_id": "50cab962106e0dc98648963ce26c031dcab618606378813928cf6b11e6ca9c3a",
+          "evidence_ids": [
+            "b52763dd37ef84f5bffe730e68a2eafec2e9eac6750d235b93c589d63ac6bc82"
+          ],
+          "label": "evaluated_candidates",
+          "limitations": [],
+          "schema_version": 1,
+          "status": "INSUFFICIENT_SETTLED_EVIDENCE",
+          "value": 0
+        },
+        {
+          "claim_id": "88767de0265b439f40f14a6be3e38a4afb926383567dd598696c18703ac8e774",
+          "evidence_ids": [
+            "b75897f315bc44731ef72b4e9e39e758f8dfbb6b9e1552df5b0101775786adf9"
+          ],
+          "label": "automatic_promotion",
+          "limitations": [],
+          "schema_version": 1,
+          "status": "PROHIBITED",
+          "value": false
+        },
+        {
+          "claim_id": "9e744e7d605fe866264e57c938d6fa45ec2d271b90d1ca245f375ce8553da8fc",
+          "evidence_ids": [
+            "e781f5e186bb22e861d99ad7e4c2b33da5e4e433e9d2b344f25b9e7924300c1f"
+          ],
+          "label": "registered_genomes",
+          "limitations": [],
+          "schema_version": 1,
+          "status": "GENERATION_ZERO_ARCHITECTURES_ONLY",
+          "value": 2
+        }
+      ],
+      "panel": "evolution"
+    },
+    {
+      "claim_count": 3,
+      "claims": [
+        {
+          "claim_id": "73d66692f2a7be15df8f59a1d35aca4fec388594ec77f8041c5f51bb70780203",
+          "evidence_ids": [
+            "phase7-static-audit"
+          ],
+          "label": "witnessed_vnext_fills",
+          "limitations": [],
+          "schema_version": 1,
+          "status": "NOT_OBSERVED",
+          "value": 0
+        },
+        {
+          "claim_id": "9ea19387f13cfcc420bfec48dcfa49628868f3a0500a838ecee4c7797693ad7e",
+          "evidence_ids": [
+            "docs/VNEXT_PHASE6_MEMORY_POLICY.json"
+          ],
+          "label": "simulated_fill_is_realized_pnl",
+          "limitations": [],
+          "schema_version": 1,
+          "status": "VERIFIED",
+          "value": false
+        },
+        {
+          "claim_id": "f614f19333b8647f9c60fdd7e732df65d4bd840fa1a7a1fbca9cc73abffc6e37",
+          "evidence_ids": [
+            "b75897f315bc44731ef72b4e9e39e758f8dfbb6b9e1552df5b0101775786adf9"
+          ],
+          "label": "execution_authority",
+          "limitations": [],
+          "schema_version": 1,
+          "status": "SEALED",
+          "value": false
+        }
+      ],
+      "panel": "execution_truth"
+    },
+    {
+      "claim_count": 2,
+      "claims": [
+        {
+          "claim_id": "ccf55706cc9dd54b34d3a092402628364cceac5c11ad714076e32b1ea8dd52d9",
+          "evidence_ids": [
+            "phase7-static-audit"
+          ],
+          "label": "running_organisms",
+          "limitations": [
+            "dashboard snapshot is not a runtime control plane"
+          ],
+          "schema_version": 1,
+          "status": "NOT_OBSERVED",
+          "value": 0
+        },
+        {
+          "claim_id": "dabf3f318fb78e90b9f372dbc12a090ccc19437953a25b88f5ec0ee5597a6e2b",
+          "evidence_ids": [
+            "e781f5e186bb22e861d99ad7e4c2b33da5e4e433e9d2b344f25b9e7924300c1f"
+          ],
+          "label": "generation_zero_genomes",
+          "limitations": [],
+          "schema_version": 1,
+          "status": "CATALOGED",
+          "value": 2
+        }
+      ],
+      "panel": "forecast_organisms"
+    },
+    {
+      "claim_count": 3,
+      "claims": [
+        {
+          "claim_id": "13b952f91cb239c3118ff2254c75b1ba3a73edf0fec8b610a13d3cc85ab6038c",
+          "evidence_ids": [
+            "a5feb887d475159cf8073f3786c019d3c08b3ebc4116ae8b4d774eaaa832d499"
+          ],
+          "label": "authority_expansion",
+          "limitations": [],
+          "schema_version": 1,
+          "status": "PROHIBITED",
+          "value": false
+        },
+        {
+          "claim_id": "26c46d1740f0e54243be87caa3eb127ad345df97d3b60d144728d225e10b3137",
+          "evidence_ids": [
+            "a5feb887d475159cf8073f3786c019d3c08b3ebc4116ae8b4d774eaaa832d499"
+          ],
+          "label": "monitored_variables",
+          "limitations": [],
+          "schema_version": 1,
+          "status": "POLICY_DEFINED",
+          "value": 19
+        },
+        {
+          "claim_id": "a51fbc6894b80fd3d09440626174e9962d31582cb9874cc8e630bdaf2919fedb",
+          "evidence_ids": [
+            "a5feb887d475159cf8073f3786c019d3c08b3ebc4116ae8b4d774eaaa832d499"
+          ],
+          "label": "runtime_readings",
+          "limitations": [
+            "unknown readings fail closed"
+          ],
+          "schema_version": 1,
+          "status": "NOT_OBSERVED",
+          "value": 0
+        }
+      ],
+      "panel": "homeostasis"
+    },
+    {
+      "claim_count": 2,
+      "claims": [
+        {
+          "claim_id": "82b128c8468d72fdba3da12302b6f439a642e55702968ce75027e6fc4624e39a",
+          "evidence_ids": [
+            "docs/VNEXT_PHASE4_WORLD_MODELS.md"
+          ],
+          "label": "state_contract",
+          "limitations": [],
+          "schema_version": 1,
+          "status": "VERIFIED",
+          "value": "VERSIONED_CAUSAL"
+        },
+        {
+          "claim_id": "89fba29205f5cce53cd71ac06367824e8737b0a95e4526aa4189f1428e5be674",
+          "evidence_ids": [
+            "docs/VNEXT_PHASE4_REGIME_TRANSFER.json"
+          ],
+          "label": "transfer_claim",
+          "limitations": [],
+          "schema_version": 1,
+          "status": "INSUFFICIENT_SETTLED_EVIDENCE",
+          "value": false
+        }
+      ],
+      "panel": "world_models"
+    }
+  ],
+  "phase": 7,
+  "read_only": true,
+  "schema_version": 1,
+  "snapshot_id": "c68feca2fdb87520a6dc0d9b55795b2eff1eff16cb171b77a90bcb412dbafa79",
+  "source_artifacts": {
+    "arenas": "docs/VNEXT_PHASE7_ARENA_REPRODUCIBILITY.json",
+    "baseline": "docs/VNEXT_PHASE0_BASELINE.json",
+    "constitution": "docs/VNEXT_PROTECTED_SURFACES.json",
+    "evolution": "docs/VNEXT_PHASE6_EVOLUTION_EVIDENCE.json",
+    "genomes": "docs/VNEXT_PHASE6_GENOME_CATALOG.json",
+    "homeostasis": "docs/VNEXT_PHASE7_HOMEOSTASIS_POLICY.json",
+    "phase5_evidence": "docs/VNEXT_PHASE5_METACOGNITION_CALIBRATION.json",
+    "world_model_ablation": "docs/VNEXT_PHASE4_WORLD_STATE_ABLATION.json"
+  },
+  "telemetry_status": "POINT_IN_TIME_SNAPSHOT_NO_LIVE_TELEMETRY",
+  "write_actions": []
+}

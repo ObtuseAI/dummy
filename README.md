@@ -101,6 +101,19 @@ contains zero genuine settled candidates and reports
 `INSUFFICIENT_SETTLED_EVIDENCE`; no source edit, runtime application,
 performance claim, automatic promotion, or execution authority is granted.
 
+Phase 7 adds the [`read-only intelligence observatory, adversarial arenas, and
+homeostasis controller`](docs/VNEXT_PHASE7_OBSERVATORY_ARENAS.md). The
+observatory projects command-center, organism, world-model, calibration,
+execution-truth, evolution, health, and constitutional state with an evidence
+link for every claim. The complete 40-scenario arena catalog covers forecast,
+sports, crypto, and metacognitive failure modes; all checked-in fixture replays
+are deterministic. Nineteen health variables can produce contraction-only or
+proposal-only interventions that never increase authority. The current
+[`observatory snapshot`](docs/VNEXT_PHASE7_OBSERVATORY_SNAPSHOT.json) explicitly
+contains no live vNext telemetry, and the arena report contains zero runtime
+episodes, so these artifacts prove mechanics and governance—not empirical
+resilience or production readiness.
+
 ## Current paper operation
 
 The market-horizon paper twin runs every five minutes through the Windows
