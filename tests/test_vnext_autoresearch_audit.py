@@ -34,3 +34,37 @@ def test_autoresearch_audit_cli_writes_expected_artifacts(tmp_path: Path) -> Non
     assert summary["empirical_recursive_improvement_claim"] is False
     assert (tmp_path / "VNEXT_AUTORESEARCH_POLICY.json").exists()
     assert (tmp_path / "VNEXT_AUTORESEARCH_EVIDENCE.json").exists()
+
+
+def test_autoresearch_audit_projects_real_level_zero_campaign() -> None:
+    campaign = {
+        "campaign_id": "campaign-1",
+        "scope": "crypto|btc|15m_direction|15m",
+        "genuine_private_candidate_trials": 5,
+        "genuine_external_generalization_trials": 0,
+        "private_survivors": 0,
+        "external_survivors": 0,
+        "candidates": [],
+    }
+    forward = {
+        "status": "ACCUMULATING_FORWARD_EVIDENCE",
+        "forward_paper_candidate_settlements": 0,
+        "performance_claim_supported": False,
+    }
+    ignition = {
+        "highest_supported_recursive_improvement_level": 0,
+        "self_improvement_claim_supported": False,
+        "improved_improver_claim_supported": False,
+        "accelerating_improvement_claim_supported": False,
+    }
+    outputs = build_outputs(campaign, forward, ignition)
+    evidence = outputs["VNEXT_AUTORESEARCH_EVIDENCE.json"]
+    assert evidence["genuine_private_candidate_trials"] == 5
+    assert evidence["highest_supported_recursive_improvement_level"] == 0
+    assert evidence["status"] == (
+        "LEVEL0_AUTONOMOUS_EXPERIMENTATION_LEVEL1_NOT_SUPPORTED"
+    )
+    assert evidence["self_improvement_claim_supported"] is False
+    assert "VNEXT_AUTORESEARCH_CAMPAIGN.json" in outputs
+    assert "VNEXT_AUTORESEARCH_FORWARD_EVIDENCE.json" in outputs
+    assert "VNEXT_AUTORESEARCH_IGNITION.json" in outputs

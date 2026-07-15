@@ -96,7 +96,9 @@ def test_planted_loss_names_bleeding_bucket_cluster_level_with_ci():
     rows = _planted_rows()
     attribution = build_loss_attribution(rows, now_iso="2026-07-13T00:00:00+00:00")
 
-    scope_entry = next(s for s in attribution["scopes"] if s["scope"] == "nba|total|pre")
+    scope_entry = next(
+        s for s in attribution["scopes"] if s["scope"] == "nba|nba|total|pre"
+    )
     assert scope_entry["verdict"] == "bleeding"
     assert scope_entry["cluster_edge"] < 0.0
     assert scope_entry["n_clusters"] == 30
@@ -116,7 +118,9 @@ def test_planted_loss_names_bleeding_bucket_cluster_level_with_ci():
 def test_noise_rows_yield_no_bleeding_scope():
     rows = _noise_rows()
     attribution = build_loss_attribution(rows, now_iso="2026-07-13T00:00:00+00:00")
-    scope_entry = next(s for s in attribution["scopes"] if s["scope"] == "nba|total|pre")
+    scope_entry = next(
+        s for s in attribution["scopes"] if s["scope"] == "nba|nba|total|pre"
+    )
     # Every row edge is exactly 0.0 -> not < 0 -> never classified "bleeding".
     assert scope_entry["verdict"] in ("not_bleeding", "insufficient_data")
     assert scope_entry["worst_buckets"] == []
@@ -204,8 +208,8 @@ def test_narration_fills_field_when_router_succeeds():
             return _Envelope()
 
     narration = narrate_losses(attribution, _WorkingRouter())
-    assert set(narration) == {"nba|total|pre"}
-    note = narration["nba|total|pre"]
+    assert set(narration) == {"nba|nba|total|pre"}
+    note = narration["nba|nba|total|pre"]
     # The extracted value must be plain prose, not the JSON envelope/dict.
     assert isinstance(note, str)
     assert not note.strip().startswith("{")

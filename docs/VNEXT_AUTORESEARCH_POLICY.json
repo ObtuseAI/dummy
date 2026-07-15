@@ -99,6 +99,34 @@
       "target_compression_ratio": 16.0,
       "target_is_measurement_not_claim": true
     },
+    "forward_paper": {
+      "broker_contact": false,
+      "candidate_frozen_before_new_decisions": true,
+      "counterfactual_avoided_pnl_is_verified_fill": false,
+      "deterministic_replay_required": true,
+      "exact_recorded_decision_required_to_inherit_fill": true,
+      "hash_chained_observation_ledger": true,
+      "issue_only_while_unsettled": true,
+      "issued_before_settlement_required": true,
+      "one_frozen_exact_cohort_per_registry": true,
+      "orders_placed": false
+    },
+    "loop1_campaign": {
+      "external_evaluation_after_private_survival_only": true,
+      "lineages": [
+        "abstention-first",
+        "calibration-first",
+        "crypto-liquidity",
+        "execution-aware",
+        "market-prior-anchored"
+      ],
+      "one_initial_trial_per_lineage": true,
+      "private_item_feedback_to_outer": false,
+      "same_compute_budget": true,
+      "same_private_evaluator": true,
+      "same_starting_genome": true,
+      "semantic_minimization_after_private_survival": true
+    },
     "outer_researcher": {
       "execution_authority": false,
       "improved_object": "INNER_FORECAST_RESEARCH_ORGANISM",
@@ -170,6 +198,17 @@
       ],
       "schema_version": 1
     },
+    "real_ledger_pipeline": {
+      "candidate_controls_partition": false,
+      "cross_cohort_evidence_transfer": false,
+      "decision_selection": "EARLIEST_PRE_SETTLEMENT_DECISION_PER_MARKET",
+      "event_cluster_cross_partition_purge": true,
+      "exact_cohort_schema": "vertical|subject|market_type|horizon_or_phase",
+      "forced_coverage_private_selection_eligible": false,
+      "partitioning": "CHRONOLOGICAL_WHOLE_DATE",
+      "settlement_receipt_as_conservative_close_upper_bound": true,
+      "sqlite_mode": "READ_ONLY_QUERY_ONLY"
+    },
     "reward_hacking": {
       "any_trigger_is_hard_rejection": true,
       "candidate_controls_detector": false,
@@ -223,7 +262,7 @@
     "intrinsic_model_confidence"
   ],
   "execution_authority": false,
-  "manifest_id": "2cb67d9ced13ce4923070cc8ed45cf3b594f73b3791e8b8770f172c647adf843",
+  "manifest_id": "f07993f558e7b21e9af0d3fb9014209b9ded09f170d87c4eafda88fa4b2edc99",
   "maturity": "EXPERIMENTAL_SOVEREIGN_FORECASTING",
   "name": "AIDE2_STYLE_FORECAST_RESEARCH_IMPROVEMENT_LOOP",
   "nested_loops": [

@@ -136,7 +136,7 @@ def compute_metrics(
     fill_tasks = tuple(
         item
         for item in tasks
-        if item.candidate_fill_verified or item.incumbent_fill_verified
+        if item.candidate_fill_verified and item.incumbent_fill_verified
     )
     fill_conditioned_improvement = _mean(
         [

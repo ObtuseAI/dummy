@@ -161,7 +161,8 @@ dishonestly). **CLV is evidence for review, never a promotion gate** —
 settlement-backed contested Brier (`autonomy/backtest.py`, taxonomy-keyed via
 `autonomy/taxonomy.py`'s `grading_scope`) remains the sole gate, and
 `autonomy/backtest.py`'s `trust_surface_by_specialist` rolls the per-scope
-contested-Brier record up to one (specialist, market_type, phase) surface for
+contested-Brier record up to one (specialist, subject, market_type, phase)
+surface for
 human review.
 
 **Propose-then-promote tuner (WS-9).** `autonomy/tuner.py` proposes better
@@ -184,6 +185,15 @@ never waits on a human, adding it always does). `EnsembleForecaster.fuse`
 consults `is_promoted_signal` at its existing `challenger_only` filter; a
 missing or corrupt promotions file means nobody is promoted, byte-identical
 to a build without the registry.
+
+Promotion and readiness scopes are exact four-axis cohorts:
+`source | subject | market_type | horizon_or_phase`. `subject` is the crypto
+asset, sports league, or exact contract series. The nightly evaluator accrues
+evidence and evaluates gates autonomously for each cohort; it never pools BTC
+with ETH, MLB with another league, winner with spread/total/YRFI-NRFI, or
+pregame with live. A legacy broad promotion entry without `subject` fails
+closed. Positive eligibility requests human review; negative evidence can
+autonomously contract or demote only that exact cohort.
 
 **Dashboard council panel (WS-13).** The operator dashboard is a read-only
 process over runtime JSON files — it never holds a live `SpecialistRegistry`
@@ -275,7 +285,7 @@ and reports `execution_authority=false`.
 1. **Calibration**: every settlement scores every source's logged signal
    (Brier vs the market-prior baseline) and updates trust multiplicatively —
    globally, per-vertical (`source@VERTICAL` rows), and at the exact
-   `(source, market_type, phase_or_horizon)` scope. Sparse scopes fall back to
+   `(source, subject, market_type, phase_or_horizon)` scope. Sparse scopes fall back to
    vertical/global trust; established scopes cannot hide behind another
    market family's record.
 2. **Metabolic recalibration and repair**: every ~6h the daemon re-runs the

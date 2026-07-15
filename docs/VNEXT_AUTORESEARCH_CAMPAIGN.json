@@ -1,0 +1,1311 @@
+{
+  "allocations": [
+    {
+      "allocation_id": "5dc2b15f1a0b237064a13bb2a2fe9ca78a4705b580116f68120bbb57d99a0eaf",
+      "arm_scores": [
+        [
+          "abstention-first",
+          1000002.0
+        ],
+        [
+          "calibration-first",
+          1000002.0
+        ],
+        [
+          "crypto-liquidity",
+          1000002.0
+        ],
+        [
+          "execution-aware",
+          1000002.0
+        ],
+        [
+          "market-prior-anchored",
+          1000002.0
+        ]
+      ],
+      "policy": "ucb_lineage_greedy_within_lineage_v1",
+      "schema_version": 1,
+      "selected_lineage_id": "market-prior-anchored",
+      "selected_parent_candidate_id": "55a507158fc53fd46cb8a7419e18531795a8263498f1fc8527fba3d10f80e04b"
+    },
+    {
+      "allocation_id": "6e589a7aca2e23a8cf0f0c9fd5dc8b85c3fcd5e4f4e75ad57ebef4d8a5f12097",
+      "arm_scores": [
+        [
+          "abstention-first",
+          1000002.0
+        ],
+        [
+          "calibration-first",
+          1000002.0
+        ],
+        [
+          "crypto-liquidity",
+          1000002.0
+        ],
+        [
+          "execution-aware",
+          1000002.0
+        ],
+        [
+          "market-prior-anchored",
+          1.607672146534
+        ]
+      ],
+      "policy": "ucb_lineage_greedy_within_lineage_v1",
+      "schema_version": 1,
+      "selected_lineage_id": "execution-aware",
+      "selected_parent_candidate_id": "55a507158fc53fd46cb8a7419e18531795a8263498f1fc8527fba3d10f80e04b"
+    },
+    {
+      "allocation_id": "b212541a344e60e83cd04a68e46b5893100f5dbe1b08a751b4ad82207acf30d8",
+      "arm_scores": [
+        [
+          "abstention-first",
+          1000002.0
+        ],
+        [
+          "calibration-first",
+          1000002.0
+        ],
+        [
+          "crypto-liquidity",
+          1000002.0
+        ],
+        [
+          "execution-aware",
+          0.383410022515
+        ],
+        [
+          "market-prior-anchored",
+          1.607672146534
+        ]
+      ],
+      "policy": "ucb_lineage_greedy_within_lineage_v1",
+      "schema_version": 1,
+      "selected_lineage_id": "crypto-liquidity",
+      "selected_parent_candidate_id": "55a507158fc53fd46cb8a7419e18531795a8263498f1fc8527fba3d10f80e04b"
+    },
+    {
+      "allocation_id": "85616b5a9171d76b98bfa7c9fe0f150d2cd42922d8fb239d7a692ed32d1665f1",
+      "arm_scores": [
+        [
+          "abstention-first",
+          1000002.0
+        ],
+        [
+          "calibration-first",
+          1000002.0
+        ],
+        [
+          "crypto-liquidity",
+          1.701515832684
+        ],
+        [
+          "execution-aware",
+          0.688303807368
+        ],
+        [
+          "market-prior-anchored",
+          1.912565931387
+        ]
+      ],
+      "policy": "ucb_lineage_greedy_within_lineage_v1",
+      "schema_version": 1,
+      "selected_lineage_id": "calibration-first",
+      "selected_parent_candidate_id": "55a507158fc53fd46cb8a7419e18531795a8263498f1fc8527fba3d10f80e04b"
+    },
+    {
+      "allocation_id": "c8521b2a79bb4a94784e7ee29a9285a390bb8428012d2082a2d61c1401ed52c3",
+      "arm_scores": [
+        [
+          "abstention-first",
+          1000002.0
+        ],
+        [
+          "calibration-first",
+          2.102450465919
+        ],
+        [
+          "crypto-liquidity",
+          1.884321247631
+        ],
+        [
+          "execution-aware",
+          0.871109222315
+        ],
+        [
+          "market-prior-anchored",
+          2.095371346334
+        ]
+      ],
+      "policy": "ucb_lineage_greedy_within_lineage_v1",
+      "schema_version": 1,
+      "selected_lineage_id": "abstention-first",
+      "selected_parent_candidate_id": "55a507158fc53fd46cb8a7419e18531795a8263498f1fc8527fba3d10f80e04b"
+    }
+  ],
+  "automatic_promotion": false,
+  "base_genome_id": "55a507158fc53fd46cb8a7419e18531795a8263498f1fc8527fba3d10f80e04b",
+  "best_forward_candidate_id": null,
+  "budget": {
+    "experiments_completed": 5,
+    "maximum_experiments": 5,
+    "per_experiment_compute_units": 500.0,
+    "same_model_access": true,
+    "same_private_evaluator": true,
+    "same_starting_genome": true,
+    "total_compute_units_used": 1480.5
+  },
+  "campaign_id": "89c7c305e612b1fa43115b8410fff87450f3c99014f1f26ec5ba1e1458106f5b",
+  "campaign_name": "DUMMY_AUTORESEARCH_LOOP1_REAL_LEDGER_V1",
+  "candidates": [
+    {
+      "automatic_promotion": false,
+      "candidate_genome": {
+        "created_at": "2026-07-15T07:12:13.334765Z",
+        "evidence_ids": [
+          "351f390ee8f11cc50794ba9940dcad8c265b21ee90e804e9fbb6f6b715304396",
+          "55a507158fc53fd46cb8a7419e18531795a8263498f1fc8527fba3d10f80e04b",
+          "785c8a9191d0619deb2a63567bfe729969ced7f522e0c71d0372db6613f8506d",
+          "btc-15m-direction-organism-v1",
+          "lineage:market-prior-anchored"
+        ],
+        "execution_authority": false,
+        "generation": 1,
+        "genes": [
+          {
+            "category": "abstention_threshold",
+            "evidence_ids": [
+              "785c8a9191d0619deb2a63567bfe729969ced7f522e0c71d0372db6613f8506d"
+            ],
+            "name": "abstention.epistemic_threshold",
+            "value": 0.22,
+            "version": "phase6-pilot-v1"
+          },
+          {
+            "category": "adversarial_sequence",
+            "evidence_ids": [
+              "785c8a9191d0619deb2a63567bfe729969ced7f522e0c71d0372db6613f8506d"
+            ],
+            "name": "adversarial.sequence",
+            "value": [
+              "contrarian",
+              "adversary",
+              "shadow",
+              "synthesizer"
+            ],
+            "version": "phase6-pilot-v1"
+          },
+          {
+            "category": "calibration_policy",
+            "evidence_ids": [
+              "785c8a9191d0619deb2a63567bfe729969ced7f522e0c71d0372db6613f8506d"
+            ],
+            "name": "calibration.policy",
+            "value": [
+              "btc15m-adversary-v1-calibration",
+              "btc15m-calibrator-v1-calibration",
+              "btc15m-contrarian-v1-calibration",
+              "btc15m-incumbent-v1-calibration",
+              "btc15m-market-prior-v1-calibration",
+              "btc15m-shadow-controller-v1-calibration",
+              "btc15m-synthesizer-v1-calibration"
+            ],
+            "version": "phase6-pilot-v1"
+          },
+          {
+            "category": "decision_rule",
+            "evidence_ids": [
+              "785c8a9191d0619deb2a63567bfe729969ced7f522e0c71d0372db6613f8506d"
+            ],
+            "name": "decision.rule",
+            "value": "positive_edge_after_fees_spread_uncertainty_and_guards",
+            "version": "phase6-pilot-v1"
+          },
+          {
+            "category": "metacognitive_policy",
+            "evidence_ids": [
+              "785c8a9191d0619deb2a63567bfe729969ced7f522e0c71d0372db6613f8506d"
+            ],
+            "name": "metacognition.policy",
+            "value": "shadow_only_except_safety_contraction",
+            "version": "phase6-pilot-v1"
+          },
+          {
+            "category": "mutation_policy",
+            "evidence_ids": [
+              "785c8a9191d0619deb2a63567bfe729969ced7f522e0c71d0372db6613f8506d"
+            ],
+            "name": "mutation.policy",
+            "value": "proposal_only_external_evaluator_human_promotion",
+            "version": "phase6-pilot-v1"
+          },
+          {
+            "category": "agent_composition",
+            "evidence_ids": [
+              "785c8a9191d0619deb2a63567bfe729969ced7f522e0c71d0372db6613f8506d"
+            ],
+            "name": "organism.agent_composition",
+            "value": [
+              "btc15m-incumbent-v1",
+              "btc15m-calibrator-v1",
+              "btc15m-market-prior-v1",
+              "btc15m-contrarian-v1",
+              "btc15m-adversary-v1",
+              "btc15m-shadow-controller-v1",
+              "btc15m-synthesizer-v1"
+            ],
+            "version": "phase6-pilot-v1"
+          },
+          {
+            "category": "source_selection",
+            "evidence_ids": [
+              "785c8a9191d0619deb2a63567bfe729969ced7f522e0c71d0372db6613f8506d"
+            ],
+            "name": "organism.source_selection",
+            "value": [
+              "btc15m-adversarial-review",
+              "btc15m-calibration",
+              "btc15m-countercase",
+              "btc15m-family-capped-synthesis",
+              "constitutional-shadow",
+              "crypto-coinbase-distribution",
+              "market-price"
+            ],
+            "version": "phase6-pilot-v1"
+          },
+          {
+            "category": "replay_depth",
+            "evidence_ids": [
+              "785c8a9191d0619deb2a63567bfe729969ced7f522e0c71d0372db6613f8506d"
+            ],
+            "name": "replay.depth",
+            "value": 5,
+            "version": "phase6-pilot-v1"
+          },
+          {
+            "category": "simulation_budget",
+            "evidence_ids": [
+              "785c8a9191d0619deb2a63567bfe729969ced7f522e0c71d0372db6613f8506d"
+            ],
+            "name": "simulation.path_budget",
+            "value": 0,
+            "version": "phase6-pilot-v1"
+          },
+          {
+            "category": "forecast_combination",
+            "evidence_ids": [
+              "785c8a9191d0619deb2a63567bfe729969ced7f522e0c71d0372db6613f8506d"
+            ],
+            "name": "synthesis.family_caps",
+            "value": {
+              "market_prior_floor": 0.5,
+              "non_market_family_cap": 0.35,
+              "uncalibrated_advisory_cap": 0.15
+            },
+            "version": "phase6-pilot-v1"
+          },
+          {
+            "category": "market_prior_weight",
+            "evidence_ids": [
+              "351f390ee8f11cc50794ba9940dcad8c265b21ee90e804e9fbb6f6b715304396",
+              "lineage:market-prior-anchored"
+            ],
+            "name": "synthesis.market_prior_weight",
+            "value": 0.6,
+            "version": "autoresearch-loop1-v1"
+          },
+          {
+            "category": "uncertainty_model",
+            "evidence_ids": [
+              "785c8a9191d0619deb2a63567bfe729969ced7f522e0c71d0372db6613f8506d"
+            ],
+            "name": "uncertainty.disagreement_model",
+            "value": "base_uncertainty_plus_weighted_dispersion",
+            "version": "phase6-pilot-v1"
+          }
+        ],
+        "genome_id": "0fdeb25b51c29c73d45edbdd8bde45874068aa9494205216023313a263f7455a",
+        "horizon": "fifteen_minute",
+        "label": "btc-15m-direction-organism-v1 generation zero mutation",
+        "market_type": "15m_direction",
+        "maturity": "EXPERIMENTAL_SOVEREIGN_FORECASTING",
+        "parent_genome_ids": [
+          "55a507158fc53fd46cb8a7419e18531795a8263498f1fc8527fba3d10f80e04b"
+        ],
+        "promotion_authority": "HUMAN_ONLY",
+        "schema_version": 1,
+        "status": "EXPERIMENTAL",
+        "vertical": "crypto"
+      },
+      "complexity_score": 1.6,
+      "compute_units_used": 296.1,
+      "execution_authority": false,
+      "experiment_id": "a60c96b6c22d8f78f99efdb53f4b73157ceafff1b9666a1141937ce0e1200e8b",
+      "external_evaluation": null,
+      "external_passed": false,
+      "forward_paper_eligible": false,
+      "lineage_id": "market-prior-anchored",
+      "minimization": null,
+      "private_item_details": null,
+      "private_receipt": {
+        "accepted": false,
+        "candidate_id": "0fdeb25b51c29c73d45edbdd8bde45874068aa9494205216023313a263f7455a",
+        "evaluation_id": "acd54704537965d032b1e7fe3e93a25085ba65f5d0b9f2285dbbc4c694056284",
+        "event_cluster_count_bucket": "50_199",
+        "failed_gate_ids": [
+          "compute_normalized_quality_not_worse",
+          "cluster_interval_positive",
+          "multi_objective_fitness_positive"
+        ],
+        "fitness": -0.069737875981,
+        "item_details": null,
+        "metric_digest": "74c7fd5babfef0c1484d4df0dbe46cac088ce7283d6168348a66a63633781c18",
+        "task_count_bucket": "50_199"
+      },
+      "private_selected": false,
+      "public_evaluation_id": "5a58b8d8c3cdd7a63c588b1b30fe3c54ff3e17220f2d29531a6826fb8733af63",
+      "public_fitness": -0.071260256098,
+      "runtime_application": false,
+      "source_edit_applied": false
+    },
+    {
+      "automatic_promotion": false,
+      "candidate_genome": {
+        "created_at": "2026-07-15T07:12:13.334765Z",
+        "evidence_ids": [
+          "351f390ee8f11cc50794ba9940dcad8c265b21ee90e804e9fbb6f6b715304396",
+          "55a507158fc53fd46cb8a7419e18531795a8263498f1fc8527fba3d10f80e04b",
+          "785c8a9191d0619deb2a63567bfe729969ced7f522e0c71d0372db6613f8506d",
+          "btc-15m-direction-organism-v1",
+          "lineage:execution-aware"
+        ],
+        "execution_authority": false,
+        "generation": 1,
+        "genes": [
+          {
+            "category": "abstention_threshold",
+            "evidence_ids": [
+              "785c8a9191d0619deb2a63567bfe729969ced7f522e0c71d0372db6613f8506d"
+            ],
+            "name": "abstention.epistemic_threshold",
+            "value": 0.22,
+            "version": "phase6-pilot-v1"
+          },
+          {
+            "category": "adversarial_sequence",
+            "evidence_ids": [
+              "785c8a9191d0619deb2a63567bfe729969ced7f522e0c71d0372db6613f8506d"
+            ],
+            "name": "adversarial.sequence",
+            "value": [
+              "contrarian",
+              "adversary",
+              "shadow",
+              "synthesizer"
+            ],
+            "version": "phase6-pilot-v1"
+          },
+          {
+            "category": "calibration_policy",
+            "evidence_ids": [
+              "785c8a9191d0619deb2a63567bfe729969ced7f522e0c71d0372db6613f8506d"
+            ],
+            "name": "calibration.policy",
+            "value": [
+              "btc15m-adversary-v1-calibration",
+              "btc15m-calibrator-v1-calibration",
+              "btc15m-contrarian-v1-calibration",
+              "btc15m-incumbent-v1-calibration",
+              "btc15m-market-prior-v1-calibration",
+              "btc15m-shadow-controller-v1-calibration",
+              "btc15m-synthesizer-v1-calibration"
+            ],
+            "version": "phase6-pilot-v1"
+          },
+          {
+            "category": "decision_rule",
+            "evidence_ids": [
+              "351f390ee8f11cc50794ba9940dcad8c265b21ee90e804e9fbb6f6b715304396",
+              "lineage:execution-aware"
+            ],
+            "name": "decision.edge_threshold_cents",
+            "value": 9,
+            "version": "autoresearch-loop1-v1"
+          },
+          {
+            "category": "decision_rule",
+            "evidence_ids": [
+              "785c8a9191d0619deb2a63567bfe729969ced7f522e0c71d0372db6613f8506d"
+            ],
+            "name": "decision.rule",
+            "value": "positive_edge_after_fees_spread_uncertainty_and_guards",
+            "version": "phase6-pilot-v1"
+          },
+          {
+            "category": "decision_rule",
+            "evidence_ids": [
+              "351f390ee8f11cc50794ba9940dcad8c265b21ee90e804e9fbb6f6b715304396",
+              "lineage:execution-aware"
+            ],
+            "name": "execution.max_entry_price_cents",
+            "value": 65,
+            "version": "autoresearch-loop1-v1"
+          },
+          {
+            "category": "metacognitive_policy",
+            "evidence_ids": [
+              "785c8a9191d0619deb2a63567bfe729969ced7f522e0c71d0372db6613f8506d"
+            ],
+            "name": "metacognition.policy",
+            "value": "shadow_only_except_safety_contraction",
+            "version": "phase6-pilot-v1"
+          },
+          {
+            "category": "mutation_policy",
+            "evidence_ids": [
+              "785c8a9191d0619deb2a63567bfe729969ced7f522e0c71d0372db6613f8506d"
+            ],
+            "name": "mutation.policy",
+            "value": "proposal_only_external_evaluator_human_promotion",
+            "version": "phase6-pilot-v1"
+          },
+          {
+            "category": "agent_composition",
+            "evidence_ids": [
+              "785c8a9191d0619deb2a63567bfe729969ced7f522e0c71d0372db6613f8506d"
+            ],
+            "name": "organism.agent_composition",
+            "value": [
+              "btc15m-incumbent-v1",
+              "btc15m-calibrator-v1",
+              "btc15m-market-prior-v1",
+              "btc15m-contrarian-v1",
+              "btc15m-adversary-v1",
+              "btc15m-shadow-controller-v1",
+              "btc15m-synthesizer-v1"
+            ],
+            "version": "phase6-pilot-v1"
+          },
+          {
+            "category": "source_selection",
+            "evidence_ids": [
+              "785c8a9191d0619deb2a63567bfe729969ced7f522e0c71d0372db6613f8506d"
+            ],
+            "name": "organism.source_selection",
+            "value": [
+              "btc15m-adversarial-review",
+              "btc15m-calibration",
+              "btc15m-countercase",
+              "btc15m-family-capped-synthesis",
+              "constitutional-shadow",
+              "crypto-coinbase-distribution",
+              "market-price"
+            ],
+            "version": "phase6-pilot-v1"
+          },
+          {
+            "category": "replay_depth",
+            "evidence_ids": [
+              "785c8a9191d0619deb2a63567bfe729969ced7f522e0c71d0372db6613f8506d"
+            ],
+            "name": "replay.depth",
+            "value": 5,
+            "version": "phase6-pilot-v1"
+          },
+          {
+            "category": "simulation_budget",
+            "evidence_ids": [
+              "785c8a9191d0619deb2a63567bfe729969ced7f522e0c71d0372db6613f8506d"
+            ],
+            "name": "simulation.path_budget",
+            "value": 0,
+            "version": "phase6-pilot-v1"
+          },
+          {
+            "category": "forecast_combination",
+            "evidence_ids": [
+              "785c8a9191d0619deb2a63567bfe729969ced7f522e0c71d0372db6613f8506d"
+            ],
+            "name": "synthesis.family_caps",
+            "value": {
+              "market_prior_floor": 0.5,
+              "non_market_family_cap": 0.35,
+              "uncalibrated_advisory_cap": 0.15
+            },
+            "version": "phase6-pilot-v1"
+          },
+          {
+            "category": "market_prior_weight",
+            "evidence_ids": [
+              "785c8a9191d0619deb2a63567bfe729969ced7f522e0c71d0372db6613f8506d"
+            ],
+            "name": "synthesis.market_prior_weight",
+            "value": 0.5,
+            "version": "phase6-pilot-v1"
+          },
+          {
+            "category": "uncertainty_model",
+            "evidence_ids": [
+              "785c8a9191d0619deb2a63567bfe729969ced7f522e0c71d0372db6613f8506d"
+            ],
+            "name": "uncertainty.disagreement_model",
+            "value": "base_uncertainty_plus_weighted_dispersion",
+            "version": "phase6-pilot-v1"
+          }
+        ],
+        "genome_id": "b13065e3e4ba00cb08618c00167f4d935eb1a82dd190408e190c125058075137",
+        "horizon": "fifteen_minute",
+        "label": "btc-15m-direction-organism-v1 generation zero mutation",
+        "market_type": "15m_direction",
+        "maturity": "EXPERIMENTAL_SOVEREIGN_FORECASTING",
+        "parent_genome_ids": [
+          "55a507158fc53fd46cb8a7419e18531795a8263498f1fc8527fba3d10f80e04b"
+        ],
+        "promotion_authority": "HUMAN_ONLY",
+        "schema_version": 1,
+        "status": "EXPERIMENTAL",
+        "vertical": "crypto"
+      },
+      "complexity_score": 4.7,
+      "compute_units_used": 296.1,
+      "execution_authority": false,
+      "experiment_id": "2c1bed0fc5c03180aa1d05c82a1252ae4716ecec1e6ed760d80def49a751cde9",
+      "external_evaluation": null,
+      "external_passed": false,
+      "forward_paper_eligible": false,
+      "lineage_id": "execution-aware",
+      "minimization": null,
+      "private_item_details": null,
+      "private_receipt": {
+        "accepted": false,
+        "candidate_id": "b13065e3e4ba00cb08618c00167f4d935eb1a82dd190408e190c125058075137",
+        "evaluation_id": "efbf9f9ad54ea0d41a1e7cfb9642d6e17b1fdca1d7e6ea999d5339895134cf82",
+        "event_cluster_count_bucket": "50_199",
+        "failed_gate_ids": [
+          "abstention_not_gamed",
+          "abstention_quality_nonnegative",
+          "contested_evidence_present",
+          "cluster_interval_positive",
+          "multi_objective_fitness_positive"
+        ],
+        "fitness": -1.294,
+        "item_details": null,
+        "metric_digest": "5e5ae1f0526bd59c5a7d5359a6368dba2c4d40414976cfe075d30a17feb4f101",
+        "task_count_bucket": "50_199"
+      },
+      "private_selected": false,
+      "public_evaluation_id": "85c14e378d058ba0ba5122279b048ec8d8e450bd11e0d6df4dee79815e9d2bb9",
+      "public_fitness": -1.257407821229,
+      "runtime_application": false,
+      "source_edit_applied": false
+    },
+    {
+      "automatic_promotion": false,
+      "candidate_genome": {
+        "created_at": "2026-07-15T07:12:13.334765Z",
+        "evidence_ids": [
+          "351f390ee8f11cc50794ba9940dcad8c265b21ee90e804e9fbb6f6b715304396",
+          "55a507158fc53fd46cb8a7419e18531795a8263498f1fc8527fba3d10f80e04b",
+          "785c8a9191d0619deb2a63567bfe729969ced7f522e0c71d0372db6613f8506d",
+          "btc-15m-direction-organism-v1",
+          "lineage:crypto-liquidity"
+        ],
+        "execution_authority": false,
+        "generation": 1,
+        "genes": [
+          {
+            "category": "abstention_threshold",
+            "evidence_ids": [
+              "785c8a9191d0619deb2a63567bfe729969ced7f522e0c71d0372db6613f8506d"
+            ],
+            "name": "abstention.epistemic_threshold",
+            "value": 0.22,
+            "version": "phase6-pilot-v1"
+          },
+          {
+            "category": "adversarial_sequence",
+            "evidence_ids": [
+              "785c8a9191d0619deb2a63567bfe729969ced7f522e0c71d0372db6613f8506d"
+            ],
+            "name": "adversarial.sequence",
+            "value": [
+              "contrarian",
+              "adversary",
+              "shadow",
+              "synthesizer"
+            ],
+            "version": "phase6-pilot-v1"
+          },
+          {
+            "category": "calibration_policy",
+            "evidence_ids": [
+              "785c8a9191d0619deb2a63567bfe729969ced7f522e0c71d0372db6613f8506d"
+            ],
+            "name": "calibration.policy",
+            "value": [
+              "btc15m-adversary-v1-calibration",
+              "btc15m-calibrator-v1-calibration",
+              "btc15m-contrarian-v1-calibration",
+              "btc15m-incumbent-v1-calibration",
+              "btc15m-market-prior-v1-calibration",
+              "btc15m-shadow-controller-v1-calibration",
+              "btc15m-synthesizer-v1-calibration"
+            ],
+            "version": "phase6-pilot-v1"
+          },
+          {
+            "category": "decision_rule",
+            "evidence_ids": [
+              "351f390ee8f11cc50794ba9940dcad8c265b21ee90e804e9fbb6f6b715304396",
+              "lineage:crypto-liquidity"
+            ],
+            "name": "decision.edge_threshold_cents",
+            "value": 7,
+            "version": "autoresearch-loop1-v1"
+          },
+          {
+            "category": "decision_rule",
+            "evidence_ids": [
+              "785c8a9191d0619deb2a63567bfe729969ced7f522e0c71d0372db6613f8506d"
+            ],
+            "name": "decision.rule",
+            "value": "positive_edge_after_fees_spread_uncertainty_and_guards",
+            "version": "phase6-pilot-v1"
+          },
+          {
+            "category": "decision_rule",
+            "evidence_ids": [
+              "351f390ee8f11cc50794ba9940dcad8c265b21ee90e804e9fbb6f6b715304396",
+              "lineage:crypto-liquidity"
+            ],
+            "name": "execution.max_entry_price_cents",
+            "value": 75,
+            "version": "autoresearch-loop1-v1"
+          },
+          {
+            "category": "metacognitive_policy",
+            "evidence_ids": [
+              "785c8a9191d0619deb2a63567bfe729969ced7f522e0c71d0372db6613f8506d"
+            ],
+            "name": "metacognition.policy",
+            "value": "shadow_only_except_safety_contraction",
+            "version": "phase6-pilot-v1"
+          },
+          {
+            "category": "mutation_policy",
+            "evidence_ids": [
+              "785c8a9191d0619deb2a63567bfe729969ced7f522e0c71d0372db6613f8506d"
+            ],
+            "name": "mutation.policy",
+            "value": "proposal_only_external_evaluator_human_promotion",
+            "version": "phase6-pilot-v1"
+          },
+          {
+            "category": "agent_composition",
+            "evidence_ids": [
+              "785c8a9191d0619deb2a63567bfe729969ced7f522e0c71d0372db6613f8506d"
+            ],
+            "name": "organism.agent_composition",
+            "value": [
+              "btc15m-incumbent-v1",
+              "btc15m-calibrator-v1",
+              "btc15m-market-prior-v1",
+              "btc15m-contrarian-v1",
+              "btc15m-adversary-v1",
+              "btc15m-shadow-controller-v1",
+              "btc15m-synthesizer-v1"
+            ],
+            "version": "phase6-pilot-v1"
+          },
+          {
+            "category": "source_selection",
+            "evidence_ids": [
+              "785c8a9191d0619deb2a63567bfe729969ced7f522e0c71d0372db6613f8506d"
+            ],
+            "name": "organism.source_selection",
+            "value": [
+              "btc15m-adversarial-review",
+              "btc15m-calibration",
+              "btc15m-countercase",
+              "btc15m-family-capped-synthesis",
+              "constitutional-shadow",
+              "crypto-coinbase-distribution",
+              "market-price"
+            ],
+            "version": "phase6-pilot-v1"
+          },
+          {
+            "category": "replay_depth",
+            "evidence_ids": [
+              "785c8a9191d0619deb2a63567bfe729969ced7f522e0c71d0372db6613f8506d"
+            ],
+            "name": "replay.depth",
+            "value": 5,
+            "version": "phase6-pilot-v1"
+          },
+          {
+            "category": "simulation_budget",
+            "evidence_ids": [
+              "785c8a9191d0619deb2a63567bfe729969ced7f522e0c71d0372db6613f8506d"
+            ],
+            "name": "simulation.path_budget",
+            "value": 0,
+            "version": "phase6-pilot-v1"
+          },
+          {
+            "category": "forecast_combination",
+            "evidence_ids": [
+              "785c8a9191d0619deb2a63567bfe729969ced7f522e0c71d0372db6613f8506d"
+            ],
+            "name": "synthesis.family_caps",
+            "value": {
+              "market_prior_floor": 0.5,
+              "non_market_family_cap": 0.35,
+              "uncalibrated_advisory_cap": 0.15
+            },
+            "version": "phase6-pilot-v1"
+          },
+          {
+            "category": "market_prior_weight",
+            "evidence_ids": [
+              "785c8a9191d0619deb2a63567bfe729969ced7f522e0c71d0372db6613f8506d"
+            ],
+            "name": "synthesis.market_prior_weight",
+            "value": 0.5,
+            "version": "phase6-pilot-v1"
+          },
+          {
+            "category": "uncertainty_model",
+            "evidence_ids": [
+              "785c8a9191d0619deb2a63567bfe729969ced7f522e0c71d0372db6613f8506d"
+            ],
+            "name": "uncertainty.disagreement_model",
+            "value": "base_uncertainty_plus_weighted_dispersion",
+            "version": "phase6-pilot-v1"
+          }
+        ],
+        "genome_id": "ee1a46a32c6e1187eb70ec96f3ca23c498385ea74d509776d93ae475712afd03",
+        "horizon": "fifteen_minute",
+        "label": "btc-15m-direction-organism-v1 generation zero mutation",
+        "market_type": "15m_direction",
+        "maturity": "EXPERIMENTAL_SOVEREIGN_FORECASTING",
+        "parent_genome_ids": [
+          "55a507158fc53fd46cb8a7419e18531795a8263498f1fc8527fba3d10f80e04b"
+        ],
+        "promotion_authority": "HUMAN_ONLY",
+        "schema_version": 1,
+        "status": "EXPERIMENTAL",
+        "vertical": "crypto"
+      },
+      "complexity_score": 4.7,
+      "compute_units_used": 296.1,
+      "execution_authority": false,
+      "experiment_id": "92b9abfbe2a9e9884b46f842c78d14440a72b9d128ad344c00faa00f1bb38aa1",
+      "external_evaluation": null,
+      "external_passed": false,
+      "forward_paper_eligible": false,
+      "lineage_id": "crypto-liquidity",
+      "minimization": null,
+      "private_item_details": null,
+      "private_receipt": {
+        "accepted": false,
+        "candidate_id": "ee1a46a32c6e1187eb70ec96f3ca23c498385ea74d509776d93ae475712afd03",
+        "evaluation_id": "afba686d839c5eab7fa6d629b5fa2a72649fdf52666fccbec1420c62f9b03eec",
+        "event_cluster_count_bucket": "50_199",
+        "failed_gate_ids": [
+          "abstention_not_gamed",
+          "abstention_quality_nonnegative",
+          "cluster_interval_positive",
+          "multi_objective_fitness_positive"
+        ],
+        "fitness": -0.280787974684,
+        "item_details": null,
+        "metric_digest": "cfc842aaec9918d164953b2e4d9eac1d65616ab42fb3a2594c49a7205d0d2478",
+        "task_count_bucket": "50_199"
+      },
+      "private_selected": false,
+      "public_evaluation_id": "d64a191a230f3abf57ba14e044d97ee6e27b8d14742f91ca2ead6f1caa47f329",
+      "public_fitness": -0.245193068838,
+      "runtime_application": false,
+      "source_edit_applied": false
+    },
+    {
+      "automatic_promotion": false,
+      "candidate_genome": {
+        "created_at": "2026-07-15T07:12:13.334765Z",
+        "evidence_ids": [
+          "351f390ee8f11cc50794ba9940dcad8c265b21ee90e804e9fbb6f6b715304396",
+          "55a507158fc53fd46cb8a7419e18531795a8263498f1fc8527fba3d10f80e04b",
+          "785c8a9191d0619deb2a63567bfe729969ced7f522e0c71d0372db6613f8506d",
+          "btc-15m-direction-organism-v1",
+          "lineage:calibration-first"
+        ],
+        "execution_authority": false,
+        "generation": 1,
+        "genes": [
+          {
+            "category": "abstention_threshold",
+            "evidence_ids": [
+              "351f390ee8f11cc50794ba9940dcad8c265b21ee90e804e9fbb6f6b715304396",
+              "lineage:calibration-first"
+            ],
+            "name": "abstention.epistemic_threshold",
+            "value": 0.35,
+            "version": "autoresearch-loop1-v1"
+          },
+          {
+            "category": "adversarial_sequence",
+            "evidence_ids": [
+              "785c8a9191d0619deb2a63567bfe729969ced7f522e0c71d0372db6613f8506d"
+            ],
+            "name": "adversarial.sequence",
+            "value": [
+              "contrarian",
+              "adversary",
+              "shadow",
+              "synthesizer"
+            ],
+            "version": "phase6-pilot-v1"
+          },
+          {
+            "category": "calibration_policy",
+            "evidence_ids": [
+              "785c8a9191d0619deb2a63567bfe729969ced7f522e0c71d0372db6613f8506d"
+            ],
+            "name": "calibration.policy",
+            "value": [
+              "btc15m-adversary-v1-calibration",
+              "btc15m-calibrator-v1-calibration",
+              "btc15m-contrarian-v1-calibration",
+              "btc15m-incumbent-v1-calibration",
+              "btc15m-market-prior-v1-calibration",
+              "btc15m-shadow-controller-v1-calibration",
+              "btc15m-synthesizer-v1-calibration"
+            ],
+            "version": "phase6-pilot-v1"
+          },
+          {
+            "category": "decision_rule",
+            "evidence_ids": [
+              "785c8a9191d0619deb2a63567bfe729969ced7f522e0c71d0372db6613f8506d"
+            ],
+            "name": "decision.rule",
+            "value": "positive_edge_after_fees_spread_uncertainty_and_guards",
+            "version": "phase6-pilot-v1"
+          },
+          {
+            "category": "metacognitive_policy",
+            "evidence_ids": [
+              "785c8a9191d0619deb2a63567bfe729969ced7f522e0c71d0372db6613f8506d"
+            ],
+            "name": "metacognition.policy",
+            "value": "shadow_only_except_safety_contraction",
+            "version": "phase6-pilot-v1"
+          },
+          {
+            "category": "mutation_policy",
+            "evidence_ids": [
+              "785c8a9191d0619deb2a63567bfe729969ced7f522e0c71d0372db6613f8506d"
+            ],
+            "name": "mutation.policy",
+            "value": "proposal_only_external_evaluator_human_promotion",
+            "version": "phase6-pilot-v1"
+          },
+          {
+            "category": "agent_composition",
+            "evidence_ids": [
+              "785c8a9191d0619deb2a63567bfe729969ced7f522e0c71d0372db6613f8506d"
+            ],
+            "name": "organism.agent_composition",
+            "value": [
+              "btc15m-incumbent-v1",
+              "btc15m-calibrator-v1",
+              "btc15m-market-prior-v1",
+              "btc15m-contrarian-v1",
+              "btc15m-adversary-v1",
+              "btc15m-shadow-controller-v1",
+              "btc15m-synthesizer-v1"
+            ],
+            "version": "phase6-pilot-v1"
+          },
+          {
+            "category": "source_selection",
+            "evidence_ids": [
+              "785c8a9191d0619deb2a63567bfe729969ced7f522e0c71d0372db6613f8506d"
+            ],
+            "name": "organism.source_selection",
+            "value": [
+              "btc15m-adversarial-review",
+              "btc15m-calibration",
+              "btc15m-countercase",
+              "btc15m-family-capped-synthesis",
+              "constitutional-shadow",
+              "crypto-coinbase-distribution",
+              "market-price"
+            ],
+            "version": "phase6-pilot-v1"
+          },
+          {
+            "category": "replay_depth",
+            "evidence_ids": [
+              "785c8a9191d0619deb2a63567bfe729969ced7f522e0c71d0372db6613f8506d"
+            ],
+            "name": "replay.depth",
+            "value": 5,
+            "version": "phase6-pilot-v1"
+          },
+          {
+            "category": "simulation_budget",
+            "evidence_ids": [
+              "785c8a9191d0619deb2a63567bfe729969ced7f522e0c71d0372db6613f8506d"
+            ],
+            "name": "simulation.path_budget",
+            "value": 0,
+            "version": "phase6-pilot-v1"
+          },
+          {
+            "category": "forecast_combination",
+            "evidence_ids": [
+              "785c8a9191d0619deb2a63567bfe729969ced7f522e0c71d0372db6613f8506d"
+            ],
+            "name": "synthesis.family_caps",
+            "value": {
+              "market_prior_floor": 0.5,
+              "non_market_family_cap": 0.35,
+              "uncalibrated_advisory_cap": 0.15
+            },
+            "version": "phase6-pilot-v1"
+          },
+          {
+            "category": "market_prior_weight",
+            "evidence_ids": [
+              "351f390ee8f11cc50794ba9940dcad8c265b21ee90e804e9fbb6f6b715304396",
+              "lineage:calibration-first"
+            ],
+            "name": "synthesis.market_prior_weight",
+            "value": 0.55,
+            "version": "autoresearch-loop1-v1"
+          },
+          {
+            "category": "uncertainty_model",
+            "evidence_ids": [
+              "785c8a9191d0619deb2a63567bfe729969ced7f522e0c71d0372db6613f8506d"
+            ],
+            "name": "uncertainty.disagreement_model",
+            "value": "base_uncertainty_plus_weighted_dispersion",
+            "version": "phase6-pilot-v1"
+          }
+        ],
+        "genome_id": "8bdbba599168a836344579d060fbadd0b5aeae4e0b9f28e969b1f7851a4c66bd",
+        "horizon": "fifteen_minute",
+        "label": "btc-15m-direction-organism-v1 generation zero mutation",
+        "market_type": "15m_direction",
+        "maturity": "EXPERIMENTAL_SOVEREIGN_FORECASTING",
+        "parent_genome_ids": [
+          "55a507158fc53fd46cb8a7419e18531795a8263498f1fc8527fba3d10f80e04b"
+        ],
+        "promotion_authority": "HUMAN_ONLY",
+        "schema_version": 1,
+        "status": "EXPERIMENTAL",
+        "vertical": "crypto"
+      },
+      "complexity_score": 2.2,
+      "compute_units_used": 296.1,
+      "execution_authority": false,
+      "experiment_id": "6cf53cc30e8a6abbd1b8b08673f88ec10ff8536225a26d89cf7a2bde485dcb25",
+      "external_evaluation": null,
+      "external_passed": false,
+      "forward_paper_eligible": false,
+      "lineage_id": "calibration-first",
+      "minimization": null,
+      "private_item_details": null,
+      "private_receipt": {
+        "accepted": false,
+        "candidate_id": "8bdbba599168a836344579d060fbadd0b5aeae4e0b9f28e969b1f7851a4c66bd",
+        "evaluation_id": "05aa8ebb14c01cf81dd1638efe19fb2dd3ff3da83f61db7422f88c582b49acb2",
+        "event_cluster_count_bucket": "50_199",
+        "failed_gate_ids": [
+          "compute_normalized_quality_not_worse",
+          "cluster_interval_positive",
+          "multi_objective_fitness_positive"
+        ],
+        "fitness": -0.062658756396,
+        "item_details": null,
+        "metric_digest": "cb3c5bdc5a33d31f32bcf7d43909dc7ee88cc583a5bcd3a790485fba975008ed",
+        "task_count_bucket": "50_199"
+      },
+      "private_selected": false,
+      "public_evaluation_id": "47cd4f759608bbaec873679a89c31768994239b7d30105e2a3b78062f85ad2e2",
+      "public_fitness": -0.04757155176,
+      "runtime_application": false,
+      "source_edit_applied": false
+    },
+    {
+      "automatic_promotion": false,
+      "candidate_genome": {
+        "created_at": "2026-07-15T07:12:13.334765Z",
+        "evidence_ids": [
+          "351f390ee8f11cc50794ba9940dcad8c265b21ee90e804e9fbb6f6b715304396",
+          "55a507158fc53fd46cb8a7419e18531795a8263498f1fc8527fba3d10f80e04b",
+          "785c8a9191d0619deb2a63567bfe729969ced7f522e0c71d0372db6613f8506d",
+          "btc-15m-direction-organism-v1",
+          "lineage:abstention-first"
+        ],
+        "execution_authority": false,
+        "generation": 1,
+        "genes": [
+          {
+            "category": "abstention_threshold",
+            "evidence_ids": [
+              "351f390ee8f11cc50794ba9940dcad8c265b21ee90e804e9fbb6f6b715304396",
+              "lineage:abstention-first"
+            ],
+            "name": "abstention.epistemic_threshold",
+            "value": 0.12,
+            "version": "autoresearch-loop1-v1"
+          },
+          {
+            "category": "adversarial_sequence",
+            "evidence_ids": [
+              "785c8a9191d0619deb2a63567bfe729969ced7f522e0c71d0372db6613f8506d"
+            ],
+            "name": "adversarial.sequence",
+            "value": [
+              "contrarian",
+              "adversary",
+              "shadow",
+              "synthesizer"
+            ],
+            "version": "phase6-pilot-v1"
+          },
+          {
+            "category": "calibration_policy",
+            "evidence_ids": [
+              "785c8a9191d0619deb2a63567bfe729969ced7f522e0c71d0372db6613f8506d"
+            ],
+            "name": "calibration.policy",
+            "value": [
+              "btc15m-adversary-v1-calibration",
+              "btc15m-calibrator-v1-calibration",
+              "btc15m-contrarian-v1-calibration",
+              "btc15m-incumbent-v1-calibration",
+              "btc15m-market-prior-v1-calibration",
+              "btc15m-shadow-controller-v1-calibration",
+              "btc15m-synthesizer-v1-calibration"
+            ],
+            "version": "phase6-pilot-v1"
+          },
+          {
+            "category": "decision_rule",
+            "evidence_ids": [
+              "785c8a9191d0619deb2a63567bfe729969ced7f522e0c71d0372db6613f8506d"
+            ],
+            "name": "decision.rule",
+            "value": "positive_edge_after_fees_spread_uncertainty_and_guards",
+            "version": "phase6-pilot-v1"
+          },
+          {
+            "category": "metacognitive_policy",
+            "evidence_ids": [
+              "785c8a9191d0619deb2a63567bfe729969ced7f522e0c71d0372db6613f8506d"
+            ],
+            "name": "metacognition.policy",
+            "value": "shadow_only_except_safety_contraction",
+            "version": "phase6-pilot-v1"
+          },
+          {
+            "category": "mutation_policy",
+            "evidence_ids": [
+              "785c8a9191d0619deb2a63567bfe729969ced7f522e0c71d0372db6613f8506d"
+            ],
+            "name": "mutation.policy",
+            "value": "proposal_only_external_evaluator_human_promotion",
+            "version": "phase6-pilot-v1"
+          },
+          {
+            "category": "agent_composition",
+            "evidence_ids": [
+              "785c8a9191d0619deb2a63567bfe729969ced7f522e0c71d0372db6613f8506d"
+            ],
+            "name": "organism.agent_composition",
+            "value": [
+              "btc15m-incumbent-v1",
+              "btc15m-calibrator-v1",
+              "btc15m-market-prior-v1",
+              "btc15m-contrarian-v1",
+              "btc15m-adversary-v1",
+              "btc15m-shadow-controller-v1",
+              "btc15m-synthesizer-v1"
+            ],
+            "version": "phase6-pilot-v1"
+          },
+          {
+            "category": "source_selection",
+            "evidence_ids": [
+              "785c8a9191d0619deb2a63567bfe729969ced7f522e0c71d0372db6613f8506d"
+            ],
+            "name": "organism.source_selection",
+            "value": [
+              "btc15m-adversarial-review",
+              "btc15m-calibration",
+              "btc15m-countercase",
+              "btc15m-family-capped-synthesis",
+              "constitutional-shadow",
+              "crypto-coinbase-distribution",
+              "market-price"
+            ],
+            "version": "phase6-pilot-v1"
+          },
+          {
+            "category": "replay_depth",
+            "evidence_ids": [
+              "785c8a9191d0619deb2a63567bfe729969ced7f522e0c71d0372db6613f8506d"
+            ],
+            "name": "replay.depth",
+            "value": 5,
+            "version": "phase6-pilot-v1"
+          },
+          {
+            "category": "simulation_budget",
+            "evidence_ids": [
+              "785c8a9191d0619deb2a63567bfe729969ced7f522e0c71d0372db6613f8506d"
+            ],
+            "name": "simulation.path_budget",
+            "value": 0,
+            "version": "phase6-pilot-v1"
+          },
+          {
+            "category": "forecast_combination",
+            "evidence_ids": [
+              "785c8a9191d0619deb2a63567bfe729969ced7f522e0c71d0372db6613f8506d"
+            ],
+            "name": "synthesis.family_caps",
+            "value": {
+              "market_prior_floor": 0.5,
+              "non_market_family_cap": 0.35,
+              "uncalibrated_advisory_cap": 0.15
+            },
+            "version": "phase6-pilot-v1"
+          },
+          {
+            "category": "market_prior_weight",
+            "evidence_ids": [
+              "785c8a9191d0619deb2a63567bfe729969ced7f522e0c71d0372db6613f8506d"
+            ],
+            "name": "synthesis.market_prior_weight",
+            "value": 0.5,
+            "version": "phase6-pilot-v1"
+          },
+          {
+            "category": "uncertainty_model",
+            "evidence_ids": [
+              "785c8a9191d0619deb2a63567bfe729969ced7f522e0c71d0372db6613f8506d"
+            ],
+            "name": "uncertainty.disagreement_model",
+            "value": "base_uncertainty_plus_weighted_dispersion",
+            "version": "phase6-pilot-v1"
+          }
+        ],
+        "genome_id": "596153573cc2d3d00b876fdc7e158b1080ed90374e0faa0c069eace4b1ce688f",
+        "horizon": "fifteen_minute",
+        "label": "btc-15m-direction-organism-v1 generation zero mutation",
+        "market_type": "15m_direction",
+        "maturity": "EXPERIMENTAL_SOVEREIGN_FORECASTING",
+        "parent_genome_ids": [
+          "55a507158fc53fd46cb8a7419e18531795a8263498f1fc8527fba3d10f80e04b"
+        ],
+        "promotion_authority": "HUMAN_ONLY",
+        "schema_version": 1,
+        "status": "EXPERIMENTAL",
+        "vertical": "crypto"
+      },
+      "complexity_score": 1.6,
+      "compute_units_used": 296.1,
+      "execution_authority": false,
+      "experiment_id": "7f74af63bf68e37700efe92c561f598dd796835aa369e61e441b285cb456de3c",
+      "external_evaluation": null,
+      "external_passed": false,
+      "forward_paper_eligible": false,
+      "lineage_id": "abstention-first",
+      "minimization": null,
+      "private_item_details": null,
+      "private_receipt": {
+        "accepted": false,
+        "candidate_id": "596153573cc2d3d00b876fdc7e158b1080ed90374e0faa0c069eace4b1ce688f",
+        "evaluation_id": "c9cad25e8afeea29bea2a063bb975fe5db550b5c9a987aca29423a0e0f9c2bb7",
+        "event_cluster_count_bucket": "50_199",
+        "failed_gate_ids": [
+          "contested_evidence_present",
+          "cluster_interval_positive",
+          "multi_objective_fitness_positive"
+        ],
+        "fitness": -0.032,
+        "item_details": null,
+        "metric_digest": "2ccb48bc8aa19a265cba034359d09bb73f38772e2d2f0652620e7174b5b8e5f0",
+        "task_count_bucket": "50_199"
+      },
+      "private_selected": false,
+      "public_evaluation_id": "f7158a5f3110df7ae4fed129ee0d1d365abb700c247aa971d4ae57578f1c6471",
+      "public_fitness": -0.032,
+      "runtime_application": false,
+      "source_edit_applied": false
+    }
+  ],
+  "capital_authority": false,
+  "created_at": "2026-07-15T07:12:13.334765Z",
+  "evidence_cutoff": "2026-07-15T07:12:13.334764Z",
+  "execution_authority": false,
+  "external_survivors": 0,
+  "forward_paper_required": false,
+  "genuine_external_generalization_trials": 0,
+  "genuine_private_candidate_trials": 5,
+  "partition_plan": {
+    "counts": {
+      "EXTERNAL_GENERALIZATION": 23,
+      "PRIVATE_SELECTION": 80,
+      "VISIBLE_DEVELOPMENT": 179
+    },
+    "date_ranges": {
+      "EXTERNAL_GENERALIZATION": {
+        "date_count": 1,
+        "first": "2026-07-15",
+        "last": "2026-07-15"
+      },
+      "PRIVATE_SELECTION": {
+        "date_count": 1,
+        "first": "2026-07-14",
+        "last": "2026-07-14"
+      },
+      "VISIBLE_DEVELOPMENT": {
+        "date_count": 4,
+        "first": "2026-07-10",
+        "last": "2026-07-13"
+      }
+    },
+    "evidence_fingerprint": "351f390ee8f11cc50794ba9940dcad8c265b21ee90e804e9fbb6f6b715304396",
+    "excluded_cross_partition_cluster_count": 0,
+    "item_assignments_exposed": false,
+    "plan_id": "88cae02ba03794ef1d2a0a3aa956bfadfc5e53046619b9701b6c481e8f1ee6ab",
+    "scope": "crypto|btc|15m_direction|15m",
+    "selection_uses_external": false
+  },
+  "performance_claim_supported": false,
+  "private_item_details_exposed": false,
+  "private_survivors": 0,
+  "runtime_application": false,
+  "schema_version": 1,
+  "scope": "crypto|btc|15m_direction|15m",
+  "source_edits_applied": false,
+  "unavailable_lineages": [
+    {
+      "experiment_run": false,
+      "lineage_id": "mlb-simulation",
+      "outcome_rows_used_to_reconstruct_component": false,
+      "reason": "authoritative decision rows do not preserve the MLB PA-simulator component output across three chronological partitions",
+      "status": "UNAVAILABLE_MISSING_POINT_IN_TIME_COMPONENT_OUTPUTS"
+    }
+  ]
+}

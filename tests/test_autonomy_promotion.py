@@ -29,7 +29,7 @@ def _write(path: Path, value: dict) -> None:
 
 def test_missing_files_promote_nobody(tmp_path):
     reg = PromotionRegistry(tmp_path / "promotions.json", tmp_path / "demotions.json")
-    assert reg.is_promoted("crypto_ewma_t|ladder|daily+") is False
+    assert reg.is_promoted("crypto_ewma_t|btc|ladder|daily+") is False
     assert reg.snapshot()["promoted"] == []
 
 
@@ -37,28 +37,69 @@ def test_promotion_is_scope_exact_and_demotion_overrides(tmp_path):
     promotions = tmp_path / "promotions.json"
     demotions = tmp_path / "demotions.json"
     _write(promotions, {"promotions": [
-        {"source": "crypto_ewma_t", "market_type": "ladder", "horizon": "daily+",
+        {"source": "crypto_ewma_t", "subject": "btc", "market_type": "ladder", "horizon": "daily+",
          "promoted_at": "2026-07-12T00:00:00+00:00", "evidence_ref": "readiness"},
     ]})
     reg = PromotionRegistry(promotions, demotions)
-    assert reg.is_promoted("crypto_ewma_t|ladder|daily+") is True
+    assert reg.is_promoted("crypto_ewma_t|btc|ladder|daily+") is True
     # A different horizon / market_type / source of the same family is NOT
     # promoted -- promotion is per exact scope.
-    assert reg.is_promoted("crypto_ewma_t|ladder|15m") is False
-    assert reg.is_promoted("crypto_ewma_t|15m_direction|daily+") is False
-    assert reg.is_promoted("crypto_spot_vol|ladder|daily+") is False
+    assert reg.is_promoted("crypto_ewma_t|btc|ladder|15m") is False
+    assert reg.is_promoted("crypto_ewma_t|btc|15m_direction|daily+") is False
+    assert reg.is_promoted("crypto_spot_vol|btc|ladder|daily+") is False
+    assert reg.is_promoted("crypto_ewma_t|eth|ladder|daily+") is False
 
     # Machine demotion overrides the human promotion immediately.
-    _write(demotions, {"demotions": [{"scope": "crypto_ewma_t|ladder|daily+"}]})
+    _write(demotions, {"demotions": [{"scope": "crypto_ewma_t|btc|ladder|daily+"}]})
     reg2 = PromotionRegistry(promotions, demotions)
-    assert reg2.is_promoted("crypto_ewma_t|ladder|daily+") is False
+    assert reg2.is_promoted("crypto_ewma_t|btc|ladder|daily+") is False
     assert reg2.snapshot()["active"] == []
+
+
+def test_legacy_broad_promotion_without_subject_fails_closed(tmp_path):
+    promotions = tmp_path / "promotions.json"
+    _write(
+        promotions,
+        {
+            "promotions": [
+                {
+                    "source": "crypto_ewma_t",
+                    "market_type": "15m_direction",
+                    "horizon": "15m",
+                }
+            ]
+        },
+    )
+    registry = PromotionRegistry(promotions, tmp_path / "demotions.json")
+    assert registry.snapshot()["promoted"] == []
+
+
+def test_mlb_prediction_heads_have_independent_promotion_gates(tmp_path):
+    promotions = tmp_path / "promotions.json"
+    _write(
+        promotions,
+        {
+            "promotions": [
+                {
+                    "source": "mlb_multi_head",
+                    "subject": "mlb",
+                    "market_type": "yrfi",
+                    "horizon": "pre",
+                }
+            ]
+        },
+    )
+    registry = PromotionRegistry(promotions, tmp_path / "demotions.json")
+    assert registry.is_promoted("mlb_multi_head|mlb|yrfi|pre") is True
+    assert registry.is_promoted("mlb_multi_head|mlb|winner|pre") is False
+    assert registry.is_promoted("mlb_multi_head|mlb|yrfi|live") is False
+    assert registry.is_promoted("mlb_multi_head|nfl|yrfi|pre") is False
 
 
 def test_is_promoted_signal_derives_scope(tmp_path):
     promotions = tmp_path / "promotions.json"
     _write(promotions, {"promotions": [
-        {"source": "crypto_ewma_t", "market_type": "ladder", "horizon": "daily+"},
+        {"source": "crypto_ewma_t", "subject": "btc", "market_type": "ladder", "horizon": "daily+"},
     ]})
     reg = PromotionRegistry(promotions, tmp_path / "d.json")
     assert reg.is_promoted_signal(
@@ -86,7 +127,7 @@ def test_cluster_series_collapses_correlated_rows():
 
 def test_eligible_scope_passes_all_criteria():
     series = _series(MIN_CONTESTED_CLUSTERS + 20, 0.01)
-    r = scope_readiness("crypto_ewma_t|ladder|daily+", series, NOW_TS)
+    r = scope_readiness("crypto_ewma_t|btc|ladder|daily+", series, NOW_TS)
     assert r.n_clusters == MIN_CONTESTED_CLUSTERS + 20
     assert r.criteria == {
         "clusters_ge_min": True, "edge_ci95_lower_positive": True,
@@ -100,7 +141,7 @@ def test_insufficient_clusters_projects_days_to_eligibility():
     # 140 clusters spaced 1 hour apart -> all within the last 14 days ->
     # accrual = 140/14 = 10/day.
     series = [(NOW_TS - i * 3600, 0.01) for i in range(140)]
-    r = scope_readiness("crypto_ewma_t|ladder|hourly", series, NOW_TS)
+    r = scope_readiness("crypto_ewma_t|btc|ladder|hourly", series, NOW_TS)
     assert r.eligible is False
     assert r.criteria["clusters_ge_min"] is False
     assert r.accrual_per_day == pytest.approx(140 / 14.0)
@@ -110,7 +151,7 @@ def test_insufficient_clusters_projects_days_to_eligibility():
 
 def test_no_recent_accrual_gives_unknown_projection():
     series = _series(50, 0.01, start_ts=NOW_TS - 400 * 86400, step=86400)
-    r = scope_readiness("crypto_ewma_t|ladder|daily+", series, NOW_TS)
+    r = scope_readiness("crypto_ewma_t|btc|ladder|daily+", series, NOW_TS)
     assert r.accrual_per_day == 0.0
     assert r.days_to_eligibility is None  # unknown, never falsely zero
 
@@ -118,7 +159,7 @@ def test_no_recent_accrual_gives_unknown_projection():
 def test_degradation_blocks_eligibility():
     good = [(NOW_TS - (400 - i) * 86400, 0.01) for i in range(300)]
     bad = [(NOW_TS - (100 - i) * 3600, -0.02) for i in range(100)]  # recent, negative
-    r = scope_readiness("crypto_ewma_t|ladder|daily+", good + bad, NOW_TS)
+    r = scope_readiness("crypto_ewma_t|btc|ladder|daily+", good + bad, NOW_TS)
     assert r.n_clusters == 400
     assert r.trailing_degrade_mean is not None and r.trailing_degrade_mean < DEGRADE_EDGE_FLOOR
     assert r.degrading is True
@@ -128,43 +169,71 @@ def test_degradation_blocks_eligibility():
 
 def test_demote_only_when_promoted_and_trailing_ci_negative():
     series = _series(250, -0.02)
-    promoted = scope_readiness("s|ladder|daily+", series, NOW_TS, is_currently_promoted=True)
+    promoted = scope_readiness("s|btc|ladder|daily+", series, NOW_TS, is_currently_promoted=True)
     assert promoted.demote_ci95_high is not None and promoted.demote_ci95_high < 0
     assert promoted.demote is True
     # Same evidence but NOT currently promoted -> nothing to demote.
-    unpromoted = scope_readiness("s|ladder|daily+", series, NOW_TS, is_currently_promoted=False)
+    unpromoted = scope_readiness("s|btc|ladder|daily+", series, NOW_TS, is_currently_promoted=False)
     assert unpromoted.demote is False
     # Positive trailing record -> promoted scope stays.
-    healthy = scope_readiness("s|ladder|daily+", _series(250, 0.02), NOW_TS,
+    healthy = scope_readiness("s|btc|ladder|daily+", _series(250, 0.02), NOW_TS,
                               is_currently_promoted=True)
     assert healthy.demote is False
 
 
 def test_clv_negative_fails_criterion():
     series = _series(MIN_CONTESTED_CLUSTERS + 5, 0.01)
-    r = scope_readiness("s|ladder|daily+", series, NOW_TS, clv_mean=-30.0)
+    r = scope_readiness("s|btc|ladder|daily+", series, NOW_TS, clv_mean=-30.0)
     assert r.criteria["clv_nonneg_or_absent"] is False
     assert r.eligible is False
 
 
 def test_build_readiness_ranks_candidates_and_emits_demotions():
     scope_rows = {
-        "crypto_a|ladder|daily+": [  # eligible, unpromoted -> candidate
+        "crypto_a|btc|ladder|daily+": [  # eligible, unpromoted -> candidate
             (NOW_TS - i * 3600, f"E{i}", 0.01) for i in range(MIN_CONTESTED_CLUSTERS + 10)
         ],
-        "crypto_b|ladder|daily+": [  # promoted but degraded -> demote
+        "crypto_b|btc|ladder|daily+": [  # promoted but degraded -> demote
             (NOW_TS - i * 3600, f"F{i}", -0.02) for i in range(250)
         ],
     }
     built = build_readiness(
-        scope_rows, promoted_scopes={"crypto_b|ladder|daily+"},
+        scope_rows, promoted_scopes={"crypto_b|btc|ladder|daily+"},
         now_ts=NOW_TS, now_iso="2026-07-12T00:00:00+00:00")
     report = built["report"]
-    assert report["promotion_candidates"] == ["crypto_a|ladder|daily+"]
-    assert report["auto_demotions"] == ["crypto_b|ladder|daily+"]
-    assert built["demotions"]["demotions"][0]["scope"] == "crypto_b|ladder|daily+"
+    assert report["promotion_candidates"] == ["crypto_a|btc|ladder|daily+"]
+    assert report["auto_demotions"] == ["crypto_b|btc|ladder|daily+"]
+    assert built["demotions"]["demotions"][0]["scope"] == "crypto_b|btc|ladder|daily+"
     # Candidate sorts first.
-    assert report["scopes"][0]["scope"] == "crypto_a|ladder|daily+"
+    assert report["scopes"][0]["scope"] == "crypto_a|btc|ladder|daily+"
+    assert report["autonomous_gate_evaluation"] is True
+    assert report["promotion_activation"] == "HUMAN_ONLY"
+    assert report["cross_cohort_evidence_transfer"] is False
+
+
+def test_readiness_evaluates_prediction_types_independently():
+    scope_rows = {
+        "mlb_multi_head|mlb|yrfi|pre": [
+            (NOW_TS - i * 3600, f"Y{i}", 0.02)
+            for i in range(MIN_CONTESTED_CLUSTERS + 10)
+        ],
+        "mlb_multi_head|mlb|winner|pre": [
+            (NOW_TS - i * 3600, f"W{i}", -0.02)
+            for i in range(MIN_CONTESTED_CLUSTERS + 10)
+        ],
+    }
+    report = build_readiness(
+        scope_rows,
+        promoted_scopes=set(),
+        now_ts=NOW_TS,
+        now_iso="2026-07-12T00:00:00+00:00",
+    )["report"]
+    assert report["promotion_candidates"] == [
+        "mlb_multi_head|mlb|yrfi|pre"
+    ]
+    by_scope = {item["scope"]: item for item in report["scopes"]}
+    assert by_scope["mlb_multi_head|mlb|yrfi|pre"]["eligible"] is True
+    assert by_scope["mlb_multi_head|mlb|winner|pre"]["eligible"] is False
 
 
 def test_non_challenger_gated_scope_is_not_a_candidate():
@@ -172,22 +241,22 @@ def test_non_challenger_gated_scope_is_not_a_candidate():
     # NOT be recommended -- promoting it is a no-op and demotion could not
     # remove it.
     scope_rows = {
-        "champion_x|ladder|daily+": [
+        "champion_x|btc|ladder|daily+": [
             (NOW_TS - i * 3600, f"E{i}", 0.01) for i in range(MIN_CONTESTED_CLUSTERS + 10)
         ],
-        "challenger_y|ladder|daily+": [
+        "challenger_y|btc|ladder|daily+": [
             (NOW_TS - i * 3600, f"F{i}", 0.01) for i in range(MIN_CONTESTED_CLUSTERS + 10)
         ],
     }
     built = build_readiness(
         scope_rows, promoted_scopes=set(), now_ts=NOW_TS,
         now_iso="2026-07-12T00:00:00+00:00",
-        challenger_gated_scopes={"challenger_y|ladder|daily+"})
+        challenger_gated_scopes={"challenger_y|btc|ladder|daily+"})
     report = built["report"]
-    assert report["promotion_candidates"] == ["challenger_y|ladder|daily+"]
+    assert report["promotion_candidates"] == ["challenger_y|btc|ladder|daily+"]
     by_scope = {s["scope"]: s for s in report["scopes"]}
-    assert by_scope["champion_x|ladder|daily+"]["eligible"] is True
-    assert by_scope["champion_x|ladder|daily+"]["challenger_gated"] is False
+    assert by_scope["champion_x|btc|ladder|daily+"]["eligible"] is True
+    assert by_scope["champion_x|btc|ladder|daily+"]["challenger_gated"] is False
 
 
 # -- forecaster integration ----------------------------------------------------
@@ -225,7 +294,7 @@ def test_empty_registry_excludes_challenger_promoted_scope_enters_ensemble(tmp_p
         assert excluded.probability_yes == pytest.approx(0.5, abs=1e-9)
 
         _write(tmp_path / "p.json", {"promotions": [
-            {"source": "crypto_ewma_t", "market_type": "ladder", "horizon": "daily+"},
+            {"source": "crypto_ewma_t", "subject": "btc", "market_type": "ladder", "horizon": "daily+"},
         ]})
         promoted = PromotionRegistry(tmp_path / "p.json", tmp_path / "d.json")
         forecaster2 = EnsembleForecaster(ledger, promotion=promoted)

@@ -93,6 +93,37 @@ class IgnitionTrial:
             }
         )
 
+    def to_dict(self) -> dict[str, Any]:
+        return {"trial_id": self.trial_id, **self.semantic_dict()}
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> IgnitionTrial:
+        trial = cls.create(
+            **{
+                key: data[key]
+                for key in (
+                    "arm",
+                    "matched_seed",
+                    "mutation_budget",
+                    "model_access_digest",
+                    "evaluator_digest",
+                    "target_system_digest",
+                    "wall_compute_budget",
+                    "starting_genome_digest",
+                    "starting_private_score",
+                    "best_private_score",
+                    "experiments_required",
+                    "external_transfer_score",
+                    "reward_hacking_rate",
+                    "complexity_score",
+                    "generation",
+                )
+            }
+        )
+        if data.get("trial_id") not in {None, trial.trial_id}:
+            raise AutoresearchValidationError("serialized ignition trial ID mismatch")
+        return trial
+
 
 @dataclass(frozen=True, slots=True)
 class IgnitionReport:

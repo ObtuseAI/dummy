@@ -49,6 +49,14 @@ def evaluate_private_selection(
             all(item.point_in_time_verified and item.settlement_verified for item in tasks),
         ),
         (
+            "causal_close_bound_declared",
+            all(
+                item.close_time_provenance
+                in {"EXACT_MARKET_CLOSE", "SETTLEMENT_RECEIPT_UPPER_BOUND"}
+                for item in tasks
+            ),
+        ),
+        (
             "realized_evidence_only",
             all(
                 item.evidence_reality.upper()

@@ -117,6 +117,7 @@ class ResearchTask:
     candidate_used_book: bool = True
     lineup_received_at: datetime | None = None
     candidate_used_lineup: bool = False
+    close_time_provenance: str = "EXACT_MARKET_CLOSE"
 
     def __post_init__(self) -> None:
         for field_name in (
@@ -127,6 +128,7 @@ class ResearchTask:
             "evidence_reality",
             "replay_digest",
             "repeated_replay_digest",
+            "close_time_provenance",
         ):
             if not str(getattr(self, field_name)).strip():
                 raise AutoresearchValidationError(f"{field_name} is required")
@@ -240,6 +242,7 @@ class ResearchTask:
                 else None
             ),
             "candidate_used_lineup": self.candidate_used_lineup,
+            "close_time_provenance": self.close_time_provenance,
         }
 
 

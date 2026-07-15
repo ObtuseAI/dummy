@@ -137,7 +137,10 @@ def test_wrapper_recalibrates_and_preserves_features(tmp_path):
     raw = Signal(source="crypto_spot_vol", market_ticker=market.ticker,
                  probability_yes=0.9, uncertainty=0.1, rationale="",
                  features={"challenger_only": False, "hours_to_close": 26.0, "foo": "bar"})
-    maps = _maps_file(tmp_path, {"crypto_spot_vol|ladder|daily+": [[0.6, 0.55], [0.9, 0.75]]})
+    maps = _maps_file(
+        tmp_path,
+        {"crypto_spot_vol|btc|ladder|daily+": [[0.6, 0.55], [0.9, 0.75]]},
+    )
     wrapper = CalibratedSignal(_Parent(raw), maps=maps)
     out = wrapper.generate(market)
     assert out is not None
@@ -180,7 +183,10 @@ def test_wrapper_fails_closed_on_parent_error_and_opens_circuit(tmp_path):
             raise RuntimeError("parent down")
 
     parent = _Boom()
-    maps = _maps_file(tmp_path, {"crypto_spot_vol|ladder|daily+": [[0.9, 0.75]]})
+    maps = _maps_file(
+        tmp_path,
+        {"crypto_spot_vol|btc|ladder|daily+": [[0.9, 0.75]]},
+    )
     wrapper = CalibratedSignal(parent, maps=maps)
     # First market call trips the breaker; subsequent calls skip the parent.
     assert wrapper.generate(_market()) is None
@@ -198,7 +204,10 @@ def test_wrapper_abstains_when_parent_returns_none(tmp_path):
         def generate(self, market):
             return None
 
-    maps = _maps_file(tmp_path, {"crypto_spot_vol|ladder|daily+": [[0.9, 0.75]]})
+    maps = _maps_file(
+        tmp_path,
+        {"crypto_spot_vol|btc|ladder|daily+": [[0.9, 0.75]]},
+    )
     assert CalibratedSignal(_NoneParent(None), maps=maps).generate(_market()) is None
 
 

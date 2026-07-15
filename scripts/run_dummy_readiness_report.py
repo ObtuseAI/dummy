@@ -1,8 +1,8 @@
 #!/usr/bin/env python
 """Nightly readiness pass: per-scope promotion evidence + auto-demotions.
 
-Read-only against the ledger. For every challenger scope (source x market_type
-x horizon/phase, WS-15) it computes contested-Brier evidence over event
+Read-only against the ledger. For every challenger scope (source x subject x
+market_type x horizon/phase, WS-15) it computes contested-Brier evidence over event
 clusters and reports:
   * eligibility for a HUMAN promotion review (>=300 clusters, edge CI95 lower
     > 0, CLV non-negative where known, not degrading),
