@@ -246,6 +246,7 @@ def _build_template(
             agent_id=shadow_id,
             role=AgentRole.SHADOW,
             inputs=(
+                MessageType.MARKET_STATE,
                 MessageType.FORECAST,
                 MessageType.COUNTERFORECAST,
                 MessageType.CALIBRATION_UPDATE,
@@ -262,6 +263,7 @@ def _build_template(
             agent_id=synthesizer_id,
             role=AgentRole.SYNTHESIZER,
             inputs=(
+                MessageType.MARKET_STATE,
                 MessageType.FORECAST,
                 MessageType.COUNTERFORECAST,
                 MessageType.CALIBRATION_UPDATE,

@@ -16,7 +16,7 @@
         "btc15m-shadow-controller-v1",
         "btc15m-synthesizer-v1"
       ],
-      "digest": "47939e0d8ebd2a71e66e87256931b21d5f7a5d8244132f8ba5efca0183627599",
+      "digest": "785c8a9191d0619deb2a63567bfe729969ced7f522e0c71d0372db6613f8506d",
       "market_type": "15m_direction",
       "one_specialist_per_market": true,
       "roles": [
@@ -43,7 +43,7 @@
         "mlbpregame-shadow-controller-v1",
         "mlbpregame-synthesizer-v1"
       ],
-      "digest": "fa4f658da81c8d784fb07a7974b3230afbb5fac108e01f21d7224e8dec4d26b9",
+      "digest": "eeb4fb7c002295b8173c376b48a6263d8ac5f7c07f79fc1f6062c9dd3167055d",
       "market_type": "winner",
       "one_specialist_per_market": true,
       "roles": [

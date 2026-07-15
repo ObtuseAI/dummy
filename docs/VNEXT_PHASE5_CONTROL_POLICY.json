@@ -1,0 +1,86 @@
+{
+  "allowed_guard_actions": [
+    "OBSERVE",
+    "DOWNGRADE",
+    "REQUEST_EVIDENCE",
+    "REQUIRE_MARKET_PRIOR",
+    "QUARANTINE_SOURCE",
+    "VETO",
+    "REQUIRE_ABSTENTION",
+    "TERMINATE"
+  ],
+  "execution_authority": false,
+  "forbidden_guard_actions": [
+    "increase_influence",
+    "increase_confidence",
+    "grant_execution_authority",
+    "grant_promotion_authority",
+    "increase_resource_budget"
+  ],
+  "guard_authority": "CONTRACTION_ONLY",
+  "guards": [
+    "authority",
+    "confidence",
+    "duplication",
+    "leakage",
+    "market_prior",
+    "provenance",
+    "regime",
+    "resource"
+  ],
+  "implementation_status": "IMPLEMENTED_VALIDATED_EVIDENCE_GATE_PENDING",
+  "information_gain": {
+    "status": "UNCALIBRATED_PROXY",
+    "unknown_compute_response": "REFUSE_UTILITY_CLAIM_AND_NARROW_SCOPE"
+  },
+  "manifest_id": "c6ffe97e5030fbf0d725431f98d313464cafdb80128077a89f625664afc18443",
+  "maturity": "EXPERIMENTAL_SOVEREIGN_FORECASTING",
+  "metacognition": {
+    "calibration": {
+      "brier": null,
+      "calibration_identity": "phase5-metacognition-unavailable-v1",
+      "ece": null,
+      "evidence_ids": [],
+      "sample_size": 0,
+      "state": "UNCALIBRATED_SHADOW",
+      "verified": false
+    },
+    "confidence_aggregation": "minimum_critical_component",
+    "confidence_components": [
+      "model",
+      "evidence_completeness",
+      "evidence_freshness",
+      "data_reliability",
+      "regime_familiarity",
+      "historical_analogue_strength",
+      "calibration_reliability",
+      "market_prior_agreement",
+      "source_independence",
+      "causal_confidence",
+      "forecast_stability",
+      "settlement_sample_support"
+    ],
+    "knowledge_boundary_states": [
+      "KNOWN",
+      "PARTIALLY_KNOWN",
+      "UNKNOWN",
+      "UNSTABLE",
+      "UNOBSERVABLE",
+      "OUTSIDE_AUTHORITY"
+    ],
+    "uncalibrated_control": "SHADOW_ONLY_EXCEPT_SAFETY_CONTRACTION"
+  },
+  "performance_claim_supported": false,
+  "phase": 5,
+  "promotion_authority": "HUMAN_ONLY",
+  "schema_version": 1,
+  "synthesis": {
+    "alias_deduplication_key": "family_id",
+    "disagreement_response": "WIDEN_UNCERTAINTY",
+    "market_prior_floor": 0.5,
+    "non_market_family_cap": 0.35,
+    "policy_version": "phase5-family-caps-v1",
+    "stale_source_weight": 0.0,
+    "uncalibrated_advisory_cap": 0.15
+  }
+}

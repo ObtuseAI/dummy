@@ -74,6 +74,19 @@ and [`regime-transfer`](docs/VNEXT_PHASE4_REGIME_TRANSFER.json) artifacts
 honestly report insufficient settled evidence, so they make no performance or
 readiness claim.
 
+Phase 5 adds the [`contraction-only shadow, structured synthesis, and
+metacognitive control layer`](docs/VNEXT_PHASE5_METACOGNITION.md). Eight guards
+can only downgrade, request evidence, quarantine, veto, abstain, or terminate;
+family-aware synthesis preserves a reviewed 0.50 market-prior floor and gives
+stale evidence zero weight. Confidence is decomposed into 12 independently
+auditable components, while unknown compute remains unknown and blocks a
+marginal-utility claim. The checked-in
+[`abstention`](docs/VNEXT_PHASE5_ABSTENTION_VALUE.json),
+[`resource-efficiency`](docs/VNEXT_PHASE5_RESOURCE_EFFICIENCY.json), and
+[`meta-calibration`](docs/VNEXT_PHASE5_METACOGNITION_CALIBRATION.json) reports
+honestly contain no settled cases, so Phase 5 remains shadow-only with its
+empirical evidence gates pending.
+
 ## Current paper operation
 
 The market-horizon paper twin runs every five minutes through the Windows
