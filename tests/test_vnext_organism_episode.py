@@ -115,6 +115,8 @@ def _request(
                 ),
                 "source": "frozen-incumbent-fixture",
                 "model_version": "incumbent-fixture-v1",
+                "calibration_identity": "incumbent-fixture-calibration-v1",
+                "features": {},
                 "assumptions": ["frozen_inputs_are_complete"],
                 "failure_conditions": ["unobserved_regime_change"],
             },
@@ -204,6 +206,30 @@ def test_issue_and_later_completion_are_structurally_separate() -> None:
     assert complete.episode_id == issued.episode_id
     assert complete.to_dict()["issuance_digest"] == issued.digest()
     assert len(complete.to_dict()["capability_steps"]) == 20
+
+
+def test_phase4_world_state_version_is_frozen_and_propagated_to_every_agent() -> None:
+    issued = issue_episode(_request().issue).to_dict()
+    state_message = issued["frozen_world_state"]
+    state_payload = state_message["payload"]
+    world_state = state_payload["world_state"]
+    state_version = state_payload["state_version"]
+    assert world_state["snapshot_id"] == state_version
+    assert world_state["frozen"] is True
+    assert world_state["schema"]["scope"] == "crypto_horizon:fifteen_minute"
+    assert world_state["completeness"] < 1.0
+    assert any(
+        item["status"] == "missing" and item["uncertainty"] == 1.0
+        for item in world_state["values"]
+    )
+    assert {
+        message["payload"]["world_state_version"]
+        for message in issued["agent_messages"]
+    } == {state_version}
+    assert (
+        issued["decision"]["message"]["payload"]["world_state_version"]
+        == state_version
+    )
 
 
 def test_episode_replay_is_byte_identical() -> None:

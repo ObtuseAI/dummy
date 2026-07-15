@@ -10,6 +10,10 @@ from autonomy.fees import kalshi_taker_fee_cents
 from dummy import VNEXT_MATURITY
 from dummy.agents import AgentInvocation, AgentRole, AgentState, InvocationStatus
 from dummy.protocols import MessageEnvelope, MessageType
+from dummy.world_model import (
+    WorldModelValidationError,
+    hydrate_issue_world_state,
+)
 
 from .agents import activate_organism, build_organism_runtime
 from .models import (
@@ -122,39 +126,41 @@ def _freeze_state(
         if calibration.pop("kind", None) != "calibration_map":
             raise EpisodeValidationError("calibration map kind is malformed")
 
+    try:
+        world_state = hydrate_issue_world_state(request)
+    except WorldModelValidationError as exc:
+        raise EpisodeValidationError(
+            f"Phase 4 world-state hydration failed closed: {exc}"
+        ) from exc
+
     evidence_manifest = [item.to_dict() for item in request.evidence]
     state_payload = {
-        "observation_kind": "phase3_frozen_episode_state",
-        "state_scope": "minimal_pre_phase4_world_state",
+        "observation_kind": "phase4_frozen_episode_state",
+        "state_scope": world_state.schema.scope,
         "template_id": template.template_id,
         "template_digest": template.digest(),
         "market": market,
         "incumbent": incumbent,
         "calibration": calibration,
-        "world_state": {
-            "facts": evidence_manifest,
-            "derived": [],
-            "hypotheses": [],
-            "contradictions": [],
-            "missing_data_policy": "abstain_or_preserve_explicit_limitation",
-        },
+        "world_state": world_state.to_dict(),
         "evidence_manifest": evidence_manifest,
+        "state_version": world_state.snapshot_id,
     }
-    state_payload["state_version"] = digest_json(state_payload)
     effective_time = max(item.observed_at for item in request.evidence)
     return MessageEnvelope.create(
         message_type=MessageType.MARKET_STATE,
-        sender="phase3-world-state-freezer-v1",
+        sender="phase4-world-state-freezer-v1",
         market_id=request.market_id,
         issued_at=request.decision_at,
         effective_time=effective_time,
         received_at=request.decision_at,
-        model_version="phase3-minimal-world-state-v1",
+        model_version=world_state.schema.schema_version,
         policy_version=request.policy_version,
         evidence_ids=tuple(item.evidence_id for item in request.evidence),
         limitations=(
-            "phase3_minimal_world_state",
-            "phase4_versioned_world_model_not_yet_claimed",
+            "phase4_versioned_world_state",
+            "missing_optional_state_is_explicit_not_imputed",
+            "research_shadow_only",
         ),
         payload=state_payload,
     )
@@ -567,7 +573,7 @@ def _improvement_and_replay(
         "capital_modified": False,
         "applied": False,
         "blockers": [
-            "phases_4_through_8_evidence_gates_incomplete",
+            "phases_5_through_8_evidence_gates_incomplete",
             "no_cluster_corrected_confidence_interval",
             "no_forward_paper_evidence_for_candidate",
             "human_promotion_review_not_requested",

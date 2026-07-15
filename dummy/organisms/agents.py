@@ -62,6 +62,27 @@ def _bounded(value: float) -> float:
     return round(min(1.0, max(0.0, float(value))), 12)
 
 
+def _world_state_version(invocation: AgentInvocation) -> str:
+    versions: list[str] = []
+    for message in invocation.input_messages:
+        key = (
+            "state_version"
+            if message.message_type is MessageType.MARKET_STATE
+            else "world_state_version"
+        )
+        version = str(message.payload.get(key, ""))
+        if not version.strip():
+            raise EpisodeValidationError(
+                f"{invocation.agent_id} received input without world-state version"
+            )
+        versions.append(version)
+    if len(set(versions)) != 1:
+        raise EpisodeValidationError(
+            f"{invocation.agent_id} received mixed world-state versions"
+        )
+    return versions[0]
+
+
 def _forecast_by_role(
     invocation: AgentInvocation,
     role: str,
@@ -103,6 +124,7 @@ class FrozenMarketPriorAgent:
             evidence_ids=state.evidence_ids,
             limitations=("market_price_is_anchor_not_truth", "shadow_only"),
             payload={
+                "world_state_version": _world_state_version(invocation),
                 "probability": probability_yes,
                 "uncertainty": round(max(0.01, (ask - bid) / 200.0), 12),
                 "organism_role": AgentRole.MARKET_PRIOR.value,
@@ -150,6 +172,7 @@ class FrozenIncumbentAgent:
             evidence_ids=state.evidence_ids,
             limitations=("incumbent_output_is_compared_not_substituted", "shadow_only"),
             payload={
+                "world_state_version": _world_state_version(invocation),
                 "probability": round(probability_yes, 12),
                 "uncertainty": round(uncertainty, 12),
                 "organism_role": AgentRole.SPECIALIST.value,
@@ -192,6 +215,7 @@ class ContrarianAgent:
             evidence_ids=_evidence(invocation),
             limitations=("structured_countercase_not_independent_alpha", "shadow_only"),
             payload={
+                "world_state_version": _world_state_version(invocation),
                 "probability": counter_probability,
                 "uncertainty": max(
                     float(prior.payload.get("uncertainty", 0.0)),
@@ -241,6 +265,7 @@ class CalibrationProposalAgent:
             evidence_ids=_evidence(invocation),
             limitations=tuple(limitations),
             payload={
+                "world_state_version": _world_state_version(invocation),
                 "base_forecast_id": incumbent.message_id,
                 "original_probability": original,
                 "calibrated_probability": calibrated,
@@ -280,6 +305,7 @@ class AdversarialAgent:
             findings.append("calibration_map_unverified")
         message_type = MessageType.VETO if hard_veto else MessageType.UNCERTAINTY
         payload = {
+            "world_state_version": _world_state_version(invocation),
             "organism_role": AgentRole.ADVERSARY.value,
             "forecast_spread": spread,
             "epistemic_uncertainty": epistemic_uncertainty,
@@ -317,6 +343,7 @@ class ShadowControllerAgent:
         blockers = [str(item.payload.get("reason", "upstream_veto")) for item in upstream_vetoes]
         message_type = MessageType.VETO if blockers else MessageType.UNCERTAINTY
         payload = {
+            "world_state_version": _world_state_version(invocation),
             "organism_role": AgentRole.SHADOW.value,
             "hard_veto": bool(blockers),
             "blockers": sorted(blockers),
@@ -411,6 +438,7 @@ class SynthesizerAgent:
             else ("FORECAST_YES" if edge > 0.0 else "FORECAST_NO")
         )
         common_payload = {
+            "world_state_version": _world_state_version(invocation),
             "candidate_probability": candidate,
             "decision": decision,
             "uncertainty": epistemic,

@@ -28,15 +28,15 @@ cannot replace the incumbent or reach live orders, promotion, or capital.
 - Verified settlement grades every participating role. Calibration and trust
   changes remain unapplied proposals.
 - Bounded template proposals replay only on distinct, verified held-out event
-  clusters. Phase 3 always marks them not promotable because Phases 4–8 and
-  their statistical gates are incomplete.
+  clusters. Phase 3 always marks them not promotable because later vNext
+  phases and their statistical gates are incomplete.
 - All seven temporary agents retire immediately after issuance. The complete
   episode persists in an isolated, canonical, append-only JSONL ledger.
 
 ## Twenty-step episode
 
 `issue_episode` accepts only decision-time evidence and records steps 1–13:
-market detection, prior freeze, minimal world state, deterministic morphology,
+market detection, prior freeze, versioned world state, deterministic morphology,
 point-in-time evidence, competing futures, adversarial attack, confidence,
 knowledge boundary, stopping value, forecast or abstention, decision freeze,
 and shadow execution. It returns a canonical `ISSUED` artifact that cannot

@@ -1,0 +1,14 @@
+{
+  "case_count": 0,
+  "fields": [],
+  "limitations": [
+    "no_claim_without_minimum_verified_settled_cluster_count"
+  ],
+  "minimum_cases_per_field": 30,
+  "report_id": "4a369dda133af401bcd1896aaa7a17ddac1ec4567b667cf635c51788de9f8412",
+  "report_kind": "world_state_ablation",
+  "schema_version": 1,
+  "settlement_verified_only": true,
+  "status": "INSUFFICIENT_SETTLED_EVIDENCE",
+  "unique_event_cluster_count": 0
+}

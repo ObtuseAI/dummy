@@ -61,7 +61,13 @@ def freeze_incumbent_forecast_message(
         raise EpisodeValidationError("incumbent bridge requires FORECAST")
     if not message.market_id:
         raise EpisodeValidationError("incumbent bridge requires market identity")
-    required = ("probability", "uncertainty", "source_family", "incumbent_source")
+    required = (
+        "probability",
+        "uncertainty",
+        "source_family",
+        "incumbent_source",
+        "calibration_identity",
+    )
     if any(key not in message.payload for key in required):
         raise EpisodeValidationError("incumbent forecast bridge is incomplete")
     return PointInTimeEvidence(
@@ -80,6 +86,8 @@ def freeze_incumbent_forecast_message(
             "source_family": message.payload["source_family"],
             "source": message.payload["incumbent_source"],
             "model_version": message.model_version,
+            "calibration_identity": message.payload["calibration_identity"],
+            "features": message.payload.get("features", {}),
             "assumptions": ["phase2_incumbent_adapter_output_is_frozen"],
             "failure_conditions": list(message.limitations)
             or ["incumbent_limitations_unspecified"],

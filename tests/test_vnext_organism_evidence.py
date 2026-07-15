@@ -63,6 +63,8 @@ def _incumbent_message() -> MessageEnvelope:
             "uncertainty": 0.08,
             "source_family": "crypto-coinbase-distribution",
             "incumbent_source": "crypto_distribution",
+            "calibration_identity": "btc-incumbent-calibration-v1",
+            "features": {"annual_vol": 0.55},
         },
     )
 
@@ -83,6 +85,8 @@ def test_phase2_messages_freeze_into_phase3_evidence_without_refetch() -> None:
     assert incumbent.payload["kind"] == "incumbent_forecast"
     assert incumbent.payload["probability_yes"] == 0.70
     assert incumbent.payload["source_family"] == "crypto-coinbase-distribution"
+    assert incumbent.payload["calibration_identity"] == "btc-incumbent-calibration-v1"
+    assert incumbent.payload["features"] == {"annual_vol": 0.55}
 
 
 def test_market_bridge_fails_closed_without_witnessed_side_depth() -> None:
