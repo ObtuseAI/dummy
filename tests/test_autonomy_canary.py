@@ -113,6 +113,32 @@ def test_default_gate_blocks_negative_fill_conditioned_operating_record(tmp_path
         ledger.close()
 
 
+def test_canary_blocks_negative_crypto_even_when_aggregate_fill_skill_is_positive(tmp_path):
+    ledger = AutonomyLedger(db_path=tmp_path / "l.db")
+    try:
+        report = {
+            "settled_markets": 0,
+            "sources": {},
+            "execution_quality_by_book": {"shadow": {"orders_with_confirmed_fill": 10}},
+            "realized_trade_statistics": {"trades": 10, "net_pnl_cents": 100},
+            "fill_conditioned_decision_policy": {
+                "n": 10,
+                "brier_skill_vs_market": 0.1,
+                "by_vertical": {
+                    "CRYPTO": {"n": 5, "brier_skill_vs_market": -0.2},
+                    "SPORTS": {"n": 5, "brier_skill_vs_market": 0.3},
+                },
+            },
+        }
+        result = evaluate_canary_readiness(
+            ledger, min_settled=0, min_policy_settled=0, backtest_report=report,
+        )
+        assert result.ready is False
+        assert any("crypto fill-conditioned" in blocker for blocker in result.blockers)
+    finally:
+        ledger.close()
+
+
 def test_blocks_without_observed_shadow_fills(tmp_path):
     from autonomy.backtest import run_backtest
 

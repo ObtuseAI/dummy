@@ -52,15 +52,23 @@ class Learner:
         if not signals:
             return {}
         from autonomy.scanner import classify_vertical
+        from autonomy.taxonomy import scope_weight_key
 
         vertical = classify_vertical(market_ticker).value
-        by_source: dict[str, float] = {}
+        by_source: dict[str, dict[str, Any]] = {}
         for signal in signals:
             # Latest opinion per source wins.
-            by_source[signal["source"]] = float(signal["probability_yes"])
-        baseline = brier(by_source.get("market_prior", 0.5), result_yes)
+            by_source[str(signal["source"])] = {
+                "probability": float(signal["probability_yes"]),
+                "features": signal.get("features") or {},
+            }
+        baseline = brier(
+            float((by_source.get("market_prior") or {}).get("probability", 0.5)),
+            result_yes,
+        )
         updated: dict[str, float] = {}
-        for source, probability in by_source.items():
+        for source, evidence in by_source.items():
+            probability = float(evidence["probability"])
             score = brier(probability, result_yes)
             advantage = baseline - score  # positive = beat the market
             multiplier = pow(2.718281828, ETA * advantage / 0.25)  # 0.25 = max Brier scale
@@ -73,6 +81,18 @@ class Learner:
             scoped_old = self.ledger.get_weight(scoped_key, default=1.0)
             scoped_new = max(WEIGHT_FLOOR, min(WEIGHT_CEILING, scoped_old * multiplier))
             self.ledger.update_weight(scoped_key, scoped_new, brier=score)
+            # Exact market-family/horizon-or-phase trust learns independently.
+            # This prevents, for example, strong MLB spread performance from
+            # hiding a weak totals record while preserving the vertical/global
+            # rows as sparse-scope fallbacks.
+            exact_key = scope_weight_key(
+                source, market_ticker, evidence.get("features") or {},
+            )
+            exact_old = self.ledger.get_weight(exact_key, default=1.0)
+            exact_new = max(
+                WEIGHT_FLOOR, min(WEIGHT_CEILING, exact_old * multiplier),
+            )
+            self.ledger.update_weight(exact_key, exact_new, brier=score)
         return updated
 
     # ------------------------------------------------------------------

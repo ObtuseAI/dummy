@@ -43,6 +43,9 @@ def _summary(report: dict) -> dict:
             "cluster_robust_advantage": policy.get("cluster_robust_advantage", {}),
             "walk_forward_out_of_sample": walk_forward,
             "online_forecast_drift": policy.get("online_forecast_drift", {}),
+            "sports_performance_cohorts": policy.get(
+                "sports_performance_cohorts", {}
+            ),
         },
         "signal_data_quality": report.get("signal_data_quality", {}),
         "execution_quality_by_book": report.get("execution_quality_by_book", {}),

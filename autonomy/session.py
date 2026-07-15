@@ -372,6 +372,7 @@ def build_brain(mode: SessionMode):
         router = None
 
     from autonomy.exchange_status import fetch_exchange_status
+    from autonomy.self_improvement import PerformanceGuard
 
     # Live and shadow run concurrently (scheduled shadow task + operator live
     # session) — each gets its OWN risk state. Sharing one file would let the
@@ -391,4 +392,5 @@ def build_brain(mode: SessionMode):
         balance_fn=_live_balance_cents if live else None,
         router=router,
         exchange_status_fn=fetch_exchange_status,
+        performance_guard=PerformanceGuard(),
     )

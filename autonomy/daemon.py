@@ -27,7 +27,8 @@ def _maybe_recalibrate(now_iso: str) -> dict[str, Any] | None:
     """Periodic self-recalibration: the machine re-derives its own trust.
 
     Every RECAL_INTERVAL_HOURS the daemon re-runs the backtest bootstrap
-    (global + per-vertical weights, contested caps included) and refits the
+    (global + vertical + exact grading-scope weights, contested caps included),
+    refreshes contraction-only performance quarantines, and refits the
     market-debias curve from the full settlement history. No operator in the
     loop: calibration is a metabolic process, not a maintenance chore.
     Gated off in unit tests via DUMMY_DAEMON_RECAL=0.
@@ -54,12 +55,22 @@ def _maybe_recalibrate(now_iso: str) -> dict[str, Any] | None:
         try:
             report = run_backtest(ledger, bootstrap_weights=True)
             write_curve(fit_curve(ledger_samples(ledger)))
+            from autonomy.self_improvement import (
+                DEFAULT_REPORT_PATH,
+                write_self_improvement_artifacts,
+            )
+
+            guard, improvement = write_self_improvement_artifacts(report)
         finally:
             ledger.close()
         summary = {
             "at": now_iso,
             "settled_markets": report.get("settled_markets"),
             "derived_weights": report.get("derived_weights"),
+            "exact_scope_weights": len(report.get("sources_by_scope") or {}),
+            "performance_quarantines": len(guard.get("quarantines") or []),
+            "self_improvement_report": str(DEFAULT_REPORT_PATH)
+            if improvement else None,
         }
         RUNTIME_DIR.mkdir(parents=True, exist_ok=True)
         RECAL_STAMP_PATH.write_text(json.dumps(summary, indent=2, sort_keys=True), encoding="utf-8")

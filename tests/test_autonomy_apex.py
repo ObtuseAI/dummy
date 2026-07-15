@@ -165,6 +165,11 @@ def test_scoped_trust_lookup_and_learner(tmp_path):
     Learner(ledger).apply_settlement(ticker, False)
     assert ledger.get_weight("alpha") > 1.0
     assert ledger.get_weight("alpha@CRYPTO", default=0.0) > 1.0
+    from autonomy.taxonomy import scope_weight_key
+
+    exact_key = scope_weight_key("alpha", ticker, {})
+    assert ledger.get_weight(exact_key, default=0.0) > 1.0
+    assert ledger.get_weight_for_signal("alpha", "CRYPTO", ticker, {}) == ledger.get_weight(exact_key)
     ledger.close()
 
 
@@ -184,6 +189,14 @@ def test_forecaster_uses_scoped_weight(tmp_path):
     fused = EnsembleForecaster(ledger).fuse(market, signals)
     # Scoped 8x trust must drag the fusion decisively toward source a.
     assert fused.probability_yes > 0.7
+
+    # Exact scope overrides broader vertical authority once that scope has
+    # earned its own settled record.
+    from autonomy.taxonomy import scope_weight_key
+
+    ledger.update_weight(scope_weight_key("a", market.ticker, {}), 0.05)
+    fused = EnsembleForecaster(ledger).fuse(market, signals)
+    assert fused.probability_yes < 0.3
     ledger.close()
 
 
@@ -203,6 +216,7 @@ def test_backtest_bootstraps_scoped_weights(tmp_path):
     assert "alpha@CRYPTO" in report["derived_weights_by_vertical"]
     assert "alpha@WEATHER" in report["derived_weights_by_vertical"]
     assert ledger.get_weight("alpha@CRYPTO", default=0.0) > 1.0
+    assert any(key.startswith("scope:alpha|") for key in ledger.all_weights())
     ledger.close()
 
 

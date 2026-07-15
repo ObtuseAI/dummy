@@ -274,20 +274,24 @@ and reports `execution_authority=false`.
 
 1. **Calibration**: every settlement scores every source's logged signal
    (Brier vs the market-prior baseline) and updates trust multiplicatively —
-   globally AND per-vertical (`source@VERTICAL` rows), so authority is
-   domain-scoped. Sources gain influence only by beating the market.
-0. **Metabolic recalibration**: every ~6h the daemon re-runs the backtest
-   bootstrap and refits the market-debias curve from the full settlement
-   history — the machine re-derives its own trust with no operator.
+   globally, per-vertical (`source@VERTICAL` rows), and at the exact
+   `(source, market_type, phase_or_horizon)` scope. Sparse scopes fall back to
+   vertical/global trust; established scopes cannot hide behind another
+   market family's record.
+2. **Metabolic recalibration and repair**: every ~6h the daemon re-runs the
+   backtest bootstrap, relearns exact-scope trust, refreshes contraction-only
+   joint league/market/phase/regime quarantines, and refits the market-debias
+   curve from the full settlement history. Quarantined cohorts abstain while
+   continuing shadow grading. Expansion remains human-review-only.
    Failing sources trip a circuit breaker (quarantine + auto-retry), so an
    upstream outage degrades coverage instead of wedging the loop.
-2. **Risk**: realized P&L per contract is the only currency for stage
+3. **Risk**: realized P&L per contract is the only currency for stage
    promotion; drawdown demotes instantly with a 24h cooloff.
-3. **Reflexion**: losing decisions are periodically distilled into structured
+4. **Reflexion**: losing decisions are periodically distilled into structured
    lessons through the model router and stored in the ledger.
-4. **Rejection avoidance**: broker rejections carry classifier categories
+5. **Rejection avoidance**: broker rejections carry classifier categories
    (kalshi/rejection_classifier.py) back into decision filters.
-5. **Simulation curriculum**: an hourly read-only champion/challenger run
+6. **Simulation curriculum**: an hourly read-only champion/challenger run
    rejects weak forecast, execution, and compounding policies before they
    consume scarce shadow fills. Simulated results are quarantined from canary
    and scale evidence and can only propose a later bounded shadow experiment.

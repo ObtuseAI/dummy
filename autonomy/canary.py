@@ -155,6 +155,7 @@ def evaluate_canary_readiness(
 
     realized = backtest.get("realized_trade_statistics") or {}
     fill_conditioned = backtest.get("fill_conditioned_decision_policy") or {}
+    fill_by_vertical = fill_conditioned.get("by_vertical") or {}
     scale_blockers: list[str] = []
     graded_trades = int(realized.get("trades") or 0)
     verified_net_pnl = int(realized.get("net_pnl_cents") or 0)
@@ -177,6 +178,24 @@ def evaluate_canary_readiness(
                 "fill-conditioned forecast Brier skill is not positive for canary: "
                 f"{fill_skill}"
             )
+        # A strong vertical must not mask a weak one.  Only routed trading
+        # verticals are gated; legacy/OTHER rows remain visible but cannot
+        # strand readiness forever.
+        for vertical in ("CRYPTO", "SPORTS"):
+            cohort = fill_by_vertical.get(vertical) or {}
+            cohort_n = int(cohort.get("n") or 0)
+            if cohort_n == 0:
+                continue
+            if cohort_n < min_canary_graded:
+                blockers.append(
+                    f"insufficient {vertical.lower()} fill-conditioned evidence: "
+                    f"{cohort_n}/{min_canary_graded}"
+                )
+            elif float(cohort.get("brier_skill_vs_market") or 0.0) <= 0.0:
+                blockers.append(
+                    f"{vertical.lower()} fill-conditioned Brier skill is not positive: "
+                    f"{cohort.get('brier_skill_vs_market')}"
+                )
     if graded_trades < MIN_SCALE_GRADED_TRADES:
         scale_blockers.append(
             f"verified settled fills {graded_trades}/{MIN_SCALE_GRADED_TRADES}"
@@ -193,6 +212,21 @@ def evaluate_canary_readiness(
             "fill-conditioned forecast Brier skill is not positive: "
             f"{fill_conditioned.get('brier_skill_vs_market')}"
         )
+    for vertical in ("CRYPTO", "SPORTS"):
+        cohort = fill_by_vertical.get(vertical) or {}
+        cohort_n = int(cohort.get("n") or 0)
+        if cohort_n == 0:
+            continue
+        if cohort_n < MIN_SCALE_GRADED_TRADES:
+            scale_blockers.append(
+                f"{vertical.lower()} fill-conditioned settlements "
+                f"{cohort_n}/{MIN_SCALE_GRADED_TRADES}"
+            )
+        elif float(cohort.get("brier_skill_vs_market") or 0.0) <= 0.0:
+            scale_blockers.append(
+                f"{vertical.lower()} fill-conditioned Brier skill is not positive: "
+                f"{cohort.get('brier_skill_vs_market')}"
+            )
     drift = decision_policy.get("online_forecast_drift") or {}
     if drift.get("negative_drift"):
         latest = drift.get("latest_detection") or {}
@@ -227,12 +261,14 @@ def evaluate_canary_readiness(
             "minimum_settled_fills": min_canary_graded,
             "realized_trade_statistics": realized,
             "fill_conditioned_decision_policy": fill_conditioned,
+            "fill_conditioned_by_vertical": fill_by_vertical,
         },
         "scale_readiness": {
             "ready": not scale_blockers,
             "blockers": scale_blockers,
             "realized_trade_statistics": realized,
             "fill_conditioned_decision_policy": fill_conditioned,
+            "fill_conditioned_by_vertical": fill_by_vertical,
         },
         "balance_cents": balance_cents,
     }

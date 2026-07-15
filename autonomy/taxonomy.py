@@ -177,3 +177,16 @@ def grading_scope(source: str, ticker: str, features: dict[str, Any] | None) -> 
     else:
         axis = _phase(source, features)
     return f"{source}|{market_type}|{axis}"
+
+
+def scope_weight_key(
+    source: str, ticker: str, features: dict[str, Any] | None,
+) -> str:
+    """Persistent trust-key for one exact grading scope.
+
+    The ``scope:`` namespace cannot collide with historical bare-source or
+    ``source@VERTICAL`` trust rows.  Keeping this convention beside
+    ``grading_scope`` prevents the learner, forecaster, and backtest bootstrap
+    from inventing subtly different keys.
+    """
+    return f"scope:{grading_scope(source, ticker, features or {})}"

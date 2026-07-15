@@ -70,11 +70,18 @@ class EnsembleForecaster:
             return None
         weighted: dict[str, float] = {}
         for signal in active_signals:
-            # Vertical-scoped trust when the ledger has earned one; a source's
-            # authority is domain-specific, not global. Duck-typed fallback
-            # keeps minimal ledger stand-ins working.
+            # Exact (source, market type, horizon/phase) trust when earned;
+            # vertical then global trust remain sparse-scope fallbacks.
+            exact = getattr(self.ledger, "get_weight_for_signal", None)
             scoped = getattr(self.ledger, "get_weight_scoped", None)
-            if callable(scoped):
+            if callable(exact):
+                trust = exact(
+                    signal.source,
+                    market.vertical.value,
+                    market.ticker,
+                    signal.features or {},
+                )
+            elif callable(scoped):
                 trust = scoped(signal.source, market.vertical.value)
             else:
                 trust = self.ledger.get_weight(signal.source, default=1.0)
