@@ -1,0 +1,76 @@
+{
+  "evaluation": {
+    "cluster_interval": "EVENT_CLUSTER_BOOTSTRAP",
+    "deterministic_replay_required": true,
+    "event_cluster_purge": true,
+    "fill_truth_separate": true,
+    "governance_preservation_required": true,
+    "multiple_testing": "HOLM_BONFERRONI",
+    "one_sided_test": "EVENT_CLUSTER_SIGN_FLIP",
+    "selection_evidence_purge": true,
+    "transfer_required": true
+  },
+  "evaluator_version": "phase6-causal-evolution-evaluator-v1",
+  "execution_authority": false,
+  "gene_categories": [
+    "agent_composition",
+    "source_selection",
+    "feature_set",
+    "forecast_combination",
+    "market_prior_weight",
+    "uncertainty_model",
+    "adversarial_sequence",
+    "replay_depth",
+    "simulation_budget",
+    "abstention_threshold",
+    "decision_rule",
+    "calibration_policy",
+    "metacognitive_policy",
+    "mutation_policy"
+  ],
+  "held_out_improvement_claim_supported": false,
+  "manifest_id": "efe1b3bab7c3556cb23b69496132c776f2c86e59d7e5858d6c0f5456fef36b4c",
+  "mutation": {
+    "automatic_promotion": false,
+    "candidate_controls_evaluator": false,
+    "protected_manifest_digest": "79afd25f6061f69bd4ee043b3c7144a701d8ee80ac659e8cde5b35385bceb797",
+    "runtime_application": false,
+    "source_edits_applied": false
+  },
+  "phase": 6,
+  "promotion_authority": "HUMAN_ONLY",
+  "recursive_levels": [
+    {
+      "level": 0,
+      "name": "PARAMETERS"
+    },
+    {
+      "level": 1,
+      "name": "FEATURES"
+    },
+    {
+      "level": 2,
+      "name": "FORECAST_STRATEGY"
+    },
+    {
+      "level": 3,
+      "name": "AGENT_ORGANISM"
+    },
+    {
+      "level": 4,
+      "name": "METACOGNITIVE_CONTROL"
+    },
+    {
+      "level": 5,
+      "name": "MUTATION_SELECTION_POLICY"
+    }
+  ],
+  "retirement_and_rollback": {
+    "authority_direction": "CONTRACTION_ONLY",
+    "deterministic_records": true,
+    "last_healthy_state_recorded": true,
+    "proposal_only_until_registry_integration": true,
+    "reversible_state_recorded": true
+  },
+  "schema_version": 1
+}

@@ -1,0 +1,355 @@
+{
+  "catalog_id": "e781f5e186bb22e861d99ad7e4c2b33da5e4e433e9d2b344f25b9e7924300c1f",
+  "execution_authority": false,
+  "genome_count": 2,
+  "genomes": [
+    {
+      "created_at": "2026-07-15T00:00:00Z",
+      "evidence_ids": [
+        "eeb4fb7c002295b8173c376b48a6263d8ac5f7c07f79fc1f6062c9dd3167055d",
+        "mlb-pregame-winner-organism-v1"
+      ],
+      "execution_authority": false,
+      "generation": 0,
+      "genes": [
+        {
+          "category": "abstention_threshold",
+          "evidence_ids": [
+            "eeb4fb7c002295b8173c376b48a6263d8ac5f7c07f79fc1f6062c9dd3167055d"
+          ],
+          "name": "abstention.epistemic_threshold",
+          "value": 0.22,
+          "version": "phase6-pilot-v1"
+        },
+        {
+          "category": "adversarial_sequence",
+          "evidence_ids": [
+            "eeb4fb7c002295b8173c376b48a6263d8ac5f7c07f79fc1f6062c9dd3167055d"
+          ],
+          "name": "adversarial.sequence",
+          "value": [
+            "contrarian",
+            "adversary",
+            "shadow",
+            "synthesizer"
+          ],
+          "version": "phase6-pilot-v1"
+        },
+        {
+          "category": "calibration_policy",
+          "evidence_ids": [
+            "eeb4fb7c002295b8173c376b48a6263d8ac5f7c07f79fc1f6062c9dd3167055d"
+          ],
+          "name": "calibration.policy",
+          "value": [
+            "mlbpregame-adversary-v1-calibration",
+            "mlbpregame-calibrator-v1-calibration",
+            "mlbpregame-contrarian-v1-calibration",
+            "mlbpregame-incumbent-v1-calibration",
+            "mlbpregame-market-prior-v1-calibration",
+            "mlbpregame-shadow-controller-v1-calibration",
+            "mlbpregame-synthesizer-v1-calibration"
+          ],
+          "version": "phase6-pilot-v1"
+        },
+        {
+          "category": "decision_rule",
+          "evidence_ids": [
+            "eeb4fb7c002295b8173c376b48a6263d8ac5f7c07f79fc1f6062c9dd3167055d"
+          ],
+          "name": "decision.rule",
+          "value": "positive_edge_after_fees_spread_uncertainty_and_guards",
+          "version": "phase6-pilot-v1"
+        },
+        {
+          "category": "metacognitive_policy",
+          "evidence_ids": [
+            "eeb4fb7c002295b8173c376b48a6263d8ac5f7c07f79fc1f6062c9dd3167055d"
+          ],
+          "name": "metacognition.policy",
+          "value": "shadow_only_except_safety_contraction",
+          "version": "phase6-pilot-v1"
+        },
+        {
+          "category": "mutation_policy",
+          "evidence_ids": [
+            "eeb4fb7c002295b8173c376b48a6263d8ac5f7c07f79fc1f6062c9dd3167055d"
+          ],
+          "name": "mutation.policy",
+          "value": "proposal_only_external_evaluator_human_promotion",
+          "version": "phase6-pilot-v1"
+        },
+        {
+          "category": "agent_composition",
+          "evidence_ids": [
+            "eeb4fb7c002295b8173c376b48a6263d8ac5f7c07f79fc1f6062c9dd3167055d"
+          ],
+          "name": "organism.agent_composition",
+          "value": [
+            "mlbpregame-incumbent-v1",
+            "mlbpregame-calibrator-v1",
+            "mlbpregame-market-prior-v1",
+            "mlbpregame-contrarian-v1",
+            "mlbpregame-adversary-v1",
+            "mlbpregame-shadow-controller-v1",
+            "mlbpregame-synthesizer-v1"
+          ],
+          "version": "phase6-pilot-v1"
+        },
+        {
+          "category": "source_selection",
+          "evidence_ids": [
+            "eeb4fb7c002295b8173c376b48a6263d8ac5f7c07f79fc1f6062c9dd3167055d"
+          ],
+          "name": "organism.source_selection",
+          "value": [
+            "constitutional-shadow",
+            "market-price",
+            "mlb-structural",
+            "mlbpregame-adversarial-review",
+            "mlbpregame-calibration",
+            "mlbpregame-countercase",
+            "mlbpregame-family-capped-synthesis"
+          ],
+          "version": "phase6-pilot-v1"
+        },
+        {
+          "category": "replay_depth",
+          "evidence_ids": [
+            "eeb4fb7c002295b8173c376b48a6263d8ac5f7c07f79fc1f6062c9dd3167055d"
+          ],
+          "name": "replay.depth",
+          "value": 5,
+          "version": "phase6-pilot-v1"
+        },
+        {
+          "category": "simulation_budget",
+          "evidence_ids": [
+            "eeb4fb7c002295b8173c376b48a6263d8ac5f7c07f79fc1f6062c9dd3167055d"
+          ],
+          "name": "simulation.path_budget",
+          "value": 0,
+          "version": "phase6-pilot-v1"
+        },
+        {
+          "category": "forecast_combination",
+          "evidence_ids": [
+            "eeb4fb7c002295b8173c376b48a6263d8ac5f7c07f79fc1f6062c9dd3167055d"
+          ],
+          "name": "synthesis.family_caps",
+          "value": {
+            "market_prior_floor": 0.5,
+            "non_market_family_cap": 0.35,
+            "uncalibrated_advisory_cap": 0.15
+          },
+          "version": "phase6-pilot-v1"
+        },
+        {
+          "category": "market_prior_weight",
+          "evidence_ids": [
+            "eeb4fb7c002295b8173c376b48a6263d8ac5f7c07f79fc1f6062c9dd3167055d"
+          ],
+          "name": "synthesis.market_prior_weight",
+          "value": 0.5,
+          "version": "phase6-pilot-v1"
+        },
+        {
+          "category": "uncertainty_model",
+          "evidence_ids": [
+            "eeb4fb7c002295b8173c376b48a6263d8ac5f7c07f79fc1f6062c9dd3167055d"
+          ],
+          "name": "uncertainty.disagreement_model",
+          "value": "base_uncertainty_plus_weighted_dispersion",
+          "version": "phase6-pilot-v1"
+        }
+      ],
+      "genome_id": "0369604512e03ac0d6d35eaf184b79e5458c6e823bf1e510299284a080cd2fe5",
+      "horizon": "pregame",
+      "label": "mlb-pregame-winner-organism-v1 generation zero",
+      "market_type": "winner",
+      "maturity": "EXPERIMENTAL_SOVEREIGN_FORECASTING",
+      "parent_genome_ids": [],
+      "promotion_authority": "HUMAN_ONLY",
+      "schema_version": 1,
+      "status": "EXPERIMENTAL",
+      "vertical": "mlb"
+    },
+    {
+      "created_at": "2026-07-15T00:00:00Z",
+      "evidence_ids": [
+        "785c8a9191d0619deb2a63567bfe729969ced7f522e0c71d0372db6613f8506d",
+        "btc-15m-direction-organism-v1"
+      ],
+      "execution_authority": false,
+      "generation": 0,
+      "genes": [
+        {
+          "category": "abstention_threshold",
+          "evidence_ids": [
+            "785c8a9191d0619deb2a63567bfe729969ced7f522e0c71d0372db6613f8506d"
+          ],
+          "name": "abstention.epistemic_threshold",
+          "value": 0.22,
+          "version": "phase6-pilot-v1"
+        },
+        {
+          "category": "adversarial_sequence",
+          "evidence_ids": [
+            "785c8a9191d0619deb2a63567bfe729969ced7f522e0c71d0372db6613f8506d"
+          ],
+          "name": "adversarial.sequence",
+          "value": [
+            "contrarian",
+            "adversary",
+            "shadow",
+            "synthesizer"
+          ],
+          "version": "phase6-pilot-v1"
+        },
+        {
+          "category": "calibration_policy",
+          "evidence_ids": [
+            "785c8a9191d0619deb2a63567bfe729969ced7f522e0c71d0372db6613f8506d"
+          ],
+          "name": "calibration.policy",
+          "value": [
+            "btc15m-adversary-v1-calibration",
+            "btc15m-calibrator-v1-calibration",
+            "btc15m-contrarian-v1-calibration",
+            "btc15m-incumbent-v1-calibration",
+            "btc15m-market-prior-v1-calibration",
+            "btc15m-shadow-controller-v1-calibration",
+            "btc15m-synthesizer-v1-calibration"
+          ],
+          "version": "phase6-pilot-v1"
+        },
+        {
+          "category": "decision_rule",
+          "evidence_ids": [
+            "785c8a9191d0619deb2a63567bfe729969ced7f522e0c71d0372db6613f8506d"
+          ],
+          "name": "decision.rule",
+          "value": "positive_edge_after_fees_spread_uncertainty_and_guards",
+          "version": "phase6-pilot-v1"
+        },
+        {
+          "category": "metacognitive_policy",
+          "evidence_ids": [
+            "785c8a9191d0619deb2a63567bfe729969ced7f522e0c71d0372db6613f8506d"
+          ],
+          "name": "metacognition.policy",
+          "value": "shadow_only_except_safety_contraction",
+          "version": "phase6-pilot-v1"
+        },
+        {
+          "category": "mutation_policy",
+          "evidence_ids": [
+            "785c8a9191d0619deb2a63567bfe729969ced7f522e0c71d0372db6613f8506d"
+          ],
+          "name": "mutation.policy",
+          "value": "proposal_only_external_evaluator_human_promotion",
+          "version": "phase6-pilot-v1"
+        },
+        {
+          "category": "agent_composition",
+          "evidence_ids": [
+            "785c8a9191d0619deb2a63567bfe729969ced7f522e0c71d0372db6613f8506d"
+          ],
+          "name": "organism.agent_composition",
+          "value": [
+            "btc15m-incumbent-v1",
+            "btc15m-calibrator-v1",
+            "btc15m-market-prior-v1",
+            "btc15m-contrarian-v1",
+            "btc15m-adversary-v1",
+            "btc15m-shadow-controller-v1",
+            "btc15m-synthesizer-v1"
+          ],
+          "version": "phase6-pilot-v1"
+        },
+        {
+          "category": "source_selection",
+          "evidence_ids": [
+            "785c8a9191d0619deb2a63567bfe729969ced7f522e0c71d0372db6613f8506d"
+          ],
+          "name": "organism.source_selection",
+          "value": [
+            "btc15m-adversarial-review",
+            "btc15m-calibration",
+            "btc15m-countercase",
+            "btc15m-family-capped-synthesis",
+            "constitutional-shadow",
+            "crypto-coinbase-distribution",
+            "market-price"
+          ],
+          "version": "phase6-pilot-v1"
+        },
+        {
+          "category": "replay_depth",
+          "evidence_ids": [
+            "785c8a9191d0619deb2a63567bfe729969ced7f522e0c71d0372db6613f8506d"
+          ],
+          "name": "replay.depth",
+          "value": 5,
+          "version": "phase6-pilot-v1"
+        },
+        {
+          "category": "simulation_budget",
+          "evidence_ids": [
+            "785c8a9191d0619deb2a63567bfe729969ced7f522e0c71d0372db6613f8506d"
+          ],
+          "name": "simulation.path_budget",
+          "value": 0,
+          "version": "phase6-pilot-v1"
+        },
+        {
+          "category": "forecast_combination",
+          "evidence_ids": [
+            "785c8a9191d0619deb2a63567bfe729969ced7f522e0c71d0372db6613f8506d"
+          ],
+          "name": "synthesis.family_caps",
+          "value": {
+            "market_prior_floor": 0.5,
+            "non_market_family_cap": 0.35,
+            "uncalibrated_advisory_cap": 0.15
+          },
+          "version": "phase6-pilot-v1"
+        },
+        {
+          "category": "market_prior_weight",
+          "evidence_ids": [
+            "785c8a9191d0619deb2a63567bfe729969ced7f522e0c71d0372db6613f8506d"
+          ],
+          "name": "synthesis.market_prior_weight",
+          "value": 0.5,
+          "version": "phase6-pilot-v1"
+        },
+        {
+          "category": "uncertainty_model",
+          "evidence_ids": [
+            "785c8a9191d0619deb2a63567bfe729969ced7f522e0c71d0372db6613f8506d"
+          ],
+          "name": "uncertainty.disagreement_model",
+          "value": "base_uncertainty_plus_weighted_dispersion",
+          "version": "phase6-pilot-v1"
+        }
+      ],
+      "genome_id": "55a507158fc53fd46cb8a7419e18531795a8263498f1fc8527fba3d10f80e04b",
+      "horizon": "fifteen_minute",
+      "label": "btc-15m-direction-organism-v1 generation zero",
+      "market_type": "15m_direction",
+      "maturity": "EXPERIMENTAL_SOVEREIGN_FORECASTING",
+      "parent_genome_ids": [],
+      "promotion_authority": "HUMAN_ONLY",
+      "schema_version": 1,
+      "status": "EXPERIMENTAL",
+      "vertical": "crypto"
+    }
+  ],
+  "performance_claim_supported": false,
+  "phase": 6,
+  "promotion_authority": "HUMAN_ONLY",
+  "runtime_applied": false,
+  "schema_version": 1,
+  "status": "GENERATION_ZERO_ARCHITECTURES_ONLY"
+}

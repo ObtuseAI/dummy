@@ -32,7 +32,8 @@ demonstrated.
 | Phase 3 — first forecast organism | Complete (2026-07-14) | `dummy/organisms`, `VNEXT_PHASE3_ORGANISM.md`, `VNEXT_PHASE3_TEMPLATE_CATALOG.json`, 5,611-test full-suite gate |
 | Phase 4 — versioned world models | Complete (2026-07-14) | `dummy/world_model`, `VNEXT_PHASE4_WORLD_MODELS.md`, schema/ablation/regime artifacts, 5,626-test full-suite gate |
 | Phase 5 — shadows, synthesis, metacognition | Implemented and validated; empirical gates pending (2026-07-14) | `dummy/shadows`, `dummy/synthesis`, `dummy/metacognition`, `dummy/metabolism`, `VNEXT_PHASE5_METACOGNITION.md`, policy and empty evidence artifacts, 5,650-test full-suite gate |
-| Phases 6–8 | Next | No implementation or performance claim yet |
+| Phase 6 — memory, genomes, recursive evolution | Implemented and validated; empirical gates pending (2026-07-14) | `dummy/memory`, `dummy/genome`, `dummy/truth`, `dummy/evolution`, `VNEXT_PHASE6_MEMORY_EVOLUTION.md`, policy/catalog and empty evidence artifacts |
+| Phases 7–8 | Next | No implementation or performance claim yet |
 
 “Complete” here means the phase contract and its local exit gate are satisfied;
 it does not mean vNext is production-promoted. The frozen baseline remains
@@ -91,12 +92,12 @@ uncertainty, causal parents, missing-data policy, and contradiction metadata.
 Forecasters consume a frozen world-state version rather than mutable shared
 objects.
 
-### Legacy identity coupling
+### Historical repository residue
 
 Dummy is its own entity. The pre-existing `core/inherited_blunder` subtree is
-a hash-pinned legacy dependency, not part of vNext identity or authority.
-Phase 0 determines whether it can be removed; until then it remains isolated,
-immutable, and excluded from vNext contracts.
+a hash-pinned historical snapshot, not a Dummy dependency and not part of
+vNext identity, architecture, or authority. It remains isolated, immutable,
+and excluded from every vNext contract while removal is handled separately.
 
 ## Current-to-vNext mapping
 
@@ -112,7 +113,7 @@ immutable, and excluded from vNext contracts.
 | Promotion | `autonomy/promotion.py` | Preserve human-only promotion and automatic demotion |
 | Execution truth | `live_firewall/`, reconciliation, fill evidence | Seal behind read-only vNext adapters |
 | Observatory | autonomy dashboard and reports | Add read-only organism/world-state panels later |
-| Legacy imported systems | `core/inherited_blunder` | Isolate and remove if dependency audit permits |
+| Historical archived snapshot | `core/inherited_blunder` | Keep outside Dummy identity/runtime; remove as separate legacy cleanup |
 
 ## Delivery sequence
 
@@ -265,6 +266,19 @@ Exit gate:
 - market anchoring cannot fall below its reviewed floor.
 
 ### Phase 6 — Memory, genomes, and recursive evolution
+
+Implementation status: layered content-addressed memory, hash-chained causal
+ledgers, generation-zero organism genomes, lineage, explicit inheritance,
+recursive mutation levels 0–5, protected-surface checks, external causal
+evaluation, deterministic retirement/rollback, and meta-policy challengers are
+implemented. The canonical design and validation record is
+`VNEXT_PHASE6_MEMORY_EVOLUTION.md`.
+
+Evidence status: `VNEXT_PHASE6_EVOLUTION_EVIDENCE.json` contains zero genuine
+settled candidate cases and reports `INSUFFICIENT_SETTLED_EVIDENCE`. Synthetic
+fixtures validate mechanics only. Consequently, the architectural deliverables
+are implemented but the empirical exit gates below remain unmet, and no
+improvement, promotion, or production-readiness claim is made.
 
 Deliverables:
 

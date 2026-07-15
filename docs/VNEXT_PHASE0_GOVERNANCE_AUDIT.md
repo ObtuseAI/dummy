@@ -17,9 +17,14 @@ only reduce authority.
 
 The canonical protected-surface artifact is
 `docs/VNEXT_PROTECTED_SURFACES.json`. Its canonical payload digest is
-`cfead6963451764832577ff8c742f0c19fc7f27585b87db862d197a6fc3a2b1b`.
+`79afd25f6061f69bd4ee043b3c7144a701d8ee80ac659e8cde5b35385bceb797`.
 The fail-closed mutation guard rejects protected paths, traversal, unknown
 roots, and mutation proposers above `RECOMMEND`.
+
+Phase 6 extends this same boundary to vNext causal memory, clustered truth and
+multiple-testing logic, genome identity and lineage, the external evolution
+evaluator and archive, and promotion, retirement, and rollback rules. These
+are evaluator protections, not new evolvable capabilities or authority.
 
 ## Governance contradiction resolved
 

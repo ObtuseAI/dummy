@@ -1,0 +1,14 @@
+{
+  "automatic_promotion": false,
+  "candidate_controls_evaluator": false,
+  "candidate_count": 0,
+  "candidate_reports": [],
+  "evaluator_version": "phase6-causal-evolution-evaluator-v1",
+  "family_report_id": "b52763dd37ef84f5bffe730e68a2eafec2e9eac6750d235b93c589d63ac6bc82",
+  "fitness_records": [],
+  "held_out_only": true,
+  "multiple_testing_method": "HOLM_BONFERRONI",
+  "promotion_authority": "HUMAN_ONLY",
+  "schema_version": 1,
+  "status": "INSUFFICIENT_SETTLED_EVIDENCE"
+}

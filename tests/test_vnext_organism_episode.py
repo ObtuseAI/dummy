@@ -30,6 +30,11 @@ from dummy.organisms import (
     run_complete_episode,
     verify_deterministic_replay,
 )
+from dummy.memory import (
+    InMemoryMemoryLedger,
+    MemoryKind,
+    archive_episode_memories,
+)
 
 
 NOW = datetime(2026, 7, 14, 22, 0, tzinfo=timezone.utc)
@@ -274,6 +279,35 @@ def test_phase5_controls_are_structured_conservative_and_shadow_only() -> None:
     assert marginal["status"] == "UNRESOLVED_UNMEASURED_COST"
     assert marginal["marginal_utility"] is None
     assert marginal["automatic_resource_expansion"] is False
+
+
+def test_phase6_layered_memory_archives_episode_without_rewriting_truth() -> None:
+    request = _request()
+    artifact = run_complete_episode(request, ledger=InMemoryEpisodeLedger())
+    memory = InMemoryMemoryLedger()
+    bundle = archive_episode_memories(
+        artifact,
+        recorded_at=request.settlement.received_at,
+        ledger=memory,
+    )
+    kinds = tuple(record.kind for record in bundle.records)
+    assert kinds == (
+        MemoryKind.OBSERVATION,
+        MemoryKind.OBSERVATION,
+        MemoryKind.OBSERVATION,
+        MemoryKind.SETTLEMENT,
+        MemoryKind.FILL,
+        MemoryKind.EPISODE,
+        MemoryKind.CALIBRATION,
+        MemoryKind.STRATEGY,
+    )
+    fill = memory.records(MemoryKind.FILL)[0]
+    assert fill.payload["simulated"] is True
+    assert fill.payload["witnessed"] is False
+    assert fill.payload["realized_capital_pnl"] is False
+    episode = memory.records(MemoryKind.EPISODE)[0]
+    assert episode.payload == artifact.payload
+    assert len(memory.entries()) == len(bundle.records)
 
 
 def test_episode_replay_is_byte_identical() -> None:

@@ -1,104 +1,5 @@
 {
-  "schema_version": 1,
-  "promotion_authority": "HUMAN_ONLY",
   "automatic_mutation_authority": "RECOMMEND_MAXIMUM",
-  "protected_surfaces": [
-    {
-      "path": "dummy/constitution",
-      "category": "constitution",
-      "reason": "Evolution cannot modify its authority or evaluator protections."
-    },
-    {
-      "path": "autonomy/ledger.py",
-      "category": "settlement_truth",
-      "reason": "Append-only observations, decisions, fills, and outcomes are authoritative."
-    },
-    {
-      "path": "autonomy/reconciler.py",
-      "category": "settlement_truth",
-      "reason": "Settlement reconciliation must remain outside the mutation surface."
-    },
-    {
-      "path": "autonomy/backtest.py",
-      "category": "settlement_truth",
-      "reason": "The primary evidence evaluator cannot be changed by its candidates."
-    },
-    {
-      "path": "autonomy/evolution_lab.py",
-      "category": "settlement_truth",
-      "reason": "Candidate evaluation and held-out fold rules are protected."
-    },
-    {
-      "path": "autonomy/promotion.py",
-      "category": "promotion",
-      "reason": "Promotion is human-only and automatic changes may only demote."
-    },
-    {
-      "path": "autonomy/canary.py",
-      "category": "promotion",
-      "reason": "Canary and scale evidence floors may not be weakened."
-    },
-    {
-      "path": "proof/ledger.py",
-      "category": "fill_truth",
-      "reason": "Execution proof records are authoritative evidence."
-    },
-    {
-      "path": "live_firewall",
-      "category": "execution",
-      "reason": "All live orders must remain behind the hardened firewall."
-    },
-    {
-      "path": "execution",
-      "category": "execution",
-      "reason": "Execution adapters are outside recursive research authority."
-    },
-    {
-      "path": "core/proof_authority.py",
-      "category": "execution",
-      "reason": "Operator authority is explicit, typed, and externally granted."
-    },
-    {
-      "path": "core/proof_lock.py",
-      "category": "execution",
-      "reason": "Proof consumption locks must remain fail closed."
-    },
-    {
-      "path": "core/second_proof_lock.py",
-      "category": "execution",
-      "reason": "One-shot authority locks cannot be mutated by research."
-    },
-    {
-      "path": "core/second_proof_runner.py",
-      "category": "execution",
-      "reason": "The live proof runner is isolated from forecasting evolution."
-    },
-    {
-      "path": "configs/live_submit.json",
-      "category": "execution",
-      "reason": "Live-submit state requires explicit operator action."
-    },
-    {
-      "path": "configs/caps.json",
-      "category": "execution",
-      "reason": "Capital and order caps are operator-controlled."
-    },
-    {
-      "path": "core/secret_guard.py",
-      "category": "credentials",
-      "reason": "Secret registration and redaction are protected."
-    },
-    {
-      "path": "model_router/credential_source.py",
-      "category": "credentials",
-      "reason": "Credential discovery is not available to research agents."
-    },
-    {
-      "path": "kalshi/client.py",
-      "category": "credentials",
-      "reason": "Authenticated broker transport remains outside research authority."
-    }
-  ],
   "evolvable_roots": [
     "dummy/agents",
     "dummy/organisms",
@@ -111,5 +12,169 @@
     "dummy/evolution",
     "autonomy/signals",
     "autonomy/specialists"
-  ]
+  ],
+  "promotion_authority": "HUMAN_ONLY",
+  "protected_surfaces": [
+    {
+      "category": "constitution",
+      "path": "dummy/constitution",
+      "reason": "Evolution cannot modify its authority or evaluator protections."
+    },
+    {
+      "category": "settlement_truth",
+      "path": "autonomy/ledger.py",
+      "reason": "Append-only observations, decisions, fills, and outcomes are authoritative."
+    },
+    {
+      "category": "settlement_truth",
+      "path": "autonomy/reconciler.py",
+      "reason": "Settlement reconciliation must remain outside the mutation surface."
+    },
+    {
+      "category": "settlement_truth",
+      "path": "autonomy/backtest.py",
+      "reason": "The primary evidence evaluator cannot be changed by its candidates."
+    },
+    {
+      "category": "settlement_truth",
+      "path": "autonomy/evolution_lab.py",
+      "reason": "Candidate evaluation and held-out fold rules are protected."
+    },
+    {
+      "category": "causal_replay",
+      "path": "dummy/memory",
+      "reason": "Append-only vNext memory, provenance, and hash-chain rules are authoritative."
+    },
+    {
+      "category": "causal_replay",
+      "path": "dummy/truth",
+      "reason": "Cluster inference and multiple-testing correction cannot be candidate-controlled."
+    },
+    {
+      "category": "causal_replay",
+      "path": "dummy/genome/schema.py",
+      "reason": "Genome identity and authority fields are outside the mutation surface."
+    },
+    {
+      "category": "causal_replay",
+      "path": "dummy/genome/registry.py",
+      "reason": "Genome lineage registration and scope isolation are externally governed."
+    },
+    {
+      "category": "causal_replay",
+      "path": "dummy/genome/lineage.py",
+      "reason": "Candidate lineages cannot rewrite their ancestry."
+    },
+    {
+      "category": "causal_replay",
+      "path": "dummy/genome/fitness.py",
+      "reason": "Candidates cannot alter the contract that records their held-out fitness."
+    },
+    {
+      "category": "constitution",
+      "path": "dummy/genome/mutation.py",
+      "reason": "Mutation levels and constitutional checks cannot be self-modified."
+    },
+    {
+      "category": "promotion",
+      "path": "dummy/genome/retirement.py",
+      "reason": "Retirement evidence and reversibility rules cannot be weakened by candidates."
+    },
+    {
+      "category": "causal_replay",
+      "path": "dummy/evolution/evaluator.py",
+      "reason": "The external vNext evaluator cannot be changed by evaluated candidates."
+    },
+    {
+      "category": "causal_replay",
+      "path": "dummy/evolution/candidate.py",
+      "reason": "Held-out purge and point-in-time input rules cannot be candidate-controlled."
+    },
+    {
+      "category": "causal_replay",
+      "path": "dummy/evolution/archive.py",
+      "reason": "Archived evolutionary evidence is immutable to candidates."
+    },
+    {
+      "category": "promotion",
+      "path": "dummy/evolution/promotion.py",
+      "reason": "Evolution produces human-review proposals and cannot grant promotion."
+    },
+    {
+      "category": "promotion",
+      "path": "dummy/evolution/rollback.py",
+      "reason": "Rollback remains a deterministic contraction-only governance action."
+    },
+    {
+      "category": "promotion",
+      "path": "autonomy/promotion.py",
+      "reason": "Promotion is human-only and automatic changes may only demote."
+    },
+    {
+      "category": "promotion",
+      "path": "autonomy/canary.py",
+      "reason": "Canary and scale evidence floors may not be weakened."
+    },
+    {
+      "category": "fill_truth",
+      "path": "proof/ledger.py",
+      "reason": "Execution proof records are authoritative evidence."
+    },
+    {
+      "category": "execution",
+      "path": "live_firewall",
+      "reason": "All live orders must remain behind the hardened firewall."
+    },
+    {
+      "category": "execution",
+      "path": "execution",
+      "reason": "Execution adapters are outside recursive research authority."
+    },
+    {
+      "category": "execution",
+      "path": "core/proof_authority.py",
+      "reason": "Operator authority is explicit, typed, and externally granted."
+    },
+    {
+      "category": "execution",
+      "path": "core/proof_lock.py",
+      "reason": "Proof consumption locks must remain fail closed."
+    },
+    {
+      "category": "execution",
+      "path": "core/second_proof_lock.py",
+      "reason": "One-shot authority locks cannot be mutated by research."
+    },
+    {
+      "category": "execution",
+      "path": "core/second_proof_runner.py",
+      "reason": "The live proof runner is isolated from forecasting evolution."
+    },
+    {
+      "category": "execution",
+      "path": "configs/live_submit.json",
+      "reason": "Live-submit state requires explicit operator action."
+    },
+    {
+      "category": "execution",
+      "path": "configs/caps.json",
+      "reason": "Capital and order caps are operator-controlled."
+    },
+    {
+      "category": "credentials",
+      "path": "core/secret_guard.py",
+      "reason": "Secret registration and redaction are protected."
+    },
+    {
+      "category": "credentials",
+      "path": "model_router/credential_source.py",
+      "reason": "Credential discovery is not available to research agents."
+    },
+    {
+      "category": "credentials",
+      "path": "kalshi/client.py",
+      "reason": "Authenticated broker transport remains outside research authority."
+    }
+  ],
+  "schema_version": 1
 }
