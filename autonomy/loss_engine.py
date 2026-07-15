@@ -50,11 +50,11 @@ TOP_BUCKETS_PER_SCOPE = 3
 
 
 def _scope_key(row: MinedRow) -> str:
-    """The (specialist, market_type, phase_or_horizon) grouping key.
+    """The (specialist, subject, market_type, phase_or_horizon) key.
 
     ``row.scope`` (set by ``load_settled_rows`` via
     ``autonomy.taxonomy.grading_scope``) is already
-    ``f"{source}|{market_type}|{axis}"``; this swaps the raw emitted-source
+    ``f"{source}|{subject}|{market_type}|{axis}"``; this swaps the raw emitted-source
     segment for its coarser specialist label (``specialist_for``) so e.g.
     ``mlb_win_prob`` and ``mlb_totals`` roll up under one ``mlb`` scope for
     the loss-deconstruction pass, while keeping the exact market_type/axis

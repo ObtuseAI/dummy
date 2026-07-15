@@ -508,12 +508,13 @@ def _load_loss_priority(path: Path | None) -> list[str]:
 
 
 def _tunable_is_bleeding(spec: _TunableSpec, scope: str) -> bool:
-    """Does a WS-B bleeding scope key (``specialist|market_type|axis``)
+    """Does an exact-cohort WS-B bleeding scope key
     describe this tunable? Matching only, never a value change."""
     parts = str(scope or "").split("|")
-    if len(parts) < 2:
+    if len(parts) < 3:
         return False
-    specialist, market_type = parts[0], parts[1]
+    specialist = parts[0]
+    market_type = parts[2] if len(parts) >= 4 else parts[1]
     return specialist == spec.applies_to and market_type in spec.market_types
 
 

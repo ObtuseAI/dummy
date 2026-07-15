@@ -1,0 +1,273 @@
+{
+  "accelerating_improvement_claim_supported": false,
+  "automatic_promotion": false,
+  "campaign": {
+    "best_forward_candidate_id": null,
+    "budget": {
+      "experiments_completed": 5,
+      "maximum_experiments": 5,
+      "per_experiment_compute_units": 500.0,
+      "same_model_access": true,
+      "same_private_evaluator": true,
+      "same_starting_genome": true,
+      "total_compute_units_used": 1480.5
+    },
+    "campaign_id": "89c7c305e612b1fa43115b8410fff87450f3c99014f1f26ec5ba1e1458106f5b",
+    "candidate_summaries": [
+      {
+        "candidate_genome_id": "0fdeb25b51c29c73d45edbdd8bde45874068aa9494205216023313a263f7455a",
+        "complexity_score": 1.6,
+        "compute_units_used": 296.1,
+        "external_passed": false,
+        "forward_paper_eligible": false,
+        "lineage_id": "market-prior-anchored",
+        "private_receipt": {
+          "accepted": false,
+          "candidate_id": "0fdeb25b51c29c73d45edbdd8bde45874068aa9494205216023313a263f7455a",
+          "evaluation_id": "acd54704537965d032b1e7fe3e93a25085ba65f5d0b9f2285dbbc4c694056284",
+          "event_cluster_count_bucket": "50_199",
+          "failed_gate_ids": [
+            "compute_normalized_quality_not_worse",
+            "cluster_interval_positive",
+            "multi_objective_fitness_positive"
+          ],
+          "fitness": -0.069737875981,
+          "item_details": null,
+          "metric_digest": "74c7fd5babfef0c1484d4df0dbe46cac088ce7283d6168348a66a63633781c18",
+          "task_count_bucket": "50_199"
+        },
+        "private_selected": false
+      },
+      {
+        "candidate_genome_id": "b13065e3e4ba00cb08618c00167f4d935eb1a82dd190408e190c125058075137",
+        "complexity_score": 4.7,
+        "compute_units_used": 296.1,
+        "external_passed": false,
+        "forward_paper_eligible": false,
+        "lineage_id": "execution-aware",
+        "private_receipt": {
+          "accepted": false,
+          "candidate_id": "b13065e3e4ba00cb08618c00167f4d935eb1a82dd190408e190c125058075137",
+          "evaluation_id": "efbf9f9ad54ea0d41a1e7cfb9642d6e17b1fdca1d7e6ea999d5339895134cf82",
+          "event_cluster_count_bucket": "50_199",
+          "failed_gate_ids": [
+            "abstention_not_gamed",
+            "abstention_quality_nonnegative",
+            "contested_evidence_present",
+            "cluster_interval_positive",
+            "multi_objective_fitness_positive"
+          ],
+          "fitness": -1.294,
+          "item_details": null,
+          "metric_digest": "5e5ae1f0526bd59c5a7d5359a6368dba2c4d40414976cfe075d30a17feb4f101",
+          "task_count_bucket": "50_199"
+        },
+        "private_selected": false
+      },
+      {
+        "candidate_genome_id": "ee1a46a32c6e1187eb70ec96f3ca23c498385ea74d509776d93ae475712afd03",
+        "complexity_score": 4.7,
+        "compute_units_used": 296.1,
+        "external_passed": false,
+        "forward_paper_eligible": false,
+        "lineage_id": "crypto-liquidity",
+        "private_receipt": {
+          "accepted": false,
+          "candidate_id": "ee1a46a32c6e1187eb70ec96f3ca23c498385ea74d509776d93ae475712afd03",
+          "evaluation_id": "afba686d839c5eab7fa6d629b5fa2a72649fdf52666fccbec1420c62f9b03eec",
+          "event_cluster_count_bucket": "50_199",
+          "failed_gate_ids": [
+            "abstention_not_gamed",
+            "abstention_quality_nonnegative",
+            "cluster_interval_positive",
+            "multi_objective_fitness_positive"
+          ],
+          "fitness": -0.280787974684,
+          "item_details": null,
+          "metric_digest": "cfc842aaec9918d164953b2e4d9eac1d65616ab42fb3a2594c49a7205d0d2478",
+          "task_count_bucket": "50_199"
+        },
+        "private_selected": false
+      },
+      {
+        "candidate_genome_id": "8bdbba599168a836344579d060fbadd0b5aeae4e0b9f28e969b1f7851a4c66bd",
+        "complexity_score": 2.2,
+        "compute_units_used": 296.1,
+        "external_passed": false,
+        "forward_paper_eligible": false,
+        "lineage_id": "calibration-first",
+        "private_receipt": {
+          "accepted": false,
+          "candidate_id": "8bdbba599168a836344579d060fbadd0b5aeae4e0b9f28e969b1f7851a4c66bd",
+          "evaluation_id": "05aa8ebb14c01cf81dd1638efe19fb2dd3ff3da83f61db7422f88c582b49acb2",
+          "event_cluster_count_bucket": "50_199",
+          "failed_gate_ids": [
+            "compute_normalized_quality_not_worse",
+            "cluster_interval_positive",
+            "multi_objective_fitness_positive"
+          ],
+          "fitness": -0.062658756396,
+          "item_details": null,
+          "metric_digest": "cb3c5bdc5a33d31f32bcf7d43909dc7ee88cc583a5bcd3a790485fba975008ed",
+          "task_count_bucket": "50_199"
+        },
+        "private_selected": false
+      },
+      {
+        "candidate_genome_id": "596153573cc2d3d00b876fdc7e158b1080ed90374e0faa0c069eace4b1ce688f",
+        "complexity_score": 1.6,
+        "compute_units_used": 296.1,
+        "external_passed": false,
+        "forward_paper_eligible": false,
+        "lineage_id": "abstention-first",
+        "private_receipt": {
+          "accepted": false,
+          "candidate_id": "596153573cc2d3d00b876fdc7e158b1080ed90374e0faa0c069eace4b1ce688f",
+          "evaluation_id": "c9cad25e8afeea29bea2a063bb975fe5db550b5c9a987aca29423a0e0f9c2bb7",
+          "event_cluster_count_bucket": "50_199",
+          "failed_gate_ids": [
+            "contested_evidence_present",
+            "cluster_interval_positive",
+            "multi_objective_fitness_positive"
+          ],
+          "fitness": -0.032,
+          "item_details": null,
+          "metric_digest": "2ccb48bc8aa19a265cba034359d09bb73f38772e2d2f0652620e7174b5b8e5f0",
+          "task_count_bucket": "50_199"
+        },
+        "private_selected": false
+      }
+    ],
+    "external_survivors": 0,
+    "partition_plan": {
+      "counts": {
+        "EXTERNAL_GENERALIZATION": 23,
+        "PRIVATE_SELECTION": 80,
+        "VISIBLE_DEVELOPMENT": 179
+      },
+      "date_ranges": {
+        "EXTERNAL_GENERALIZATION": {
+          "date_count": 1,
+          "first": "2026-07-15",
+          "last": "2026-07-15"
+        },
+        "PRIVATE_SELECTION": {
+          "date_count": 1,
+          "first": "2026-07-14",
+          "last": "2026-07-14"
+        },
+        "VISIBLE_DEVELOPMENT": {
+          "date_count": 4,
+          "first": "2026-07-10",
+          "last": "2026-07-13"
+        }
+      },
+      "evidence_fingerprint": "351f390ee8f11cc50794ba9940dcad8c265b21ee90e804e9fbb6f6b715304396",
+      "excluded_cross_partition_cluster_count": 0,
+      "item_assignments_exposed": false,
+      "plan_id": "88cae02ba03794ef1d2a0a3aa956bfadfc5e53046619b9701b6c481e8f1ee6ab",
+      "scope": "crypto|btc|15m_direction|15m",
+      "selection_uses_external": false
+    },
+    "private_item_details": null,
+    "private_survivors": 0,
+    "scope": "crypto|btc|15m_direction|15m",
+    "unavailable_lineages": [
+      {
+        "experiment_run": false,
+        "lineage_id": "mlb-simulation",
+        "outcome_rows_used_to_reconstruct_component": false,
+        "reason": "authoritative decision rows do not preserve the MLB PA-simulator component output across three chronological partitions",
+        "status": "UNAVAILABLE_MISSING_POINT_IN_TIME_COMPONENT_OUTPUTS"
+      }
+    ]
+  },
+  "evidence_id": "b8686610239b7a3a8f88a362a553bbae3ab61046b1a26327e4b88e94cc4bc24d",
+  "execution_authority": false,
+  "forward": {
+    "event_clusters": 0,
+    "issued_observations": 0,
+    "ready_for_human_promotion_review": false,
+    "status": "ACCUMULATING_FORWARD_EVIDENCE",
+    "verified_settled_fills": 0
+  },
+  "forward_paper_candidate_settlements": 0,
+  "genuine_external_generalization_trials": 0,
+  "genuine_private_candidate_trials": 5,
+  "highest_supported_recursive_improvement_level": 0,
+  "ignition": {
+    "accelerating_improvement_claim_supported": false,
+    "automatic_promotion": false,
+    "campaign_trial_ids": [
+      "51c23743e6e394e5021c1678d52f5d6a5d9459e67a9e364c0a9f7231c5011821",
+      "6b009e7e024dcc3044ae084b99c67f6f663e385fd7bc6e9321689130fb31b9e4"
+    ],
+    "capital_authority": false,
+    "execution_authority": false,
+    "experimental_ignition": {
+      "claim": "AUTONOMOUS_EXPERIMENTATION",
+      "execution_authority": false,
+      "gates": [
+        [
+          "autonomous_experiment_trials_present",
+          true
+        ],
+        [
+          "net_positive_gain_observed",
+          false
+        ],
+        [
+          "matched_equal_physical_budget",
+          false
+        ],
+        [
+          "evolved_outer_wins_three_matched_trials",
+          false
+        ],
+        [
+          "successive_generation_improvement_accelerates",
+          false
+        ]
+      ],
+      "highest_supported_label": "AUTONOMOUS_EXPERIMENTATION",
+      "highest_supported_level": 0,
+      "matched_pair_count": 0,
+      "report_id": "c1af821fbb26a1c5563f865186b1d0a16a7bb99341527f904fb58e0bd5bfc0d8",
+      "schema_version": 1,
+      "trial_count": 2
+    },
+    "forward_confirmation_passed": false,
+    "highest_supported_label": "AUTONOMOUS_EXPERIMENTATION",
+    "highest_supported_recursive_improvement_level": 0,
+    "improved_improver_claim_supported": false,
+    "level1_net_positive_self_improvement_supported": false,
+    "level2_matched_ab_test": {
+      "eligible": false,
+      "matched_pairs_completed": 0,
+      "required_equalities": [
+        "mutation_budget",
+        "model_access",
+        "private_evaluator",
+        "target_systems",
+        "wall_compute_budget",
+        "starting_genomes",
+        "starting_private_score"
+      ],
+      "status": "BLOCKED_UNTIL_LEVEL1_AND_FORWARD_CONFIRMATION"
+    },
+    "report_id": "c1fa95004685c934f1f570a3d9893af2f46d1c7d88a8a041861e4353b5e7a20a",
+    "schema_version": 1,
+    "self_improvement_claim_supported": false,
+    "trial_count": 2
+  },
+  "improved_improver_claim_supported": false,
+  "live_readiness_changed": false,
+  "maturity": "EXPERIMENTAL_SOVEREIGN_FORECASTING",
+  "mechanics_implemented": true,
+  "performance_claim_supported": false,
+  "runtime_application": false,
+  "schema_version": 1,
+  "self_improvement_claim_supported": false,
+  "source_edits_applied": false,
+  "status": "LEVEL0_AUTONOMOUS_EXPERIMENTATION_LEVEL1_NOT_SUPPORTED"
+}

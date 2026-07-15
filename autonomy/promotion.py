@@ -53,8 +53,13 @@ def _load_json(path: Path) -> dict[str, Any]:
     return raw if isinstance(raw, dict) else {}
 
 
-def _scope_key(source: str, market_type: str, horizon: str) -> str:
-    return f"{source}|{market_type}|{horizon}"
+def _scope_key(
+    source: str,
+    subject: str,
+    market_type: str,
+    horizon: str,
+) -> str:
+    return f"{source}|{subject}|{market_type}|{horizon}"
 
 
 class PromotionRegistry:
@@ -82,10 +87,18 @@ class PromotionRegistry:
             if not isinstance(entry, dict):
                 continue
             source = entry.get("source")
+            subject = entry.get("subject")
             market_type = entry.get("market_type")
             horizon = entry.get("horizon")
-            if source and market_type and horizon:
-                self._promoted.add(_scope_key(str(source), str(market_type), str(horizon)))
+            if source and subject and market_type and horizon:
+                self._promoted.add(
+                    _scope_key(
+                        str(source),
+                        str(subject),
+                        str(market_type),
+                        str(horizon),
+                    )
+                )
         self._demoted = set()
         for entry in _load_json(self.demotions_path).get("demotions", []) or []:
             if isinstance(entry, dict) and entry.get("scope"):
@@ -185,6 +198,12 @@ def scope_readiness(
     challenger_gated: bool = True,
 ) -> ScopeReadiness:
     """Eligibility + demotion + days-to-eligibility for one scope."""
+    parts = scope.split("|")
+    if len(parts) != 4 or any(not part.strip() for part in parts):
+        raise ValueError(
+            "promotion readiness requires "
+            "source|subject|market_type|horizon_or_phase"
+        )
     edges = [edge for _ts, edge in series]
     n = len(edges)
     all_ci = mean_ci95(edges) or {}
@@ -303,9 +322,14 @@ def build_readiness(
                 "demote_trail_clusters": DEMOTE_TRAIL_CLUSTERS,
             },
             "note": (
-                "Promotion is HUMAN-ONLY: edit promotions.json in a reviewed PR "
-                "citing this report. Demotion is automatic (auto_demotions.json)."
+                "Gate evaluation and evidence accrual are autonomous per exact "
+                "source|subject|market_type|horizon_or_phase cohort. Promotion "
+                "activation is HUMAN-ONLY: edit promotions.json in a reviewed "
+                "PR citing this report. Demotion is automatic."
             ),
+            "autonomous_gate_evaluation": True,
+            "promotion_activation": "HUMAN_ONLY",
+            "cross_cohort_evidence_transfer": False,
         },
         "demotions": {"demotions": demotions, "generated_at": now_iso},
     }

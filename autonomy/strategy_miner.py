@@ -84,7 +84,7 @@ class MinedRow:
     market_probability: float
     result_yes: bool
     features: dict[str, Any]
-    # Grading scope (source|market_type|horizon_or_phase) so mined rules can
+    # Grading scope (source|subject|market_type|horizon_or_phase) so mined rules can
     # be read per-scope, consistent with the backtest's per-scope trackers.
     scope: str = ""
 

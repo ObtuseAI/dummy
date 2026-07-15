@@ -1,0 +1,65 @@
+{
+  "accelerating_improvement_claim_supported": false,
+  "automatic_promotion": false,
+  "campaign_trial_ids": [
+    "51c23743e6e394e5021c1678d52f5d6a5d9459e67a9e364c0a9f7231c5011821",
+    "6b009e7e024dcc3044ae084b99c67f6f663e385fd7bc6e9321689130fb31b9e4"
+  ],
+  "capital_authority": false,
+  "execution_authority": false,
+  "experimental_ignition": {
+    "claim": "AUTONOMOUS_EXPERIMENTATION",
+    "execution_authority": false,
+    "gates": [
+      [
+        "autonomous_experiment_trials_present",
+        true
+      ],
+      [
+        "net_positive_gain_observed",
+        false
+      ],
+      [
+        "matched_equal_physical_budget",
+        false
+      ],
+      [
+        "evolved_outer_wins_three_matched_trials",
+        false
+      ],
+      [
+        "successive_generation_improvement_accelerates",
+        false
+      ]
+    ],
+    "highest_supported_label": "AUTONOMOUS_EXPERIMENTATION",
+    "highest_supported_level": 0,
+    "matched_pair_count": 0,
+    "report_id": "c1af821fbb26a1c5563f865186b1d0a16a7bb99341527f904fb58e0bd5bfc0d8",
+    "schema_version": 1,
+    "trial_count": 2
+  },
+  "forward_confirmation_passed": false,
+  "highest_supported_label": "AUTONOMOUS_EXPERIMENTATION",
+  "highest_supported_recursive_improvement_level": 0,
+  "improved_improver_claim_supported": false,
+  "level1_net_positive_self_improvement_supported": false,
+  "level2_matched_ab_test": {
+    "eligible": false,
+    "matched_pairs_completed": 0,
+    "required_equalities": [
+      "mutation_budget",
+      "model_access",
+      "private_evaluator",
+      "target_systems",
+      "wall_compute_budget",
+      "starting_genomes",
+      "starting_private_score"
+    ],
+    "status": "BLOCKED_UNTIL_LEVEL1_AND_FORWARD_CONFIRMATION"
+  },
+  "report_id": "c1fa95004685c934f1f570a3d9893af2f46d1c7d88a8a041861e4353b5e7a20a",
+  "schema_version": 1,
+  "self_improvement_claim_supported": false,
+  "trial_count": 2
+}

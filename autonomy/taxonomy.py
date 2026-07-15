@@ -1,4 +1,4 @@
-"""Source / market-type / horizon taxonomy — one grading-scope vocabulary.
+"""Source / subject / market-type / horizon taxonomy.
 
 Council build-out WS-15. Trust, grading, and promotion must be PER SCOPE,
 not per bare source: `crypto_spot_vol` is a different animal on a 15-minute
@@ -7,12 +7,16 @@ noise live. This module is the single place that maps an emitted signal to
 its grading scope so the backtest's contested-Brier trackers, the strategy
 miner, and (WS-14) the promotion registry all agree.
 
-The grading scope is the triple ``(source, market_type, horizon_or_phase)``:
+The grading scope is the tuple
+``(source, subject, market_type, horizon_or_phase)``:
 
   * source          -- the emitted ``Signal.source`` string (NOT the registry
                        source name: one registered signal emits many source
                        strings, e.g. team_sports_intelligence -> nfl_spread,
                        nba_game_total, ...).
+  * subject         -- crypto asset (BTC/ETH/SOL), sports league, or exact
+                       contract series. Evidence for one subject can never
+                       promote another subject.
   * market_type     -- winner / spread / total / yrfi (sports, already stamped
                        in features) or the crypto contract family.
   * horizon_or_phase-- crypto: 15m / hourly / daily+ ; sports: pre / live.
@@ -101,6 +105,16 @@ _SPECIALIST_PREFIXES: tuple[tuple[str, str], ...] = (
     ("f1_", "retired"),
 )
 
+_SPORTS_SUBJECT_PREFIXES: tuple[tuple[str, str], ...] = (
+    ("KXNCAAMB", "ncaamb"),
+    ("KXNCAAF", "ncaaf"),
+    ("KXWNBA", "wnba"),
+    ("KXNBA", "nba"),
+    ("KXNFL", "nfl"),
+    ("KXNHL", "nhl"),
+    ("KXMLB", "mlb"),
+)
+
 
 def specialist_for(source: str) -> str:
     """Specialist label for an emitted source string; 'other' when unmapped.
@@ -116,6 +130,27 @@ def specialist_for(source: str) -> str:
         if name.startswith(prefix):
             return label
     return "other"
+
+
+def prediction_subject(ticker: str) -> str:
+    """Return the exact asset, league, or contract-series subject.
+
+    Promotion evidence must not pool BTC with ETH, MLB with NFL, or any
+    otherwise unrelated contract series. Unknown series remain isolated under
+    their normalized series token instead of falling into one global bucket.
+    """
+    normalized = str(ticker or "").strip().upper()
+    parsed = parse_crypto_ticker(normalized)
+    if parsed is not None and parsed.get("asset"):
+        return str(parsed["asset"]).lower()
+    for asset in ("BTC", "ETH", "SOL"):
+        if normalized.startswith(f"KX{asset}"):
+            return asset.lower()
+    for prefix, subject in _SPORTS_SUBJECT_PREFIXES:
+        if normalized.startswith(prefix):
+            return subject
+    series = normalized.split("-", 1)[0]
+    return series.lower() if series else "unknown"
 
 
 def horizon_bucket(ticker: str, hours_to_close: float | None) -> str:
@@ -163,7 +198,7 @@ def _phase(source: str, features: dict[str, Any] | None) -> str:
 
 
 def grading_scope(source: str, ticker: str, features: dict[str, Any] | None) -> str:
-    """The full ``source|market_type|horizon_or_phase`` grading key.
+    """The full ``source|subject|market_type|horizon_or_phase`` key.
 
     Crypto scopes on horizon (a source prices every horizon under one name);
     sports and everything else scope on phase (pre/live). Deterministic and
@@ -176,7 +211,7 @@ def grading_scope(source: str, ticker: str, features: dict[str, Any] | None) -> 
         axis = horizon_bucket(ticker, features.get("hours_to_close"))
     else:
         axis = _phase(source, features)
-    return f"{source}|{market_type}|{axis}"
+    return f"{source}|{prediction_subject(ticker)}|{market_type}|{axis}"
 
 
 def scope_weight_key(

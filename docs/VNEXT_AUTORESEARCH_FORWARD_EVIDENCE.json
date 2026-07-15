@@ -1,0 +1,20 @@
+{
+  "event_clusters": 0,
+  "execution_authority": false,
+  "external_evaluation": null,
+  "forward_paper_candidate_settlements": 0,
+  "issued_observations": 0,
+  "latest_issuance": {
+    "execution_authority": false,
+    "new_observations": 0,
+    "orders_placed": false,
+    "registry_id": "3d701a18196e117be51a7eeccdfb91e9ecbbf14eb314cf50afaab4a9d205a51a",
+    "status": "NO_ELIGIBLE_CANDIDATE",
+    "total_observations": 0
+  },
+  "performance_claim_supported": false,
+  "ready_for_human_promotion_review": false,
+  "registry_id": "3d701a18196e117be51a7eeccdfb91e9ecbbf14eb314cf50afaab4a9d205a51a",
+  "status": "ACCUMULATING_FORWARD_EVIDENCE",
+  "verified_settled_fills": 0
+}

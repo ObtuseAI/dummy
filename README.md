@@ -123,6 +123,23 @@ records two governance-only findings, and marks six claims as
 remains `SHADOW_ONLY`, with 12 of 13 promotion evidence gates unsatisfied.
 Promotion is blocked, unrequested, human-only, and unapplied.
 
+The protected [`nested forecast autoresearch loop`](docs/VNEXT_AUTORESEARCH.md)
+extends Phase 6 with a separate outer evolution researcher and inner forecast
+research organism. Sealed visible/private/external task partitions, aggregate-
+only private receipts, lineage-bandit search, stall-triggered champion forks,
+role-specific context compression, eight reward-hacking canaries, complexity
+Pareto pressure, semantic minimization, and a matched-budget ignition harness
+make recursive research executable without giving candidates control of their
+evaluator. The first checked-in [`real-ledger campaign`](docs/VNEXT_AUTORESEARCH_CAMPAIGN.json)
+compiled 282 causally eligible BTC 15-minute settlements into purged
+visible/private/external partitions and ran five equal-budget lineage trials.
+All five failed private gates, so the [`ignition report`](docs/VNEXT_AUTORESEARCH_IGNITION.json)
+supports Level 0 autonomous experimentation only—not net-positive
+self-improvement. No candidate reached external evaluation or
+[`forward-paper evidence`](docs/VNEXT_AUTORESEARCH_FORWARD_EVIDENCE.json), and
+source edits, runtime application, automatic promotion, execution, and capital
+authority remain absent.
+
 The [`final master-plan audit`](docs/VNEXT_MASTER_PLAN_FINAL_AUDIT.md) maps all
 38 design sections to concrete evidence and verifies the complete 20-step
 forecast capability. Its result is `PASS_WITH_EMPIRICAL_GATES_OPEN`: the
@@ -236,8 +253,8 @@ default), reconciles settlements, and grades every source against reality.
 ## Recursive improvement
 
 - **Calibration**: every settlement Brier-scores every source that opined —
-  globally, per-vertical (`source@VERTICAL`), and at the exact
-  source × market-type × phase/horizon scope — and updates trust
+  globally, per-vertical (`source@VERTICAL`), and at the exact source ×
+  asset/league × market-type × phase/horizon scope — and updates trust
   multiplicatively. Influence is earned by beating the market, nothing else.
 - **Autonomous recursive repair**: every metabolic recalibration diagnoses
   fill and sports performance by independent event clusters, relearns exact-
@@ -260,6 +277,20 @@ default), reconciles settlements, and grades every source against reality.
   bootstrap and refits the debias curve. No operator in the loop.
 - **Model evolution**: challengers run beside champions under their own
   source names and earn their way in or starve.
+- **Protected nested autoresearch**: a read-only compiler converts settled
+  ledger evidence into purged visible/private/external tasks, then allocates a
+  fixed experiment budget across independent research lineages. Private gates
+  return only aggregate receipts; survivors must pass external and later
+  forward-paper evaluation before a human may review promotion. The first real
+  campaign supports autonomous experimentation (Level 0) only.
+- **Independent autonomous cohort gates**: evidence accrual, readiness,
+  challenger search, contraction, and demotion run independently for every
+  source × asset/league × prediction type × phase/horizon. A strong BTC-15m
+  head is not blocked by another crypto horizon, and MLB YRFI/NRFI cannot be
+  blocked or promoted by MLB winner evidence. Cross-cohort transfer is
+  forbidden; promotion activation remains human-only. The 2026-07-15 real-ledger
+  readiness pass evaluated 149 well-formed exact cohorts, found zero promotion
+  candidates, and produced zero automatic demotions.
 - **Crypto correlation control**: Coinbase flat-vol, blend-sigma, and empirical
   regime transforms share one distribution family; macro-regime and
   crypto-equity drift share one cross-asset family. Enabling correlated

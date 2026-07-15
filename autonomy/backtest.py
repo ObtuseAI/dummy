@@ -1126,11 +1126,11 @@ def _crypto_challenger_gates(
 
 
 def roll_up_trust_surface(sources_by_scope: dict[str, Any]) -> dict[str, Any]:
-    """Additive (specialist, market_type, phase) roll-up of ``sources_by_scope``.
+    """Additive exact-cohort roll-up of ``sources_by_scope``.
 
     Spec section 3.3 wants contested-Brier viewable as a *surface* keyed on
-    ``(specialist, market_type, phase)``. ``sources_by_scope`` is already
-    keyed ``source|market_type|phase_or_horizon`` (WS-15, via
+    ``(specialist, subject, market_type, phase)``. ``sources_by_scope`` is
+    already keyed ``source|subject|market_type|phase_or_horizon`` (WS-15, via
     ``autonomy.taxonomy.grading_scope``); this is a PURE post-processing
     roll-up of those already-computed per-source summaries -- it never
     re-runs ``grading_scope`` or a second scope tracker, it only groups the
@@ -1159,13 +1159,14 @@ def roll_up_trust_surface(sources_by_scope: dict[str, Any]) -> dict[str, Any]:
     buckets: dict[str, dict[str, Any]] = {}
     for scope_key, summary in sources_by_scope.items():
         parts = str(scope_key).split("|")
-        if len(parts) != 3:
-            continue  # defensive: only well-formed source|market_type|axis keys
-        source, market_type, axis = parts
+        if len(parts) != 4:
+            continue
+        source, subject, market_type, axis = parts
         specialist = specialist_for(source)
-        rolled_key = f"{specialist}|{market_type}|{axis}"
+        rolled_key = f"{specialist}|{subject}|{market_type}|{axis}"
         bucket = buckets.setdefault(rolled_key, {
-            "specialist": specialist, "market_type": market_type, "phase": axis,
+            "specialist": specialist, "subject": subject,
+            "market_type": market_type, "phase": axis,
             "n": 0, "contested_n": 0, "contested_event_clusters_summed": 0,
             "_brier_weighted": 0.0, "_ece_weighted": 0.0, "_beat_weighted": 0.0,
             "sources": set(),
@@ -1189,6 +1190,7 @@ def roll_up_trust_surface(sources_by_scope: dict[str, Any]) -> dict[str, Any]:
         n, contested_n = bucket["n"], bucket["contested_n"]
         surface[rolled_key] = {
             "specialist": bucket["specialist"],
+            "subject": bucket["subject"],
             "market_type": bucket["market_type"],
             "phase": bucket["phase"],
             "n": n,
@@ -1219,9 +1221,9 @@ def run_backtest(ledger: AutonomyLedger, bootstrap_weights: bool = False) -> dic
 
     trackers: dict[str, SourceScoreTracker] = {}
     scoped_trackers: dict[str, SourceScoreTracker] = {}
-    # Per-scope trust: (source, market_type, horizon|phase). A source's good
-    # daily-crypto behaviour no longer averages away its bad 15-minute
-    # behaviour, and pre/live sports records stay separate. Evidence only --
+    # Per-scope trust: (source, subject, market_type, horizon|phase). A source's
+    # BTC record cannot average away ETH weakness, and winner/YRFI or pre/live
+    # sports records stay separate. Evidence only --
     # scope keys are NOT written to the weights table (the live forecaster
     # looks up bare source names); they feed the WS-14 readiness report.
     scope_trackers: dict[str, SourceScoreTracker] = {}

@@ -33,6 +33,11 @@ class ProtectedSurface:
 
 PROTECTED_SURFACES = (
     ProtectedSurface(
+        "dummy/autoresearch",
+        SurfaceCategory.ADVERSARIAL_EVALUATION,
+        "Nested research policy, private partitions, and ignition judges cannot be candidate-controlled.",
+    ),
+    ProtectedSurface(
         "dummy/constitution",
         SurfaceCategory.CONSTITUTION,
         "Evolution cannot modify its authority or evaluator protections.",

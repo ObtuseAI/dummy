@@ -10,6 +10,7 @@ from autonomy.taxonomy import (
     grading_scope,
     horizon_bucket,
     market_type_for,
+    prediction_subject,
     specialist_for,
 )
 
@@ -90,23 +91,31 @@ def test_market_type_prefers_stamped_then_derives_crypto_family():
     assert market_type_for("mystery", "NOTATICKER", {}) == "na"
 
 
+def test_prediction_subject_separates_assets_leagues_and_series():
+    assert prediction_subject("KXBTC15M-26JUL091700-15") == "btc"
+    assert prediction_subject("KXETHD-26JUL0917-T3500") == "eth"
+    assert prediction_subject("KXMLBRFI-26JUL10-HOU") == "mlb"
+    assert prediction_subject("KXNFLGAME-26SEP13KCBUF-KC") == "nfl"
+    assert prediction_subject("KXCUSTOM-26JUL10-X") == "kxcustom"
+
+
 def test_grading_scope_uses_horizon_for_crypto_and_phase_for_sports():
     crypto = grading_scope(
         "crypto_spot_vol", "KXBTCD-26JUL0917-T71000", {"hours_to_close": 2.0})
-    assert crypto == "crypto_spot_vol|ladder|hourly"
+    assert crypto == "crypto_spot_vol|btc|ladder|hourly"
     crypto_daily = grading_scope(
         "crypto_spot_vol", "KXETHD-26JUL0917-T3500", {"hours_to_close": 26.0})
-    assert crypto_daily == "crypto_spot_vol|ladder|daily+"
+    assert crypto_daily == "crypto_spot_vol|eth|ladder|daily+"
     # Sports scope on phase (pre vs live), read from the source name/features.
     pre = grading_scope("mlb_structural_winner", "KXMLBGAME-26JUL10-HOU",
                         {"market_type": "winner"})
-    assert pre == "mlb_structural_winner|winner|pre"
+    assert pre == "mlb_structural_winner|mlb|winner|pre"
     live = grading_scope("mlb_live_winner", "KXMLBGAME-26JUL10-HOU",
                          {"market_type": "winner"})
-    assert live == "mlb_live_winner|winner|live"
+    assert live == "mlb_live_winner|mlb|winner|live"
     pa_live = grading_scope("mlb_pa_live_winner", "KXMLBGAME-26JUL10-HOU",
                             {"market_type": "winner"})
-    assert pa_live == "mlb_pa_live_winner|winner|live"
+    assert pa_live == "mlb_pa_live_winner|mlb|winner|live"
     live_feature = grading_scope("nba_structural_winner", "KXNBAGAME-26OCT20-LAL",
                                  {"market_type": "winner", "live": True})
     assert live_feature.endswith("|live")
@@ -139,15 +148,18 @@ def test_backtest_separates_scopes_and_keeps_bare_source_aggregate(tmp_path):
 
         report = run_backtest(ledger, bootstrap_weights=True)
         scopes = report["sources_by_scope"]
-        assert "crypto_spot_vol|ladder|hourly" in scopes
-        assert "crypto_spot_vol|ladder|daily+" in scopes
-        assert scopes["crypto_spot_vol|ladder|hourly"]["n"] == 2
-        assert scopes["crypto_spot_vol|ladder|daily+"]["n"] == 2
+        assert "crypto_spot_vol|btc|ladder|hourly" in scopes
+        assert "crypto_spot_vol|eth|ladder|daily+" in scopes
+        assert scopes["crypto_spot_vol|btc|ladder|hourly"]["n"] == 2
+        assert scopes["crypto_spot_vol|eth|ladder|daily+"]["n"] == 2
         # The bare-source aggregate is untouched (all four still counted once).
         assert report["sources"]["crypto_spot_vol"]["n"] == 4
         # Scope keys are EVIDENCE ONLY -- never written to the weights table
         # (the live forecaster looks up bare source names).
-        assert ledger.get_weight("crypto_spot_vol|ladder|hourly", default=1.0) == 1.0
+        assert (
+            ledger.get_weight("crypto_spot_vol|btc|ladder|hourly", default=1.0)
+            == 1.0
+        )
         assert ledger.get_weight("crypto_spot_vol") != 1.0  # bare source did persist
     finally:
         ledger.close()
@@ -175,13 +187,14 @@ def test_trust_surface_rolls_sources_up_to_specialist_grain(tmp_path):
         report = run_backtest(ledger, bootstrap_weights=False)
         # Source grain is unchanged (two distinct source scopes still present).
         scopes = report["sources_by_scope"]
-        assert "crypto_spot_vol|ladder|hourly" in scopes
-        assert "crypto_structure_swing|ladder|hourly" in scopes
+        assert "crypto_spot_vol|btc|ladder|hourly" in scopes
+        assert "crypto_structure_swing|btc|ladder|hourly" in scopes
 
         surface = report["trust_surface_by_specialist"]
-        assert "crypto|ladder|hourly" in surface
-        rolled = surface["crypto|ladder|hourly"]
+        assert "crypto|btc|ladder|hourly" in surface
+        rolled = surface["crypto|btc|ladder|hourly"]
         assert rolled["specialist"] == "crypto"
+        assert rolled["subject"] == "btc"
         assert rolled["market_type"] == "ladder"
         assert rolled["phase"] == "hourly"
         # Both crypto sources (2 markets each) rolled up -> n = 4.
@@ -193,7 +206,7 @@ def test_trust_surface_rolls_sources_up_to_specialist_grain(tmp_path):
         # uses horizon buckets for crypto-specialist sources; market_prior is
         # not one. The roll-up faithfully reflects that WS-15 keying.)
         assert any(k.startswith("market|") for k in surface)
-        assert "market|ladder|pre" in surface
+        assert "market|btc|ladder|pre" in surface
         # Honest by construction: NO fabricated CI at this coarser grain --
         # the per-source cluster CIs stay in sources_by_scope (the gate reads
         # those). This view is evidence, not a promotion input.

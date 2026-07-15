@@ -35,6 +35,17 @@
       "claim_count": 3,
       "claims": [
         {
+          "claim_id": "532e969c6405adf2b6dcb78bd13ecc2b11dfd0142e338f641d833dba143bfdea",
+          "evidence_ids": [
+            "1afb2055d8400c513dc5b5c29d4116434279904e8c0dacd91a64d280ce2d45bd"
+          ],
+          "label": "execution_seal",
+          "limitations": [],
+          "schema_version": 1,
+          "status": "VERIFIED",
+          "value": true
+        },
+        {
           "claim_id": "8a95c5f8b91d772e689003c35c1ddb32e8b53347640d08ffac260e3b507a1f08",
           "evidence_ids": [
             "phase7-static-audit"
@@ -44,17 +55,6 @@
           "schema_version": 1,
           "status": "POINT_IN_TIME",
           "value": 0
-        },
-        {
-          "claim_id": "a8c48f05a15cd36a6d0063e77599d2fd4553037a65d3659d0936edb841a60eec",
-          "evidence_ids": [
-            "add94c90e140b05ce4308374f1264ae9ac99dc330f6358ebdbf8a615561a25da"
-          ],
-          "label": "execution_seal",
-          "limitations": [],
-          "schema_version": 1,
-          "status": "VERIFIED",
-          "value": true
         },
         {
           "claim_id": "e9fc24032f4b889f292a565864551166744344bebc0c4517670eea798c258204",
@@ -76,6 +76,17 @@
       "claim_count": 3,
       "claims": [
         {
+          "claim_id": "5974eea83520f0c9360ef88dce27f2d7cd72b2b8dc5735aeb403cdd9ad1c2148",
+          "evidence_ids": [
+            "1afb2055d8400c513dc5b5c29d4116434279904e8c0dacd91a64d280ce2d45bd"
+          ],
+          "label": "protected_manifest_digest",
+          "limitations": [],
+          "schema_version": 1,
+          "status": "VERIFIED",
+          "value": "1afb2055d8400c513dc5b5c29d4116434279904e8c0dacd91a64d280ce2d45bd"
+        },
+        {
           "claim_id": "60e17cb1c4b4579c85fa435cb100c9b29d9bf3afe5d2b9145b2bd7d3aed3a271",
           "evidence_ids": [
             "76f1e7be8e90335665d23c8a52e837d37543768a4d983952052221fbec86fda2"
@@ -87,17 +98,6 @@
           "schema_version": 1,
           "status": "MECHANICS_VALIDATED_NO_EMPIRICAL_CLAIM",
           "value": 40
-        },
-        {
-          "claim_id": "979f53023d3c3e9f614d289458705f1ba9dde8f2863ce46eb6708bc67e1e3e58",
-          "evidence_ids": [
-            "add94c90e140b05ce4308374f1264ae9ac99dc330f6358ebdbf8a615561a25da"
-          ],
-          "label": "protected_manifest_digest",
-          "limitations": [],
-          "schema_version": 1,
-          "status": "VERIFIED",
-          "value": "add94c90e140b05ce4308374f1264ae9ac99dc330f6358ebdbf8a615561a25da"
         },
         {
           "claim_id": "febfeacb96c9944be85aab8014b24f6ac1ca646592d605bf3608ba8281beb247",
@@ -117,9 +117,9 @@
       "claim_count": 3,
       "claims": [
         {
-          "claim_id": "490fbd7b157a2d0d9a64efe10053f634e5ebe1b9a17f4858c1298bee31327544",
+          "claim_id": "2cc42792bf013077754d35f77c0b8bb2bcb900cbb4acbbf6468824c2354fd7d1",
           "evidence_ids": [
-            "add94c90e140b05ce4308374f1264ae9ac99dc330f6358ebdbf8a615561a25da"
+            "1afb2055d8400c513dc5b5c29d4116434279904e8c0dacd91a64d280ce2d45bd"
           ],
           "label": "automatic_promotion",
           "limitations": [],
@@ -156,9 +156,9 @@
       "claim_count": 3,
       "claims": [
         {
-          "claim_id": "574f01ae231796e448d4568fb12ecd59058d2c480770566046fe27ca42b65776",
+          "claim_id": "5ebea9496118615c9dbf75349b82f830564652a93ee0af91b7ad4f1c3f2daff7",
           "evidence_ids": [
-            "add94c90e140b05ce4308374f1264ae9ac99dc330f6358ebdbf8a615561a25da"
+            "1afb2055d8400c513dc5b5c29d4116434279904e8c0dacd91a64d280ce2d45bd"
           ],
           "label": "execution_authority",
           "limitations": [],
@@ -294,7 +294,7 @@
   "phase": 7,
   "read_only": true,
   "schema_version": 1,
-  "snapshot_id": "c11d3aa58012d97ed71f7e3f185c27def44627d49359d4b7d1788613d363e4e2",
+  "snapshot_id": "7547c8fd9cb4f985a3e66f6defb377c062096ce4a439b221db5e7cba37555678",
   "source_artifacts": {
     "arenas": "docs/VNEXT_PHASE7_ARENA_REPRODUCIBILITY.json",
     "baseline": "docs/VNEXT_PHASE0_BASELINE.json",
