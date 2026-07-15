@@ -17,7 +17,7 @@ only reduce authority.
 
 The canonical protected-surface artifact is
 `docs/VNEXT_PROTECTED_SURFACES.json`. Its canonical payload digest is
-`b75897f315bc44731ef72b4e9e39e758f8dfbb6b9e1552df5b0101775786adf9`.
+`add94c90e140b05ce4308374f1264ae9ac99dc330f6358ebdbf8a615561a25da`.
 The fail-closed mutation guard rejects protected paths, traversal, unknown
 roots, and mutation proposers above `RECOMMEND`.
 
@@ -30,6 +30,11 @@ Phase 7 further protects adversarial arena definitions and their judge,
 homeostasis thresholds and intervention authority, and observatory evidence
 projections. Candidates cannot rewrite stress tests, manufacture healthy state,
 or alter what the read-only observatory reports.
+
+Phase 8 protects the benchmark catalog, claim definitions and external
+evaluator, and the promotion lifecycle and review packet. Candidates cannot
+redefine success, manufacture their own supporting evidence, skip lifecycle
+states, or convert an evidence result into automatic promotion.
 
 ## Governance contradiction resolved
 

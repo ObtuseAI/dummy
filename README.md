@@ -114,6 +114,15 @@ contains no live vNext telemetry, and the arena report contains zero runtime
 episodes, so these artifacts prove mechanics and governance—not empirical
 resilience or production readiness.
 
+Phase 8 adds the protected [`benchmark, claim-by-claim evidence, and human-only
+promotion review program`](docs/VNEXT_PHASE8_CLAIMS_PROMOTION.md). Its 32-metric
+catalog covers forecast, multi-agent, metacognitive, execution, evolution, and
+governance quality. The current review supports zero performance claims,
+records two governance-only findings, and marks six claims as
+`INSUFFICIENT_EVIDENCE`; material improvement is not established. The aggregate
+remains `SHADOW_ONLY`, with 12 of 13 promotion evidence gates unsatisfied.
+Promotion is blocked, unrequested, human-only, and unapplied.
+
 ## Current paper operation
 
 The market-horizon paper twin runs every five minutes through the Windows

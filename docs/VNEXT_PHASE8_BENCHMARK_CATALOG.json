@@ -1,0 +1,370 @@
+{
+  "catalog_id": "a06d5a8a359e42592f3f78709bf24d371b66b38ea6bc2e4beca60db4c2fbe9d0",
+  "domains": {
+    "evolution_quality": 5,
+    "execution_realism": 5,
+    "forecast_quality": 5,
+    "governance_quality": 6,
+    "metacognitive_quality": 6,
+    "multi_agent_value": 5
+  },
+  "execution_authority": false,
+  "metric_count": 32,
+  "metrics": [
+    {
+      "domain": "evolution_quality",
+      "empirical": true,
+      "metric_id": "1ed14d98b1617c83fbee0577e4715b6aa91e603e55f08a9ec83afd84453c4e1a",
+      "name": "transfer_across_seasons_and_regimes",
+      "required_evidence": [
+        "event_cluster_statistics",
+        "point_in_time_held_out"
+      ],
+      "schema_version": 1
+    },
+    {
+      "domain": "metacognitive_quality",
+      "empirical": true,
+      "metric_id": "33d70df674a3b46d252ead0a6d784d944c3eeaca9bb330b51bbcb75b16401835",
+      "name": "difficulty_prediction",
+      "required_evidence": [
+        "event_cluster_statistics",
+        "point_in_time_held_out"
+      ],
+      "schema_version": 1
+    },
+    {
+      "domain": "evolution_quality",
+      "empirical": true,
+      "metric_id": "38acfad4d48bf5fef1e90320e4277bb29f413422d4e10b3de2f52e9c55aa65c1",
+      "name": "genome_reproducibility",
+      "required_evidence": [
+        "event_cluster_statistics",
+        "point_in_time_held_out"
+      ],
+      "schema_version": 1
+    },
+    {
+      "domain": "forecast_quality",
+      "empirical": true,
+      "metric_id": "4298a257842381dd0170d71d80232eb5b757d233115901e842fcd7b124e9d4dd",
+      "name": "calibration",
+      "required_evidence": [
+        "event_cluster_statistics",
+        "point_in_time_held_out"
+      ],
+      "schema_version": 1
+    },
+    {
+      "domain": "execution_realism",
+      "empirical": true,
+      "metric_id": "43ceee3201a71c85874dd36ae6068265350daee94a769a2f0ccd7d9dd329c4a7",
+      "name": "fill_prediction",
+      "required_evidence": [
+        "event_cluster_statistics",
+        "point_in_time_held_out"
+      ],
+      "schema_version": 1
+    },
+    {
+      "domain": "forecast_quality",
+      "empirical": true,
+      "metric_id": "485a7bd76a992af95ed2f15cb27eb708755a3b502c0bcee9ac82fd17708eb080",
+      "name": "log_loss_improvement",
+      "required_evidence": [
+        "event_cluster_statistics",
+        "point_in_time_held_out"
+      ],
+      "schema_version": 1
+    },
+    {
+      "domain": "metacognitive_quality",
+      "empirical": true,
+      "metric_id": "50b4b753f2007ee27fc62c78d6367dadee9db7c852316dea60594aa299520e4f",
+      "name": "knowledge_boundary_accuracy",
+      "required_evidence": [
+        "event_cluster_statistics",
+        "point_in_time_held_out"
+      ],
+      "schema_version": 1
+    },
+    {
+      "domain": "metacognitive_quality",
+      "empirical": true,
+      "metric_id": "53b142ce93572113b93db3e64a43da5b0b447a5e2a1c10f07c9328e96fb908c4",
+      "name": "confidence_calibration",
+      "required_evidence": [
+        "event_cluster_statistics",
+        "point_in_time_held_out"
+      ],
+      "schema_version": 1
+    },
+    {
+      "domain": "governance_quality",
+      "empirical": false,
+      "metric_id": "573a8e1694314a8cc74b337f14707d11fbd0d9d62d9aef7a326948f89ddd5db4",
+      "name": "no_authority_expansion",
+      "required_evidence": [
+        "deterministic_governance_audit",
+        "protected_surface_manifest"
+      ],
+      "schema_version": 1
+    },
+    {
+      "domain": "multi_agent_value",
+      "empirical": true,
+      "metric_id": "5966d4b1f0b6b0251a0fe5eb06f8c03d755e9ab455d5255cd5f8756a9bd3d93c",
+      "name": "consensus_correlation",
+      "required_evidence": [
+        "event_cluster_statistics",
+        "point_in_time_held_out"
+      ],
+      "schema_version": 1
+    },
+    {
+      "domain": "evolution_quality",
+      "empirical": true,
+      "metric_id": "5ab673261d758011dfdb4dd415329c10377143dbec062480c50b244adaf34b58",
+      "name": "meta_policy_improvement",
+      "required_evidence": [
+        "event_cluster_statistics",
+        "point_in_time_held_out"
+      ],
+      "schema_version": 1
+    },
+    {
+      "domain": "execution_realism",
+      "empirical": true,
+      "metric_id": "5d3c02d26fd6f3b8f0bf6b8beb4301dd50d3dc5856f6a2a78f15948e746a66da",
+      "name": "partial_fill_handling",
+      "required_evidence": [
+        "event_cluster_statistics",
+        "point_in_time_held_out"
+      ],
+      "schema_version": 1
+    },
+    {
+      "domain": "forecast_quality",
+      "empirical": true,
+      "metric_id": "5ffef4956e8727e27c83983b65793268678b34987af40c599d6edf397ab9c9c9",
+      "name": "contested_market_advantage",
+      "required_evidence": [
+        "event_cluster_statistics",
+        "point_in_time_held_out"
+      ],
+      "schema_version": 1
+    },
+    {
+      "domain": "execution_realism",
+      "empirical": true,
+      "metric_id": "66ae8b0811ff0b3e0004948ffba773e82f92498134225a346f7bc8e97b842565",
+      "name": "fill_conditioned_profitability",
+      "required_evidence": [
+        "event_cluster_statistics",
+        "point_in_time_held_out"
+      ],
+      "schema_version": 1
+    },
+    {
+      "domain": "multi_agent_value",
+      "empirical": true,
+      "metric_id": "75d14c10e130a07db0ae25ed683d175f9a62ce7959bd7f024972f66e531f14bb",
+      "name": "agent_ablation",
+      "required_evidence": [
+        "event_cluster_statistics",
+        "point_in_time_held_out"
+      ],
+      "schema_version": 1
+    },
+    {
+      "domain": "evolution_quality",
+      "empirical": true,
+      "metric_id": "76c460c16678e724f9064cf3aefa94943dd0820205a9c2c1e838ad674d1e9315",
+      "name": "forward_paper_survival",
+      "required_evidence": [
+        "event_cluster_statistics",
+        "point_in_time_held_out"
+      ],
+      "schema_version": 1
+    },
+    {
+      "domain": "governance_quality",
+      "empirical": false,
+      "metric_id": "9c0e31c5b2322c6ef2db81eb6559ab57320ea4aba448d8c30bd102214eae9b09",
+      "name": "full_replay",
+      "required_evidence": [
+        "deterministic_governance_audit",
+        "protected_surface_manifest"
+      ],
+      "schema_version": 1
+    },
+    {
+      "domain": "governance_quality",
+      "empirical": false,
+      "metric_id": "9c287628390373aa514482c0cd3aa5bee03e45f95eb697f61e32754749c8a7e0",
+      "name": "deterministic_kill_behavior",
+      "required_evidence": [
+        "deterministic_governance_audit",
+        "protected_surface_manifest"
+      ],
+      "schema_version": 1
+    },
+    {
+      "domain": "governance_quality",
+      "empirical": false,
+      "metric_id": "a0c13f063e34687eff033c96807e4da7fc7c47d3be9ff7a1ab452e5683975f6f",
+      "name": "no_forced_coverage_contamination",
+      "required_evidence": [
+        "deterministic_governance_audit",
+        "protected_surface_manifest"
+      ],
+      "schema_version": 1
+    },
+    {
+      "domain": "execution_realism",
+      "empirical": true,
+      "metric_id": "ab9efde8e743bbcffab2d6df7c2bce1580aae653a8338965175135f7b5e3e1ba",
+      "name": "queue_model_accuracy",
+      "required_evidence": [
+        "event_cluster_statistics",
+        "point_in_time_held_out"
+      ],
+      "schema_version": 1
+    },
+    {
+      "domain": "multi_agent_value",
+      "empirical": true,
+      "metric_id": "ad78c1ea8a5aee537efe0ad56894ffc1b3c7b7232b762244edea7dd0b5e85da6",
+      "name": "challenger_contribution",
+      "required_evidence": [
+        "event_cluster_statistics",
+        "point_in_time_held_out"
+      ],
+      "schema_version": 1
+    },
+    {
+      "domain": "forecast_quality",
+      "empirical": true,
+      "metric_id": "b0f93cfb182eb8127a01664bdfc98211cdf1a292f5687c7f7faffb79057703eb",
+      "name": "brier_improvement_versus_market",
+      "required_evidence": [
+        "event_cluster_statistics",
+        "point_in_time_held_out"
+      ],
+      "schema_version": 1
+    },
+    {
+      "domain": "metacognitive_quality",
+      "empirical": true,
+      "metric_id": "b41e1f7c40b3ef8647c2993df079b593dd41f0162da47f34c5df384a8ccc12d2",
+      "name": "strategy_selection_value",
+      "required_evidence": [
+        "event_cluster_statistics",
+        "point_in_time_held_out"
+      ],
+      "schema_version": 1
+    },
+    {
+      "domain": "execution_realism",
+      "empirical": true,
+      "metric_id": "bcfe3c55d8181ea316efe79ee97fb29b63fe7976b4e783e806f8c7b9016cef88",
+      "name": "fee_accuracy",
+      "required_evidence": [
+        "event_cluster_statistics",
+        "point_in_time_held_out"
+      ],
+      "schema_version": 1
+    },
+    {
+      "domain": "evolution_quality",
+      "empirical": true,
+      "metric_id": "bfb49bd53a1e41c47b7da9b1be5c4c1a6f8a6325873a27763c373f204e8a56cf",
+      "name": "challenger_improvement",
+      "required_evidence": [
+        "event_cluster_statistics",
+        "point_in_time_held_out"
+      ],
+      "schema_version": 1
+    },
+    {
+      "domain": "metacognitive_quality",
+      "empirical": true,
+      "metric_id": "c4785731c61af917b4dfbd5e285ae48f1a5a529cc5e7df420c743123455f87c4",
+      "name": "abstention_value",
+      "required_evidence": [
+        "event_cluster_statistics",
+        "point_in_time_held_out"
+      ],
+      "schema_version": 1
+    },
+    {
+      "domain": "forecast_quality",
+      "empirical": true,
+      "metric_id": "ce52be4e38ee50c7b7a2569b1a2e4043602f86e55ef0cdff5553c76b2c1d3219",
+      "name": "sharpness_without_overconfidence",
+      "required_evidence": [
+        "event_cluster_statistics",
+        "point_in_time_held_out"
+      ],
+      "schema_version": 1
+    },
+    {
+      "domain": "multi_agent_value",
+      "empirical": true,
+      "metric_id": "dc6c37203ef9d8b710aed30f28e88b8512af1d551cecf1b0e09bf9851d80cf60",
+      "name": "source_family_independence",
+      "required_evidence": [
+        "event_cluster_statistics",
+        "point_in_time_held_out"
+      ],
+      "schema_version": 1
+    },
+    {
+      "domain": "multi_agent_value",
+      "empirical": true,
+      "metric_id": "eec72d5a1ea31c687795ae238ee710f091b6174e3f3991451a8ede67df1be22b",
+      "name": "organism_versus_incumbent_pipeline",
+      "required_evidence": [
+        "event_cluster_statistics",
+        "point_in_time_held_out"
+      ],
+      "schema_version": 1
+    },
+    {
+      "domain": "governance_quality",
+      "empirical": false,
+      "metric_id": "ef001ebca03d9be4ae4df4f498789450f729ab060d5526eb557a025a03b0a631",
+      "name": "credential_isolation",
+      "required_evidence": [
+        "deterministic_governance_audit",
+        "protected_surface_manifest"
+      ],
+      "schema_version": 1
+    },
+    {
+      "domain": "governance_quality",
+      "empirical": false,
+      "metric_id": "f03928414ad3bc7e2b365fd680b8f7d4b8ba16cd41e38e8d0c74c1be7b09a3bd",
+      "name": "no_truth_layer_mutation",
+      "required_evidence": [
+        "deterministic_governance_audit",
+        "protected_surface_manifest"
+      ],
+      "schema_version": 1
+    },
+    {
+      "domain": "metacognitive_quality",
+      "empirical": true,
+      "metric_id": "fe82be63cce38aeef231e6e60a5e13f16620f5c9721bedb303c3c7ed1581ca75",
+      "name": "compute_allocation_efficiency",
+      "required_evidence": [
+        "event_cluster_statistics",
+        "point_in_time_held_out"
+      ],
+      "schema_version": 1
+    }
+  ],
+  "performance_claim_supported": false,
+  "phase": 8,
+  "schema_version": 1
+}

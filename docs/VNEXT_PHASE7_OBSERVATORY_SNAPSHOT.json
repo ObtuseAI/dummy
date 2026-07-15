@@ -46,6 +46,17 @@
           "value": 0
         },
         {
+          "claim_id": "a8c48f05a15cd36a6d0063e77599d2fd4553037a65d3659d0936edb841a60eec",
+          "evidence_ids": [
+            "add94c90e140b05ce4308374f1264ae9ac99dc330f6358ebdbf8a615561a25da"
+          ],
+          "label": "execution_seal",
+          "limitations": [],
+          "schema_version": 1,
+          "status": "VERIFIED",
+          "value": true
+        },
+        {
           "claim_id": "e9fc24032f4b889f292a565864551166744344bebc0c4517670eea798c258204",
           "evidence_ids": [
             "phase7-static-audit"
@@ -57,17 +68,6 @@
           "schema_version": 1,
           "status": "UNKNOWN",
           "value": "NOT_OBSERVED"
-        },
-        {
-          "claim_id": "fad0cd2b33b484d8a1d08998dbf61e908b75b75ec65613b69e45daf0e1aab165",
-          "evidence_ids": [
-            "b75897f315bc44731ef72b4e9e39e758f8dfbb6b9e1552df5b0101775786adf9"
-          ],
-          "label": "execution_seal",
-          "limitations": [],
-          "schema_version": 1,
-          "status": "VERIFIED",
-          "value": true
         }
       ],
       "panel": "command_center"
@@ -89,15 +89,15 @@
           "value": 40
         },
         {
-          "claim_id": "84bb61b58c1a34f93419e5b854acc869aae7d617cb3d644a8260f034c3036407",
+          "claim_id": "979f53023d3c3e9f614d289458705f1ba9dde8f2863ce46eb6708bc67e1e3e58",
           "evidence_ids": [
-            "b75897f315bc44731ef72b4e9e39e758f8dfbb6b9e1552df5b0101775786adf9"
+            "add94c90e140b05ce4308374f1264ae9ac99dc330f6358ebdbf8a615561a25da"
           ],
           "label": "protected_manifest_digest",
           "limitations": [],
           "schema_version": 1,
           "status": "VERIFIED",
-          "value": "b75897f315bc44731ef72b4e9e39e758f8dfbb6b9e1552df5b0101775786adf9"
+          "value": "add94c90e140b05ce4308374f1264ae9ac99dc330f6358ebdbf8a615561a25da"
         },
         {
           "claim_id": "febfeacb96c9944be85aab8014b24f6ac1ca646592d605bf3608ba8281beb247",
@@ -117,6 +117,17 @@
       "claim_count": 3,
       "claims": [
         {
+          "claim_id": "490fbd7b157a2d0d9a64efe10053f634e5ebe1b9a17f4858c1298bee31327544",
+          "evidence_ids": [
+            "add94c90e140b05ce4308374f1264ae9ac99dc330f6358ebdbf8a615561a25da"
+          ],
+          "label": "automatic_promotion",
+          "limitations": [],
+          "schema_version": 1,
+          "status": "PROHIBITED",
+          "value": false
+        },
+        {
           "claim_id": "50cab962106e0dc98648963ce26c031dcab618606378813928cf6b11e6ca9c3a",
           "evidence_ids": [
             "b52763dd37ef84f5bffe730e68a2eafec2e9eac6750d235b93c589d63ac6bc82"
@@ -126,17 +137,6 @@
           "schema_version": 1,
           "status": "INSUFFICIENT_SETTLED_EVIDENCE",
           "value": 0
-        },
-        {
-          "claim_id": "88767de0265b439f40f14a6be3e38a4afb926383567dd598696c18703ac8e774",
-          "evidence_ids": [
-            "b75897f315bc44731ef72b4e9e39e758f8dfbb6b9e1552df5b0101775786adf9"
-          ],
-          "label": "automatic_promotion",
-          "limitations": [],
-          "schema_version": 1,
-          "status": "PROHIBITED",
-          "value": false
         },
         {
           "claim_id": "9e744e7d605fe866264e57c938d6fa45ec2d271b90d1ca245f375ce8553da8fc",
@@ -155,6 +155,17 @@
     {
       "claim_count": 3,
       "claims": [
+        {
+          "claim_id": "574f01ae231796e448d4568fb12ecd59058d2c480770566046fe27ca42b65776",
+          "evidence_ids": [
+            "add94c90e140b05ce4308374f1264ae9ac99dc330f6358ebdbf8a615561a25da"
+          ],
+          "label": "execution_authority",
+          "limitations": [],
+          "schema_version": 1,
+          "status": "SEALED",
+          "value": false
+        },
         {
           "claim_id": "73d66692f2a7be15df8f59a1d35aca4fec388594ec77f8041c5f51bb70780203",
           "evidence_ids": [
@@ -175,17 +186,6 @@
           "limitations": [],
           "schema_version": 1,
           "status": "VERIFIED",
-          "value": false
-        },
-        {
-          "claim_id": "f614f19333b8647f9c60fdd7e732df65d4bd840fa1a7a1fbca9cc73abffc6e37",
-          "evidence_ids": [
-            "b75897f315bc44731ef72b4e9e39e758f8dfbb6b9e1552df5b0101775786adf9"
-          ],
-          "label": "execution_authority",
-          "limitations": [],
-          "schema_version": 1,
-          "status": "SEALED",
           "value": false
         }
       ],
@@ -294,7 +294,7 @@
   "phase": 7,
   "read_only": true,
   "schema_version": 1,
-  "snapshot_id": "c68feca2fdb87520a6dc0d9b55795b2eff1eff16cb171b77a90bcb412dbafa79",
+  "snapshot_id": "c11d3aa58012d97ed71f7e3f185c27def44627d49359d4b7d1788613d363e4e2",
   "source_artifacts": {
     "arenas": "docs/VNEXT_PHASE7_ARENA_REPRODUCIBILITY.json",
     "baseline": "docs/VNEXT_PHASE0_BASELINE.json",

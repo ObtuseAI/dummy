@@ -46,6 +46,9 @@ def test_main_dashboard_mounts_only_get_vnext_routes() -> None:
         "/api/vnext/arenas",
         "/api/vnext/arena-catalog",
         "/api/vnext/homeostasis",
+        "/api/vnext/benchmark-catalog",
+        "/api/vnext/claims",
+        "/api/vnext/promotion-review",
     }
     assert all(route.methods == {"GET"} for route in router.routes)
 
@@ -61,7 +64,9 @@ def test_observatory_frontend_is_first_class_and_read_only() -> None:
     )
     assert "vNext Observatory" in app
     assert 'path="/vnext-observatory"' in app
-    assert "fetch('/api/vnext/observatory')" in page
+    assert "readJson('/api/vnext/observatory')" in page
+    assert "readJson('/api/vnext/claims')" in page
+    assert "readJson('/api/vnext/promotion-review')" in page
     assert "fetch(" in page
     assert not any(method in page for method in ("POST", "PUT", "PATCH", "DELETE"))
 

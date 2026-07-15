@@ -121,6 +121,21 @@
       "reason": "Evidence-linked projections cannot be rewritten by evaluated candidates."
     },
     {
+      "category": "causal_replay",
+      "path": "dummy/benchmarks",
+      "reason": "Candidates cannot redefine the benchmark on which they are judged."
+    },
+    {
+      "category": "causal_replay",
+      "path": "dummy/claims",
+      "reason": "Required internal claims and their evidence floor are externally governed."
+    },
+    {
+      "category": "promotion",
+      "path": "dummy/promotion",
+      "reason": "Lifecycle gates and human-only review packets cannot be candidate-controlled."
+    },
+    {
       "category": "promotion",
       "path": "autonomy/promotion.py",
       "reason": "Promotion is human-only and automatic changes may only demote."

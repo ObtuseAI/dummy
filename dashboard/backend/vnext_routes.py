@@ -57,4 +57,19 @@ def homeostasis() -> dict[str, Any]:
     return _read("VNEXT_PHASE7_HOMEOSTASIS_POLICY.json")
 
 
+@router.get("/benchmark-catalog")
+def benchmark_catalog() -> dict[str, Any]:
+    return _read("VNEXT_PHASE8_BENCHMARK_CATALOG.json")
+
+
+@router.get("/claims")
+def claims() -> dict[str, Any]:
+    return _read("VNEXT_PHASE8_CLAIM_REVIEW.json")
+
+
+@router.get("/promotion-review")
+def promotion_review() -> dict[str, Any]:
+    return _read("VNEXT_PHASE8_PROMOTION_REVIEW.json")
+
+
 __all__ = ["router"]
