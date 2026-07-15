@@ -33,7 +33,8 @@ demonstrated.
 | Phase 4 — versioned world models | Complete (2026-07-14) | `dummy/world_model`, `VNEXT_PHASE4_WORLD_MODELS.md`, schema/ablation/regime artifacts, 5,626-test full-suite gate |
 | Phase 5 — shadows, synthesis, metacognition | Implemented and validated; empirical gates pending (2026-07-14) | `dummy/shadows`, `dummy/synthesis`, `dummy/metacognition`, `dummy/metabolism`, `VNEXT_PHASE5_METACOGNITION.md`, policy and empty evidence artifacts, 5,650-test full-suite gate |
 | Phase 6 — memory, genomes, recursive evolution | Implemented and validated; empirical gates pending (2026-07-14) | `dummy/memory`, `dummy/genome`, `dummy/truth`, `dummy/evolution`, `VNEXT_PHASE6_MEMORY_EVOLUTION.md`, policy/catalog and empty evidence artifacts |
-| Phases 7–8 | Next | No implementation or performance claim yet |
+| Phase 7 — observatory, arenas, homeostasis | Implemented and validated; runtime evidence unavailable (2026-07-14) | `dummy/observatory`, `dummy/arenas`, `dummy/homeostasis`, `VNEXT_PHASE7_OBSERVATORY_ARENAS.md`, GET-only dashboard, deterministic mechanical evidence, 5,685-test full-suite gate |
+| Phase 8 — benchmark claims and promotion review | Next | No claim promoted; all empirical gates remain evidence-bound |
 
 “Complete” here means the phase contract and its local exit gate are satisfied;
 it does not mean vNext is production-promoted. The frozen baseline remains
@@ -298,6 +299,19 @@ Exit gate:
 - promotion output is a proposal artifact only.
 
 ### Phase 7 — Observatory and adversarial arenas
+
+Implementation status: all 19 health variables, the complete 40-scenario arena
+catalog, deterministic arena replay, contraction/proposal-only interventions,
+eight evidence-linked observatory panels, GET-only API routes, and the
+first-class vNext dashboard are implemented. Arena, homeostasis, and
+observability truth are protected from candidate mutation. The canonical design
+and boundary record is `VNEXT_PHASE7_OBSERVATORY_ARENAS.md`.
+
+Evidence status: the observatory explicitly reports
+`POINT_IN_TIME_SNAPSHOT_NO_LIVE_TELEMETRY`; the arena report contains zero
+runtime organism episodes. Forty mechanical scenario replays prove deterministic
+contracts, not empirical resilience. No runtime health, forecasting improvement,
+promotion, or execution claim is made.
 
 Deliverables:
 

@@ -106,6 +106,21 @@
       "reason": "Rollback remains a deterministic contraction-only governance action."
     },
     {
+      "category": "adversarial_evaluation",
+      "path": "dummy/arenas",
+      "reason": "Candidates cannot rewrite their adversarial scenarios or arena judge."
+    },
+    {
+      "category": "constitution",
+      "path": "dummy/homeostasis",
+      "reason": "Candidates cannot weaken health thresholds or expand intervention authority."
+    },
+    {
+      "category": "observability",
+      "path": "dummy/observatory",
+      "reason": "Evidence-linked projections cannot be rewritten by evaluated candidates."
+    },
+    {
       "category": "promotion",
       "path": "autonomy/promotion.py",
       "reason": "Promotion is human-only and automatic changes may only demote."

@@ -13,11 +13,13 @@ from dummy.constitution.authority import Authority
 
 
 class SurfaceCategory(str, Enum):
+    ADVERSARIAL_EVALUATION = "adversarial_evaluation"
     CAUSAL_REPLAY = "causal_replay"
     CONSTITUTION = "constitution"
     CREDENTIALS = "credentials"
     EXECUTION = "execution"
     FILL_TRUTH = "fill_truth"
+    OBSERVABILITY = "observability"
     PROMOTION = "promotion"
     SETTLEMENT_TRUTH = "settlement_truth"
 
@@ -119,6 +121,21 @@ PROTECTED_SURFACES = (
         "dummy/evolution/rollback.py",
         SurfaceCategory.PROMOTION,
         "Rollback remains a deterministic contraction-only governance action.",
+    ),
+    ProtectedSurface(
+        "dummy/arenas",
+        SurfaceCategory.ADVERSARIAL_EVALUATION,
+        "Candidates cannot rewrite their adversarial scenarios or arena judge.",
+    ),
+    ProtectedSurface(
+        "dummy/homeostasis",
+        SurfaceCategory.CONSTITUTION,
+        "Candidates cannot weaken health thresholds or expand intervention authority.",
+    ),
+    ProtectedSurface(
+        "dummy/observatory",
+        SurfaceCategory.OBSERVABILITY,
+        "Evidence-linked projections cannot be rewritten by evaluated candidates.",
     ),
     ProtectedSurface(
         "autonomy/promotion.py",

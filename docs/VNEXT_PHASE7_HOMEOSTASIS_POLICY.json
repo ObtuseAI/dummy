@@ -1,0 +1,261 @@
+{
+  "authority_expansion_allowed": false,
+  "execution_authority": false,
+  "interventions_applied": false,
+  "manifest_id": "a5feb887d475159cf8073f3786c019d3c08b3ebc4116ae8b4d774eaaa832d499",
+  "performance_claim_supported": false,
+  "phase": 7,
+  "policies": [
+    {
+      "critical_boundary": 0.22,
+      "direction": "HIGHER_IS_WORSE",
+      "healthy_boundary": 0.08,
+      "interventions": [
+        "abstain",
+        "request_human_review"
+      ],
+      "target": null,
+      "variable": "calibration_error",
+      "warning_boundary": 0.14
+    },
+    {
+      "critical_boundary": 0.82,
+      "direction": "HIGHER_IS_WORSE",
+      "healthy_boundary": 0.55,
+      "interventions": [
+        "cap_family_weight",
+        "spawn_independent_challenger"
+      ],
+      "target": null,
+      "variable": "source_concentration",
+      "warning_boundary": 0.7
+    },
+    {
+      "critical_boundary": 0.82,
+      "direction": "HIGHER_IS_WORSE",
+      "healthy_boundary": 0.55,
+      "interventions": [
+        "cap_family_weight",
+        "increase_market_anchor",
+        "run_family_ablation"
+      ],
+      "target": null,
+      "variable": "model_family_concentration",
+      "warning_boundary": 0.7
+    },
+    {
+      "critical_boundary": 0.42,
+      "direction": "LOWER_IS_WORSE",
+      "healthy_boundary": 0.52,
+      "interventions": [
+        "abstain",
+        "request_human_review"
+      ],
+      "target": null,
+      "variable": "contested_performance",
+      "warning_boundary": 0.48
+    },
+    {
+      "critical_boundary": 0.15,
+      "direction": "LOWER_IS_WORSE",
+      "healthy_boundary": 0.45,
+      "interventions": [
+        "run_family_ablation",
+        "spawn_independent_challenger"
+      ],
+      "target": null,
+      "variable": "forecast_diversity",
+      "warning_boundary": 0.3
+    },
+    {
+      "critical_boundary": 0.3,
+      "direction": "LOWER_IS_WORSE",
+      "healthy_boundary": 0.7,
+      "interventions": [
+        "request_evidence"
+      ],
+      "target": null,
+      "variable": "market_coverage",
+      "warning_boundary": 0.5
+    },
+    {
+      "critical_boundary": 0.4,
+      "direction": "LOWER_IS_WORSE",
+      "healthy_boundary": 0.85,
+      "interventions": [
+        "abstain",
+        "request_source_refresh"
+      ],
+      "target": null,
+      "variable": "data_freshness",
+      "warning_boundary": 0.65
+    },
+    {
+      "critical_boundary": 0.75,
+      "direction": "LOWER_IS_WORSE",
+      "healthy_boundary": 0.98,
+      "interventions": [
+        "pause_mutation",
+        "quarantine_component"
+      ],
+      "target": null,
+      "variable": "ledger_health",
+      "warning_boundary": 0.9
+    },
+    {
+      "critical_boundary": 0.35,
+      "direction": "LOWER_IS_WORSE",
+      "healthy_boundary": 0.8,
+      "interventions": [
+        "abstain",
+        "request_human_review"
+      ],
+      "target": null,
+      "variable": "fill_realism",
+      "warning_boundary": 0.6
+    },
+    {
+      "critical_boundary": 0.7,
+      "direction": "HIGHER_IS_WORSE",
+      "healthy_boundary": 0.2,
+      "interventions": [
+        "pause_mutation",
+        "request_evidence"
+      ],
+      "target": null,
+      "variable": "settlement_lag",
+      "warning_boundary": 0.45
+    },
+    {
+      "critical_boundary": 0.9,
+      "direction": "LOWER_IS_WORSE",
+      "healthy_boundary": 1.0,
+      "interventions": [
+        "pause_mutation",
+        "quarantine_component"
+      ],
+      "target": null,
+      "variable": "simulation_determinism",
+      "warning_boundary": 0.98
+    },
+    {
+      "critical_boundary": 0.9,
+      "direction": "HIGHER_IS_WORSE",
+      "healthy_boundary": 0.55,
+      "interventions": [
+        "reduce_queue_intake"
+      ],
+      "target": null,
+      "variable": "queue_pressure",
+      "warning_boundary": 0.75
+    },
+    {
+      "critical_boundary": 0.92,
+      "direction": "HIGHER_IS_WORSE",
+      "healthy_boundary": 0.6,
+      "interventions": [
+        "reduce_compute_budget"
+      ],
+      "target": null,
+      "variable": "compute_pressure",
+      "warning_boundary": 0.78
+    },
+    {
+      "critical_boundary": 0.75,
+      "direction": "HIGHER_IS_WORSE",
+      "healthy_boundary": 0.35,
+      "interventions": [
+        "pause_mutation"
+      ],
+      "target": null,
+      "variable": "mutation_pressure",
+      "warning_boundary": 0.55
+    },
+    {
+      "critical_boundary": 0.08,
+      "direction": "LOWER_IS_WORSE",
+      "healthy_boundary": 0.35,
+      "interventions": [
+        "pause_mutation",
+        "run_family_ablation"
+      ],
+      "target": null,
+      "variable": "challenger_survival",
+      "warning_boundary": 0.2
+    },
+    {
+      "critical_boundary": 0.25,
+      "direction": "HIGHER_IS_WORSE",
+      "healthy_boundary": 0.08,
+      "interventions": [
+        "abstain",
+        "increase_market_anchor"
+      ],
+      "target": null,
+      "variable": "overconfidence_rate",
+      "warning_boundary": 0.15
+    },
+    {
+      "critical_boundary": 0.5,
+      "direction": "DISTANCE_FROM_TARGET",
+      "healthy_boundary": 0.18,
+      "interventions": [
+        "request_human_review"
+      ],
+      "target": 0.35,
+      "variable": "abstention_rate",
+      "warning_boundary": 0.32
+    },
+    {
+      "critical_boundary": 0.75,
+      "direction": "HIGHER_IS_WORSE",
+      "healthy_boundary": 0.25,
+      "interventions": [
+        "abstain",
+        "request_human_review"
+      ],
+      "target": null,
+      "variable": "live_gate_distance",
+      "warning_boundary": 0.5
+    },
+    {
+      "critical_boundary": 0.45,
+      "direction": "HIGHER_IS_WORSE",
+      "healthy_boundary": 0.1,
+      "interventions": [
+        "abstain",
+        "quarantine_component",
+        "request_source_refresh"
+      ],
+      "target": null,
+      "variable": "drift_alerts",
+      "warning_boundary": 0.25
+    }
+  ],
+  "runtime_reading_count": 0,
+  "runtime_status": "NO_LIVE_VNEXT_TELEMETRY",
+  "schema_version": 1,
+  "unknown_reading_behavior": "FAIL_CLOSED_REQUEST_EVIDENCE",
+  "variable_count": 19,
+  "variables": [
+    "calibration_error",
+    "source_concentration",
+    "model_family_concentration",
+    "contested_performance",
+    "forecast_diversity",
+    "market_coverage",
+    "data_freshness",
+    "ledger_health",
+    "fill_realism",
+    "settlement_lag",
+    "simulation_determinism",
+    "queue_pressure",
+    "compute_pressure",
+    "mutation_pressure",
+    "challenger_survival",
+    "overconfidence_rate",
+    "abstention_rate",
+    "live_gate_distance",
+    "drift_alerts"
+  ]
+}

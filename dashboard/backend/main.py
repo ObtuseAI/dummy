@@ -43,8 +43,10 @@ for _module_info in sorted(pkgutil.iter_modules(archive.routes.__path__), key=la
 
 from dashboard.backend import operator_routes  # noqa: E402
 from dashboard.backend import operator_control_routes  # noqa: E402
+from dashboard.backend import vnext_routes  # noqa: E402
 app.include_router(operator_routes.router)
 app.include_router(operator_control_routes.router)
+app.include_router(vnext_routes.router)
 
 @app.get("/status")
 async def status():
