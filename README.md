@@ -123,6 +123,18 @@ records two governance-only findings, and marks six claims as
 remains `SHADOW_ONLY`, with 12 of 13 promotion evidence gates unsatisfied.
 Promotion is blocked, unrequested, human-only, and unapplied.
 
+The protected [`nested forecast autoresearch loop`](docs/VNEXT_AUTORESEARCH.md)
+extends Phase 6 with a separate outer evolution researcher and inner forecast
+research organism. Sealed visible/private/external task partitions, aggregate-
+only private receipts, lineage-bandit search, stall-triggered champion forks,
+role-specific context compression, eight reward-hacking canaries, complexity
+Pareto pressure, semantic minimization, and a matched-budget ignition harness
+make recursive research executable without giving candidates control of their
+evaluator. The checked-in [`autoresearch evidence`](docs/VNEXT_AUTORESEARCH_EVIDENCE.json)
+contains zero genuine private trials and supports no self-improvement or
+ignition claim; source edits, runtime application, automatic promotion,
+execution, and capital authority remain absent.
+
 The [`final master-plan audit`](docs/VNEXT_MASTER_PLAN_FINAL_AUDIT.md) maps all
 38 design sections to concrete evidence and verifies the complete 20-step
 forecast capability. Its result is `PASS_WITH_EMPIRICAL_GATES_OPEN`: the

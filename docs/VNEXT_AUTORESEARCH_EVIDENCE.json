@@ -1,0 +1,52 @@
+{
+  "accelerating_improvement_claim_supported": false,
+  "automatic_promotion": false,
+  "evidence_id": "f8fce5df44df29c142df116cb28b6a867398ded6d691caf82dc48d263a65da5e",
+  "execution_authority": false,
+  "forward_paper_candidate_settlements": 0,
+  "genuine_external_generalization_trials": 0,
+  "genuine_private_candidate_trials": 0,
+  "highest_supported_recursive_improvement_level": null,
+  "ignition": {
+    "claim": "NO_EMPIRICAL_IGNITION_CLAIM",
+    "execution_authority": false,
+    "gates": [
+      [
+        "autonomous_experiment_trials_present",
+        false
+      ],
+      [
+        "net_positive_gain_observed",
+        false
+      ],
+      [
+        "matched_equal_physical_budget",
+        false
+      ],
+      [
+        "evolved_outer_wins_three_matched_trials",
+        false
+      ],
+      [
+        "successive_generation_improvement_accelerates",
+        false
+      ]
+    ],
+    "highest_supported_label": "NOT_EVALUATED",
+    "highest_supported_level": null,
+    "matched_pair_count": 0,
+    "report_id": "99fdf053fba98313659a1ccfed0898e75be2bd00b7fffa5ebcb21cbed3053dce",
+    "schema_version": 1,
+    "trial_count": 0
+  },
+  "improved_improver_claim_supported": false,
+  "live_readiness_changed": false,
+  "maturity": "EXPERIMENTAL_SOVEREIGN_FORECASTING",
+  "mechanics_implemented": true,
+  "performance_claim_supported": false,
+  "runtime_application": false,
+  "schema_version": 1,
+  "self_improvement_claim_supported": false,
+  "source_edits_applied": false,
+  "status": "MECHANICS_VALIDATED_EMPIRICAL_GATES_OPEN"
+}

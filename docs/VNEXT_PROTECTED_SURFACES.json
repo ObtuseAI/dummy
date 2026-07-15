@@ -16,6 +16,11 @@
   "promotion_authority": "HUMAN_ONLY",
   "protected_surfaces": [
     {
+      "category": "adversarial_evaluation",
+      "path": "dummy/autoresearch",
+      "reason": "Nested research policy, private partitions, and ignition judges cannot be candidate-controlled."
+    },
+    {
       "category": "constitution",
       "path": "dummy/constitution",
       "reason": "Evolution cannot modify its authority or evaluator protections."

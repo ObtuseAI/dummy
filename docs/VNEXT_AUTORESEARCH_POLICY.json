@@ -1,0 +1,256 @@
+{
+  "automatic_promotion": false,
+  "components": {
+    "candidate_lifecycle": {
+      "execution_authority": false,
+      "external_can_change_selection": false,
+      "forward_paper_required_after_private_survival": true,
+      "human_promotion_required": true,
+      "manifest_id": "96febea52542e53b91894b28d2a0f7eb6aa318bfb5e7077de8b0112b45a8ec01",
+      "schema_version": 1,
+      "stages": [
+        "parent_genome_selection",
+        "outer_mutation_proposal",
+        "static_constitutional_checks",
+        "visible_replay_and_debugging",
+        "private_hidden_evaluation",
+        "cost_normalization",
+        "reward_hacking_audit",
+        "complexity_and_replay_audit",
+        "selection_accept_or_reject",
+        "external_generalization_observation",
+        "forward_paper_shadow_deployment",
+        "human_promotion_review"
+      ]
+    },
+    "complexity": {
+      "budget": {
+        "dead_code_allowed": 0,
+        "max_added_dependencies": 0,
+        "max_changed_modules": 8,
+        "max_cyclomatic_delta": 12,
+        "max_new_artifact_schemas": 1,
+        "max_replay_cost_delta": 0.25,
+        "max_weighted_score": 20.0
+      },
+      "candidate_controls_gate": false,
+      "dead_code_hard_gate": true,
+      "fitness_frontier": [
+        "forecast_fitness",
+        "resource_cost",
+        "complexity"
+      ],
+      "manifest_id": "c410394f9193c4a61f6c20c5afd83e422560302f869e9f85168b7c2d2d93d446",
+      "schema_version": 1,
+      "semantic_distillation_required": true
+    },
+    "context": {
+      "current_champion_full_definition_preserved": true,
+      "history_policy": "hash_and_one_line_outcome_except_relevant_failures",
+      "manifest_id": "c791f892d9182c360fac2175656cf21898ad7c46101d6292419e5a255bf05df0",
+      "private_item_details_forbidden": [
+        "hidden_dates",
+        "hidden_strikes",
+        "hidden_symbols",
+        "hidden_teams",
+        "private_case_ids",
+        "private_cases",
+        "private_outcomes",
+        "private_probabilities",
+        "private_tasks",
+        "trap_identity_by_case"
+      ],
+      "role_allowlists": {
+        "ADVERSARY": [
+          "frozen_forecast",
+          "evidence_and_assumptions",
+          "strongest_counterexamples",
+          "market_prior",
+          "known_failure_modes"
+        ],
+        "CALIBRATOR": [
+          "probability",
+          "calibration_bucket",
+          "regime",
+          "source_family",
+          "sample_size",
+          "historical_reliability"
+        ],
+        "EVOLUTION_DEBUGGER": [
+          "failing_artifact",
+          "relevant_code",
+          "current_champion",
+          "compact_lineage_summary",
+          "newest_decisions",
+          "relevant_failures",
+          "historical_attempts",
+          "private_aggregate_receipt"
+        ],
+        "FORECASTER": [
+          "current_market_state",
+          "world_model",
+          "recent_analogues",
+          "active_features",
+          "prior_forecast",
+          "unresolved_uncertainties"
+        ]
+      },
+      "schema_version": 1,
+      "target_compression_ratio": 16.0,
+      "target_is_measurement_not_claim": true
+    },
+    "outer_researcher": {
+      "execution_authority": false,
+      "improved_object": "INNER_FORECAST_RESEARCH_ORGANISM",
+      "improver": "OUTER_EVOLUTION_RESEARCHER",
+      "manifest_id": "9721f9f1874dd4949dc77b5572c2cbb0ba9be6937d040ecad022cf49637f7c33",
+      "outer_may_improve": [
+        "agent_composition",
+        "feature_selection",
+        "context_construction",
+        "challenger_search",
+        "simulation_allocation",
+        "source_family_weighting",
+        "uncertainty_models",
+        "abstention_logic",
+        "adversarial_sequencing",
+        "mutation_selection_policy"
+      ],
+      "outer_may_never_control": [
+        "execution",
+        "risk_limits",
+        "credentials",
+        "settlement_truth",
+        "fill_truth",
+        "private_evaluator",
+        "external_evaluator",
+        "promotion_law",
+        "quarantine_release",
+        "capital"
+      ],
+      "promotion_authority": "HUMAN_ONLY",
+      "runtime_application": false,
+      "schema_version": 1,
+      "source_edits_applied": false
+    },
+    "private_evaluator": {
+      "automatic_promotion": false,
+      "candidate_controls_evaluator": false,
+      "evaluator_version": "dummy-autoresearch-private-v1",
+      "execution_authority": false,
+      "hard_gates": [
+        "future_leakage",
+        "forced_coverage_contamination",
+        "calibration_regression",
+        "compute_only_gain",
+        "execution_truth",
+        "deterministic_replay",
+        "reward_hacking",
+        "complexity",
+        "abstention_gaming",
+        "cluster_robust_improvement"
+      ],
+      "manifest_id": "4ebb26e7c7385263246a42826bbeff0ee8bd7358b7b6dadd4375dcf0db1f70f5",
+      "outer_loop_never_receives": [
+        "case_ids",
+        "dates",
+        "teams_or_symbols",
+        "strikes",
+        "item_probabilities",
+        "item_outcomes",
+        "item_failures",
+        "trap_identity_by_case"
+      ],
+      "outer_loop_receives": [
+        "aggregate_fitness",
+        "accept_or_reject",
+        "failed_gate_ids",
+        "metric_digest",
+        "coarse_evidence_count_buckets"
+      ],
+      "schema_version": 1
+    },
+    "reward_hacking": {
+      "any_trigger_is_hard_rejection": true,
+      "candidate_controls_detector": false,
+      "case_identity_exposed_to_outer_loop": false,
+      "execution_authority": false,
+      "manifest_id": "e2612110ff9cd83518b49d176d4db63ccf341754def1e7409e8d366b68e9093f",
+      "schema_version": 1,
+      "traps": [
+        "LEAKED_TIMESTAMP",
+        "DUPLICATED_SOURCE_FAMILY",
+        "MISLEADING_MIDPOINT_FILL",
+        "SYNTHETIC_DATA",
+        "MARKET_PRIOR_AGREEMENT",
+        "CLUSTER_INDEPENDENCE",
+        "MALFORMED_BOOK",
+        "FUTURE_LINEUP"
+      ]
+    },
+    "task_suite": {
+      "execution_authority": false,
+      "hidden_selection_dimensions": [
+        "event_cluster",
+        "date",
+        "strike_family",
+        "team_or_symbol"
+      ],
+      "manifest_id": "a0504356a3c57b7b8225d2a7a3f4f891199d3c340ff541f6dc8da55de8ae90ea",
+      "partition_law": {
+        "event_clusters_disjoint": true,
+        "evidence_ids_disjoint": true,
+        "external_used_for_claims_and_transfer_only": true,
+        "external_used_for_selection": false,
+        "private_aggregate_feedback_to_outer_loop": true,
+        "private_item_feedback_to_outer_loop": false,
+        "selection_keys_disjoint": true
+      },
+      "partitions": [
+        "VISIBLE_DEVELOPMENT",
+        "PRIVATE_SELECTION",
+        "EXTERNAL_GENERALIZATION"
+      ],
+      "schema_version": 1
+    }
+  },
+  "evaluation_hierarchy": [
+    "formal_invariants_and_deterministic_checks",
+    "hidden_point_in_time_settlement_evidence",
+    "external_held_out_generalization",
+    "forward_paper_evidence",
+    "independent_adversarial_models",
+    "intrinsic_model_confidence"
+  ],
+  "execution_authority": false,
+  "manifest_id": "2cb67d9ced13ce4923070cc8ed45cf3b594f73b3791e8b8770f172c647adf843",
+  "maturity": "EXPERIMENTAL_SOVEREIGN_FORECASTING",
+  "name": "AIDE2_STYLE_FORECAST_RESEARCH_IMPROVEMENT_LOOP",
+  "nested_loops": [
+    {
+      "authority": "SHADOW_AND_EXISTING_GOVERNED_RUNTIME_ONLY",
+      "level": 0,
+      "purpose": "forecast_and_settle_markets"
+    },
+    {
+      "authority": "PROPOSE_SIMULATE_EVALUATE",
+      "level": 1,
+      "purpose": "improve_forecast_research_organisms"
+    },
+    {
+      "authority": "PROPOSAL_ONLY_POLICY_GENOMES",
+      "level": 2,
+      "purpose": "improve_how_organisms_are_improved"
+    },
+    {
+      "authority": "OBSERVE_AND_REPORT_ONLY",
+      "level": 3,
+      "purpose": "test_whether_improvement_rate_accelerates"
+    }
+  ],
+  "promotion_authority": "HUMAN_ONLY",
+  "protected_manifest_digest": "1afb2055d8400c513dc5b5c29d4116434279904e8c0dacd91a64d280ce2d45bd",
+  "runtime_application": false,
+  "schema_version": 1,
+  "source_edits_applied": false
+}
