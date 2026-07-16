@@ -21,6 +21,7 @@ from autonomy.ontology import SessionMode
 from autonomy.reconciler import Reconciler
 from autonomy.risk_brain import RiskBrain
 from autonomy.scanner import MarketScanner
+from autonomy.staleness import DEFAULT_STALENESS_POLICY
 from autonomy.signals.base import SourceRegistry
 from autonomy.signals.commodities_spot import CommoditiesSpotVolSignal
 from autonomy.signals.cross_venue import CrossVenueSignal
@@ -390,7 +391,16 @@ def build_brain(mode: SessionMode):
         registry=registry,
         scanner=MarketScanner(),
         risk_brain=RiskBrain(state_path=risk_state_path),
-        executor=Executor(mode, quote_fn=quote_fn, shadow_book_fn=shadow_book_fetcher),
+        executor=Executor(
+            mode,
+            quote_fn=quote_fn,
+            shadow_book_fn=shadow_book_fetcher,
+            # Fail-closed stale-data submit gate (defaults documented in
+            # autonomy/staleness.py). A live submit additionally re-checks the
+            # venue halt state at the moment of submit.
+            staleness_policy=DEFAULT_STALENESS_POLICY,
+            exchange_status_fn=fetch_exchange_status if live else None,
+        ),
         reconciler=reconciler,
         learner=Learner(ledger, router=router),
         balance_fn=_live_balance_cents if live else None,

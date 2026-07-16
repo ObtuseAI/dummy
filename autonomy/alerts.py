@@ -25,6 +25,14 @@ SEVERITY = {
     "GATE_REGRESSION": "warning",
     "CYCLE_ERROR_STREAK": "warning",
     "SIGNAL_QUALITY_REJECTION": "warning",
+    # Ops watchdog (autonomy/watchdog.py): a scheduled task went silent, cycles
+    # are erroring in a streak, the ledger crossed its size ceiling, an operator
+    # kill file is present, or free disk fell below the floor.
+    "WATCHDOG_TASK_STALE": "critical",
+    "WATCHDOG_CYCLE_ERROR_STREAK": "warning",
+    "WATCHDOG_LEDGER_SIZE": "warning",
+    "WATCHDOG_KILL_FILE": "critical",
+    "WATCHDOG_DISK_FLOOR": "critical",
 }
 
 

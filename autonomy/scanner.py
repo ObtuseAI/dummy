@@ -143,7 +143,7 @@ def _normalize_binary_quotes(raw: dict[str, Any]) -> tuple[
     return yes_bid, yes_ask, no_bid, no_ask
 
 
-def to_market_view(raw: dict[str, Any]) -> MarketView:
+def to_market_view(raw: dict[str, Any], fetched_at: str | None = None) -> MarketView:
     ticker = str(raw.get("ticker", ""))
     volume = raw.get("volume")
     if volume is None:
@@ -169,6 +169,7 @@ def to_market_view(raw: dict[str, Any]) -> MarketView:
         liquidity=int(liquidity or 0),
         tick_size=int(raw.get("tick_size") or 1),
         raw=raw,
+        fetched_at=fetched_at,
     )
 
 
@@ -188,6 +189,11 @@ class MarketScanner:
         self.verticals = verticals or {Vertical.CRYPTO, Vertical.SPORTS}
 
     def scan(self) -> list[MarketView]:
+        from datetime import datetime, timezone
+
+        # One fetch stamp per sweep: the executor's stale-data gate reads this
+        # to refuse orders driven by a book snapshot that has since gone stale.
+        fetched_at = datetime.now(timezone.utc).isoformat()
         views: list[MarketView] = []
         seen: set[str] = set()
         for series in self.watchlist:
@@ -196,7 +202,7 @@ class MarketScanner:
             except Exception:
                 continue  # one dead series never stalls the hunt
             for raw in page.get("markets", []):
-                view = to_market_view(raw)
+                view = to_market_view(raw, fetched_at=fetched_at)
                 if view.ticker in seen or view.status not in ("active", "open"):
                     continue
                 if view.vertical not in self.verticals:

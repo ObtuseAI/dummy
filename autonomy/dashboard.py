@@ -16,6 +16,9 @@ from urllib.parse import urlparse
 from starlette.requests import Request
 
 RUNTIME_DIR = Path("runtime/autonomy")
+# Indirection so tests can drive the cache clock without patching the global
+# time module (which the test event loop also uses).
+_monotonic = time.monotonic
 SHADOW_TASK_NAME = "DummyShadowPredator"
 TRAINER_TASK_NAME = "DummySimulationTrainer"
 DASHBOARD_TASK_NAME = "DummyDashboard"
@@ -29,6 +32,64 @@ def _load_json(path: Path) -> Any:
         return json.loads(path.read_text(encoding="utf-8"))
     except Exception:
         return None
+
+
+def _to_epoch(value: Any) -> float | None:
+    if value is None:
+        return None
+    if isinstance(value, (int, float)):
+        return float(value)
+    try:
+        text = str(value).strip()
+        if not text:
+            return None
+        parsed = datetime.fromisoformat(text.replace("Z", "+00:00"))
+        if parsed.tzinfo is None:
+            parsed = parsed.replace(tzinfo=timezone.utc)
+        return parsed.timestamp()
+    except (TypeError, ValueError):
+        return None
+
+
+def _age_seconds(value: Any, now_epoch: float) -> float | None:
+    """Age in seconds of an ISO/epoch timestamp, or None if unparseable."""
+    epoch = _to_epoch(value)
+    return None if epoch is None else round(now_epoch - epoch, 1)
+
+
+def _first_timestamp(data: Any, fields: tuple[str, ...]) -> Any:
+    if isinstance(data, dict):
+        for name in fields:
+            if data.get(name) is not None:
+                return data.get(name)
+    return None
+
+
+# Panel artifact -> the timestamp field that stamps its freshness. Used to
+# annotate every data panel with an explicit age so stale data reads as stale.
+_FRESHNESS_FIELDS: dict[str, tuple[str, ...]] = {
+    "heartbeat": ("last_cycle_at",),
+    "mispricing_monitor": ("generated_at",),
+    "crypto_paper_twin": ("completed_at", "started_at"),
+    "sports_simulation": ("completed_at", "started_at"),
+    "simulation_training": ("created_at",),
+    "readiness_report": ("generated_at",),
+    "council_snapshot": ("generated_at",),
+    "clv_report": ("generated_at",),
+}
+
+# Cadence-derived staleness threshold (seconds) per panel, mirroring
+# autonomy/watchdog.py (2x the task cadence). A panel older than this is stale.
+_FRESHNESS_THRESHOLDS: dict[str, float] = {
+    "heartbeat": 1200,
+    "mispricing_monitor": 240,
+    "crypto_paper_twin": 600,
+    "sports_simulation": 1200,
+    "simulation_training": 7200,
+    "readiness_report": 172800,
+    "council_snapshot": 240,
+    "clv_report": 172800,
+}
 
 
 def _tail_jsonl(path: Path, limit: int) -> list[dict[str, Any]]:
@@ -309,7 +370,36 @@ def assemble_dashboard_state(runtime_dir: Path | None = None) -> dict[str, Any]:
     except Exception:
         council = []  # fail-closed: a malformed snapshot must never break the dashboard
 
+    now_epoch = datetime.now(timezone.utc).timestamp()
+    sports_simulation = _load_json(rd / "sports_simulation_latest.json") or {}
+    watchdog_status = _load_json(rd / "watchdog_status.json") or {}
+    panel_sources = {
+        "heartbeat": heartbeat,
+        "mispricing_monitor": mispricing_monitor,
+        "crypto_paper_twin": crypto_paper_twin,
+        "sports_simulation": sports_simulation,
+        "simulation_training": simulation_training,
+        "readiness_report": _load_json(rd / "readiness_report.json") or {},
+        "council_snapshot": council_snapshot,
+        "clv_report": clv_report,
+    }
+    data_ages: dict[str, Any] = {}
+    for name, payload in panel_sources.items():
+        stamp = _first_timestamp(payload, _FRESHNESS_FIELDS.get(name, ()))
+        age = _age_seconds(stamp, now_epoch)
+        threshold = _FRESHNESS_THRESHOLDS.get(name)
+        data_ages[name] = {
+            "at": stamp,
+            "age_seconds": age,
+            "threshold_seconds": threshold,
+            # Fail-closed: no parseable timestamp reads as stale, not fresh.
+            "stale": (age is None) or (threshold is not None and age > threshold),
+        }
+
     return {
+        "generated_at": datetime.fromtimestamp(now_epoch, tz=timezone.utc).isoformat(),
+        "data_ages": data_ages,
+        "watchdog": watchdog_status,
         "heartbeat": heartbeat,
         "session": session,
         "scheduler_fleet": scheduler_fleet,
@@ -349,6 +439,60 @@ def assemble_dashboard_state(runtime_dir: Path | None = None) -> dict[str, Any]:
             for c in cycles if c.get("bankroll_cents") is not None
         ][-30:],
         "alerts": alerts,
+    }
+
+
+def assemble_status_snapshot(runtime_dir: Path | None = None) -> dict[str, Any]:
+    """Fast, precomputed operator snapshot -- reads fresh runtime JSON only.
+
+    This NEVER touches ledger.db (no backtest, no bootstrap, no canary): it is
+    the responsive endpoint the dashboard falls back to while the heavy
+    /api/autonomy report is (re)computing. Every panel carries an explicit age
+    and stale flag so stale data is visibly stale rather than shown as healthy.
+    """
+    rd = runtime_dir or RUNTIME_DIR
+    now_epoch = datetime.now(timezone.utc).timestamp()
+
+    heartbeat = _load_json(rd / "heartbeat.json") or {"alive": False}
+    panels_raw = {
+        "heartbeat": heartbeat,
+        "mispricing_monitor": _load_json(rd / "mispricing_monitor_latest.json") or {},
+        "crypto_paper_twin": _load_json(rd / "crypto_paper_twin_latest.json") or {},
+        "sports_simulation": _load_json(rd / "sports_simulation_latest.json") or {},
+        "simulation_training": _load_json(rd / "simulation_training_latest.json") or {},
+        "readiness_report": _load_json(rd / "readiness_report.json") or {},
+        "council_snapshot": _load_json(rd / "council_snapshot.json") or {},
+        "clv_report": _load_json(rd / "clv_report.json") or {},
+    }
+    data_ages: dict[str, Any] = {}
+    for name, payload in panels_raw.items():
+        stamp = _first_timestamp(payload, _FRESHNESS_FIELDS.get(name, ()))
+        age = _age_seconds(stamp, now_epoch)
+        threshold = _FRESHNESS_THRESHOLDS.get(name)
+        data_ages[name] = {
+            "at": stamp,
+            "age_seconds": age,
+            "threshold_seconds": threshold,
+            "stale": (age is None) or (threshold is not None and age > threshold),
+        }
+
+    watchdog_status = _load_json(rd / "watchdog_status.json") or {}
+    return {
+        "generated_at": datetime.fromtimestamp(now_epoch, tz=timezone.utc).isoformat(),
+        "source": "status_snapshot",
+        "ledger_touched": False,
+        "heartbeat": heartbeat,
+        "session": session_authorization_state(rd),
+        "risk_state": _load_json(rd / "risk_state.json"),
+        "watchdog": watchdog_status,
+        "data_ages": data_ages,
+        "mispricing_monitor": panels_raw["mispricing_monitor"],
+        "crypto_paper_twin": panels_raw["crypto_paper_twin"],
+        "sports_simulation": panels_raw["sports_simulation"],
+        "simulation_training": panels_raw["simulation_training"],
+        "readiness_report": panels_raw["readiness_report"],
+        "alerts": _tail_jsonl(rd / "alerts.jsonl", 20),
+        "recent_cycles": _tail_jsonl(rd / "cycles.jsonl", 10),
     }
 
 
@@ -603,11 +747,30 @@ function renderMispricing(m,clv){
  const clvTable=clvRows.length?'<h3>CLV per specialist (evidence only, not a promotion gate)</h3><table><tr><th>specialist</th><th>market type</th><th>entries</th><th>clusters</th><th>mean bps</th><th>ci95</th></tr>'+clvRows.map(x=>`<tr><td>${esc(x.specialist)}</td><td>${esc(x.market_type)}</td><td>${x.n_entries??'—'}</td><td>${x.n_event_clusters??'—'}</td><td>${x.clv_bps_mean==null?'—':x.clv_bps_mean.toFixed(1)}</td><td>${x.clv_bps_ci95_lower==null?'—':x.clv_bps_ci95_lower.toFixed(1)+' / '+x.clv_bps_ci95_upper.toFixed(1)}</td></tr>`).join('')+'</table>':'';
  document.getElementById('mispricing').innerHTML=meta+shortTable+oppTable+clvTable+'<div class="truth">Paper/challenger evidence only — the monitor surfaces mispricing (our model vs the de-vigged sharp book vs the price) and opportunist strikes for review; it never places an order. CLV is graded against the de-vigged closing line as corroborating evidence — settlement-backed contested Brier remains the sole promotion gate.</div>';
 }
+function staleNote(ages){
+ ages=ages||{};
+ const stale=Object.entries(ages).filter(([k,v])=>v&&v.stale).map(([k,v])=>`${k} (${v.age_seconds==null?'no timestamp':Math.round(v.age_seconds)+'s'})`);
+ return stale.length?` · STALE DATA: ${stale.join(', ')}`:'';
+}
 async function tick(){
  const generation=++tickGeneration;
- let d; try{ d=await (await fetch('/api/autonomy')).json(); }catch(e){ document.getElementById('ts').textContent='backend unreachable'; return; }
+ let r; try{ r=await fetch('/api/autonomy'); }catch(e){ document.getElementById('ts').textContent='backend unreachable'; return; }
  if(generation!==tickGeneration)return;
- document.getElementById('ts').textContent='updated '+new Date().toLocaleTimeString();
+ if(r.status===503){
+  // Full evidence report still assembling — show the fast /api/status snapshot.
+  try{ const s=await (await fetch('/api/status')).json();
+   if(generation!==tickGeneration)return;
+   renderSession(s.session||{},s.heartbeat||{});
+   const hb=s.heartbeat||{};
+   document.getElementById('live').innerHTML=kv('status',`<span class="pill ${hb.alive?'live':'dead'}">${hb.alive?'ALIVE':'STALE'}</span>`)+kv('last cycle',hb.last_cycle_at||'—')+kv('last status',hb.last_status||'—')+kv('mode',hb.mode||'—');
+   document.getElementById('alerts').innerHTML=(s.alerts||[]).slice().reverse().map(a=>`<div class="kv"><span class="${a.severity=='critical'?'bad':a.severity=='warning'?'warn':'ok'}">${a.kind}</span><span>${a.message}</span><b>${(a.at||'').slice(11,19)}</b></div>`).join('')||'<div class="sub">no alerts</div>';
+   document.getElementById('ts').textContent='full report computing · showing fast snapshot '+new Date().toLocaleTimeString()+staleNote(s.data_ages);
+  }catch(e){document.getElementById('ts').textContent='full report computing…';}
+  return;
+ }
+ let d; try{ d=await r.json(); }catch(e){ document.getElementById('ts').textContent='backend unreachable'; return; }
+ if(generation!==tickGeneration)return;
+ document.getElementById('ts').textContent='updated '+new Date().toLocaleTimeString()+(d.stale_cache?' · stale cache':'')+staleNote(d.data_ages);
  try{renderPaper(d);renderSports(d);}catch(e){document.getElementById('ts').textContent+=' · paper render error: '+e.message;console.error('paper render',e);}
  renderSession(d.session||{},d.heartbeat||{});
  renderFleet(d.scheduler_fleet||[]);
@@ -756,26 +919,82 @@ def build_app():
     )
     from autonomy.sports.dashboard import SPORTS_TASK_NAME
 
+    import os
+    import threading
+    from concurrent.futures import Future, ThreadPoolExecutor, TimeoutError as FutureTimeout
+
     app = FastAPI(title="Dummy Autonomy Dashboard")
-    # The report includes a 1,000-resample cluster bootstrap over a large
-    # ledger. A 30-second cache keeps 15-second browser polling read-only and
-    # responsive without repeatedly burning CPU between ten-minute cycles.
+    # The /api/autonomy report includes a 1,000-resample cluster bootstrap over
+    # a multi-gigabyte ledger and can exceed a browser/proxy timeout on a cold
+    # cache. Guard it: a 30-second cache serves warm polls; a cold poll kicks
+    # the heavy assembly onto a background worker and waits only up to a bounded
+    # deadline. If the deadline passes it returns 503 pointing at /api/status
+    # (which never touches ledger.db) instead of blocking the event loop, while
+    # the background job keeps running to populate the cache for the next poll.
     state_cache: dict[str, Any] = {"at": 0.0, "value": None, "epoch": 0}
+    compute_lock = threading.Lock()
+    pending: dict[str, Future | None] = {"future": None}
+    worker = ThreadPoolExecutor(max_workers=1, thread_name_prefix="dashboard-state")
+    deadline_seconds = float(os.environ.get("DUMMY_DASHBOARD_STATE_DEADLINE_SECONDS", "20"))
+
+    def _store(epoch_at_submit: int, assembled: dict[str, Any]) -> None:
+        # A control action can invalidate the cache while this expensive report
+        # assembles. Never let that stale request overwrite post-control state.
+        with compute_lock:
+            if epoch_at_submit == int(state_cache["epoch"]):
+                state_cache["value"] = assembled
+                state_cache["at"] = _monotonic()
+
+    def _ensure_compute() -> tuple[Future, int]:
+        with compute_lock:
+            fut = pending["future"]
+            epoch_at_submit = int(state_cache["epoch"])
+            if fut is not None and not fut.done():
+                return fut, epoch_at_submit
+            new_fut = worker.submit(assemble_dashboard_state)
+            pending["future"] = new_fut
+        # Populate the cache even when the requester times out below. Attached
+        # OUTSIDE compute_lock: a future that finished already runs its callback
+        # synchronously here, and _store re-acquires the (non-reentrant) lock.
+        new_fut.add_done_callback(
+            lambda f: _store(epoch_at_submit, f.result()) if not f.cancelled() and f.exception() is None else None
+        )
+        return new_fut, epoch_at_submit
 
     @app.get("/api/autonomy")
     def api_state() -> JSONResponse:
-        now = time.monotonic()
-        if state_cache["value"] is None or now - float(state_cache["at"]) >= 30.0:
-            epoch = int(state_cache["epoch"])
-            assembled = assemble_dashboard_state()
-            # A control action can invalidate the cache while this expensive
-            # report is assembling. Never let that stale request overwrite
-            # the post-control scheduler state.
-            if epoch == int(state_cache["epoch"]):
-                state_cache["value"] = assembled
-                state_cache["at"] = now
+        now = _monotonic()
+        if state_cache["value"] is not None and now - float(state_cache["at"]) < 30.0:
+            return JSONResponse(state_cache["value"])
+        fut, epoch_at_submit = _ensure_compute()
+        try:
+            assembled = fut.result(timeout=deadline_seconds)
+            _store(epoch_at_submit, assembled)  # inline: no callback-ordering race
             return JSONResponse(assembled)
-        return JSONResponse(state_cache["value"])
+        except FutureTimeout:
+            # Serve a stale cached value rather than nothing, if we have one.
+            if state_cache["value"] is not None:
+                payload = dict(state_cache["value"])
+                payload["stale_cache"] = True
+                return JSONResponse(payload)
+            return JSONResponse(
+                {
+                    "status": "COMPUTING",
+                    "detail": (
+                        "The full evidence report is still assembling "
+                        "(cluster bootstrap over the ledger). Poll /api/status "
+                        "for the fast precomputed snapshot in the meantime."
+                    ),
+                    "hint": "/api/status",
+                },
+                status_code=503,
+            )
+
+    @app.get("/api/status")
+    def api_status() -> JSONResponse:
+        # Fast, precomputed snapshot: fresh runtime JSON + watchdog only, never
+        # ledger.db. Always responsive, even while /api/autonomy recomputes.
+        return JSONResponse(assemble_status_snapshot())
 
     def _scheduler_control(
         action: str, request: Request, task_name: str | None = None
