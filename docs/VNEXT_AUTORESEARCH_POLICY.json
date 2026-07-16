@@ -127,6 +127,14 @@
       "same_starting_genome": true,
       "semantic_minimization_after_private_survival": true
     },
+    "multi_cohort_scheduler": {
+      "autonomous": true,
+      "exact_scope": "vertical|subject|market_type|horizon_or_phase",
+      "hourly_daily_crypto_strike_gates_separate": true,
+      "listed_strikes_only": true,
+      "separate_fixed_budget_per_scope": true,
+      "settlement_informed_strike_selection": false
+    },
     "outer_researcher": {
       "execution_authority": false,
       "improved_object": "INNER_FORECAST_RESEARCH_ORGANISM",
@@ -202,11 +210,13 @@
       "candidate_controls_partition": false,
       "cross_cohort_evidence_transfer": false,
       "decision_selection": "EARLIEST_PRE_SETTLEMENT_DECISION_PER_MARKET",
+      "decision_time_signal_feature_recovery": true,
       "event_cluster_cross_partition_purge": true,
       "exact_cohort_schema": "vertical|subject|market_type|horizon_or_phase",
       "forced_coverage_private_selection_eligible": false,
-      "partitioning": "CHRONOLOGICAL_WHOLE_DATE",
+      "partitioning": "CHRONOLOGICAL_EARLIEST_WHOLE_DATE_PER_EVENT_CLUSTER",
       "settlement_receipt_as_conservative_close_upper_bound": true,
+      "simulation_component_requires_three_partitions": true,
       "sqlite_mode": "READ_ONLY_QUERY_ONLY"
     },
     "reward_hacking": {
@@ -262,7 +272,7 @@
     "intrinsic_model_confidence"
   ],
   "execution_authority": false,
-  "manifest_id": "f07993f558e7b21e9af0d3fb9014209b9ded09f170d87c4eafda88fa4b2edc99",
+  "manifest_id": "62b8e821c30c8664d636361efb894126a522855a375084487a6b207df5551147",
   "maturity": "EXPERIMENTAL_SOVEREIGN_FORECASTING",
   "name": "AIDE2_STYLE_FORECAST_RESEARCH_IMPROVEMENT_LOOP",
   "nested_loops": [
@@ -288,7 +298,7 @@
     }
   ],
   "promotion_authority": "HUMAN_ONLY",
-  "protected_manifest_digest": "1afb2055d8400c513dc5b5c29d4116434279904e8c0dacd91a64d280ce2d45bd",
+  "protected_manifest_digest": "e166bbe084965908e523f05adac0e4bec0fe14724bc7c062fb5b988b6d1c5a8b",
   "runtime_application": false,
   "schema_version": 1,
   "source_edits_applied": false

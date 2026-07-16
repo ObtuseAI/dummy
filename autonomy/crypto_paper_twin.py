@@ -725,6 +725,7 @@ def select_price_target(
             "liquidity": market.liquidity if isinstance(market, MarketView) else None,
         })
     selected_market = selected.get("market")
+    selected_timeframe = str(selected.get("timeframe") or "")
     summary = {
         "selection_version": "nearest-expiry-target-ladder-v1",
         "selection_objective": (
@@ -748,6 +749,10 @@ def select_price_target(
         "ranked_candidates_truncated": max(0, len(ranked) - len(compact)),
         "one_position_per_asset_expiry": True,
         "optimizes_raw_win_rate": False,
+        "strike_adjustment_enabled": selected_timeframe in {"1h", "1d"},
+        "strike_adjustment_authority": "choose_among_contemporaneously_listed_targets_only",
+        "counterfactual_replay_requires_frozen_ladder": True,
+        "settlement_informed_selection": False,
     }
     selected["target_ladder"] = summary
     return selected, summary
@@ -2105,6 +2110,14 @@ def _candidate(
             "max_entry_price_cents": max_price,
             "edge_threshold_cents": edge_threshold,
             "technical_blend": blend,
+            "strike_selection": {
+                "hourly_and_daily_adjustment_enabled": timeframe in {"1h", "1d"},
+                "mode": "rank_all_contemporaneously_listed_nearest_expiry_targets",
+                "objective": "fee_uncertainty_adjusted_conservative_ev",
+                "listed_targets_only": True,
+                "counterfactual_replay_requires_frozen_ladder": True,
+                "settlement_informed_selection": False,
+            },
             "genome": asdict(genome) if strategy == "recursive" else None,
             "exploratory_paper_only": strategy == "exploratory",
             "hourly_calibrated_paper_only": strategy == HOURLY_CALIBRATED_STRATEGY,
@@ -2875,6 +2888,12 @@ class CryptoPaperTwin:
                                 "ranked_candidates_truncated": 0,
                                 "one_position_per_asset_expiry": True,
                                 "optimizes_raw_win_rate": False,
+                                "strike_adjustment_enabled": timeframe in {"1h", "1d"},
+                                "strike_adjustment_authority": (
+                                    "choose_among_contemporaneously_listed_targets_only"
+                                ),
+                                "counterfactual_replay_requires_frozen_ladder": True,
+                                "settlement_informed_selection": False,
                             }
                         target_ladder.update(target_inventory)
                         target_ladder["listed_targets_excluded_from_scoring"] = max(
@@ -3065,6 +3084,10 @@ class CryptoPaperTwin:
                                     "selected_ticker", "selected_target",
                                     "one_position_per_asset_expiry",
                                     "optimizes_raw_win_rate",
+                                    "strike_adjustment_enabled",
+                                    "strike_adjustment_authority",
+                                    "counterfactual_replay_requires_frozen_ladder",
+                                    "settlement_informed_selection",
                                 )
                             },
                             "queue_snapshot_error": queue_error,

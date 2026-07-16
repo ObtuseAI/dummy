@@ -33,6 +33,7 @@ from dummy.autoresearch.task_suite import (  # noqa: E402
     task_suite_policy_manifest,
 )
 from dummy.constitution import protected_manifest_digest  # noqa: E402
+from dummy.intelligence_lab import intelligence_lab_manifest  # noqa: E402
 from dummy.world_model.models import digest_json  # noqa: E402
 
 
@@ -82,7 +83,7 @@ def autoresearch_policy_manifest() -> dict[str, object]:
             "real_ledger_pipeline": {
                 "sqlite_mode": "READ_ONLY_QUERY_ONLY",
                 "decision_selection": "EARLIEST_PRE_SETTLEMENT_DECISION_PER_MARKET",
-                "partitioning": "CHRONOLOGICAL_WHOLE_DATE",
+                "partitioning": "CHRONOLOGICAL_EARLIEST_WHOLE_DATE_PER_EVENT_CLUSTER",
                 "event_cluster_cross_partition_purge": True,
                 "settlement_receipt_as_conservative_close_upper_bound": True,
                 "candidate_controls_partition": False,
@@ -91,6 +92,16 @@ def autoresearch_policy_manifest() -> dict[str, object]:
                     "vertical|subject|market_type|horizon_or_phase"
                 ),
                 "cross_cohort_evidence_transfer": False,
+                "decision_time_signal_feature_recovery": True,
+                "simulation_component_requires_three_partitions": True,
+            },
+            "multi_cohort_scheduler": {
+                "autonomous": True,
+                "exact_scope": "vertical|subject|market_type|horizon_or_phase",
+                "separate_fixed_budget_per_scope": True,
+                "hourly_daily_crypto_strike_gates_separate": True,
+                "listed_strikes_only": True,
+                "settlement_informed_strike_selection": False,
             },
             "loop1_campaign": {
                 "lineages": list(LOOP1_LINEAGES),
@@ -135,12 +146,8 @@ def autoresearch_evidence_manifest(
     forward = forward or {}
     ignition = ignition or evaluate_ignition(()).to_dict()
     private_trials = int(campaign.get("genuine_private_candidate_trials") or 0)
-    external_trials = int(
-        campaign.get("genuine_external_generalization_trials") or 0
-    )
-    forward_settlements = int(
-        forward.get("forward_paper_candidate_settlements") or 0
-    )
+    external_trials = int(campaign.get("genuine_external_generalization_trials") or 0)
+    forward_settlements = int(forward.get("forward_paper_candidate_settlements") or 0)
     highest = ignition.get("highest_supported_recursive_improvement_level")
     if highest is None:
         highest = ignition.get("highest_supported_level")
@@ -214,10 +221,60 @@ def autoresearch_evidence_manifest(
     return body
 
 
+def multi_cohort_evidence_manifest(
+    multi_cohort: dict[str, object],
+) -> dict[str, object]:
+    """Distill the runtime campaigns without copying private-heavy genomes."""
+    campaigns = []
+    for entry in multi_cohort.get("campaigns", []):
+        if not isinstance(entry, dict):
+            continue
+        campaign = entry.get("campaign") or {}
+        if not isinstance(campaign, dict):
+            continue
+        campaigns.append(
+            {
+                "scope": entry.get("scope"),
+                "campaign_id": campaign.get("campaign_id"),
+                "partition_plan": campaign.get("partition_plan"),
+                "budget": campaign.get("budget"),
+                "genuine_private_candidate_trials": campaign.get(
+                    "genuine_private_candidate_trials"
+                ),
+                "private_survivors": campaign.get("private_survivors"),
+                "external_survivors": campaign.get("external_survivors"),
+                "best_forward_candidate_id": campaign.get(
+                    "best_forward_candidate_id"
+                ),
+                "component_lineage": campaign.get("component_lineage"),
+            }
+        )
+    body: dict[str, object] = {
+        "schema_version": 1,
+        "source_report_id": multi_cohort.get("report_id"),
+        "discovered_cohorts": multi_cohort.get("discovered_cohorts"),
+        "viable_cohorts": multi_cohort.get("viable_cohorts"),
+        "campaigns_completed": multi_cohort.get("campaigns_completed"),
+        "scheduler": multi_cohort.get("scheduler"),
+        "strike_selection_law": multi_cohort.get("strike_selection_law"),
+        "schedule": multi_cohort.get("schedule"),
+        "campaigns": campaigns,
+        "private_candidate_genomes_embedded": False,
+        "automatic_positive_promotion": False,
+        "execution_authority": False,
+        "capital_authority": False,
+        "performance_claim_supported": False,
+    }
+    body["evidence_id"] = digest_json(body)
+    return body
+
+
 def build_outputs(
     campaign: dict[str, object] | None = None,
     forward: dict[str, object] | None = None,
     ignition: dict[str, object] | None = None,
+    multi_cohort: dict[str, object] | None = None,
+    intelligence: dict[str, object] | None = None,
 ) -> dict[str, dict[str, object]]:
     outputs = {
         "VNEXT_AUTORESEARCH_POLICY.json": autoresearch_policy_manifest(),
@@ -233,7 +290,41 @@ def build_outputs(
         outputs["VNEXT_AUTORESEARCH_FORWARD_EVIDENCE.json"] = forward
     if ignition is not None:
         outputs["VNEXT_AUTORESEARCH_IGNITION.json"] = ignition
+    if multi_cohort is not None:
+        outputs["VNEXT_AUTORESEARCH_MULTI_COHORT.json"] = (
+            multi_cohort_evidence_manifest(multi_cohort)
+        )
+    if intelligence is not None:
+        outputs["INTELLIGENCE_RESEARCH_LAB_EVIDENCE.json"] = (
+            intelligence_evidence_manifest(intelligence)
+        )
     return outputs
+
+
+def intelligence_evidence_manifest(
+    report: dict[str, object],
+) -> dict[str, object]:
+    state = report.get("cognitive_state") or {}
+    claims = report.get("claims") or {}
+    body: dict[str, object] = {
+        "schema_version": 1,
+        "manifest": intelligence_lab_manifest(),
+        "source_report_id": report.get("report_id"),
+        "cycle_observed_at": report.get("cycle_observed_at"),
+        "domain_adapters": report.get("domain_adapters", []),
+        "cognitive_state": state,
+        "recursive_levels": report.get("recursive_levels", []),
+        "highest_supported_level": report.get("highest_supported_level", 0),
+        "claims": claims,
+        "scope_limit": report.get("scope_limit"),
+        "automatic_positive_promotion": False,
+        "human_promotion_required": True,
+        "orders_placed": False,
+        "execution_authority": False,
+        "capital_authority": False,
+    }
+    body["evidence_id"] = digest_json(body)
+    return body
 
 
 def _read_json(path: Path | None) -> dict[str, object] | None:
@@ -270,11 +361,29 @@ def main() -> int:
         type=Path,
         default=runtime / "ignition_report.json",
     )
+    parser.add_argument(
+        "--multi-cohort-report",
+        type=Path,
+        default=runtime / "multi_cohort_report.json",
+    )
+    parser.add_argument(
+        "--intelligence-report",
+        type=Path,
+        default=runtime / "intelligence_lab" / "observatory_report.json",
+    )
     args = parser.parse_args()
     campaign = _read_json(args.campaign_report)
     forward = _read_json(args.forward_report)
     ignition = _read_json(args.ignition_report)
-    outputs = build_outputs(campaign, forward, ignition)
+    multi_cohort = _read_json(args.multi_cohort_report)
+    intelligence = _read_json(args.intelligence_report)
+    outputs = build_outputs(
+        campaign,
+        forward,
+        ignition,
+        multi_cohort,
+        intelligence,
+    )
     for filename, payload in outputs.items():
         _write(args.output_dir / filename, payload)
     print(

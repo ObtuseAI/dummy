@@ -323,6 +323,23 @@ class CryptoDataHub:
             "daily_closes": [float(row[4]) for row in daily],
             "minute_closes": [float(row[4]) for row in minute],
             "minute_volumes": [float(row[5]) for row in minute],
+            # Preserve complete public candle rows for independently graded
+            # technical challengers without triggering a second network fetch.
+            "minute_ohlcv": [
+                {"at_s": int(row[0]), "low": float(row[1]), "high": float(row[2]),
+                 "open": float(row[3]), "close": float(row[4]), "volume": float(row[5])}
+                for row in minute
+            ],
+            "hourly_ohlcv": [
+                {"at_s": int(row[0]), "low": float(row[1]), "high": float(row[2]),
+                 "open": float(row[3]), "close": float(row[4]), "volume": float(row[5])}
+                for row in hourly
+            ],
+            "daily_ohlcv": [
+                {"at_s": int(row[0]), "low": float(row[1]), "high": float(row[2]),
+                 "open": float(row[3]), "close": float(row[4]), "volume": float(row[5])}
+                for row in daily
+            ],
             "book_imbalance": book_imbalance,
             "microprice_basis_bps": microprice_basis_bps,
             "dvol": dvol,

@@ -33,6 +33,11 @@ class ProtectedSurface:
 
 PROTECTED_SURFACES = (
     ProtectedSurface(
+        "dummy/intelligence_lab",
+        SurfaceCategory.ADVERSARIAL_EVALUATION,
+        "Scientific memory, theory gates, and intelligence-research governance cannot be candidate-controlled.",
+    ),
+    ProtectedSurface(
         "dummy/autoresearch",
         SurfaceCategory.ADVERSARIAL_EVALUATION,
         "Nested research policy, private partitions, and ignition judges cannot be candidate-controlled.",

@@ -192,15 +192,31 @@ only private receipts, lineage-bandit search, stall-triggered champion forks,
 role-specific context compression, eight reward-hacking canaries, complexity
 Pareto pressure, semantic minimization, and a matched-budget ignition harness
 make recursive research executable without giving candidates control of their
-evaluator. The first checked-in [`real-ledger campaign`](docs/VNEXT_AUTORESEARCH_CAMPAIGN.json)
-compiled 282 causally eligible BTC 15-minute settlements into purged
-visible/private/external partitions and ran five equal-budget lineage trials.
-All five failed private gates, so the [`ignition report`](docs/VNEXT_AUTORESEARCH_IGNITION.json)
-supports Level 0 autonomous experimentation only—not net-positive
-self-improvement. No candidate reached external evaluation or
-[`forward-paper evidence`](docs/VNEXT_AUTORESEARCH_FORWARD_EVIDENCE.json), and
-source edits, runtime application, automatic promotion, execution, and capital
-authority remain absent.
+evaluator. The 2026-07-15 multi-cohort pass compiled 4,937 causally eligible
+settlements, discovered 26 exact cohorts, and completed 11 independently
+budgeted campaigns (55 lineage trials). Five candidates survived private
+selection and two ETH daily-price-ladder candidates survived external testing;
+both are frozen for exact-cohort forward paper, where they currently have zero
+new settlements. The [`ignition report`](docs/VNEXT_AUTORESEARCH_IGNITION.json)
+therefore still supports Level 0 autonomous experimentation only—not
+net-positive self-improvement. Source edits, runtime application, automatic
+promotion, execution, and capital authority remain absent.
+
+Above that domain loop, the protected
+[`Intelligence Research Lab`](docs/INTELLIGENCE_RESEARCH_LAB.md) treats
+forecasting as its first experimental adapter and researches intelligence
+methods themselves. It converts grounded failures and unknowns into ranked
+questions, applies explicit computational-creativity operators, emits
+falsifiable hypotheses and fixed-budget experiment protocols, and records the
+result in content-addressed, hash-chained scientific memory. Its cognitive
+genomes can describe reasoning, research, creativity, evaluation, memory, and
+role-organization methods; they contain no authority, truth, promotion, or
+execution genes. Cross-domain replication gates prevent a successful prompt or
+isolated benchmark from becoming a "theory": provisional theories require
+three valid replications across two domains and general laws require six across
+three. The live observatory currently supports cognitive Level 0 only, with no
+completed lab experiment or validated theory, and grants no automatic
+promotion, execution, or capital authority.
 
 The [`final master-plan audit`](docs/VNEXT_MASTER_PLAN_FINAL_AUDIT.md) maps all
 38 design sections to concrete evidence and verifies the complete 20-step
@@ -344,7 +360,9 @@ default), reconciles settlements, and grades every source against reality.
   fixed experiment budget across independent research lineages. Private gates
   return only aggregate receipts; survivors must pass external and later
   forward-paper evaluation before a human may review promotion. The first real
-  campaign supports autonomous experimentation (Level 0) only.
+  campaign supports autonomous experimentation (Level 0) only. The scheduler
+  now discovers every viable exact cohort, gives each its own fixed budget and
+  forward registry, and never transfers private evidence between scopes.
 - **Independent autonomous cohort gates**: evidence accrual, readiness,
   challenger search, contraction, and demotion run independently for every
   source × asset/league × prediction type × phase/horizon. A strong BTC-15m
@@ -359,6 +377,12 @@ default), reconciles settlements, and grades every source against reality.
   challengers can redistribute family weight but cannot manufacture additional
   precision. Crypto retains a 25% market anchor and challengers remain excluded
   until explicit promotion review.
+- **Technical-foundry challenger**: a clean-room, MIT-compatible review of
+  ObtuseAI/dopey added an independently named crypto lane for ATR-normalized
+  momentum, Bollinger/stochastic location, OBV flow, volume anomalies, and
+  breakout/fakeout confirmation. It reuses Dummy's cached public OHLCV,
+  abstains without agreement, caps its distribution shift, and remains excluded
+  from fusion until its exact asset/contract/horizon gate earns promotion.
 - **Simulation training**: an hourly read-only curriculum searches
   shrinkage/edge/uncertainty policies with settlement-lagged, event-purged
   walk-forward tests; separately trains witnessed-fill execution filters and
@@ -375,7 +399,11 @@ default), reconciles settlements, and grades every source against reality.
   side for every real, valid nearest-expiry crypto target in all 12 asset/horizon
   scopes, records the normal-policy blocker, and exposes missing scopes as gaps.
   Forced crypto samples cannot influence calibration, promotion, readiness, or
-  execution.
+  execution. Hourly and daily terminal-price organisms autonomously choose
+  among every contemporaneously listed nearest-expiry strike using conservative
+  fee/uncertainty-adjusted EV. They cannot invent a strike, use settlement to
+  select one, or replay an alternative unless the full decision-time ladder was
+  frozen; hourly and daily strike policies have separate promotion gates.
 - **Multi-sport game engine**: MLB, NFL, NCAAF, NHL, NBA, and NCAAB
   challengers feed a deterministic replay buffer and Monte Carlo curriculum.
   League-isolated genomes progress through Rookie/Veteran/Elite/Boss tiers,

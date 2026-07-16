@@ -236,6 +236,10 @@ def build_brain(mode: SessionMode):
     # an explicit point-in-time promotion review; breadth cannot silently alter risk.
     registry.register(CryptoEmpiricalRegimeSignal(fetch_state=crypto_hub.state))
     registry.register(CryptoTechnicalCompositeSignal(fetch_state=crypto_hub.state))
+    # Independently named, challenger-only technical-foundry lane.
+    from autonomy.signals.crypto_ta_foundry import CryptoTechnicalFoundrySignal
+
+    registry.register(CryptoTechnicalFoundrySignal(fetch_state=crypto_hub.state))
     registry.register(CryptoDvolSignal(fetch_state=crypto_hub.state))
     # Multi-timeframe structure (S/R + trend channels + confirming
     # technicals): opines ONLY at actionable swing setups, challenger-only.

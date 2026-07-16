@@ -3,7 +3,24 @@
   "automatic_promotion": false,
   "campaign_trial_ids": [
     "51c23743e6e394e5021c1678d52f5d6a5d9459e67a9e364c0a9f7231c5011821",
-    "6b009e7e024dcc3044ae084b99c67f6f663e385fd7bc6e9321689130fb31b9e4"
+    "6b009e7e024dcc3044ae084b99c67f6f663e385fd7bc6e9321689130fb31b9e4",
+    "6ae16615eb04f928ff703f2d0e1a97cf4723c5121612ea4db204798318bb1197",
+    "f62bc995095e97a56f28873f563f9d97fb41066d4c27ddb21180ec70d877bc51",
+    "35ef113139704ec6e0d8a2ad658d9664eefc77c76c7f34da6626e498c97a6327",
+    "47db5e745ccb3765c493e5226359c7ad37d3621cf2672a642001845651aa7248",
+    "87cd2c29c5a23f9e732b329dc2348fa39b063836d1ea9efd512b455d9bb08591",
+    "a60a658941e3b3f1962d25f695f9525795681f423e73c41f57435953d6fed474",
+    "6d695e1e9ee105a4c0ba02ee19e5738a2f2f6f51a6f016a0f6de4b1aa48cad5c",
+    "01974c9651e81a15e3c11915d9e50a4518d8dc34ef0b900c642acfbde6104ff9",
+    "0d16a34ba5df082e61fff0914b1b79700a4d2265ba3fcecce74796701855fa29",
+    "2bdad6c45835cc535c97ea7f3d4c26337cda9809ea28e093fa6dccfcd3063b08",
+    "3cb7b2bf6d9e7a8429447d8515216c15917ff2a96bc32ce39d4f2721428ee860",
+    "d9d434fbe52154177085541b6f33b8d668c68fc6a4b3c44e62f20bb64d23c18d",
+    "8975ec556fee2caba30ba6b7e3479f7ddb6adbc3830362daf99681c107f6bc1b",
+    "c6b533fe8ce7002329ff310a3a460fc0d3e753bb59bcb9cf20b8ef0cc1ba56a0",
+    "abdb516da6abf21a300398312570ec84df547fa566f0c9fb0527704832e6f5c1",
+    "a0d4a23d71eae4551f492f13904be3a8aa31568a7bed7bd6e3fcc33834749525",
+    "6b2bdbe0f7b386644634139bf004e80d847c347eefef700461c29c1482ee8f57"
   ],
   "capital_authority": false,
   "execution_authority": false,
@@ -35,9 +52,9 @@
     "highest_supported_label": "AUTONOMOUS_EXPERIMENTATION",
     "highest_supported_level": 0,
     "matched_pair_count": 0,
-    "report_id": "c1af821fbb26a1c5563f865186b1d0a16a7bb99341527f904fb58e0bd5bfc0d8",
+    "report_id": "f6eae2d20b6178c2e916cbbce6ca28f6c6e2ffee048d2e3b3382097397d95c60",
     "schema_version": 1,
-    "trial_count": 2
+    "trial_count": 19
   },
   "forward_confirmation_passed": false,
   "highest_supported_label": "AUTONOMOUS_EXPERIMENTATION",
@@ -58,8 +75,8 @@
     ],
     "status": "BLOCKED_UNTIL_LEVEL1_AND_FORWARD_CONFIRMATION"
   },
-  "report_id": "c1fa95004685c934f1f570a3d9893af2f46d1c7d88a8a041861e4353b5e7a20a",
+  "report_id": "ecce6edf918979ec70f7e2c87ba276e7b22bc37c7300447857352641d5c763d4",
   "schema_version": 1,
   "self_improvement_claim_supported": false,
-  "trial_count": 2
+  "trial_count": 19
 }

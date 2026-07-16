@@ -4,11 +4,13 @@
 
 The nested research architecture is **implemented, mechanically validated, and
 running at ignition Level 0: autonomous experimentation**. The latest bounded
-real-ledger campaign compiled 282 causally eligible BTC 15-minute settled
-markets, ran five equal-budget private candidate trials, and rejected all five.
-No candidate reached external evaluation or forward-paper eligibility. Dummy
-therefore claims no net-positive self-improvement, improved improver, or
-acceleration of improvement.
+real-ledger cycle compiled 4,937 causally eligible settlements, discovered 26
+exact cohorts, and completed 11 viable campaigns with 55 equal-budget lineage
+trials. Five candidates survived private selection; two ETH daily-price-ladder
+candidates also survived external testing and entered isolated forward-paper
+registries. They have no new forward settlements yet. Dummy therefore claims no
+net-positive self-improvement, improved improver, or acceleration of
+improvement.
 
 Every campaign and forward registry is bound to one exact prediction cohort:
 `vertical | subject | market type | horizon/phase`. Evidence cannot transfer
@@ -26,14 +28,17 @@ recorded decision, and never invents fill or avoided-fill P&L for a
 counterfactual candidate. A settlement receipt is used only as a conservative
 upper bound for market close when an exact close timestamp is unavailable.
 
-The frozen partition plan uses whole UTC dates and purges any event cluster
-that would cross partitions:
+The frozen partition plan uses whole UTC dates. Long-lived events are frozen to
+their earliest whole decision date before splitting, which keeps an entire
+contemporaneous strike family together and excludes later-added strikes rather
+than letting one event bridge private partitions. Any residual cross-partition
+cluster is purged.
 
 - visible development: 179 markets from 2026-07-10 through 2026-07-13;
 - private selection: 80 markets from 2026-07-14; and
-- external generalization: 23 markets from 2026-07-15.
+- external generalization: 25 markets from 2026-07-15.
 
-The five lineages were market-prior anchored, calibration first, abstention
+The five baseline lineages are market-prior anchored, calibration first, abstention
 first, crypto liquidity, and execution aware. Every trial received the same
 starting genome, evaluator, and per-experiment compute ceiling. The private
 evaluator rejected every mutation. Common failures were non-positive clustered
@@ -41,10 +46,28 @@ confidence bounds, non-positive multi-objective fitness, compute-normalized
 quality regression, missing genuinely contested evidence, or abstention-gaming
 guards. Item-level private feedback was never returned to the outer researcher.
 
-The MLB simulation lineage was not run. The authoritative decision ledger does
-not yet preserve the point-in-time plate-appearance simulator component output
-across all three partitions, so reconstructing it from outcomes would violate
-the causal boundary.
+The compiler now consumes separately persisted decision-time component outputs.
+An MLB PA-simulator or crypto technical-foundry lineage activates only when the
+same named component has evidence in visible, private, and external partitions.
+The live MLB PA component has not accumulated those partitions yet, so it remains
+in autonomous accrual; no outcome is used to reconstruct it.
+
+## Autonomous multi-cohort and strike scheduling
+
+Every settled row is grouped by
+`vertical | subject | market_type | horizon_or_phase`. The scheduler validates
+three chronological partitions, derives a generation-zero organism for each
+supported scope, allocates the same per-experiment compute ceiling, and creates
+a separate campaign and forward registry. Unsupported or under-observed scopes
+remain explicit accrual records.
+
+Crypto price ladders recover `hours_to_close` from signals received before the
+decision, which splits hourly and daily evidence instead of pooling it under an
+unknown horizon. Their genomes explicitly permit autonomous strike adjustment:
+rank every contemporaneously listed nearest-expiry target by conservative EV
+after fees and uncertainty. A genome cannot invent a target, select with future
+settlement knowledge, or claim an alternate historical strike unless the full
+decision-time ladder was frozen. Hourly and daily promotion gates are separate.
 
 ## Two systems, one hard boundary
 
@@ -67,6 +90,22 @@ credentials; submit orders; change risk or capital; release quarantines;
 rewrite settlement, fill, replay, or evaluator truth; apply source edits;
 change a running organism; or promote itself. `dummy/autoresearch` is itself a
 protected constitutional surface.
+
+## Domain adapter to the Intelligence Research Lab
+
+Forecast autoresearch is also the first experimental domain for the protected
+[`Intelligence Research Lab`](INTELLIGENCE_RESEARCH_LAB.md). After each real
+autoresearch cycle, the adapter converts only the resulting multi-cohort,
+forward-paper, and ignition receipts into scientific observations. Explicit
+unknowns and failures become ranked questions, falsifiable cognitive
+hypotheses, and preregistered experiment protocols. This does not feed invented
+features or unvalidated theories back into a forecast organism.
+
+The lab is domain-agnostic and sits above this module; it does not replace the
+forecast-specific private evaluator or exact-cohort gates. Its own evaluator,
+scientific memory, theory law, permissions, and promotion boundary are protected
+from every cognitive genome. Current forecasting evidence has populated its
+research queue, but no cognitive experiment or theory has passed replication.
 
 ## Three sealed evidence partitions
 
@@ -193,6 +232,7 @@ The audit emits:
 - `docs/VNEXT_AUTORESEARCH_CAMPAIGN.json`;
 - `docs/VNEXT_AUTORESEARCH_FORWARD_EVIDENCE.json`; and
 - `docs/VNEXT_AUTORESEARCH_IGNITION.json`.
+- `docs/INTELLIGENCE_RESEARCH_LAB_EVIDENCE.json`.
 
 Experiment records use a duplicate-resistant, append-only JSONL ledger with a
 SHA-256 hash chain. The candidate lifecycle remains proposal-only until genuine
