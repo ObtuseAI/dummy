@@ -1278,7 +1278,35 @@ def run_backtest(ledger: AutonomyLedger, bootstrap_weights: bool = False) -> dic
     derived = {s: round(t.derived_weight(), 3) for s, t in trackers.items()}
     derived_scoped = {s: round(t.derived_weight(), 3) for s, t in scoped_trackers.items()}
 
+    # Sanity-screen the derived vector before it becomes live trust. Only the
+    # uniformity pathologies apply here (all-equal / pinned-at-cap): a fresh
+    # re-derivation may legitimately jump far from the online weights, so the
+    # single-cycle jump bound is the online learner's guard, not this one.
+    weights_rejected_reasons: list[str] = []
     if bootstrap_weights:
+        from autonomy.learner import screen_weight_vector
+
+        weights_rejected_reasons = screen_weight_vector(derived, None)
+    weights_actually_written = bool(bootstrap_weights and not weights_rejected_reasons)
+    if weights_rejected_reasons:
+        # Fail-closed: keep the ledger's previous weights, alert, log the
+        # rejected vector in the report for the post-mortem.
+        import os
+
+        if os.environ.get("DUMMY_DAEMON_ALERTS", "1") == "1":
+            try:
+                from autonomy.alerts import emit_alert
+
+                emit_alert(
+                    "RECAL_REJECTED",
+                    "backtest bootstrap weight vector rejected: "
+                    + ", ".join(weights_rejected_reasons),
+                    {"reasons": weights_rejected_reasons,
+                     "rejected_weights": derived},
+                )
+            except Exception:
+                pass
+    if weights_actually_written:
         for source, weight in derived.items():
             ledger.update_weight(source, weight)
         for scoped_key, weight in derived_scoped.items():
@@ -1311,7 +1339,8 @@ def run_backtest(ledger: AutonomyLedger, bootstrap_weights: bool = False) -> dic
         "trust_surface_by_specialist": roll_up_trust_surface(sources_by_scope),
         "derived_weights": derived,
         "derived_weights_by_vertical": derived_scoped,
-        "weights_written": bootstrap_weights,
+        "weights_written": weights_actually_written,
+        "weights_rejected_reasons": weights_rejected_reasons,
         "realized_decision_pnl_cents": realized_pnl,
         "graded_decisions": graded,
         "unverified_settlement_outcomes": unverified,
@@ -1345,3 +1374,124 @@ def write_backtest_report(report: dict[str, Any], out_dir: Path | None = None) -
     path = out_dir / f"AUTONOMY_BACKTEST_{ts}.json"
     path.write_text(json.dumps(report, indent=2, sort_keys=True), encoding="utf-8")
     return path
+
+
+def summarize_backtest(report: dict[str, Any]) -> dict[str, Any]:
+    """Compact decision-ready view of a full backtest report.
+
+    This is the schema of the authoritative ``latest_backtest_summary.json``
+    artifact downstream readiness/promotion consumers read.
+    """
+    policy = report.get("decision_policy") or {}
+    ensemble = policy.get("ensemble_metrics") or {}
+    walk_forward = (
+        policy.get("walk_forward_threshold_selection") or {}
+    ).get("aggregate_out_of_sample") or {}
+    return {
+        "report_name": report.get("report_name"),
+        "report_path": report.get("report_path"),
+        "created_at": report.get("created_at"),
+        "settled_markets": report.get("settled_markets"),
+        "decision_policy": {
+            "settled_markets": policy.get("settled_markets", 0),
+            "event_clusters": policy.get("event_clusters", 0),
+            "forecast_brier": ensemble.get("forecast_brier"),
+            "market_brier": ensemble.get("market_brier"),
+            "brier_skill_vs_market": ensemble.get("brier_skill_vs_market"),
+            "expected_calibration_error": ensemble.get("expected_calibration_error"),
+            "cluster_robust_advantage": policy.get("cluster_robust_advantage", {}),
+            "walk_forward_out_of_sample": walk_forward,
+            "online_forecast_drift": policy.get("online_forecast_drift", {}),
+            "sports_performance_cohorts": policy.get(
+                "sports_performance_cohorts", {}
+            ),
+        },
+        "signal_data_quality": report.get("signal_data_quality", {}),
+        "execution_quality_by_book": report.get("execution_quality_by_book", {}),
+        "execution_drift_by_book": report.get("execution_drift_by_book", {}),
+        "realized_trade_statistics": report.get("realized_trade_statistics", {}),
+        "fill_conditioned_decision_policy": report.get(
+            "fill_conditioned_decision_policy", {}
+        ),
+        "shadow_ttl_sensitivity": report.get("shadow_ttl_sensitivity", {}),
+        "crypto_diagnostics": report.get("crypto_diagnostics", {}),
+        "crypto_challenger_gates": report.get("crypto_challenger_gates", {}),
+        "weights_written": report.get("weights_written", False),
+        "weights_rejected_reasons": report.get("weights_rejected_reasons", []),
+    }
+
+
+# --- Authoritative summary freshness -----------------------------------------
+# The latest backtest summary is the evidence surface downstream governance
+# (readiness/promotion evaluation) trusts. It once went 6 days stale with no
+# alarm; every consumer now checks freshness fail-closed — a missing, unparsable
+# or undated summary IS stale, and stale evidence refuses evaluation rather
+# than silently grading against the past.
+LATEST_SUMMARY_PATH = Path("runtime/autonomy/latest_backtest_summary.json")
+SUMMARY_STALE_HOURS = 24.0
+
+
+def write_latest_backtest_summary(
+    summary: dict[str, Any],
+    path: Path | None = None,
+    now: datetime | None = None,
+) -> Path:
+    """Write the authoritative summary artifact, stamped with ``generated_at``."""
+    target = path or LATEST_SUMMARY_PATH
+    stamp = (now or datetime.now(timezone.utc)).isoformat()
+    payload = {**summary, "generated_at": stamp}
+    target.parent.mkdir(parents=True, exist_ok=True)
+    temporary = target.with_suffix(".tmp")
+    temporary.write_text(
+        json.dumps(payload, indent=2, sort_keys=True, default=str), encoding="utf-8",
+    )
+    temporary.replace(target)
+    return target
+
+
+def backtest_summary_freshness(
+    path: Path | None = None,
+    now: datetime | None = None,
+    max_age_hours: float = SUMMARY_STALE_HOURS,
+) -> dict[str, Any]:
+    """Fail-closed freshness check of the authoritative summary artifact.
+
+    Returns ``{"is_stale": bool, "age_hours": float | None, "reason": ...}``.
+    Missing file, malformed JSON, or a missing/invalid timestamp all count as
+    stale — absence of evidence is never fresh evidence.
+    """
+    target = path or LATEST_SUMMARY_PATH
+    moment = now or datetime.now(timezone.utc)
+    result: dict[str, Any] = {
+        "path": str(target),
+        "max_age_hours": float(max_age_hours),
+        "is_stale": True,
+        "age_hours": None,
+        "generated_at": None,
+        "reason": None,
+    }
+    if not target.exists():
+        result["reason"] = "missing"
+        return result
+    try:
+        payload = json.loads(target.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError, ValueError):
+        result["reason"] = "unreadable"
+        return result
+    stamp = payload.get("generated_at") or payload.get("created_at")
+    if not stamp:
+        result["reason"] = "unstamped"
+        return result
+    try:
+        generated = datetime.fromisoformat(str(stamp).replace("Z", "+00:00"))
+    except ValueError:
+        result["reason"] = "bad_timestamp"
+        return result
+    if generated.tzinfo is None:
+        generated = generated.replace(tzinfo=timezone.utc)
+    age_hours = (moment - generated).total_seconds() / 3600.0
+    result["generated_at"] = generated.isoformat()
+    result["age_hours"] = round(age_hours, 3)
+    result["is_stale"] = age_hours > float(max_age_hours) or age_hours < 0.0
+    result["reason"] = "stale" if result["is_stale"] else None
+    return result

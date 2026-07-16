@@ -108,10 +108,43 @@ def _merge_demotions(path: Path, fresh: dict, now_iso: str) -> dict:
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--db", type=Path, default=DEFAULT_DB)
+    parser.add_argument(
+        "--allow-stale-backtest", action="store_true",
+        help="Break-glass: evaluate despite a stale backtest summary "
+             "(explicit operator decision; never the default)",
+    )
     args = parser.parse_args()
     if not args.db.exists():
         print(json.dumps({"status": "NO_DB", "db": str(args.db)}))
         return 1
+
+    # Fail-closed evidence-freshness gate: promotion/demotion evaluation must
+    # not run against a silently-aged backtest surface. A missing/unstamped/
+    # stale summary blocks evaluation (and alerts) unless the operator breaks
+    # the glass explicitly.
+    from autonomy.backtest import backtest_summary_freshness  # noqa: E402
+
+    freshness = backtest_summary_freshness()
+    if freshness["is_stale"] and not args.allow_stale_backtest:
+        try:
+            from autonomy.alerts import emit_alert  # noqa: E402
+
+            emit_alert(
+                "BACKTEST_STALE",
+                "readiness evaluation refused: backtest summary is stale "
+                f"(age_hours={freshness.get('age_hours')}, "
+                f"reason={freshness.get('reason')})",
+                freshness,
+            )
+        except Exception:
+            pass
+        print(json.dumps({
+            "status": "BLOCKED_STALE_BACKTEST",
+            "backtest_freshness": freshness,
+            "hint": "refresh with scripts/run_dummy_backtest.py, or pass "
+                    "--allow-stale-backtest to break the glass explicitly",
+        }, sort_keys=True))
+        return 2
 
     conn = sqlite3.connect(f"file:{args.db}?mode=ro", uri=True)
     try:
