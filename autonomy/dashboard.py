@@ -76,6 +76,7 @@ _FRESHNESS_FIELDS: dict[str, tuple[str, ...]] = {
     "readiness_report": ("generated_at",),
     "council_snapshot": ("generated_at",),
     "clv_report": ("generated_at",),
+    "execution_tournament": ("generated_at",),
 }
 
 # Cadence-derived staleness threshold (seconds) per panel, mirroring
@@ -89,6 +90,8 @@ _FRESHNESS_THRESHOLDS: dict[str, float] = {
     "readiness_report": 172800,
     "council_snapshot": 240,
     "clv_report": 172800,
+    # Tournament refreshes with the backtest cycle; 2x a generous daily cadence.
+    "execution_tournament": 172800,
 }
 
 
@@ -509,6 +512,7 @@ def assemble_status_snapshot(runtime_dir: Path | None = None) -> dict[str, Any]:
         "readiness_report": _load_json(rd / "readiness_report.json") or {},
         "council_snapshot": _load_json(rd / "council_snapshot.json") or {},
         "clv_report": _load_json(rd / "clv_report.json") or {},
+        "execution_tournament": _load_json(rd / "execution_tournament.json") or {},
     }
     data_ages: dict[str, Any] = {}
     for name, payload in panels_raw.items():
@@ -539,9 +543,27 @@ def assemble_status_snapshot(runtime_dir: Path | None = None) -> dict[str, Any]:
         "readiness_report": panels_raw["readiness_report"],
         "clv_report": panels_raw["clv_report"],
         "sports_clv": _sports_clv_summary(panels_raw["clv_report"]),
+        "execution_tournament": _tournament_status_panel(panels_raw["execution_tournament"]),
         "alerts": _tail_jsonl(rd / "alerts.jsonl", 20),
         "recent_cycles": _tail_jsonl(rd / "cycles.jsonl", 10),
     }
+
+
+def _tournament_status_panel(report: dict[str, Any]) -> dict[str, Any]:
+    """Compact execution-tournament view for the /api/status payload."""
+    if not report or not report.get("report_name"):
+        return {}
+    try:
+        from autonomy.execution_tournament import summarize_tournament
+
+        return summarize_tournament(report)
+    except Exception:
+        return {
+            "report_name": report.get("report_name"),
+            "ranking": report.get("ranking", []),
+            "headline": report.get("headline", {}),
+            "generated_at": report.get("generated_at"),
+        }
 
 
 _HTML = """<!doctype html>

@@ -1218,6 +1218,19 @@ def _adverse_selection_report(conn) -> dict[str, Any]:
     return adverse_selection_report(conn)
 
 
+def _execution_tournament_report(conn) -> dict[str, Any]:
+    """Phase-A execution-policy tournament (Wave-2 WS-A2/F2).
+
+    Thin wrapper so the backtest report carries the same per-cohort C0-C4
+    fill-conditioned evidence that the dedicated
+    ``runtime/autonomy/execution_tournament.json`` artifact does. Evidence only:
+    the report ranks execution cohorts and never switches the live policy.
+    """
+    from autonomy.execution_tournament import tournament_report
+
+    return tournament_report(conn)
+
+
 def run_backtest(ledger: AutonomyLedger, bootstrap_weights: bool = False) -> dict[str, Any]:
     """Score all sources against settled markets; optionally persist weights."""
     conn = ledger._conn  # noqa: SLF001 - backtester is a trusted ledger consumer
@@ -1375,6 +1388,13 @@ def run_backtest(ledger: AutonomyLedger, bootstrap_weights: bool = False) -> dic
         # artifact wherever the backtest summary is produced (see
         # scripts/run_dummy_backtest.py).
         "execution_adverse_selection": _adverse_selection_report(conn),
+        # WS-A2/F2: execution-policy tournament. Per-cohort (C0-C4)
+        # fill-conditioned P&L / Brier-edge / fill-rate / slippage with
+        # cluster-robust CIs vs the incumbent control, plus the C2 walk-forward
+        # threshold selection. Also emitted to its own
+        # runtime/autonomy/execution_tournament.json artifact wherever the
+        # backtest summary is produced (scripts/run_dummy_backtest.py).
+        "execution_tournament": _execution_tournament_report(conn),
         "decision_policy": _decision_policy_report(conn),
         "created_at": datetime.now(timezone.utc).isoformat(),
     }
@@ -1390,6 +1410,15 @@ def write_backtest_report(report: dict[str, Any], out_dir: Path | None = None) -
     path = out_dir / f"AUTONOMY_BACKTEST_{ts}.json"
     path.write_text(json.dumps(report, indent=2, sort_keys=True), encoding="utf-8")
     return path
+
+
+def _summarize_execution_tournament(report: dict[str, Any]) -> dict[str, Any]:
+    """Compact tournament view for the authoritative summary artifact."""
+    if not report or not report.get("report_name"):
+        return {}
+    from autonomy.execution_tournament import summarize_tournament
+
+    return summarize_tournament(report)
 
 
 def summarize_backtest(report: dict[str, Any]) -> dict[str, Any]:
@@ -1435,6 +1464,9 @@ def summarize_backtest(report: dict[str, Any]) -> dict[str, Any]:
         "execution_adverse_selection": (
             report.get("execution_adverse_selection", {}) or {}
         ).get("headline", {}),
+        "execution_tournament": _summarize_execution_tournament(
+            report.get("execution_tournament", {}) or {}
+        ),
         "weights_written": report.get("weights_written", False),
         "weights_rejected_reasons": report.get("weights_rejected_reasons", []),
     }
