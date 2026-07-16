@@ -25,6 +25,10 @@ from autonomy.staleness import DEFAULT_STALENESS_POLICY
 from autonomy.signals.base import SourceRegistry
 from autonomy.signals.commodities_spot import CommoditiesSpotVolSignal
 from autonomy.signals.cross_venue import CrossVenueSignal
+from autonomy.signals.cross_venue_macro import (
+    CrossVenueCryptoSignal,
+    CrossVenueEconSignal,
+)
 from autonomy.signals.crypto_spot import CryptoSpotVolSignal
 from autonomy.signals.market_debias import MarketDebiasSignal
 from autonomy.signals.market_prior import MarketPriorSignal
@@ -337,6 +341,19 @@ def build_brain(mode: SessionMode):
     # place from settled proof-of-profit evidence.
     registry.register(PowerRatingsSignal(seasons=seasons))
     registry.register(CrossVenueSignal())
+    # Wave-2 E4: Polymarket cross-venue reference pricing extended to CRYPTO and
+    # ECON Kalshi markets. Separate source names / taxonomy scopes -- these do
+    # NOT inherit the sports scope's earned champion status; every emission is
+    # challenger_only and stays out of forecaster.fuse() until the autonomous
+    # promotion ladder (docs/AUTO_PROMOTION.md) earns each exact scope a place
+    # from settled proof. Read-only Gamma + CLOB; no Polymarket execution ever.
+    # ECON markets are currently filtered out of the live scan (scanner verticals
+    # = {CRYPTO, SPORTS} after the 2026-07-11 econ-trading retirement), so the
+    # econ source is dormant-but-ready; the crypto source fires live. Each records
+    # Kalshi-vs-Polymarket divergence via record_external_observation for later
+    # CLV / disagreement-backtest campaigns.
+    registry.register(CrossVenueCryptoSignal(ledger=ledger))
+    registry.register(CrossVenueEconSignal(ledger=ledger))
     # Empirical price->outcome curve mined from settled-market history; no
     # curve artifact on disk means the source simply never opines.
     registry.register(MarketDebiasSignal())

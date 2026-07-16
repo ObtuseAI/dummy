@@ -1,0 +1,122 @@
+[
+  {
+    "slug": "bitcoin-above-62k-on-july-20-2026",
+    "question": "Will the price of Bitcoin be above $62,000 on July 20?",
+    "outcomes": "[\"Yes\", \"No\"]",
+    "outcomePrices": "[\"0.85\", \"0.15\"]",
+    "clobTokenIds": "[\"83365750894356506589098992210320440187766786626745198620141393740916642725488\", \"42951608501505293238257793859176715787815942904475669510210775840372702689532\"]",
+    "bestBid": 0.84,
+    "bestAsk": 0.86,
+    "liquidityNum": 17448.1407,
+    "endDate": "2026-07-20T16:00:00Z",
+    "groupItemTitle": "62,000"
+  },
+  {
+    "slug": "bitcoin-above-58k-on-july-20-2026",
+    "question": "Will the price of Bitcoin be above $58,000 on July 20?",
+    "outcomes": "[\"Yes\", \"No\"]",
+    "outcomePrices": "[\"0.9915\", \"0.0085\"]",
+    "clobTokenIds": "[\"64147644841971131673646522276127270033009902496824804049696938408596513143820\", \"68755819889069840526214505821673076198399135768683888578530570471660956316864\"]",
+    "bestBid": 0.988,
+    "bestAsk": 0.995,
+    "liquidityNum": 16905.14039,
+    "endDate": "2026-07-20T16:00:00Z",
+    "groupItemTitle": "58,000"
+  },
+  {
+    "slug": "bitcoin-above-56k-on-july-20-2026",
+    "question": "Will the price of Bitcoin be above $56,000 on July 20?",
+    "outcomes": "[\"Yes\", \"No\"]",
+    "outcomePrices": "[\"0.996\", \"0.004\"]",
+    "clobTokenIds": "[\"8020089880920958927009226502257340268216634167927175441316718981939077905748\", \"48613598214561882655418261530338729173936615192205711510691078229609933228097\"]",
+    "bestBid": 0.994,
+    "bestAsk": 0.998,
+    "liquidityNum": 18554.15107,
+    "endDate": "2026-07-20T16:00:00Z",
+    "groupItemTitle": "56,000"
+  },
+  {
+    "slug": "ethereum-above-1500-on-july-21-2026",
+    "question": "Will the price of Ethereum be above $1,500 on July 21?",
+    "outcomes": "[\"Yes\", \"No\"]",
+    "outcomePrices": "[\"0.9905\", \"0.0095\"]",
+    "clobTokenIds": "[\"55227875505548825202063138126437780589229808820892580326594013916433192468930\", \"62717883094305434193687883422499837387160690481644989211065897526018806734976\"]",
+    "bestBid": 0.982,
+    "bestAsk": 0.999,
+    "liquidityNum": 7940.26397,
+    "endDate": "2026-07-21T16:00:00Z",
+    "groupItemTitle": "1,500"
+  },
+  {
+    "slug": "ethereum-above-1400-on-july-21-2026",
+    "question": "Will the price of Ethereum be above $1,400 on July 21?",
+    "outcomes": "[\"Yes\", \"No\"]",
+    "outcomePrices": "[\"0.9915\", \"0.0085\"]",
+    "clobTokenIds": "[\"57568329514445972986285441380733268131467334530366828054535428851926882166587\", \"103082040609045549212101202811669664184243411132736762647965203247453925163428\"]",
+    "bestBid": 0.985,
+    "bestAsk": 0.998,
+    "liquidityNum": 7969.20398,
+    "endDate": "2026-07-21T16:00:00Z",
+    "groupItemTitle": "1,400"
+  },
+  {
+    "slug": "will-the-price-of-ethereum-be-less-than-1300-on-july-17-2026",
+    "question": "Will the price of Ethereum be less than $1,300 on July 17?",
+    "outcomes": "[\"Yes\", \"No\"]",
+    "outcomePrices": "[\"0.0005\", \"0.9995\"]",
+    "clobTokenIds": "[\"98916420453796809202430754122460952879369708233683393519111715746392060312480\", \"30532657862334887754244996997114334158466156414970355221346829768058867517243\"]",
+    "bestBid": null,
+    "bestAsk": 0.001,
+    "liquidityNum": 35978.81701,
+    "endDate": "2026-07-17T16:00:00Z",
+    "groupItemTitle": "<1,300"
+  },
+  {
+    "slug": "will-the-price-of-ethereum-be-between-1600-1700-on-july-17-2026",
+    "question": "Will the price of Ethereum be between $1,600 and $1,700 on July 17?",
+    "outcomes": "[\"Yes\", \"No\"]",
+    "outcomePrices": "[\"0.004\", \"0.996\"]",
+    "clobTokenIds": "[\"96287189260654294554619737806082394463083565902991346683181191813614408115810\", \"29251682307265709133317401219018445670537726610306221579256073704666899840254\"]",
+    "bestBid": 0.002,
+    "bestAsk": 0.006,
+    "liquidityNum": 11260.20892,
+    "endDate": "2026-07-17T16:00:00Z",
+    "groupItemTitle": "1,600-1,700"
+  },
+  {
+    "slug": "will-the-price-of-solana-be-less-than-30-on-july-20-2026",
+    "question": "Will the price of Solana be less than $30 on July 20?",
+    "outcomes": "[\"Yes\", \"No\"]",
+    "outcomePrices": "[\"0.016\", \"0.984\"]",
+    "clobTokenIds": "[\"57783755012741231324455888300830605625721950231945555892411210375627066274993\", \"2670550425041212270600236852222746965601749345670053225288375107511672804355\"]",
+    "bestBid": 0.003,
+    "bestAsk": 0.029,
+    "liquidityNum": 2490.50784,
+    "endDate": "2026-07-20T16:00:00Z",
+    "groupItemTitle": "<30"
+  },
+  {
+    "slug": "btc-updown-15m-1784261700",
+    "question": "Bitcoin Up or Down - July 17, 12:15AM-12:30AM ET",
+    "outcomes": "[\"Up\", \"Down\"]",
+    "outcomePrices": "[\"0.505\", \"0.495\"]",
+    "clobTokenIds": "[\"59736649566548086008790707549798430397110092939828575944535853839390154301056\", \"9475654008244189698532325364907208667691377454715239536485172674734799683154\"]",
+    "bestBid": 0.5,
+    "bestAsk": 0.51,
+    "liquidityNum": 21189.184,
+    "endDate": "2026-07-17T04:30:00Z",
+    "groupItemTitle": null
+  },
+  {
+    "slug": "will-bitcoin-reach-140000-by-december-31-2026-131-829-299",
+    "question": "Will Bitcoin reach $140,000 by December 31, 2026?",
+    "outcomes": "[\"Yes\", \"No\"]",
+    "outcomePrices": "[\"0.034\", \"0.966\"]",
+    "clobTokenIds": "[\"71296910957902084356560391757722633648005498400799774895345285101862220728868\", \"70543103071492972645151283689391729699226843216132833577173691542490654530110\"]",
+    "bestBid": 0.033,
+    "bestAsk": 0.035,
+    "liquidityNum": 50611.8168,
+    "endDate": "2027-01-01T05:00:00Z",
+    "groupItemTitle": "\u2191 140,000"
+  }
+]
