@@ -42,7 +42,6 @@ from pathlib import Path
 from typing import Any
 
 from autonomy.fees import kalshi_maker_fee_cents, kalshi_taker_fee_cents
-from autonomy.stats import mean_ci95
 
 CALIBRATION_BINS = 10
 BOOTSTRAP_SAMPLES = 1000
