@@ -261,6 +261,11 @@ def grade_entries(
             "close_book_prob": round(float(close_book_prob), 6),
             "clv_bps": round(bps, 3),
             "event_cluster": _event_cluster(ticker),
+            # Wave-2 D1: the close row carries backfilled=true when it was
+            # reconstructed from historical snapshots (scripts/
+            # run_dummy_sports_clv_backfill.py) rather than captured live.
+            # Propagated so the report honestly discloses approximated closes.
+            "backfilled": bool(close.get("backfilled", False)),
         })
     return graded
 
@@ -279,10 +284,13 @@ def aggregate_clv(graded: list[dict[str, Any]]) -> dict[str, Any]:
     (autonomy/backtest.py) remains the primary gate.
     """
     groups: dict[tuple[str, str], dict[str, list[float]]] = {}
+    backfilled_by_key: dict[tuple[str, str], int] = {}
     for row in graded:
         key = (row["specialist"], row["market_type"])
         clusters = groups.setdefault(key, {})
         clusters.setdefault(row["event_cluster"], []).append(row["clv_bps"])
+        if row.get("backfilled"):
+            backfilled_by_key[key] = backfilled_by_key.get(key, 0) + 1
 
     scopes: dict[str, Any] = {}
     for (specialist, market_type), clusters in groups.items():
@@ -297,6 +305,9 @@ def aggregate_clv(graded: list[dict[str, Any]]) -> dict[str, Any]:
             "clv_bps_mean": stats.get("mean"),
             "clv_bps_ci95_lower": stats.get("lower"),
             "clv_bps_ci95_upper": stats.get("upper"),
+            # Honest disclosure: how many graded entries in this scope came
+            # from reconstructed (backfilled) closes rather than live capture.
+            "n_backfilled_entries": backfilled_by_key.get((specialist, market_type), 0),
         }
     return {
         "scopes": scopes,
