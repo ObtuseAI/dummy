@@ -257,6 +257,63 @@ def build_loss_attribution(rows: list[MinedRow], now_iso: str) -> dict[str, Any]
     }
 
 
+# -- fill-batch attribution (WS-A1: where the FILLED trades lose) ----------------
+
+
+def filled_market_tickers(conn: Any) -> set[str]:
+    """Markets that witnessed (or would have witnessed) a maker fill.
+
+    In shadow mode every fill is reconstructed by the reconciler from the book
+    tape, so a witnessed fill IS a would-have-filled event -- exactly the
+    population the fill-conditioned loss pass must localize. Read-only.
+    """
+    rows = conn.execute(
+        "SELECT DISTINCT market_ticker FROM outcomes WHERE fill_count > 0"
+    ).fetchall()
+    return {str(row[0]) for row in rows}
+
+
+def build_fill_loss_attribution(
+    rows: list[MinedRow], filled_tickers: set[str], now_iso: str,
+) -> dict[str, Any]:
+    """Loss-deconstruction restricted to the witnessed / would-have-filled subset.
+
+    Same deterministic, cluster-level machinery as ``build_loss_attribution``
+    (feature-regime tercile buckets ranked by cluster-mean Brier edge), but the
+    universe is only the settled emissions on markets that produced a fill. The
+    per-scope structure stays honest -- a thin fill sample yields
+    ``insufficient_data`` per scope rather than a false confident claim -- so a
+    pooled portfolio-level edge with a cluster CI is added for the headline
+    number the tiny per-scope buckets cannot carry alone.
+    """
+    fill_rows = [row for row in rows if row.ticker in filled_tickers]
+    attribution = build_loss_attribution(fill_rows, now_iso)
+    pooled_edges = _cluster_mean_edges(fill_rows)
+    pooled_stats = mean_ci95(pooled_edges) or {}
+    pooled_lower = pooled_stats.get("lower")
+    pooled_upper = pooled_stats.get("upper")
+    attribution.update({
+        "selection": "witnessed_or_would_have_filled_markets",
+        "filled_markets": len(filled_tickers),
+        "fill_settled_rows": len(fill_rows),
+        "pooled_cluster_edge": (
+            round(sum(pooled_edges) / len(pooled_edges), 6) if pooled_edges else None
+        ),
+        "pooled_cluster_edge_ci95": [
+            round(float(pooled_lower), 6) if pooled_lower is not None else None,
+            round(float(pooled_upper), 6) if pooled_upper is not None else None,
+        ],
+        "pooled_event_clusters": len(pooled_edges),
+        "fill_note": (
+            "Cluster-level edges over the filled subset only. Negative pooled "
+            "edge = the filled trades trail the market. Per-scope buckets below "
+            "MIN_CLUSTERS stay 'insufficient_data' by design; the pooled edge is "
+            "the small-sample headline, still a per-event-cluster mean."
+        ),
+    })
+    return attribution
+
+
 # -- narration (commentary only, fail-closed) ------------------------------------
 
 

@@ -1207,6 +1207,17 @@ def roll_up_trust_surface(sources_by_scope: dict[str, Any]) -> dict[str, Any]:
     return surface
 
 
+def _adverse_selection_report(conn) -> dict[str, Any]:
+    """First-class adverse-selection diagnostic (WS-A1).
+
+    Thin wrapper so the backtest summary carries the same measurement that the
+    dedicated ``runtime/autonomy/adverse_selection.json`` artifact does.
+    """
+    from autonomy.adverse_selection import adverse_selection_report
+
+    return adverse_selection_report(conn)
+
+
 def run_backtest(ledger: AutonomyLedger, bootstrap_weights: bool = False) -> dict[str, Any]:
     """Score all sources against settled markets; optionally persist weights."""
     conn = ledger._conn  # noqa: SLF001 - backtester is a trusted ledger consumer
@@ -1330,6 +1341,11 @@ def run_backtest(ledger: AutonomyLedger, bootstrap_weights: bool = False) -> dic
         "shadow_ttl_sensitivity": _shadow_ttl_sensitivity_report(conn),
         "crypto_diagnostics": _crypto_fill_diagnostics(conn),
         "crypto_challenger_gates": _crypto_challenger_gates(conn, source_summaries),
+        # WS-A1: adverse selection as a first-class measured quantity. The full
+        # sub-report is also emitted to its own runtime/autonomy/adverse_selection.json
+        # artifact wherever the backtest summary is produced (see
+        # scripts/run_dummy_backtest.py).
+        "execution_adverse_selection": _adverse_selection_report(conn),
         "decision_policy": _decision_policy_report(conn),
         "created_at": datetime.now(timezone.utc).isoformat(),
     }
