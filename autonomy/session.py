@@ -297,6 +297,17 @@ def build_brain(mode: SessionMode):
     # their markets route to no sports model and are simply never forecast.
     registry.register(BaseballIntelligenceSignal(seasons=seasons))
     registry.register(TeamSportsIntelligenceSignal(seasons=seasons))
+    # Fantasy triangulation leg #1: FanGraphs projection consensus. Per-team
+    # rest-of-season projection rates -> MLB winner/total fair value via the same
+    # baseball poisson plumbing the results-EWMA model prices with. Shares the one
+    # SeasonMonitor (skips fetches when MLB is dormant) and the ledger (each fetched
+    # projection snapshot is recorded as a point-in-time external observation).
+    # challenger_only=True on every emission; excluded from forecaster.fuse() until
+    # a settlement-backed promotion review. FanGraphs data is internal challenger
+    # evidence only -- never redistributed (see the module's ToS note).
+    from autonomy.signals.projection_consensus import ProjectionConsensusSignal
+
+    registry.register(ProjectionConsensusSignal(seasons=seasons, ledger=ledger))
     # WS-A2 (Phenon Harness): standalone power-ratings challenger (FPI/BPI +
     # Elo consensus winner/spread ladder + opportunistic divergence flag).
     # Shares the one SeasonMonitor instance like every other sports signal
