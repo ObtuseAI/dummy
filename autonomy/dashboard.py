@@ -754,9 +754,9 @@ function staleNote(ages){
 }
 async function tick(){
  const generation=++tickGeneration;
- let r; try{ r=await fetch('/api/autonomy'); }catch(e){ document.getElementById('ts').textContent='backend unreachable'; return; }
+ let resp; try{ resp=await fetch('/api/autonomy'); }catch(e){ document.getElementById('ts').textContent='backend unreachable'; return; }
  if(generation!==tickGeneration)return;
- if(r.status===503){
+ if(resp.status===503){
   // Full evidence report still assembling — show the fast /api/status snapshot.
   try{ const s=await (await fetch('/api/status')).json();
    if(generation!==tickGeneration)return;
@@ -768,7 +768,7 @@ async function tick(){
   }catch(e){document.getElementById('ts').textContent='full report computing…';}
   return;
  }
- let d; try{ d=await r.json(); }catch(e){ document.getElementById('ts').textContent='backend unreachable'; return; }
+ let d; try{ d=await resp.json(); }catch(e){ document.getElementById('ts').textContent='backend unreachable'; return; }
  if(generation!==tickGeneration)return;
  document.getElementById('ts').textContent='updated '+new Date().toLocaleTimeString()+(d.stale_cache?' · stale cache':'')+staleNote(d.data_ages);
  try{renderPaper(d);renderSports(d);}catch(e){document.getElementById('ts').textContent+=' · paper render error: '+e.message;console.error('paper render',e);}
