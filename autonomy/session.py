@@ -310,6 +310,19 @@ def build_brain(mode: SessionMode):
     from autonomy.signals.projection_consensus import ProjectionConsensusSignal
 
     registry.register(ProjectionConsensusSignal(seasons=seasons, ledger=ledger))
+    # Fantasy triangulation leg #3: ESPN fantasy baseball (flb) crowd lean.
+    # Per-team public backing (percentOwned/ADP) blended with ESPN's own season
+    # projections -> a coarse MLB winner lean, plus a between-cycle scratch /
+    # availability feed (autonomy.ingest.fantasy.espn_fantasy.FantasyBook). Shares
+    # the one SeasonMonitor (skips fetches when MLB is dormant) and the ledger
+    # (each fetched player snapshot and each scratch event is recorded as a
+    # point-in-time external observation). challenger_only=True on every emission;
+    # excluded from forecaster.fuse() until a settlement-backed promotion review.
+    # ESPN fantasy data is internal challenger evidence only -- never redistributed
+    # (see the module's ToS note).
+    from autonomy.signals.espn_fantasy_crowd import EspnFantasyCrowdSignal
+
+    registry.register(EspnFantasyCrowdSignal(seasons=seasons, ledger=ledger))
     # WS-A2 (Phenon Harness): standalone power-ratings challenger (FPI/BPI +
     # Elo consensus winner/spread ladder + opportunistic divergence flag).
     # Shares the one SeasonMonitor instance like every other sports signal
