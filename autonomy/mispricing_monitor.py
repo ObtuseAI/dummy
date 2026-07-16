@@ -48,6 +48,7 @@ from autonomy.mispricing import (
     MispricingMonitor,
 )
 from autonomy.opportunist import OpportunistEngine, Opportunity
+from autonomy.sports_clv import SportsCloseTracker, is_sports_market
 from autonomy.taxonomy import market_type_for
 
 # Report caps: at most this many per-game lattice rows, richest tier first.
@@ -223,6 +224,8 @@ def run_mispricing_sweep(
     specialist_fn: Callable[[Any], str | None] | None = None,
     divergence_fn: Callable[[Any], dict | None] | None = None,
     ejection_fn: Callable[[Any], Any] | None = None,
+    game_start_fn: Callable[[Any], str | None] | None = None,
+    sports_close: SportsCloseTracker | None = None,
 ) -> dict[str, Any]:
     """Run one sweep; return a JSON-able report.
 
@@ -238,6 +241,17 @@ def run_mispricing_sweep(
     ``(specialist, market_type)`` scope. A raising ``specialist_fn`` is
     caught per-market (fail-closed to an untagged "unknown" entry) so a
     broken router never wedges the pass.
+
+    ``game_start_fn`` + ``sports_close`` (Wave-2 D1, both optional and only
+    active together) re-anchor sports CLV on GAME START instead of the Kalshi
+    contract close (see autonomy/sports_clv.py). When wired, each assessed
+    SPORTS market is routed to the pre-game close tracker rather than the
+    generic book tape: its close-candidate snapshots accrue while the game is
+    pre-game and finalize into one book-tape row (``close_time`` = first
+    pitch) the pass after start passes. Fail-closed: a sports market whose
+    game start ``game_start_fn`` cannot resolve produces no tape row at all.
+    Omitting them (every pre-D1 caller, the crypto fast lane, all sweep tests)
+    leaves sports flowing through the generic ``_tape_row`` path unchanged.
     """
     monitor = MispricingMonitor(
         forecast_fn, book_fn,
@@ -283,7 +297,28 @@ def run_mispricing_sweep(
 
     # WS-8: one book-tape row per assessed market (the full universe, not
     # just the shortlist -- CLV grading needs every ticker's price history).
-    tape_rows = [_tape_row(market, assessment, now_iso) for market, assessment in assessed_pairs]
+    # Wave-2 D1: when the sports close tracker is wired, SPORTS markets are
+    # routed to it (close anchored on game start) instead of the generic
+    # game-end-anchored tape; everything else tapes as before.
+    sports_capture = game_start_fn is not None and sports_close is not None
+    tape_rows: list[dict[str, Any]] = []
+    for market, assessment in assessed_pairs:
+        if sports_capture and is_sports_market(market):
+            try:
+                start_iso = game_start_fn(market)
+            except Exception:
+                start_iso = None  # broken resolver -> fail-closed, no CLV row
+            sports_close.observe(
+                ticker=assessment.market_ticker,
+                start_time_iso=start_iso,
+                book_prob=assessment.book_prob,
+                kalshi_mid=assessment.market_prob,
+                now_iso=now_iso,
+            )
+            continue
+        tape_rows.append(_tape_row(market, assessment, now_iso))
+    sports_close_rows = sports_close.finalize_due(now_iso) if sports_capture else []
+    tape_rows.extend(sports_close_rows)
 
     # WS-5: group into per-game 3x3 lattices from the SAME markets/assessments
     # already computed above (no second fetch); a market that doesn't parse to
@@ -356,6 +391,12 @@ def run_mispricing_sweep(
         "cross_confirmed_count": cross_confirmed_count,
         "tape_rows": tape_rows,
         "entries": entries,
+        "sports_clv": {
+            "finalized_closes": len(sports_close_rows),
+            "pending_candidates": (
+                sports_close.pending_count() if sports_capture else 0
+            ),
+        },
         "params": {
             "edge_threshold": edge_threshold,
             "agree_margin": agree_margin,

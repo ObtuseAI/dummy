@@ -186,8 +186,31 @@ def main() -> int:
     registry = PromotionRegistry()
     promoted = set(registry.snapshot()["promoted"])
     now_ts, now_iso = utc_now()
+
+    # CLV evidence (WS-8 + Wave-2 D1 sports): map the CLV report's
+    # specialist|market_type grain onto exact scopes (crypto AND now sports)
+    # via the same helper the auto-promotion path uses, then feed each scope's
+    # mean CLV to the readiness criteria (clv_nonneg_or_absent). Fail-open: a
+    # missing/empty report leaves every scope's CLV absent, unchanged behavior.
+    from autonomy.auto_promotion_runner import clv_by_exact_scope  # noqa: E402
+
+    def _load_json_ro(path: Path) -> dict:
+        try:
+            return json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError, ValueError):
+            return {}
+
+    clv_report = _load_json_ro(Path("runtime/autonomy/clv_report.json"))
+    clv_exact = clv_by_exact_scope(clv_report, set(scope_rows))
+    clv_by_scope = {
+        scope: float(entry["mean"])
+        for scope, entry in clv_exact.items()
+        if entry.get("mean") is not None
+    }
+
     built = build_readiness(
         scope_rows, promoted, now_ts, now_iso,
+        clv_by_scope=clv_by_scope,
         challenger_gated_scopes=challenger_gated)
 
     _write_json(REPORT_PATH, built["report"])
@@ -208,6 +231,7 @@ def main() -> int:
         "new_auto_demotions": report["auto_demotions"],
         "total_auto_demotions": len(merged_demotions["demotions"]),
         "reliability_maps": len(maps),
+        "clv_instrumented_scopes": len(clv_by_scope),
         "report": str(REPORT_PATH),
     }
     # WS-B: "where we bleed" line, fail-closed -- absent artifact/no bleeding

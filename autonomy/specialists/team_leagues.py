@@ -66,6 +66,39 @@ class TeamLeagueSpecialist:
             return None
         return parsed, game
 
+    def _resolve_game(self, market: MarketView):
+        """Locate this market's ESPN game in ANY phase (pre/in/post), or None.
+
+        Same team-matching rules as ``_live_game`` (abbreviations for winner
+        markets, full names for total/spread) but without the in-progress
+        gate, so the pre-game close tracker can read a scheduled start time.
+        """
+        parsed = self._parsed(market)
+        if parsed is None or not parsed.competitors:
+            return None
+        if parsed.market_type == "winner":
+            return self.espn.find_matchup(
+                self.league, parsed.competitors[0], parsed.competitors[1],
+                parsed.date_yyyymmdd,
+            )
+        return self.espn.find_matchup_names(
+            self.league, parsed.competitors[0], parsed.competitors[1],
+            parsed.date_yyyymmdd,
+        )
+
+    def game_start_time(self, market: MarketView) -> str | None:
+        """Scheduled start ISO for this market's game, or None (fail-closed).
+
+        Wave-2 D1 (sports CLV): the pre-game close tracker anchors the closing
+        line on ESPN's scheduled ``Game.date``. Any parse/lookup failure
+        returns None so the CLV tape never invents an unanchorable close.
+        """
+        try:
+            game = self._resolve_game(market)
+            return game.date if game is not None and game.date else None
+        except Exception:
+            return None
+
     def forecast(self, market: MarketView) -> Signal | None:
         try:
             if self.intelligence is None or not self.applicable(market):

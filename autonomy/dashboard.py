@@ -273,6 +273,46 @@ def _council_panel(
     return rows
 
 
+def _sports_clv_summary(clv_report: dict[str, Any]) -> dict[str, Any]:
+    """Compact sports-CLV rollup for the status payload (Wave-2 D1).
+
+    Surfaces, per sports specialist, the graded ``market_type`` scopes and
+    their CI-lower sign -- the exact evidence that lowers a sports scope's
+    auto-promotion cluster bar from 450 (no CLV) to 300 (CLV present) and
+    that the ladder's ``clv_ci95_lower > 0`` criterion consumes. Read-only,
+    fail-closed to an empty rollup when the report has no sports scopes.
+    """
+    from autonomy.sports_clv import SPORTS_SPECIALISTS
+
+    by_specialist: dict[str, list[dict[str, Any]]] = {}
+    positive = 0
+    for key, scope in (clv_report.get("scopes") or {}).items():
+        if not isinstance(scope, dict):
+            continue
+        name = scope.get("specialist")
+        if name not in SPORTS_SPECIALISTS:
+            continue
+        lower = scope.get("clv_bps_ci95_lower")
+        if lower is not None and float(lower) > 0.0:
+            positive += 1
+        by_specialist.setdefault(name, []).append({
+            "scope": key,
+            "market_type": scope.get("market_type"),
+            "clv_bps_mean": scope.get("clv_bps_mean"),
+            "clv_bps_ci95_lower": lower,
+            "n_entries": scope.get("n_entries"),
+            "n_event_clusters": scope.get("n_event_clusters"),
+        })
+    scope_count = sum(len(v) for v in by_specialist.values())
+    return {
+        "instrumented": scope_count > 0,
+        "n_scopes": scope_count,
+        "n_scopes_ci_lower_positive": positive,
+        "specialists": sorted(by_specialist),
+        "by_specialist": by_specialist,
+    }
+
+
 def assemble_dashboard_state(runtime_dir: Path | None = None) -> dict[str, Any]:
     """Assemble the full read-only dashboard state (pure)."""
     rd = runtime_dir or RUNTIME_DIR
@@ -424,6 +464,7 @@ def assemble_dashboard_state(runtime_dir: Path | None = None) -> dict[str, Any]:
         "crypto_paper_twin": crypto_paper_twin,
         "mispricing_monitor": mispricing_monitor,
         "clv_report": clv_report,
+        "sports_clv": _sports_clv_summary(clv_report),
         "loss_attribution": loss_attribution,
         "auto_promotion": auto_promotion,
         "council": council,
@@ -496,6 +537,8 @@ def assemble_status_snapshot(runtime_dir: Path | None = None) -> dict[str, Any]:
         "sports_simulation": panels_raw["sports_simulation"],
         "simulation_training": panels_raw["simulation_training"],
         "readiness_report": panels_raw["readiness_report"],
+        "clv_report": panels_raw["clv_report"],
+        "sports_clv": _sports_clv_summary(panels_raw["clv_report"]),
         "alerts": _tail_jsonl(rd / "alerts.jsonl", 20),
         "recent_cycles": _tail_jsonl(rd / "cycles.jsonl", 10),
     }

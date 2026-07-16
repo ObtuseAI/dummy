@@ -60,6 +60,26 @@ class MlbSpecialist:
             return None
         return parsed, game
 
+    def game_start_time(self, market: MarketView) -> str | None:
+        """Scheduled first-pitch ISO for this MLB market's game, or None.
+
+        Wave-2 D1 (sports CLV): the pre-game close tracker anchors the closing
+        line on scheduled game start (ESPN's ``Game.date``). Fail-closed --
+        an unparseable contract, no located game, or any error returns None,
+        so the CLV tape never invents a close it cannot anchor.
+        """
+        try:
+            parsed = self._parsed(market)
+            if parsed is None or not parsed.competitors:
+                return None
+            game = self.espn.find_matchup(
+                "mlb", parsed.competitors[0], parsed.competitors[1],
+                parsed.date_yyyymmdd,
+            )
+            return game.date if game is not None and game.date else None
+        except Exception:
+            return None
+
     # -- protocol --------------------------------------------------------
     def forecast(self, market: MarketView) -> Signal | None:
         try:
