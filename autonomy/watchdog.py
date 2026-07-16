@@ -1,0 +1,317 @@
+"""Ops watchdog: one aggregate monitor over the whole scheduled-task fleet.
+
+~10 Windows scheduled tasks run the paper-trading system; each writes its own
+freshest-artifact JSON but nothing watches them together, so a dead task fails
+silently while the dashboard still shows its last (stale) payload as healthy.
+
+This module reads each known task's freshest artifact, compares its age against
+2x that task's cadence, and -- together with a handful of environmental floors
+(cycle-error streaks, ledger size, kill-file presence, free-disk floor) -- fires
+de-duplicated ``autonomy.alerts`` alerts and writes ``watchdog_status.json`` for
+the dashboard. Read-only over the runtime tree; it never touches ledger.db and
+never controls a task.
+"""
+from __future__ import annotations
+
+import json
+import os
+import shutil
+from dataclasses import dataclass
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Any
+
+RUNTIME_DIR = Path("runtime/autonomy")
+STATUS_PATH = RUNTIME_DIR / "watchdog_status.json"
+WATCHDOG_STATE_PATH = RUNTIME_DIR / "watchdog_state.json"
+
+# Defaults chosen against the live runtime (ledger ~9.25 GB, D: free ~126 GB):
+# the ledger ceiling sits above today's size so it flags growth, not the
+# steady state; the disk floor and error-streak threshold are conservative.
+DEFAULT_LEDGER_MAX_GB = 12.0
+DEFAULT_DISK_FLOOR_GB = 10.0
+DEFAULT_ERROR_STREAK_THRESHOLD = 3
+STALE_MULTIPLIER = 2.0
+
+
+@dataclass(frozen=True)
+class TaskSpec:
+    """One scheduled task -> its freshest artifact + expected cadence."""
+
+    name: str
+    artifact: str
+    ts_fields: tuple[str, ...]
+    cadence_seconds: float
+    role: str = ""
+    stale_multiplier: float = STALE_MULTIPLIER
+
+    @property
+    def threshold_seconds(self) -> float:
+        return self.cadence_seconds * self.stale_multiplier
+
+
+# Cadences mirror scripts/install_*_task.ps1 (minutes -> seconds; daily -> 86400).
+DEFAULT_TASKS: list[TaskSpec] = [
+    TaskSpec("DummyShadowPredator", "heartbeat.json", ("last_cycle_at",), 600, "shadow predator"),
+    TaskSpec("DummyMispricingMonitor", "mispricing_monitor_latest.json", ("generated_at",), 120, "mispricing monitor"),
+    TaskSpec("DummyCryptoPaperTwin", "crypto_paper_twin_latest.json", ("completed_at", "started_at"), 300, "crypto paper twin"),
+    TaskSpec("DummySportsSimulation", "sports_simulation_latest.json", ("completed_at", "started_at"), 600, "sports paper twin"),
+    TaskSpec("DummySimulationTrainer", "simulation_training_latest.json", ("created_at",), 3600, "simulation trainer"),
+    TaskSpec("DummyStrategyMiner", "strategy_mining_report.json", ("generated_at",), 86400, "strategy miner"),
+    TaskSpec("DummyReadinessReport", "readiness_report.json", ("generated_at",), 86400, "readiness report"),
+]
+
+
+def _now_epoch() -> float:
+    return datetime.now(timezone.utc).timestamp()
+
+
+def _to_epoch(value: Any) -> float | None:
+    if value is None:
+        return None
+    if isinstance(value, (int, float)):
+        return float(value)
+    try:
+        text = str(value).strip()
+        if not text:
+            return None
+        parsed = datetime.fromisoformat(text.replace("Z", "+00:00"))
+        if parsed.tzinfo is None:
+            parsed = parsed.replace(tzinfo=timezone.utc)
+        return parsed.timestamp()
+    except (TypeError, ValueError):
+        return None
+
+
+def _load_json(path: Path) -> Any:
+    if not path.exists():
+        return None
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return None
+
+
+def _artifact_timestamp(path: Path, ts_fields: tuple[str, ...]) -> tuple[float | None, str]:
+    """Best available timestamp for one artifact: a named field, else mtime."""
+    data = _load_json(path)
+    if isinstance(data, dict):
+        for field_name in ts_fields:
+            epoch = _to_epoch(data.get(field_name))
+            if epoch is not None:
+                return epoch, field_name
+    if path.exists():
+        try:
+            return path.stat().st_mtime, "file_mtime"
+        except OSError:
+            return None, "unavailable"
+    return None, "missing"
+
+
+def evaluate_task(spec: TaskSpec, runtime_dir: Path, now_epoch: float) -> dict[str, Any]:
+    path = runtime_dir / spec.artifact
+    present = path.exists()
+    epoch, source = _artifact_timestamp(path, spec.ts_fields)
+    age = None if epoch is None else round(now_epoch - epoch, 1)
+    # Fail-closed: a missing artifact or an unreadable timestamp is stale.
+    stale = (age is None) or (age > spec.threshold_seconds)
+    data = _load_json(path) if present else None
+    last_status = data.get("status") or data.get("last_status") if isinstance(data, dict) else None
+    return {
+        "task_name": spec.name,
+        "role": spec.role,
+        "artifact": spec.artifact,
+        "present": present,
+        "timestamp_source": source,
+        "age_seconds": age,
+        "cadence_seconds": spec.cadence_seconds,
+        "threshold_seconds": spec.threshold_seconds,
+        "stale": bool(stale),
+        "last_status": last_status,
+    }
+
+
+def _cycle_error_streak(runtime_dir: Path, limit: int = 50) -> tuple[int, str | None]:
+    """Trailing run of consecutive CYCLE_ERROR statuses in cycles.jsonl."""
+    path = runtime_dir / "cycles.jsonl"
+    if not path.exists():
+        return 0, None
+    try:
+        lines = path.read_text(encoding="utf-8").strip().splitlines()
+    except Exception:
+        return 0, None
+    streak = 0
+    latest: str | None = None
+    for line in reversed(lines[-limit:]):
+        try:
+            status = str(json.loads(line).get("status", ""))
+        except Exception:
+            break
+        if latest is None:
+            latest = status
+        if status.startswith("CYCLE_ERROR"):
+            streak += 1
+        else:
+            break
+    return streak, latest
+
+
+def _ledger_size_gb(runtime_dir: Path) -> float | None:
+    path = runtime_dir / "ledger.db"
+    try:
+        return round(path.stat().st_size / 1e9, 3)
+    except OSError:
+        return None
+
+
+def _disk_free_gb(runtime_dir: Path) -> float | None:
+    try:
+        return round(shutil.disk_usage(str(runtime_dir)).free / 1e9, 2)
+    except OSError:
+        return None
+
+
+def evaluate_watchdog(
+    runtime_dir: Path | None = None,
+    *,
+    now_epoch: float | None = None,
+    tasks: list[TaskSpec] | None = None,
+    ledger_max_gb: float = DEFAULT_LEDGER_MAX_GB,
+    disk_floor_gb: float = DEFAULT_DISK_FLOOR_GB,
+    error_streak_threshold: int = DEFAULT_ERROR_STREAK_THRESHOLD,
+    kill_path: Path | None = None,
+) -> dict[str, Any]:
+    """Assemble the full watchdog status (pure; writes nothing, fires nothing)."""
+    rd = runtime_dir or RUNTIME_DIR
+    now = now_epoch if now_epoch is not None else _now_epoch()
+    specs = tasks if tasks is not None else DEFAULT_TASKS
+
+    task_rows = [evaluate_task(spec, rd, now) for spec in specs]
+    streak, latest_status = _cycle_error_streak(rd)
+    ledger_gb = _ledger_size_gb(rd)
+    disk_gb = _disk_free_gb(rd)
+    kill = kill_path or (rd / "KILL")
+    kill_present = kill.exists()
+
+    stale_tasks = [row["task_name"] for row in task_rows if row["stale"]]
+    ledger_over = ledger_gb is not None and ledger_gb > ledger_max_gb
+    disk_low = disk_gb is not None and disk_gb < disk_floor_gb
+    error_streak_alarm = streak >= error_streak_threshold
+
+    healthy = not (stale_tasks or ledger_over or disk_low or error_streak_alarm or kill_present)
+    return {
+        "generated_at": datetime.fromtimestamp(now, tz=timezone.utc).isoformat(),
+        "healthy": healthy,
+        "tasks": task_rows,
+        "stale_tasks": stale_tasks,
+        "cycle_error_streak": streak,
+        "cycle_error_streak_threshold": error_streak_threshold,
+        "latest_cycle_status": latest_status,
+        "ledger_size_gb": ledger_gb,
+        "ledger_max_gb": ledger_max_gb,
+        "ledger_over_threshold": ledger_over,
+        "disk_free_gb": disk_gb,
+        "disk_floor_gb": disk_floor_gb,
+        "disk_below_floor": disk_low,
+        "kill_file_present": kill_present,
+    }
+
+
+def _load_state(path: Path) -> dict[str, Any]:
+    data = _load_json(path)
+    return data if isinstance(data, dict) else {}
+
+
+def _save_state(path: Path, state: dict[str, Any]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(state, indent=2, sort_keys=True), encoding="utf-8")
+
+
+def fire_watchdog_alerts(
+    status: dict[str, Any],
+    *,
+    now_iso: str | None = None,
+    state_path: Path | None = None,
+) -> list[dict[str, Any]]:
+    """Emit rising-edge, de-duplicated alerts for the watchdog status.
+
+    An alert fires when a condition newly becomes true; it does not re-fire
+    while the condition stays true, and its latch clears when it recovers.
+    """
+    from autonomy.alerts import emit_alert
+
+    sp = state_path or WATCHDOG_STATE_PATH
+    state = _load_state(sp)
+    prior_stale = set(state.get("stale_tasks") or [])
+    fired: list[dict[str, Any]] = []
+
+    stale_now = set(status.get("stale_tasks") or [])
+    for name in sorted(stale_now - prior_stale):
+        row = next((r for r in status["tasks"] if r["task_name"] == name), {})
+        fired.append(emit_alert(
+            "WATCHDOG_TASK_STALE",
+            f"scheduled task {name} artifact is stale "
+            f"({row.get('age_seconds')}s > {row.get('threshold_seconds')}s)",
+            {"task": row}, now_iso,
+        ))
+
+    def _edge(key: str, active: bool, kind: str, message: str, detail: dict[str, Any]) -> None:
+        if active and not state.get(key):
+            fired.append(emit_alert(kind, message, detail, now_iso))
+        state[key] = active
+
+    _edge(
+        "error_streak_alarm", status.get("cycle_error_streak", 0) >= status.get("cycle_error_streak_threshold", 3),
+        "WATCHDOG_CYCLE_ERROR_STREAK",
+        f"{status.get('cycle_error_streak')} consecutive cycle errors "
+        f"(latest {status.get('latest_cycle_status')})",
+        {"streak": status.get("cycle_error_streak"), "latest": status.get("latest_cycle_status")},
+    )
+    _edge(
+        "ledger_over", bool(status.get("ledger_over_threshold")),
+        "WATCHDOG_LEDGER_SIZE",
+        f"ledger.db {status.get('ledger_size_gb')} GB exceeds {status.get('ledger_max_gb')} GB ceiling",
+        {"ledger_size_gb": status.get("ledger_size_gb"), "ledger_max_gb": status.get("ledger_max_gb")},
+    )
+    _edge(
+        "kill_present", bool(status.get("kill_file_present")),
+        "WATCHDOG_KILL_FILE",
+        "operator KILL file present -- trading is halted",
+        {},
+    )
+    _edge(
+        "disk_low", bool(status.get("disk_below_floor")),
+        "WATCHDOG_DISK_FLOOR",
+        f"free disk {status.get('disk_free_gb')} GB below floor {status.get('disk_floor_gb')} GB",
+        {"disk_free_gb": status.get("disk_free_gb"), "disk_floor_gb": status.get("disk_floor_gb")},
+    )
+
+    state["stale_tasks"] = sorted(stale_now)
+    _save_state(sp, state)
+    return fired
+
+
+def write_status(status: dict[str, Any], path: Path | None = None) -> Path:
+    target = path or STATUS_PATH
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(json.dumps(status, indent=2, sort_keys=True), encoding="utf-8")
+    return target
+
+
+def run_watchdog(
+    runtime_dir: Path | None = None,
+    *,
+    now_epoch: float | None = None,
+    emit_alerts: bool = True,
+    **kwargs: Any,
+) -> dict[str, Any]:
+    """Evaluate, persist ``watchdog_status.json``, and fire de-duped alerts."""
+    rd = runtime_dir or RUNTIME_DIR
+    status = evaluate_watchdog(rd, now_epoch=now_epoch, **kwargs)
+    write_status(status, rd / STATUS_PATH.name)
+    if emit_alerts and os.environ.get("DUMMY_WATCHDOG_ALERTS", "1") == "1":
+        try:
+            fire_watchdog_alerts(status, state_path=rd / WATCHDOG_STATE_PATH.name)
+        except Exception:
+            pass  # alerting must never wedge the watchdog
+    return status

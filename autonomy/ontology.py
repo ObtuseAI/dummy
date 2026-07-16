@@ -66,6 +66,10 @@ class MarketView:
     liquidity: int
     tick_size: int = 1
     raw: dict[str, Any] = field(default_factory=dict)
+    # UTC ISO-8601 moment this book snapshot was fetched from the venue. Stamped
+    # by the scanner so the executor's stale-data gate can refuse to submit an
+    # order against a book that has since gone stale. None => unknown freshness.
+    fetched_at: str | None = None
 
 
 @dataclass(frozen=True)

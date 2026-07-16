@@ -17,6 +17,80 @@ Alerts (`autonomy/alerts.py`) fire once per episode on SELF_STOP, drawdown
 ladder deepening, evidence-gate-green, and cycle-error streaks — written to
 `runtime/autonomy/alerts.jsonl` and surfaced on the dashboard.
 
+Two API surfaces:
+
+- `GET /api/status` — fast precomputed snapshot. Reads only the fresh runtime
+  JSON artifacts plus `watchdog_status.json`; it NEVER opens `ledger.db`.
+  Every panel payload carries `data_ages` (per-artifact timestamp, age in
+  seconds, cadence-derived threshold, `stale` flag) so stale data is visibly
+  stale instead of rendering as healthy.
+- `GET /api/autonomy` — the full evidence report (includes a 1,000-resample
+  cluster bootstrap over the ledger). It is cached for 30 s and computed on a
+  background worker with a bounded request deadline
+  (`DUMMY_DASHBOARD_STATE_DEADLINE_SECONDS`, default 20 s). A cold request
+  that misses the deadline gets the last cached value marked
+  `stale_cache: true`, or a `503` pointing at `/api/status` when no cache
+  exists yet — it no longer blocks for minutes recomputing the bootstrap
+  inline. The dashboard UI falls back to `/api/status` automatically.
+
+## Ops watchdog (aggregate fleet monitor)
+
+`autonomy/watchdog.py` + `scripts/run_dummy_watchdog.py` read each scheduled
+task's freshest artifact, compare its age against 2x that task's cadence, and
+check environmental floors: trailing CYCLE_ERROR streak in `cycles.jsonl`
+(threshold 3), `ledger.db` size ceiling (default 12 GB), operator kill-file
+presence, and a free-disk floor (default 10 GB). Results are written to
+`runtime/autonomy/watchdog_status.json` (consumed by the dashboard) and fire
+rising-edge, de-duplicated alerts through `autonomy/alerts.py`
+(`WATCHDOG_TASK_STALE`, `WATCHDOG_CYCLE_ERROR_STREAK`, `WATCHDOG_LEDGER_SIZE`,
+`WATCHDOG_KILL_FILE`, `WATCHDOG_DISK_FLOOR`). The watchdog is read-only over
+the runtime tree: it never opens `ledger.db` and never controls a task.
+
+```bash
+# One pass (exit code 1 when unhealthy):
+python scripts/run_dummy_watchdog.py
+
+# Register the 5-minute scheduled task ONCE, elevated — the OPERATOR runs
+# this; nothing registers it automatically:
+powershell -ExecutionPolicy Bypass -File scripts/install_watchdog_task.ps1
+```
+
+Watched tasks and thresholds (stale = artifact older than 2x cadence, or the
+artifact/timestamp is missing — fail-closed):
+
+| task | artifact | cadence | stale after |
+|---|---|---|---|
+| DummyShadowPredator | heartbeat.json (`last_cycle_at`) | 10 min | 20 min |
+| DummyMispricingMonitor | mispricing_monitor_latest.json (`generated_at`) | 2 min | 4 min |
+| DummyCryptoPaperTwin | crypto_paper_twin_latest.json (`completed_at`) | 5 min | 10 min |
+| DummySportsSimulation | sports_simulation_latest.json (`completed_at`) | 10 min | 20 min |
+| DummySimulationTrainer | simulation_training_latest.json (`created_at`) | 60 min | 2 h |
+| DummyStrategyMiner | strategy_mining_report.json (`generated_at`) | daily | 48 h |
+| DummyReadinessReport | readiness_report.json (`generated_at`) | daily | 48 h |
+
+## Stale-data submit gate (fail-closed)
+
+The executor refuses any order whose driving market-book snapshot is older
+than a per-horizon maximum age at the moment of submit
+(`autonomy/staleness.py`; the scanner stamps `MarketView.fetched_at` once per
+sweep). Refusals are recorded as `BLOCKED_LOCAL` outcomes in the ledger with
+the reason, age, and threshold — never a silent skip — and counted on
+`Executor.stale_block_count`. Defaults:
+
+| horizon | max snapshot age |
+|---|---|
+| crypto 15m (and faster) | 60 s (matches the 1-min resting-quote TTL) |
+| crypto hourly and longer | 180 s |
+| sports live / in-play | 120 s |
+| sports pregame | 300 s |
+| everything else | 300 s |
+
+Unknown freshness is stale: a missing, unparseable, or future snapshot
+timestamp refuses the order. A LIVE submit additionally re-checks the venue
+halt state (`/exchange/status`) at the moment of submit, not just at cycle
+start; a status-fetch failure fails open (unknown is not down), matching the
+cycle-start doctrine.
+
 ## Continuous shadow + going live (Tier 1)
 
 ```bash

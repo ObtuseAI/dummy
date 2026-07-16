@@ -415,7 +415,9 @@ class PredatorBrain:
                     report.notes.append("candidate_search_stopped_at_stage_position_cap")
                     break
                 continue
-            outcome = await self.executor.execute(decision)
+            outcome = await self.executor.execute(
+                decision, snapshot_ts=getattr(market, "fetched_at", None)
+            )
             self.ledger.record_outcome(outcome)
             if outcome.kind in (OutcomeKind.ACCEPTED, OutcomeKind.SHADOW) and outcome.order_id:
                 report.orders_placed += 1
