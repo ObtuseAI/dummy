@@ -17,6 +17,11 @@
   "protected_surfaces": [
     {
       "category": "adversarial_evaluation",
+      "path": "dummy/intelligence_lab",
+      "reason": "Scientific memory, theory gates, and intelligence-research governance cannot be candidate-controlled."
+    },
+    {
+      "category": "adversarial_evaluation",
       "path": "dummy/autoresearch",
       "reason": "Nested research policy, private partitions, and ignition judges cannot be candidate-controlled."
     },

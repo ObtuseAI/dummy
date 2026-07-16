@@ -1,0 +1,1120 @@
+{
+  "automatic_positive_promotion": false,
+  "campaigns": [
+    {
+      "best_forward_candidate_id": null,
+      "budget": {
+        "experiments_completed": 5,
+        "maximum_experiments": 5,
+        "per_experiment_compute_units": 5000.0,
+        "same_model_access": true,
+        "same_private_evaluator": true,
+        "same_starting_genome": true,
+        "total_compute_units_used": 1496.25
+      },
+      "campaign_id": "0f8163c609d18a48064002a1b4adbef75f33f7f708a8eccffc3eac5e8d05df40",
+      "component_lineage": {
+        "component_sources": [
+          "crypto_technical_foundry"
+        ],
+        "experiment_run": false,
+        "future_component_accrual_enabled": true,
+        "lineage_id": "component-evidence",
+        "outcome_rows_used_to_reconstruct_component": false,
+        "partition_counts": {
+          "EXTERNAL_GENERALIZATION": 1,
+          "PRIVATE_SELECTION": 0,
+          "VISIBLE_DEVELOPMENT": 0
+        },
+        "status": "ACCUMULATING_POINT_IN_TIME_COMPONENT_OUTPUTS"
+      },
+      "external_survivors": 0,
+      "genuine_private_candidate_trials": 5,
+      "partition_plan": {
+        "cluster_snapshot_policy": "earliest_whole_decision_date_per_event_cluster",
+        "counts": {
+          "EXTERNAL_GENERALIZATION": 26,
+          "PRIVATE_SELECTION": 80,
+          "VISIBLE_DEVELOPMENT": 179
+        },
+        "date_ranges": {
+          "EXTERNAL_GENERALIZATION": {
+            "date_count": 1,
+            "first": "2026-07-15",
+            "last": "2026-07-15"
+          },
+          "PRIVATE_SELECTION": {
+            "date_count": 1,
+            "first": "2026-07-14",
+            "last": "2026-07-14"
+          },
+          "VISIBLE_DEVELOPMENT": {
+            "date_count": 4,
+            "first": "2026-07-10",
+            "last": "2026-07-13"
+          }
+        },
+        "evidence_fingerprint": "399579fa7d9ec50748cbe56fd412fe7c795096a52d0648ed06ba0ea92408bfb4",
+        "excluded_cross_partition_cluster_count": 0,
+        "excluded_late_cluster_observation_count": 0,
+        "item_assignments_exposed": false,
+        "plan_id": "d69eabb58cf15ee14b1a667c02503d750f350be2edbf0f2b43799e86868309be",
+        "scope": "crypto|btc|15m_direction|15m",
+        "selection_uses_external": false
+      },
+      "private_survivors": 0,
+      "scope": "crypto|btc|15m_direction|15m"
+    },
+    {
+      "best_forward_candidate_id": null,
+      "budget": {
+        "experiments_completed": 5,
+        "maximum_experiments": 5,
+        "per_experiment_compute_units": 5000.0,
+        "same_model_access": true,
+        "same_private_evaluator": true,
+        "same_starting_genome": true,
+        "total_compute_units_used": 614.25
+      },
+      "campaign_id": "eb637a2564abf64f84468d55d02dd2463b79cc4dfa25c958d554755dd1911104",
+      "component_lineage": {
+        "component_sources": [],
+        "experiment_run": false,
+        "future_component_accrual_enabled": true,
+        "lineage_id": "component-evidence",
+        "outcome_rows_used_to_reconstruct_component": false,
+        "partition_counts": {
+          "EXTERNAL_GENERALIZATION": 0,
+          "PRIVATE_SELECTION": 0,
+          "VISIBLE_DEVELOPMENT": 0
+        },
+        "status": "ACCUMULATING_POINT_IN_TIME_COMPONENT_OUTPUTS"
+      },
+      "external_survivors": 0,
+      "genuine_private_candidate_trials": 5,
+      "partition_plan": {
+        "cluster_snapshot_policy": "earliest_whole_decision_date_per_event_cluster",
+        "counts": {
+          "EXTERNAL_GENERALIZATION": 45,
+          "PRIVATE_SELECTION": 44,
+          "VISIBLE_DEVELOPMENT": 28
+        },
+        "date_ranges": {
+          "EXTERNAL_GENERALIZATION": {
+            "date_count": 1,
+            "first": "2026-07-13",
+            "last": "2026-07-13"
+          },
+          "PRIVATE_SELECTION": {
+            "date_count": 1,
+            "first": "2026-07-12",
+            "last": "2026-07-12"
+          },
+          "VISIBLE_DEVELOPMENT": {
+            "date_count": 2,
+            "first": "2026-07-10",
+            "last": "2026-07-11"
+          }
+        },
+        "evidence_fingerprint": "d3358475f1d2f4c8c8105595e5a9505b7f8efd3217343f8d12d3d90770b575ac",
+        "excluded_cross_partition_cluster_count": 0,
+        "excluded_late_cluster_observation_count": 58,
+        "item_assignments_exposed": false,
+        "plan_id": "4f952ae79cc715975374f788640fb42809b8b603cc9a434c64dc5debcc31e3fa",
+        "scope": "crypto|btc|price_ladder|daily+",
+        "selection_uses_external": false
+      },
+      "private_survivors": 2,
+      "scope": "crypto|btc|price_ladder|daily+"
+    },
+    {
+      "best_forward_candidate_id": null,
+      "budget": {
+        "experiments_completed": 5,
+        "maximum_experiments": 5,
+        "per_experiment_compute_units": 5000.0,
+        "same_model_access": true,
+        "same_private_evaluator": true,
+        "same_starting_genome": true,
+        "total_compute_units_used": 10536.75
+      },
+      "campaign_id": "e3477038c4cc8638fb7de149b215f59b5c82187eb58d3b98816ad094b2285ae7",
+      "component_lineage": {
+        "component_sources": [],
+        "experiment_run": false,
+        "future_component_accrual_enabled": true,
+        "lineage_id": "component-evidence",
+        "outcome_rows_used_to_reconstruct_component": false,
+        "partition_counts": {
+          "EXTERNAL_GENERALIZATION": 0,
+          "PRIVATE_SELECTION": 0,
+          "VISIBLE_DEVELOPMENT": 0
+        },
+        "status": "ACCUMULATING_POINT_IN_TIME_COMPONENT_OUTPUTS"
+      },
+      "external_survivors": 0,
+      "genuine_private_candidate_trials": 5,
+      "partition_plan": {
+        "cluster_snapshot_policy": "earliest_whole_decision_date_per_event_cluster",
+        "counts": {
+          "EXTERNAL_GENERALIZATION": 170,
+          "PRIVATE_SELECTION": 531,
+          "VISIBLE_DEVELOPMENT": 1306
+        },
+        "date_ranges": {
+          "EXTERNAL_GENERALIZATION": {
+            "date_count": 1,
+            "first": "2026-07-15",
+            "last": "2026-07-15"
+          },
+          "PRIVATE_SELECTION": {
+            "date_count": 1,
+            "first": "2026-07-14",
+            "last": "2026-07-14"
+          },
+          "VISIBLE_DEVELOPMENT": {
+            "date_count": 5,
+            "first": "2026-07-09",
+            "last": "2026-07-13"
+          }
+        },
+        "evidence_fingerprint": "3a3d95ef96f78b3153de40ca189b93564c1e234a0ffe007965632aa8c64cb647",
+        "excluded_cross_partition_cluster_count": 0,
+        "excluded_late_cluster_observation_count": 0,
+        "item_assignments_exposed": false,
+        "plan_id": "15a4592d6bc4ecf389f209ad150abce69c21ca89f735c23f02600101f44e1f2b",
+        "scope": "crypto|btc|price_ladder|hourly",
+        "selection_uses_external": false
+      },
+      "private_survivors": 0,
+      "scope": "crypto|btc|price_ladder|hourly"
+    },
+    {
+      "best_forward_candidate_id": null,
+      "budget": {
+        "experiments_completed": 5,
+        "maximum_experiments": 5,
+        "per_experiment_compute_units": 5000.0,
+        "same_model_access": true,
+        "same_private_evaluator": true,
+        "same_starting_genome": true,
+        "total_compute_units_used": 1449.0
+      },
+      "campaign_id": "e3a52d315be490108a50bd707aa5ea3f473215dcf09e906292ea72a650f03749",
+      "component_lineage": {
+        "component_sources": [
+          "crypto_technical_foundry"
+        ],
+        "experiment_run": false,
+        "future_component_accrual_enabled": true,
+        "lineage_id": "component-evidence",
+        "outcome_rows_used_to_reconstruct_component": false,
+        "partition_counts": {
+          "EXTERNAL_GENERALIZATION": 2,
+          "PRIVATE_SELECTION": 0,
+          "VISIBLE_DEVELOPMENT": 0
+        },
+        "status": "ACCUMULATING_POINT_IN_TIME_COMPONENT_OUTPUTS"
+      },
+      "external_survivors": 0,
+      "genuine_private_candidate_trials": 5,
+      "partition_plan": {
+        "cluster_snapshot_policy": "earliest_whole_decision_date_per_event_cluster",
+        "counts": {
+          "EXTERNAL_GENERALIZATION": 27,
+          "PRIVATE_SELECTION": 77,
+          "VISIBLE_DEVELOPMENT": 172
+        },
+        "date_ranges": {
+          "EXTERNAL_GENERALIZATION": {
+            "date_count": 1,
+            "first": "2026-07-15",
+            "last": "2026-07-15"
+          },
+          "PRIVATE_SELECTION": {
+            "date_count": 1,
+            "first": "2026-07-14",
+            "last": "2026-07-14"
+          },
+          "VISIBLE_DEVELOPMENT": {
+            "date_count": 4,
+            "first": "2026-07-10",
+            "last": "2026-07-13"
+          }
+        },
+        "evidence_fingerprint": "632ecdb76f95f7874dc4ff7cdf81e2f1a2b1ecdd2e596d15a39d1c756680ba05",
+        "excluded_cross_partition_cluster_count": 0,
+        "excluded_late_cluster_observation_count": 0,
+        "item_assignments_exposed": false,
+        "plan_id": "cb8c03356814a1ef3679f6dda9d52f3332b6bcec3c59ca56042eada74d02d7fc",
+        "scope": "crypto|eth|15m_direction|15m",
+        "selection_uses_external": false
+      },
+      "private_survivors": 0,
+      "scope": "crypto|eth|15m_direction|15m"
+    },
+    {
+      "best_forward_candidate_id": "ed44241f49f30be5046d722002929be470acba6e18fc5da83342f84328dd3de6",
+      "budget": {
+        "experiments_completed": 5,
+        "maximum_experiments": 5,
+        "per_experiment_compute_units": 5000.0,
+        "same_model_access": true,
+        "same_private_evaluator": true,
+        "same_starting_genome": true,
+        "total_compute_units_used": 204.75
+      },
+      "campaign_id": "bdb8146643e83c6ead335e73d41f520bfe56e0695f5f7d90598cd40f7473f145",
+      "component_lineage": {
+        "component_sources": [],
+        "experiment_run": false,
+        "future_component_accrual_enabled": true,
+        "lineage_id": "component-evidence",
+        "outcome_rows_used_to_reconstruct_component": false,
+        "partition_counts": {
+          "EXTERNAL_GENERALIZATION": 0,
+          "PRIVATE_SELECTION": 0,
+          "VISIBLE_DEVELOPMENT": 0
+        },
+        "status": "ACCUMULATING_POINT_IN_TIME_COMPONENT_OUTPUTS"
+      },
+      "external_survivors": 2,
+      "genuine_private_candidate_trials": 5,
+      "partition_plan": {
+        "cluster_snapshot_policy": "earliest_whole_decision_date_per_event_cluster",
+        "counts": {
+          "EXTERNAL_GENERALIZATION": 12,
+          "PRIVATE_SELECTION": 22,
+          "VISIBLE_DEVELOPMENT": 5
+        },
+        "date_ranges": {
+          "EXTERNAL_GENERALIZATION": {
+            "date_count": 1,
+            "first": "2026-07-13",
+            "last": "2026-07-13"
+          },
+          "PRIVATE_SELECTION": {
+            "date_count": 1,
+            "first": "2026-07-12",
+            "last": "2026-07-12"
+          },
+          "VISIBLE_DEVELOPMENT": {
+            "date_count": 1,
+            "first": "2026-07-11",
+            "last": "2026-07-11"
+          }
+        },
+        "evidence_fingerprint": "f474a4987b7a62fa02f8f405973688a67e438880823ca2aa30a7cb7c9d15771e",
+        "excluded_cross_partition_cluster_count": 0,
+        "excluded_late_cluster_observation_count": 6,
+        "item_assignments_exposed": false,
+        "plan_id": "f88554ef9407fba7fe0a989b4d3ca2eb56e202284ff6865682f776b98e77700d",
+        "scope": "crypto|eth|price_ladder|daily+",
+        "selection_uses_external": false
+      },
+      "private_survivors": 2,
+      "scope": "crypto|eth|price_ladder|daily+"
+    },
+    {
+      "best_forward_candidate_id": null,
+      "budget": {
+        "experiments_completed": 5,
+        "maximum_experiments": 5,
+        "per_experiment_compute_units": 5000.0,
+        "same_model_access": true,
+        "same_private_evaluator": true,
+        "same_starting_genome": true,
+        "total_compute_units_used": 2882.25
+      },
+      "campaign_id": "41c508c31f22d306c8d79344f92a412e570a5f363503730c8ef16b66049ad1b3",
+      "component_lineage": {
+        "component_sources": [],
+        "experiment_run": false,
+        "future_component_accrual_enabled": true,
+        "lineage_id": "component-evidence",
+        "outcome_rows_used_to_reconstruct_component": false,
+        "partition_counts": {
+          "EXTERNAL_GENERALIZATION": 0,
+          "PRIVATE_SELECTION": 0,
+          "VISIBLE_DEVELOPMENT": 0
+        },
+        "status": "ACCUMULATING_POINT_IN_TIME_COMPONENT_OUTPUTS"
+      },
+      "external_survivors": 0,
+      "genuine_private_candidate_trials": 5,
+      "partition_plan": {
+        "cluster_snapshot_policy": "earliest_whole_decision_date_per_event_cluster",
+        "counts": {
+          "EXTERNAL_GENERALIZATION": 44,
+          "PRIVATE_SELECTION": 134,
+          "VISIBLE_DEVELOPMENT": 371
+        },
+        "date_ranges": {
+          "EXTERNAL_GENERALIZATION": {
+            "date_count": 1,
+            "first": "2026-07-15",
+            "last": "2026-07-15"
+          },
+          "PRIVATE_SELECTION": {
+            "date_count": 1,
+            "first": "2026-07-14",
+            "last": "2026-07-14"
+          },
+          "VISIBLE_DEVELOPMENT": {
+            "date_count": 5,
+            "first": "2026-07-09",
+            "last": "2026-07-13"
+          }
+        },
+        "evidence_fingerprint": "398cba3d8e465f11a149f773449543a9b08e9d4da03ed1a84dc2c01afa644167",
+        "excluded_cross_partition_cluster_count": 0,
+        "excluded_late_cluster_observation_count": 0,
+        "item_assignments_exposed": false,
+        "plan_id": "d4aa28e8be8417d2e0f6a4080cb641b0846cf34f20c025c9aa811e32c98cdd98",
+        "scope": "crypto|eth|price_ladder|hourly",
+        "selection_uses_external": false
+      },
+      "private_survivors": 0,
+      "scope": "crypto|eth|price_ladder|hourly"
+    },
+    {
+      "best_forward_candidate_id": null,
+      "budget": {
+        "experiments_completed": 5,
+        "maximum_experiments": 5,
+        "per_experiment_compute_units": 5000.0,
+        "same_model_access": true,
+        "same_private_evaluator": true,
+        "same_starting_genome": true,
+        "total_compute_units_used": 1517.25
+      },
+      "campaign_id": "86e4cb4959ddf226d9efb60627ec9247310356f802e1282efacc3cfae05beb79",
+      "component_lineage": {
+        "component_sources": [
+          "crypto_technical_foundry"
+        ],
+        "experiment_run": false,
+        "future_component_accrual_enabled": true,
+        "lineage_id": "component-evidence",
+        "outcome_rows_used_to_reconstruct_component": false,
+        "partition_counts": {
+          "EXTERNAL_GENERALIZATION": 2,
+          "PRIVATE_SELECTION": 0,
+          "VISIBLE_DEVELOPMENT": 0
+        },
+        "status": "ACCUMULATING_POINT_IN_TIME_COMPONENT_OUTPUTS"
+      },
+      "external_survivors": 0,
+      "genuine_private_candidate_trials": 5,
+      "partition_plan": {
+        "cluster_snapshot_policy": "earliest_whole_decision_date_per_event_cluster",
+        "counts": {
+          "EXTERNAL_GENERALIZATION": 24,
+          "PRIVATE_SELECTION": 76,
+          "VISIBLE_DEVELOPMENT": 189
+        },
+        "date_ranges": {
+          "EXTERNAL_GENERALIZATION": {
+            "date_count": 1,
+            "first": "2026-07-15",
+            "last": "2026-07-15"
+          },
+          "PRIVATE_SELECTION": {
+            "date_count": 1,
+            "first": "2026-07-14",
+            "last": "2026-07-14"
+          },
+          "VISIBLE_DEVELOPMENT": {
+            "date_count": 4,
+            "first": "2026-07-10",
+            "last": "2026-07-13"
+          }
+        },
+        "evidence_fingerprint": "eff982c60e3904091698f2831823bfb885db05fbb970bf042a999bfac261f8b0",
+        "excluded_cross_partition_cluster_count": 0,
+        "excluded_late_cluster_observation_count": 0,
+        "item_assignments_exposed": false,
+        "plan_id": "2768b3b004fc682aec7291d940030505ae2fa4d39d88994dd5ae80a1075904b3",
+        "scope": "crypto|sol|15m_direction|15m",
+        "selection_uses_external": false
+      },
+      "private_survivors": 0,
+      "scope": "crypto|sol|15m_direction|15m"
+    },
+    {
+      "best_forward_candidate_id": null,
+      "budget": {
+        "experiments_completed": 5,
+        "maximum_experiments": 5,
+        "per_experiment_compute_units": 5000.0,
+        "same_model_access": true,
+        "same_private_evaluator": true,
+        "same_starting_genome": true,
+        "total_compute_units_used": 357.0
+      },
+      "campaign_id": "1e097fb960198c853a692815898d259b825671e346b4c62436bdd49150fb042c",
+      "component_lineage": {
+        "component_sources": [],
+        "experiment_run": false,
+        "future_component_accrual_enabled": true,
+        "lineage_id": "component-evidence",
+        "outcome_rows_used_to_reconstruct_component": false,
+        "partition_counts": {
+          "EXTERNAL_GENERALIZATION": 0,
+          "PRIVATE_SELECTION": 0,
+          "VISIBLE_DEVELOPMENT": 0
+        },
+        "status": "ACCUMULATING_POINT_IN_TIME_COMPONENT_OUTPUTS"
+      },
+      "external_survivors": 0,
+      "genuine_private_candidate_trials": 5,
+      "partition_plan": {
+        "cluster_snapshot_policy": "earliest_whole_decision_date_per_event_cluster",
+        "counts": {
+          "EXTERNAL_GENERALIZATION": 16,
+          "PRIVATE_SELECTION": 30,
+          "VISIBLE_DEVELOPMENT": 22
+        },
+        "date_ranges": {
+          "EXTERNAL_GENERALIZATION": {
+            "date_count": 1,
+            "first": "2026-07-13",
+            "last": "2026-07-13"
+          },
+          "PRIVATE_SELECTION": {
+            "date_count": 1,
+            "first": "2026-07-12",
+            "last": "2026-07-12"
+          },
+          "VISIBLE_DEVELOPMENT": {
+            "date_count": 2,
+            "first": "2026-07-10",
+            "last": "2026-07-11"
+          }
+        },
+        "evidence_fingerprint": "5cbf9feebf031eb6a402eb16b6f992ea391077894dd1e6b05d050c098c2f2e02",
+        "excluded_cross_partition_cluster_count": 0,
+        "excluded_late_cluster_observation_count": 7,
+        "item_assignments_exposed": false,
+        "plan_id": "d2255737d1e5214bcfab7a816574edcf016924c18596629b6a3de794d4474b97",
+        "scope": "crypto|sol|price_ladder|daily+",
+        "selection_uses_external": false
+      },
+      "private_survivors": 1,
+      "scope": "crypto|sol|price_ladder|daily+"
+    },
+    {
+      "best_forward_candidate_id": null,
+      "budget": {
+        "experiments_completed": 5,
+        "maximum_experiments": 5,
+        "per_experiment_compute_units": 5000.0,
+        "same_model_access": true,
+        "same_private_evaluator": true,
+        "same_starting_genome": true,
+        "total_compute_units_used": 2467.5
+      },
+      "campaign_id": "6430355705ec5b8b26edead64879d47ee34451c25423f8bdd8813102e3af181b",
+      "component_lineage": {
+        "component_sources": [],
+        "experiment_run": false,
+        "future_component_accrual_enabled": true,
+        "lineage_id": "component-evidence",
+        "outcome_rows_used_to_reconstruct_component": false,
+        "partition_counts": {
+          "EXTERNAL_GENERALIZATION": 0,
+          "PRIVATE_SELECTION": 0,
+          "VISIBLE_DEVELOPMENT": 0
+        },
+        "status": "ACCUMULATING_POINT_IN_TIME_COMPONENT_OUTPUTS"
+      },
+      "external_survivors": 0,
+      "genuine_private_candidate_trials": 5,
+      "partition_plan": {
+        "cluster_snapshot_policy": "earliest_whole_decision_date_per_event_cluster",
+        "counts": {
+          "EXTERNAL_GENERALIZATION": 43,
+          "PRIVATE_SELECTION": 115,
+          "VISIBLE_DEVELOPMENT": 312
+        },
+        "date_ranges": {
+          "EXTERNAL_GENERALIZATION": {
+            "date_count": 1,
+            "first": "2026-07-15",
+            "last": "2026-07-15"
+          },
+          "PRIVATE_SELECTION": {
+            "date_count": 1,
+            "first": "2026-07-14",
+            "last": "2026-07-14"
+          },
+          "VISIBLE_DEVELOPMENT": {
+            "date_count": 4,
+            "first": "2026-07-10",
+            "last": "2026-07-13"
+          }
+        },
+        "evidence_fingerprint": "467ba5607989a42d2cf31f3b18d9ec1c9d78470780221bf6a579806cea17c388",
+        "excluded_cross_partition_cluster_count": 0,
+        "excluded_late_cluster_observation_count": 0,
+        "item_assignments_exposed": false,
+        "plan_id": "4871a86d6b71fc1e439a45d98af98b2fb1b91815f29aabdd7aae7049faa76df5",
+        "scope": "crypto|sol|price_ladder|hourly",
+        "selection_uses_external": false
+      },
+      "private_survivors": 0,
+      "scope": "crypto|sol|price_ladder|hourly"
+    },
+    {
+      "best_forward_candidate_id": null,
+      "budget": {
+        "experiments_completed": 5,
+        "maximum_experiments": 5,
+        "per_experiment_compute_units": 5000.0,
+        "same_model_access": true,
+        "same_private_evaluator": true,
+        "same_starting_genome": true,
+        "total_compute_units_used": 540.75
+      },
+      "campaign_id": "5e21ea687814cce85bb263fab765a89e640fc6c1c1f7384d907d92d61d3ef131",
+      "component_lineage": {
+        "component_sources": [],
+        "experiment_run": false,
+        "future_component_accrual_enabled": true,
+        "lineage_id": "component-evidence",
+        "outcome_rows_used_to_reconstruct_component": false,
+        "partition_counts": {
+          "EXTERNAL_GENERALIZATION": 0,
+          "PRIVATE_SELECTION": 0,
+          "VISIBLE_DEVELOPMENT": 0
+        },
+        "status": "ACCUMULATING_POINT_IN_TIME_COMPONENT_OUTPUTS"
+      },
+      "external_survivors": 0,
+      "genuine_private_candidate_trials": 5,
+      "partition_plan": {
+        "cluster_snapshot_policy": "earliest_whole_decision_date_per_event_cluster",
+        "counts": {
+          "EXTERNAL_GENERALIZATION": 11,
+          "PRIVATE_SELECTION": 80,
+          "VISIBLE_DEVELOPMENT": 12
+        },
+        "date_ranges": {
+          "EXTERNAL_GENERALIZATION": {
+            "date_count": 1,
+            "first": "2026-07-13",
+            "last": "2026-07-13"
+          },
+          "PRIVATE_SELECTION": {
+            "date_count": 1,
+            "first": "2026-07-12",
+            "last": "2026-07-12"
+          },
+          "VISIBLE_DEVELOPMENT": {
+            "date_count": 1,
+            "first": "2026-07-10",
+            "last": "2026-07-10"
+          }
+        },
+        "evidence_fingerprint": "7a2c1b170e9c5fceeeba2369bf0554c5cb04fa6b4bc2e3b30c4bb2d02c4ac47d",
+        "excluded_cross_partition_cluster_count": 0,
+        "excluded_late_cluster_observation_count": 1,
+        "item_assignments_exposed": false,
+        "plan_id": "499fa1bbceec87584b16ffd5b72691feda32a5b261948836214413457ef85d51",
+        "scope": "sports|mlb|total|pre",
+        "selection_uses_external": false
+      },
+      "private_survivors": 0,
+      "scope": "sports|mlb|total|pre"
+    },
+    {
+      "best_forward_candidate_id": null,
+      "budget": {
+        "experiments_completed": 5,
+        "maximum_experiments": 5,
+        "per_experiment_compute_units": 5000.0,
+        "same_model_access": true,
+        "same_private_evaluator": true,
+        "same_starting_genome": true,
+        "total_compute_units_used": 262.5
+      },
+      "campaign_id": "198760a4c5ef1ced5e71cf4907f6427419c5fcfb39a7930089ecab5fe4fc792a",
+      "component_lineage": {
+        "component_sources": [],
+        "experiment_run": false,
+        "future_component_accrual_enabled": true,
+        "lineage_id": "component-evidence",
+        "outcome_rows_used_to_reconstruct_component": false,
+        "partition_counts": {
+          "EXTERNAL_GENERALIZATION": 0,
+          "PRIVATE_SELECTION": 0,
+          "VISIBLE_DEVELOPMENT": 0
+        },
+        "status": "ACCUMULATING_POINT_IN_TIME_COMPONENT_OUTPUTS"
+      },
+      "external_survivors": 0,
+      "genuine_private_candidate_trials": 5,
+      "partition_plan": {
+        "cluster_snapshot_policy": "earliest_whole_decision_date_per_event_cluster",
+        "counts": {
+          "EXTERNAL_GENERALIZATION": 3,
+          "PRIVATE_SELECTION": 2,
+          "VISIBLE_DEVELOPMENT": 45
+        },
+        "date_ranges": {
+          "EXTERNAL_GENERALIZATION": {
+            "date_count": 1,
+            "first": "2026-07-12",
+            "last": "2026-07-12"
+          },
+          "PRIVATE_SELECTION": {
+            "date_count": 1,
+            "first": "2026-07-10",
+            "last": "2026-07-10"
+          },
+          "VISIBLE_DEVELOPMENT": {
+            "date_count": 1,
+            "first": "2026-07-09",
+            "last": "2026-07-09"
+          }
+        },
+        "evidence_fingerprint": "ab2f8ceb858c49e59ac689dec37d5fc3ddc1efcfbe8d4d4ae2fe392459089bb2",
+        "excluded_cross_partition_cluster_count": 0,
+        "excluded_late_cluster_observation_count": 6,
+        "item_assignments_exposed": false,
+        "plan_id": "d029163ceddc3a7d5d4106e162c37958f34d9407f7fdfbcc2b7f77d7fa84d3c1",
+        "scope": "sports|mlb|winner|pre",
+        "selection_uses_external": false
+      },
+      "private_survivors": 0,
+      "scope": "sports|mlb|winner|pre"
+    }
+  ],
+  "campaigns_completed": 11,
+  "capital_authority": false,
+  "discovered_cohorts": 26,
+  "evidence_id": "2ee64c9fc1e8a0cc038e882f91629d3fc08736c2f3402cad678d61cfcfa50a79",
+  "execution_authority": false,
+  "performance_claim_supported": false,
+  "private_candidate_genomes_embedded": false,
+  "schedule": [
+    {
+      "base_genome_id": null,
+      "decision_dates": 1,
+      "priority_inputs": {
+        "cross_cohort_transfer": false,
+        "evidence_volume": 4,
+        "exact_gate": true,
+        "partition_viable": false
+      },
+      "reason": "no bounded organism template exists for this exact cohort",
+      "row_count": 4,
+      "scope": "commodities|kxgoldd|other|pre",
+      "status": "NO_COMPATIBLE_GENERATION_ZERO_GENOME"
+    },
+    {
+      "base_genome_id": null,
+      "decision_dates": 1,
+      "priority_inputs": {
+        "cross_cohort_transfer": false,
+        "evidence_volume": 6,
+        "exact_gate": true,
+        "partition_viable": false
+      },
+      "reason": "no bounded organism template exists for this exact cohort",
+      "row_count": 6,
+      "scope": "commodities|kxgoldw|other|pre",
+      "status": "NO_COMPATIBLE_GENERATION_ZERO_GENOME"
+    },
+    {
+      "base_genome_id": null,
+      "decision_dates": 2,
+      "priority_inputs": {
+        "cross_cohort_transfer": false,
+        "evidence_volume": 4,
+        "exact_gate": true,
+        "partition_viable": false
+      },
+      "reason": "no bounded organism template exists for this exact cohort",
+      "row_count": 4,
+      "scope": "commodities|kxnatgasd|other|pre",
+      "status": "NO_COMPATIBLE_GENERATION_ZERO_GENOME"
+    },
+    {
+      "base_genome_id": null,
+      "decision_dates": 3,
+      "priority_inputs": {
+        "cross_cohort_transfer": false,
+        "evidence_volume": 33,
+        "exact_gate": true,
+        "partition_viable": false
+      },
+      "reason": "no bounded organism template exists for this exact cohort",
+      "row_count": 33,
+      "scope": "commodities|kxwti|other|pre",
+      "status": "NO_COMPATIBLE_GENERATION_ZERO_GENOME"
+    },
+    {
+      "base_genome_id": "6c91b374db8b06f9d0b3836057d3a5f4c6778a19914529a0b94a8cb0752ed257",
+      "campaign_id": "0f8163c609d18a48064002a1b4adbef75f33f7f708a8eccffc3eac5e8d05df40",
+      "decision_dates": 6,
+      "external_survivors": 0,
+      "priority_inputs": {
+        "cross_cohort_transfer": false,
+        "evidence_volume": 285,
+        "exact_gate": true,
+        "partition_viable": true
+      },
+      "private_survivors": 0,
+      "reason": null,
+      "row_count": 285,
+      "scope": "crypto|btc|15m_direction|15m",
+      "status": "CAMPAIGN_COMPLETED"
+    },
+    {
+      "base_genome_id": "39de14d6a6964697bc7c4f8ac70e5ce1dfe9659fd2622f23c07f0d15c83b3c36",
+      "campaign_id": "eb637a2564abf64f84468d55d02dd2463b79cc4dfa25c958d554755dd1911104",
+      "decision_dates": 5,
+      "external_survivors": 0,
+      "priority_inputs": {
+        "cross_cohort_transfer": false,
+        "evidence_volume": 175,
+        "exact_gate": true,
+        "partition_viable": true
+      },
+      "private_survivors": 2,
+      "reason": null,
+      "row_count": 175,
+      "scope": "crypto|btc|price_ladder|daily+",
+      "status": "CAMPAIGN_COMPLETED"
+    },
+    {
+      "base_genome_id": "4565e247176f01153b9dce5c71c86bb1d6ba5c6a52438f66a9ede07e0007cfa1",
+      "campaign_id": "e3477038c4cc8638fb7de149b215f59b5c82187eb58d3b98816ad094b2285ae7",
+      "decision_dates": 7,
+      "external_survivors": 0,
+      "priority_inputs": {
+        "cross_cohort_transfer": false,
+        "evidence_volume": 2007,
+        "exact_gate": true,
+        "partition_viable": true
+      },
+      "private_survivors": 0,
+      "reason": null,
+      "row_count": 2007,
+      "scope": "crypto|btc|price_ladder|hourly",
+      "status": "CAMPAIGN_COMPLETED"
+    },
+    {
+      "base_genome_id": null,
+      "decision_dates": 1,
+      "priority_inputs": {
+        "cross_cohort_transfer": false,
+        "evidence_volume": 344,
+        "exact_gate": true,
+        "partition_viable": false
+      },
+      "reason": "hourly and daily crypto must remain separately gated",
+      "row_count": 344,
+      "scope": "crypto|btc|price_ladder|unknown",
+      "status": "BLOCKED_MISSING_HORIZON_PROVENANCE"
+    },
+    {
+      "base_genome_id": "bdc830b4def326edb2a6f548cdd628d6ddf92c98aa3369cda50c2f7e0b8e289e",
+      "campaign_id": "e3a52d315be490108a50bd707aa5ea3f473215dcf09e906292ea72a650f03749",
+      "decision_dates": 6,
+      "external_survivors": 0,
+      "priority_inputs": {
+        "cross_cohort_transfer": false,
+        "evidence_volume": 276,
+        "exact_gate": true,
+        "partition_viable": true
+      },
+      "private_survivors": 0,
+      "reason": null,
+      "row_count": 276,
+      "scope": "crypto|eth|15m_direction|15m",
+      "status": "CAMPAIGN_COMPLETED"
+    },
+    {
+      "base_genome_id": "30f8cefae26ec2295082b4c485ec42860d1464b076ab7fbd6f331a45f03a126e",
+      "campaign_id": "bdb8146643e83c6ead335e73d41f520bfe56e0695f5f7d90598cd40f7473f145",
+      "decision_dates": 4,
+      "external_survivors": 2,
+      "priority_inputs": {
+        "cross_cohort_transfer": false,
+        "evidence_volume": 45,
+        "exact_gate": true,
+        "partition_viable": true
+      },
+      "private_survivors": 2,
+      "reason": null,
+      "row_count": 45,
+      "scope": "crypto|eth|price_ladder|daily+",
+      "status": "CAMPAIGN_COMPLETED"
+    },
+    {
+      "base_genome_id": "df88449c60b838ddc7df3b5092ad9ec510d8820879f3a795e6c52d5b9a1fe6d2",
+      "campaign_id": "41c508c31f22d306c8d79344f92a412e570a5f363503730c8ef16b66049ad1b3",
+      "decision_dates": 7,
+      "external_survivors": 0,
+      "priority_inputs": {
+        "cross_cohort_transfer": false,
+        "evidence_volume": 549,
+        "exact_gate": true,
+        "partition_viable": true
+      },
+      "private_survivors": 0,
+      "reason": null,
+      "row_count": 549,
+      "scope": "crypto|eth|price_ladder|hourly",
+      "status": "CAMPAIGN_COMPLETED"
+    },
+    {
+      "base_genome_id": null,
+      "decision_dates": 1,
+      "priority_inputs": {
+        "cross_cohort_transfer": false,
+        "evidence_volume": 95,
+        "exact_gate": true,
+        "partition_viable": false
+      },
+      "reason": "hourly and daily crypto must remain separately gated",
+      "row_count": 95,
+      "scope": "crypto|eth|price_ladder|unknown",
+      "status": "BLOCKED_MISSING_HORIZON_PROVENANCE"
+    },
+    {
+      "base_genome_id": "286811326406e82c37842ecb500c53fe4f76baf27db4540c1717149327b5a603",
+      "campaign_id": "86e4cb4959ddf226d9efb60627ec9247310356f802e1282efacc3cfae05beb79",
+      "decision_dates": 6,
+      "external_survivors": 0,
+      "priority_inputs": {
+        "cross_cohort_transfer": false,
+        "evidence_volume": 289,
+        "exact_gate": true,
+        "partition_viable": true
+      },
+      "private_survivors": 0,
+      "reason": null,
+      "row_count": 289,
+      "scope": "crypto|sol|15m_direction|15m",
+      "status": "CAMPAIGN_COMPLETED"
+    },
+    {
+      "base_genome_id": "bc5af19a5b12d586708c2f28c2e1a9e550ee270334a4b2992210b495a6df3bfe",
+      "campaign_id": "1e097fb960198c853a692815898d259b825671e346b4c62436bdd49150fb042c",
+      "decision_dates": 5,
+      "external_survivors": 0,
+      "priority_inputs": {
+        "cross_cohort_transfer": false,
+        "evidence_volume": 75,
+        "exact_gate": true,
+        "partition_viable": true
+      },
+      "private_survivors": 1,
+      "reason": null,
+      "row_count": 75,
+      "scope": "crypto|sol|price_ladder|daily+",
+      "status": "CAMPAIGN_COMPLETED"
+    },
+    {
+      "base_genome_id": "a2117aa8bac28b6a885162a4593bc0f8ccda22081bbbb2e59f0863919fc84f47",
+      "campaign_id": "6430355705ec5b8b26edead64879d47ee34451c25423f8bdd8813102e3af181b",
+      "decision_dates": 6,
+      "external_survivors": 0,
+      "priority_inputs": {
+        "cross_cohort_transfer": false,
+        "evidence_volume": 470,
+        "exact_gate": true,
+        "partition_viable": true
+      },
+      "private_survivors": 0,
+      "reason": null,
+      "row_count": 470,
+      "scope": "crypto|sol|price_ladder|hourly",
+      "status": "CAMPAIGN_COMPLETED"
+    },
+    {
+      "base_genome_id": "c4f66dce6ea2cdf098d4f99304ee6d1cf56fed2cc730e0c979d11bde4a49ecfd",
+      "decision_dates": 3,
+      "priority_inputs": {
+        "cross_cohort_transfer": false,
+        "evidence_volume": 67,
+        "exact_gate": true,
+        "partition_viable": false
+      },
+      "reason": "real task compilation requires at least three decision dates",
+      "row_count": 67,
+      "scope": "sports|mlb|spread|pre",
+      "status": "ACCUMULATING_PARTITION_EVIDENCE"
+    },
+    {
+      "base_genome_id": "dfde16fc780d81e1716985e2cf689ee45bc5ba6e9f62d13753016b10214b26ae",
+      "campaign_id": "5e21ea687814cce85bb263fab765a89e640fc6c1c1f7384d907d92d61d3ef131",
+      "decision_dates": 4,
+      "external_survivors": 0,
+      "priority_inputs": {
+        "cross_cohort_transfer": false,
+        "evidence_volume": 104,
+        "exact_gate": true,
+        "partition_viable": true
+      },
+      "private_survivors": 0,
+      "reason": null,
+      "row_count": 104,
+      "scope": "sports|mlb|total|pre",
+      "status": "CAMPAIGN_COMPLETED"
+    },
+    {
+      "base_genome_id": "134a8f6334db1846d207108ef97ab262945f5672626a20a5161898cca76230e6",
+      "campaign_id": "198760a4c5ef1ced5e71cf4907f6427419c5fcfb39a7930089ecab5fe4fc792a",
+      "decision_dates": 4,
+      "external_survivors": 0,
+      "priority_inputs": {
+        "cross_cohort_transfer": false,
+        "evidence_volume": 56,
+        "exact_gate": true,
+        "partition_viable": true
+      },
+      "private_survivors": 0,
+      "reason": null,
+      "row_count": 56,
+      "scope": "sports|mlb|winner|pre",
+      "status": "CAMPAIGN_COMPLETED"
+    },
+    {
+      "base_genome_id": "4651b61b06970911c0b1e42845848c92ed828306144f919e8a09dd0c52e931df",
+      "decision_dates": 2,
+      "priority_inputs": {
+        "cross_cohort_transfer": false,
+        "evidence_volume": 2,
+        "exact_gate": true,
+        "partition_viable": false
+      },
+      "reason": "real task compilation requires at least three decision dates",
+      "row_count": 2,
+      "scope": "sports|mlb|yrfi|pre",
+      "status": "ACCUMULATING_PARTITION_EVIDENCE"
+    },
+    {
+      "base_genome_id": null,
+      "decision_dates": 1,
+      "priority_inputs": {
+        "cross_cohort_transfer": false,
+        "evidence_volume": 5,
+        "exact_gate": true,
+        "partition_viable": false
+      },
+      "reason": "no bounded organism template exists for this exact cohort",
+      "row_count": 5,
+      "scope": "weather|kxhighaus|other|pre",
+      "status": "NO_COMPATIBLE_GENERATION_ZERO_GENOME"
+    },
+    {
+      "base_genome_id": null,
+      "decision_dates": 2,
+      "priority_inputs": {
+        "cross_cohort_transfer": false,
+        "evidence_volume": 5,
+        "exact_gate": true,
+        "partition_viable": false
+      },
+      "reason": "no bounded organism template exists for this exact cohort",
+      "row_count": 5,
+      "scope": "weather|kxhighchi|other|pre",
+      "status": "NO_COMPATIBLE_GENERATION_ZERO_GENOME"
+    },
+    {
+      "base_genome_id": null,
+      "decision_dates": 2,
+      "priority_inputs": {
+        "cross_cohort_transfer": false,
+        "evidence_volume": 10,
+        "exact_gate": true,
+        "partition_viable": false
+      },
+      "reason": "no bounded organism template exists for this exact cohort",
+      "row_count": 10,
+      "scope": "weather|kxhighden|other|pre",
+      "status": "NO_COMPATIBLE_GENERATION_ZERO_GENOME"
+    },
+    {
+      "base_genome_id": null,
+      "decision_dates": 1,
+      "priority_inputs": {
+        "cross_cohort_transfer": false,
+        "evidence_volume": 6,
+        "exact_gate": true,
+        "partition_viable": false
+      },
+      "reason": "no bounded organism template exists for this exact cohort",
+      "row_count": 6,
+      "scope": "weather|kxhighmia|other|pre",
+      "status": "NO_COMPATIBLE_GENERATION_ZERO_GENOME"
+    },
+    {
+      "base_genome_id": null,
+      "decision_dates": 3,
+      "priority_inputs": {
+        "cross_cohort_transfer": false,
+        "evidence_volume": 7,
+        "exact_gate": true,
+        "partition_viable": false
+      },
+      "reason": "no bounded organism template exists for this exact cohort",
+      "row_count": 7,
+      "scope": "weather|kxhighny|other|pre",
+      "status": "NO_COMPATIBLE_GENERATION_ZERO_GENOME"
+    },
+    {
+      "base_genome_id": null,
+      "decision_dates": 3,
+      "priority_inputs": {
+        "cross_cohort_transfer": false,
+        "evidence_volume": 10,
+        "exact_gate": true,
+        "partition_viable": false
+      },
+      "reason": "no bounded organism template exists for this exact cohort",
+      "row_count": 10,
+      "scope": "weather|kxhighphil|other|pre",
+      "status": "NO_COMPATIBLE_GENERATION_ZERO_GENOME"
+    },
+    {
+      "base_genome_id": null,
+      "decision_dates": 3,
+      "priority_inputs": {
+        "cross_cohort_transfer": false,
+        "evidence_volume": 8,
+        "exact_gate": true,
+        "partition_viable": false
+      },
+      "reason": "no bounded organism template exists for this exact cohort",
+      "row_count": 8,
+      "scope": "weather|kxhightsea|other|pre",
+      "status": "NO_COMPATIBLE_GENERATION_ZERO_GENOME"
+    }
+  ],
+  "scheduler": {
+    "autonomous": true,
+    "external_used_for_selection": false,
+    "maximum_cohorts": 16,
+    "one_bounded_trial_per_eligible_lineage": true,
+    "one_campaign_per_exact_cohort": true,
+    "per_experiment_compute_budget": 5000.0,
+    "priority": "evidence_volume_then_scope",
+    "private_item_feedback_exposed": false
+  },
+  "schema_version": 1,
+  "source_report_id": "9bb2b188e4723449e2c7f19107b377de7bdba76c19be03d11655b4e416a52def",
+  "strike_selection_law": {
+    "frozen_ladder_required_for_counterfactual_replay": true,
+    "hourly_and_daily_adjustment_enabled": true,
+    "hourly_and_daily_share_promotion_gate": false,
+    "listed_targets_only": true,
+    "nearest_expiry_only": true,
+    "settlement_informed_strike_selection": false
+  },
+  "viable_cohorts": 11
+}

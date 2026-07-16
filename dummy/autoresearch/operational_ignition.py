@@ -24,7 +24,9 @@ def campaign_ignition_trial(
         raise ValueError("ignition trial requires a completed campaign")
     best_index, best = max(
         enumerate(candidates, start=1),
-        key=lambda item: float((item[1].get("private_receipt") or {}).get("fitness", -1e9)),
+        key=lambda item: float(
+            (item[1].get("private_receipt") or {}).get("fitness", -1e9)
+        ),
     )
     private_score = float((best.get("private_receipt") or {}).get("fitness", -1.0))
     external = best.get("external_evaluation") or {}
@@ -40,7 +42,9 @@ def campaign_ignition_trial(
     per_experiment = float(budget.get("per_experiment_compute_units") or 1.0)
     return IgnitionTrial.create(
         arm=arm,
-        matched_seed=str((campaign.get("partition_plan") or {}).get("evidence_fingerprint")),
+        matched_seed=str(
+            (campaign.get("partition_plan") or {}).get("evidence_fingerprint")
+        ),
         mutation_budget=maximum_experiments,
         model_access_digest=digest_json(
             {
@@ -80,6 +84,10 @@ def record_campaign_ignition_trial(
     trial = campaign_ignition_trial(campaign, arm=arm, generation=generation)
     ledger = ExperimentLedger(trial_ledger_path)
     existing = ledger.read_verified()
+    for entry in existing:
+        previous = IgnitionTrial.from_dict(dict(entry.payload))
+        if previous.matched_seed == trial.matched_seed and previous.arm == trial.arm:
+            return previous
     if not any(entry.experiment_id == trial.trial_id for entry in existing):
         ledger.append(trial.trial_id, trial.to_dict())
     return trial
@@ -91,10 +99,11 @@ def operational_ignition_report(
     forward_report: dict[str, Any],
 ) -> dict[str, Any]:
     ledger = ExperimentLedger(trial_ledger_path)
-    trials = tuple(
-        IgnitionTrial.from_dict(dict(entry.payload))
-        for entry in ledger.read_verified()
-    )
+    unique: dict[tuple[str, str], IgnitionTrial] = {}
+    for entry in ledger.read_verified():
+        trial = IgnitionTrial.from_dict(dict(entry.payload))
+        unique.setdefault((trial.matched_seed, trial.arm), trial)
+    trials = tuple(unique.values())
     experimental = evaluate_ignition(trials)
     forward_confirmed = bool(
         forward_report.get("ready_for_human_promotion_review")

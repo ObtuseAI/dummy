@@ -45,6 +45,7 @@ LOOP1_LINEAGES = (
     "execution-aware",
     "market-prior-anchored",
 )
+COMPONENT_LINEAGE = "component-evidence"
 
 
 @dataclass(frozen=True, slots=True)
@@ -82,6 +83,23 @@ def _add(
         operator=MutationOperator.ADD,
         gene_name=name,
         category=GeneCategory.DECISION_RULE,
+        value=value,
+        gene_version="autoresearch-loop1-v1",
+        rationale=rationale,
+    )
+
+
+def _add_category(
+    name: str,
+    category: GeneCategory,
+    value: float | int,
+    *,
+    rationale: str,
+) -> MutationOperation:
+    return MutationOperation(
+        operator=MutationOperator.ADD,
+        gene_name=name,
+        category=category,
         value=value,
         gene_version="autoresearch-loop1-v1",
         rationale=rationale,
@@ -169,6 +187,38 @@ def loop1_recipes() -> dict[str, CandidateRecipe]:
             ),
             behavioral_intent="require nine cents of edge and cap entry price at 65",
         ),
+        COMPONENT_LINEAGE: CandidateRecipe(
+            lineage_id=COMPONENT_LINEAGE,
+            level=MutationLevel.FORECAST_STRATEGY,
+            operations=(
+                _add_category(
+                    "synthesis.component_weight",
+                    GeneCategory.FORECAST_COMBINATION,
+                    0.25,
+                    rationale=(
+                        "test a separately persisted point-in-time component "
+                        "without activating it in production"
+                    ),
+                ),
+            ),
+            behavioral_intent=(
+                "blend twenty-five percent separately named component evidence"
+            ),
+        ),
+    }
+
+
+def _component_partition_counts(
+    rows: tuple[LedgerEvidenceRow, ...],
+    plan: LedgerPartitionPlan,
+) -> dict[str, int]:
+    return {
+        partition.value: sum(
+            row.component_probability is not None
+            and plan.partition_for(row.evidence_row_id) is partition
+            for row in rows
+        )
+        for partition in EvaluationPartition
     }
 
 
@@ -187,6 +237,7 @@ class CampaignCandidateResult:
     private_selected: bool
     external_passed: bool
     forward_paper_eligible: bool
+    execution_truth: dict[str, Any]
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -203,6 +254,7 @@ class CampaignCandidateResult:
             "private_selected": self.private_selected,
             "external_passed": self.external_passed,
             "forward_paper_eligible": self.forward_paper_eligible,
+            "execution_truth": self.execution_truth,
             "private_item_details": None,
             "source_edit_applied": False,
             "runtime_application": False,
@@ -260,7 +312,9 @@ def _evaluate_candidate(
                 base,
                 level=recipe.level,
                 operations=operations,
-                target_paths=(f"dummy/forecasting/research/{lineage_id}-minimized.json",),
+                target_paths=(
+                    f"dummy/forecasting/research/{lineage_id}-minimized.json",
+                ),
                 created_at=created_at,
                 evidence_ids=(plan.evidence_fingerprint, "semantic-distillation-v1"),
             )
@@ -341,6 +395,27 @@ def _evaluate_candidate(
         )
     external_passed = bool(external and external.accepted)
     compute_used = selected_policy.compute_units * len(selected_suite.tasks)
+    avoided_witnessed = tuple(
+        task
+        for task in selected_suite.tasks
+        if task.incumbent_fill_verified and not task.candidate_fill_verified
+    )
+    execution_truth = {
+        "incumbent_witnessed_settled_fills": sum(
+            task.incumbent_fill_verified for task in selected_suite.tasks
+        ),
+        "candidate_witnessed_settled_fills": sum(
+            task.candidate_fill_verified for task in selected_suite.tasks
+        ),
+        "recorded_fills_candidate_would_not_repeat": len(avoided_witnessed),
+        "observed_incumbent_pnl_on_not_repeated_fills_cents": sum(
+            task.incumbent_pnl_cents for task in avoided_witnessed
+        ),
+        "candidate_counterfactual_pnl_claimed": False,
+        "candidate_fill_inferred": False,
+        "selection_uses_execution_diagnostic": False,
+        "verified_fill_required_for_candidate_pnl": True,
+    }
     result = CampaignCandidateResult(
         experiment_id=experiment.experiment_id,
         lineage_id=lineage_id,
@@ -355,6 +430,7 @@ def _evaluate_candidate(
         private_selected=selected_private.accepted,
         external_passed=external_passed,
         forward_paper_eligible=selected_private.accepted and external_passed,
+        execution_truth=execution_truth,
     )
     return result, selected_receipt
 
@@ -365,16 +441,23 @@ def run_loop1_campaign(
     plan: LedgerPartitionPlan,
     base_genome: ForecastGenome,
     created_at: datetime,
-    maximum_experiments: int = 5,
+    maximum_experiments: int | None = None,
     per_experiment_compute_budget: float = 500.0,
 ) -> dict[str, Any]:
     recipes = loop1_recipes()
-    if maximum_experiments != len(LOOP1_LINEAGES):
-        raise ValueError("Loop-1 v1 requires one bounded trial per eligible lineage")
+    component_counts = _component_partition_counts(rows, plan)
+    component_eligible = all(value > 0 for value in component_counts.values())
+    active_lineages = LOOP1_LINEAGES + (
+        (COMPONENT_LINEAGE,) if component_eligible else ()
+    )
+    if maximum_experiments is None:
+        maximum_experiments = len(active_lineages)
+    if maximum_experiments != len(active_lineages):
+        raise ValueError("Loop-1 requires one bounded trial per eligible lineage")
     policy = ResearchPolicy.create(
         label="Dummy Loop-1 manual outer researcher",
         strategy="lineage_ucb_greedy_within_lineage_fixed_first_pass",
-        lineage_ids=LOOP1_LINEAGES,
+        lineage_ids=active_lineages,
     )
     researcher = OuterEvolutionResearcher(policy)
     states = tuple(
@@ -383,7 +466,7 @@ def run_loop1_campaign(
             strategy=lineage_id,
             champion_candidate_id=base_genome.genome_id,
         )
-        for lineage_id in LOOP1_LINEAGES
+        for lineage_id in active_lineages
     )
     results: list[CampaignCandidateResult] = []
     allocations: list[dict[str, Any]] = []
@@ -468,18 +551,45 @@ def run_loop1_campaign(
         "best_forward_candidate_id": (
             best.candidate_genome.genome_id if best else None
         ),
-        "unavailable_lineages": [
-            {
-                "lineage_id": "mlb-simulation",
-                "status": "UNAVAILABLE_MISSING_POINT_IN_TIME_COMPONENT_OUTPUTS",
-                "reason": (
-                    "authoritative decision rows do not preserve the MLB PA-simulator "
-                    "component output across three chronological partitions"
-                ),
-                "outcome_rows_used_to_reconstruct_component": False,
-                "experiment_run": False,
-            }
-        ],
+        "component_lineage": {
+            "lineage_id": COMPONENT_LINEAGE,
+            "status": (
+                "ELIGIBLE_REPLAYED"
+                if component_eligible
+                else "ACCUMULATING_POINT_IN_TIME_COMPONENT_OUTPUTS"
+            ),
+            "partition_counts": component_counts,
+            "component_sources": sorted(
+                {
+                    row.component_source
+                    for row in rows
+                    if row.component_source is not None
+                }
+            ),
+            "outcome_rows_used_to_reconstruct_component": False,
+            "experiment_run": component_eligible,
+            "future_component_accrual_enabled": True,
+        },
+        "unavailable_lineages": (
+            []
+            if component_eligible
+            else [
+                {
+                    # Backward-compatible public name for the originally
+                    # deferred sports-simulator lineage.  The generalized
+                    # component_lineage block above is the canonical v2 view.
+                    "lineage_id": "mlb-simulation",
+                    "status": "ACCUMULATING_POINT_IN_TIME_COMPONENT_OUTPUTS",
+                    "partition_counts": component_counts,
+                    "reason": (
+                        "a separately named component must exist in visible, "
+                        "private, and external chronological partitions"
+                    ),
+                    "outcome_rows_used_to_reconstruct_component": False,
+                    "experiment_run": False,
+                }
+            ]
+        ),
         "private_item_details_exposed": False,
         "performance_claim_supported": False,
         "forward_paper_required": bool(eligible),

@@ -6,25 +6,25 @@
     "budget": {
       "experiments_completed": 5,
       "maximum_experiments": 5,
-      "per_experiment_compute_units": 500.0,
+      "per_experiment_compute_units": 5000.0,
       "same_model_access": true,
       "same_private_evaluator": true,
       "same_starting_genome": true,
-      "total_compute_units_used": 1480.5
+      "total_compute_units_used": 1496.25
     },
-    "campaign_id": "89c7c305e612b1fa43115b8410fff87450f3c99014f1f26ec5ba1e1458106f5b",
+    "campaign_id": "0f8163c609d18a48064002a1b4adbef75f33f7f708a8eccffc3eac5e8d05df40",
     "candidate_summaries": [
       {
-        "candidate_genome_id": "0fdeb25b51c29c73d45edbdd8bde45874068aa9494205216023313a263f7455a",
+        "candidate_genome_id": "2e693ccaeb04b236d8f95b241a026a95ff436a706bb15ec29e4c24a9abd45429",
         "complexity_score": 1.6,
-        "compute_units_used": 296.1,
+        "compute_units_used": 299.25,
         "external_passed": false,
         "forward_paper_eligible": false,
         "lineage_id": "market-prior-anchored",
         "private_receipt": {
           "accepted": false,
-          "candidate_id": "0fdeb25b51c29c73d45edbdd8bde45874068aa9494205216023313a263f7455a",
-          "evaluation_id": "acd54704537965d032b1e7fe3e93a25085ba65f5d0b9f2285dbbc4c694056284",
+          "candidate_id": "2e693ccaeb04b236d8f95b241a026a95ff436a706bb15ec29e4c24a9abd45429",
+          "evaluation_id": "8c3a95fbd8ec578a56a97a67b11b15d92f18343e9f52439d61fd4dbf8bfe2889",
           "event_cluster_count_bucket": "50_199",
           "failed_gate_ids": [
             "compute_normalized_quality_not_worse",
@@ -39,16 +39,16 @@
         "private_selected": false
       },
       {
-        "candidate_genome_id": "b13065e3e4ba00cb08618c00167f4d935eb1a82dd190408e190c125058075137",
+        "candidate_genome_id": "afc1267dae14e358bff68adc51b0e8d7542ea4bc34bd9806ee6dec237cb5cacb",
         "complexity_score": 4.7,
-        "compute_units_used": 296.1,
+        "compute_units_used": 299.25,
         "external_passed": false,
         "forward_paper_eligible": false,
         "lineage_id": "execution-aware",
         "private_receipt": {
           "accepted": false,
-          "candidate_id": "b13065e3e4ba00cb08618c00167f4d935eb1a82dd190408e190c125058075137",
-          "evaluation_id": "efbf9f9ad54ea0d41a1e7cfb9642d6e17b1fdca1d7e6ea999d5339895134cf82",
+          "candidate_id": "afc1267dae14e358bff68adc51b0e8d7542ea4bc34bd9806ee6dec237cb5cacb",
+          "evaluation_id": "5ff34af6fbedc56e471e9e281b221a489cb36c32b8d7e04925d66e3a63929281",
           "event_cluster_count_bucket": "50_199",
           "failed_gate_ids": [
             "abstention_not_gamed",
@@ -65,16 +65,16 @@
         "private_selected": false
       },
       {
-        "candidate_genome_id": "ee1a46a32c6e1187eb70ec96f3ca23c498385ea74d509776d93ae475712afd03",
+        "candidate_genome_id": "dd75dfa319c92e5b752a656d1a4cb29707649fe5b5f36aada71981ad803cd869",
         "complexity_score": 4.7,
-        "compute_units_used": 296.1,
+        "compute_units_used": 299.25,
         "external_passed": false,
         "forward_paper_eligible": false,
         "lineage_id": "crypto-liquidity",
         "private_receipt": {
           "accepted": false,
-          "candidate_id": "ee1a46a32c6e1187eb70ec96f3ca23c498385ea74d509776d93ae475712afd03",
-          "evaluation_id": "afba686d839c5eab7fa6d629b5fa2a72649fdf52666fccbec1420c62f9b03eec",
+          "candidate_id": "dd75dfa319c92e5b752a656d1a4cb29707649fe5b5f36aada71981ad803cd869",
+          "evaluation_id": "bed3a5df2601f2fc29ec126e74d6c7b42f1ac86209080da38cb5eacddc8afc95",
           "event_cluster_count_bucket": "50_199",
           "failed_gate_ids": [
             "abstention_not_gamed",
@@ -90,16 +90,16 @@
         "private_selected": false
       },
       {
-        "candidate_genome_id": "8bdbba599168a836344579d060fbadd0b5aeae4e0b9f28e969b1f7851a4c66bd",
+        "candidate_genome_id": "2a3f5acb403f254fd9ffad78373f2969f91cc28c04dfd9faf1782c5f29d2c71e",
         "complexity_score": 2.2,
-        "compute_units_used": 296.1,
+        "compute_units_used": 299.25,
         "external_passed": false,
         "forward_paper_eligible": false,
         "lineage_id": "calibration-first",
         "private_receipt": {
           "accepted": false,
-          "candidate_id": "8bdbba599168a836344579d060fbadd0b5aeae4e0b9f28e969b1f7851a4c66bd",
-          "evaluation_id": "05aa8ebb14c01cf81dd1638efe19fb2dd3ff3da83f61db7422f88c582b49acb2",
+          "candidate_id": "2a3f5acb403f254fd9ffad78373f2969f91cc28c04dfd9faf1782c5f29d2c71e",
+          "evaluation_id": "42d3385857ccb94848fa57bc2a1622d3c95eef19e1ce0423d756e1a5eb0ae55b",
           "event_cluster_count_bucket": "50_199",
           "failed_gate_ids": [
             "compute_normalized_quality_not_worse",
@@ -114,16 +114,16 @@
         "private_selected": false
       },
       {
-        "candidate_genome_id": "596153573cc2d3d00b876fdc7e158b1080ed90374e0faa0c069eace4b1ce688f",
+        "candidate_genome_id": "0bfef53b577c31a5ed75b17a65c606fff86de3e039b9b5efada6b9cc7bd32e10",
         "complexity_score": 1.6,
-        "compute_units_used": 296.1,
+        "compute_units_used": 299.25,
         "external_passed": false,
         "forward_paper_eligible": false,
         "lineage_id": "abstention-first",
         "private_receipt": {
           "accepted": false,
-          "candidate_id": "596153573cc2d3d00b876fdc7e158b1080ed90374e0faa0c069eace4b1ce688f",
-          "evaluation_id": "c9cad25e8afeea29bea2a063bb975fe5db550b5c9a987aca29423a0e0f9c2bb7",
+          "candidate_id": "0bfef53b577c31a5ed75b17a65c606fff86de3e039b9b5efada6b9cc7bd32e10",
+          "evaluation_id": "a9aacf44f432d97f00333a1a43e06757c5ff57399e7ad556faad1ee283cbad14",
           "event_cluster_count_bucket": "50_199",
           "failed_gate_ids": [
             "contested_evidence_present",
@@ -140,8 +140,9 @@
     ],
     "external_survivors": 0,
     "partition_plan": {
+      "cluster_snapshot_policy": "earliest_whole_decision_date_per_event_cluster",
       "counts": {
-        "EXTERNAL_GENERALIZATION": 23,
+        "EXTERNAL_GENERALIZATION": 26,
         "PRIVATE_SELECTION": 80,
         "VISIBLE_DEVELOPMENT": 179
       },
@@ -162,10 +163,11 @@
           "last": "2026-07-13"
         }
       },
-      "evidence_fingerprint": "351f390ee8f11cc50794ba9940dcad8c265b21ee90e804e9fbb6f6b715304396",
+      "evidence_fingerprint": "399579fa7d9ec50748cbe56fd412fe7c795096a52d0648ed06ba0ea92408bfb4",
       "excluded_cross_partition_cluster_count": 0,
+      "excluded_late_cluster_observation_count": 0,
       "item_assignments_exposed": false,
-      "plan_id": "88cae02ba03794ef1d2a0a3aa956bfadfc5e53046619b9701b6c481e8f1ee6ab",
+      "plan_id": "d69eabb58cf15ee14b1a667c02503d750f350be2edbf0f2b43799e86868309be",
       "scope": "crypto|btc|15m_direction|15m",
       "selection_uses_external": false
     },
@@ -177,12 +179,17 @@
         "experiment_run": false,
         "lineage_id": "mlb-simulation",
         "outcome_rows_used_to_reconstruct_component": false,
-        "reason": "authoritative decision rows do not preserve the MLB PA-simulator component output across three chronological partitions",
-        "status": "UNAVAILABLE_MISSING_POINT_IN_TIME_COMPONENT_OUTPUTS"
+        "partition_counts": {
+          "EXTERNAL_GENERALIZATION": 1,
+          "PRIVATE_SELECTION": 0,
+          "VISIBLE_DEVELOPMENT": 0
+        },
+        "reason": "a separately named component must exist in visible, private, and external chronological partitions",
+        "status": "ACCUMULATING_POINT_IN_TIME_COMPONENT_OUTPUTS"
       }
     ]
   },
-  "evidence_id": "b8686610239b7a3a8f88a362a553bbae3ab61046b1a26327e4b88e94cc4bc24d",
+  "evidence_id": "e0763c0f67a616bf21b86f4fd05a1977cb4ea609f0c97c2a78fbba23d22f4c10",
   "execution_authority": false,
   "forward": {
     "event_clusters": 0,
@@ -200,7 +207,24 @@
     "automatic_promotion": false,
     "campaign_trial_ids": [
       "51c23743e6e394e5021c1678d52f5d6a5d9459e67a9e364c0a9f7231c5011821",
-      "6b009e7e024dcc3044ae084b99c67f6f663e385fd7bc6e9321689130fb31b9e4"
+      "6b009e7e024dcc3044ae084b99c67f6f663e385fd7bc6e9321689130fb31b9e4",
+      "6ae16615eb04f928ff703f2d0e1a97cf4723c5121612ea4db204798318bb1197",
+      "f62bc995095e97a56f28873f563f9d97fb41066d4c27ddb21180ec70d877bc51",
+      "35ef113139704ec6e0d8a2ad658d9664eefc77c76c7f34da6626e498c97a6327",
+      "47db5e745ccb3765c493e5226359c7ad37d3621cf2672a642001845651aa7248",
+      "87cd2c29c5a23f9e732b329dc2348fa39b063836d1ea9efd512b455d9bb08591",
+      "a60a658941e3b3f1962d25f695f9525795681f423e73c41f57435953d6fed474",
+      "6d695e1e9ee105a4c0ba02ee19e5738a2f2f6f51a6f016a0f6de4b1aa48cad5c",
+      "01974c9651e81a15e3c11915d9e50a4518d8dc34ef0b900c642acfbde6104ff9",
+      "0d16a34ba5df082e61fff0914b1b79700a4d2265ba3fcecce74796701855fa29",
+      "2bdad6c45835cc535c97ea7f3d4c26337cda9809ea28e093fa6dccfcd3063b08",
+      "3cb7b2bf6d9e7a8429447d8515216c15917ff2a96bc32ce39d4f2721428ee860",
+      "d9d434fbe52154177085541b6f33b8d668c68fc6a4b3c44e62f20bb64d23c18d",
+      "8975ec556fee2caba30ba6b7e3479f7ddb6adbc3830362daf99681c107f6bc1b",
+      "c6b533fe8ce7002329ff310a3a460fc0d3e753bb59bcb9cf20b8ef0cc1ba56a0",
+      "abdb516da6abf21a300398312570ec84df547fa566f0c9fb0527704832e6f5c1",
+      "a0d4a23d71eae4551f492f13904be3a8aa31568a7bed7bd6e3fcc33834749525",
+      "6b2bdbe0f7b386644634139bf004e80d847c347eefef700461c29c1482ee8f57"
     ],
     "capital_authority": false,
     "execution_authority": false,
@@ -232,9 +256,9 @@
       "highest_supported_label": "AUTONOMOUS_EXPERIMENTATION",
       "highest_supported_level": 0,
       "matched_pair_count": 0,
-      "report_id": "c1af821fbb26a1c5563f865186b1d0a16a7bb99341527f904fb58e0bd5bfc0d8",
+      "report_id": "f6eae2d20b6178c2e916cbbce6ca28f6c6e2ffee048d2e3b3382097397d95c60",
       "schema_version": 1,
-      "trial_count": 2
+      "trial_count": 19
     },
     "forward_confirmation_passed": false,
     "highest_supported_label": "AUTONOMOUS_EXPERIMENTATION",
@@ -255,10 +279,10 @@
       ],
       "status": "BLOCKED_UNTIL_LEVEL1_AND_FORWARD_CONFIRMATION"
     },
-    "report_id": "c1fa95004685c934f1f570a3d9893af2f46d1c7d88a8a041861e4353b5e7a20a",
+    "report_id": "ecce6edf918979ec70f7e2c87ba276e7b22bc37c7300447857352641d5c763d4",
     "schema_version": 1,
     "self_improvement_claim_supported": false,
-    "trial_count": 2
+    "trial_count": 19
   },
   "improved_improver_claim_supported": false,
   "live_readiness_changed": false,

@@ -40,6 +40,8 @@ class GenomeReplayPolicy:
     abstention_threshold: float
     edge_threshold_cents: float
     max_entry_price_cents: int
+    component_weight: float
+    base_component_weight: float
     compute_units: float
     base_compute_units: float
 
@@ -54,6 +56,12 @@ class GenomeReplayPolicy:
             raise AutoresearchValidationError("abstention threshold must be in [0, 1]")
         if self.edge_threshold_cents < 0.0 or not 1 <= self.max_entry_price_cents <= 99:
             raise AutoresearchValidationError("decision thresholds are invalid")
+        if not 0.0 <= self.component_weight <= 0.50:
+            raise AutoresearchValidationError("component weight must be in [0, 0.5]")
+        if not 0.0 <= self.base_component_weight <= 0.50:
+            raise AutoresearchValidationError(
+                "base component weight must be in [0, 0.5]"
+            )
         if self.compute_units <= 0.0 or self.base_compute_units <= 0.0:
             raise AutoresearchValidationError("replay compute must be positive")
         if self.policy_id != digest_json(self.semantic_dict()):
@@ -86,6 +94,8 @@ class GenomeReplayPolicy:
         max_entry = round(
             _number(candidate_values, "execution.max_entry_price_cents", 99.0)
         )
+        component_weight = _number(candidate_values, "synthesis.component_weight", 0.0)
+        base_component_weight = _number(base_values, "synthesis.component_weight", 0.0)
 
         def compute(values: dict[str, Any]) -> float:
             replay_depth = _number(values, "replay.depth", 0.0)
@@ -102,6 +112,8 @@ class GenomeReplayPolicy:
             "abstention_threshold": abstention,
             "edge_threshold_cents": edge,
             "max_entry_price_cents": max_entry,
+            "component_weight": component_weight,
+            "base_component_weight": base_component_weight,
             "compute_units": compute(candidate_values),
             "base_compute_units": compute(base_values),
             "transformation": "hold_non_market_component_fixed_and_change_anchor_v1",
@@ -117,6 +129,8 @@ class GenomeReplayPolicy:
             abstention_threshold=abstention,
             edge_threshold_cents=edge,
             max_entry_price_cents=max_entry,
+            component_weight=component_weight,
+            base_component_weight=base_component_weight,
             compute_units=compute(candidate_values),
             base_compute_units=compute(base_values),
         )
@@ -132,6 +146,8 @@ class GenomeReplayPolicy:
             "abstention_threshold": self.abstention_threshold,
             "edge_threshold_cents": self.edge_threshold_cents,
             "max_entry_price_cents": self.max_entry_price_cents,
+            "component_weight": self.component_weight,
+            "base_component_weight": self.base_component_weight,
             "compute_units": self.compute_units,
             "base_compute_units": self.base_compute_units,
             "transformation": "hold_non_market_component_fixed_and_change_anchor_v1",
@@ -145,6 +161,10 @@ class GenomeReplayPolicy:
         adjusted = row.market_prior_probability + scale * (
             row.incumbent_probability - row.market_prior_probability
         )
+        if row.component_probability is not None:
+            adjusted = (
+                1.0 - self.component_weight
+            ) * adjusted + self.component_weight * row.component_probability
         return min(0.999, max(0.001, adjusted))
 
     def decision(self, row: LedgerEvidenceRow) -> tuple[float | None, str | None]:
@@ -174,11 +194,14 @@ def measure_genome_complexity(
     base_values = _gene_values(base)
     candidate_values = _gene_values(candidate)
     names = set(base_values) | set(candidate_values)
-    changed = {name for name in names if base_values.get(name) != candidate_values.get(name)}
+    changed = {
+        name for name in names if base_values.get(name) != candidate_values.get(name)
+    }
     added = set(candidate_values) - set(base_values)
     branch_genes = {
         "decision.edge_threshold_cents",
         "execution.max_entry_price_cents",
+        "synthesis.component_weight",
     }
     new_branches = len(added & branch_genes)
     base_simulation = _number(base_values, "simulation.path_budget", 0.0)
@@ -220,10 +243,9 @@ def replay_task(
     candidate_fill_verified = exact_recorded_decision and witnessed_settled_fill
     incumbent_fill_verified = witnessed_settled_fill
     outcome = float(row.result_yes)
-    abstention_was_correct = (
-        (row.incumbent_probability - outcome) ** 2
-        > (row.market_prior_probability - outcome) ** 2
-    )
+    abstention_was_correct = (row.incumbent_probability - outcome) ** 2 > (
+        row.market_prior_probability - outcome
+    ) ** 2
     replay_payload = {
         "policy_id": policy.policy_id,
         "evidence_input_digest": row.input_digest,

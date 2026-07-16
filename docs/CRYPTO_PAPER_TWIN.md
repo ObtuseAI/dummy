@@ -103,6 +103,14 @@ tracked together by horizon and target type. Those target-type summaries are
 diagnostic only until enough independent forward evidence exists; small or
 selection-biased samples cannot automatically alter target preference.
 
+Hourly and daily recursive organisms explicitly treat target selection as an
+evolvable strike policy. They may change which target they prefer on each cycle,
+but only among targets actually listed in the frozen nearest-expiry ladder at
+that decision time. Historical counterfactual strike replay requires the full
+ladder snapshot; no missing quote is invented and settlement cannot inform
+selection. Hourly and daily policies accumulate evidence and pass promotion
+gates independently.
+
 The inventory separately counts every listed target and every target with a
 complete two-sided quote and forecast. Thin, one-sided targets remain visible
 but cannot be scored or selected because Dummy will not invent the missing

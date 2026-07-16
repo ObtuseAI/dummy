@@ -1,0 +1,194 @@
+{
+  "automatic_positive_promotion": false,
+  "capital_authority": false,
+  "claims": {
+    "accelerating_improvement_supported": false,
+    "improved_improver_supported": false,
+    "new_intelligence_method_validated": false,
+    "recursive_self_improvement_supported": false
+  },
+  "cognitive_state": {
+    "completed_experiments": 0,
+    "general_laws": 0,
+    "hypotheses": 9,
+    "new_scientific_memory_entries": 26,
+    "observations": 5,
+    "opportunities": 3,
+    "pending_adversarial_challenges": 9,
+    "proposed_experiments": 9,
+    "provisional_theories": 0,
+    "valid_replications": 0
+  },
+  "cycle_observed_at": "2026-07-15T23:00:00Z",
+  "domain_adapters": [
+    "dummy.forecasting"
+  ],
+  "evidence_id": "b20268cb9b7253a3590a0cf70b12c54da0331a881a16371f13303fbf498690f6",
+  "execution_authority": false,
+  "highest_supported_level": 0,
+  "human_promotion_required": true,
+  "manifest": {
+    "authority": {
+      "automatic_positive_promotion": false,
+      "capital_authority": false,
+      "execution_authority": false,
+      "human_promotion_required": true,
+      "maximum": "SIMULATE",
+      "orders_placed": false
+    },
+    "cognitive_roles": [
+      "problem_analyst",
+      "research_scientist",
+      "inventor",
+      "systems_thinker",
+      "statistician",
+      "mathematician",
+      "optimizer",
+      "skeptic",
+      "devils_advocate",
+      "simplifier",
+      "architect",
+      "simulation_designer",
+      "experimentalist",
+      "theory_builder",
+      "knowledge_curator",
+      "meta_thinker"
+    ],
+    "constitution_never_evolves": [
+      "authority",
+      "permissions",
+      "truth",
+      "settlement",
+      "private_evaluator",
+      "promotion_law",
+      "execution_firewall"
+    ],
+    "domains_are_experimental_adapters": true,
+    "genome_evolves": [
+      "reasoning_strategies",
+      "research_methods",
+      "problem_solving_templates",
+      "creative_operators",
+      "planning_algorithms",
+      "evaluation_methods",
+      "memory_policies",
+      "agent_organizations"
+    ],
+    "initial_domain": "dummy.forecasting",
+    "manifest_id": "cd544bc3bd6093b38d35f25a130c0ff326d25a73d848aafa6990f74bc0889fb5",
+    "mission": "Continuously discover, test, validate, and evolve better ways of discovering, reasoning, creating, researching, planning, and solving under evidence-driven governance.",
+    "name": "DUMMY_INTELLIGENCE_RESEARCH_LAB",
+    "optimization_target": "better_evidence_backed_methods_of_discovering",
+    "schema_version": 1,
+    "scientific_method": [
+      "observation",
+      "question",
+      "hypothesis",
+      "prediction",
+      "preregistration",
+      "experiment",
+      "measurement",
+      "analysis",
+      "independent_replication",
+      "theory_gate",
+      "publication_candidate"
+    ],
+    "seven_pillars": [
+      "discovery",
+      "research",
+      "computational_creativity",
+      "multi_strategy_problem_solving",
+      "scientific_method",
+      "recursive_cognitive_improvement",
+      "theory_building"
+    ],
+    "theory_gate": {
+      "calibration_noninferiority_required": true,
+      "deterministic_replay_required": true,
+      "fixed_cost_required": true,
+      "general_law": "six_valid_replications_across_three_domains",
+      "positive_effect_lower_bound_required": true,
+      "provisional_theory": "three_valid_replications_across_two_domains",
+      "reward_hack_audit_required": true
+    },
+    "universal_loop": [
+      "observe",
+      "represent",
+      "understand",
+      "research",
+      "imagine",
+      "generate",
+      "challenge",
+      "evaluate",
+      "decide",
+      "learn",
+      "improve",
+      "repeat"
+    ],
+    "world_model_graphs": [
+      "knowledge",
+      "problem",
+      "hypothesis",
+      "theory",
+      "failure",
+      "capability",
+      "unknown",
+      "opportunity",
+      "research"
+    ]
+  },
+  "orders_placed": false,
+  "recursive_levels": [
+    {
+      "gate": "bounded domain work exists",
+      "level": 0,
+      "purpose": "solve_problems",
+      "supported": true
+    },
+    {
+      "gate": "three valid fixed-cost replications",
+      "level": 1,
+      "purpose": "improve_problem_solving",
+      "supported": false
+    },
+    {
+      "gate": "equal-budget research-method improvement",
+      "level": 2,
+      "purpose": "improve_research",
+      "supported": false
+    },
+    {
+      "gate": "held-out creative-method improvement",
+      "level": 3,
+      "purpose": "improve_creativity",
+      "supported": false
+    },
+    {
+      "gate": "cross-domain reasoning transfer",
+      "level": 4,
+      "purpose": "improve_reasoning",
+      "supported": false
+    },
+    {
+      "gate": "evolved improver beats frozen improver",
+      "level": 5,
+      "purpose": "improve_improvement",
+      "supported": false
+    },
+    {
+      "gate": "novel opportunities yield replicated value",
+      "level": 6,
+      "purpose": "improve_discovery",
+      "supported": false
+    },
+    {
+      "gate": "accelerating gains under fixed physical budget",
+      "level": 7,
+      "purpose": "improve_intelligence_evolution",
+      "supported": false
+    }
+  ],
+  "schema_version": 1,
+  "scope_limit": "The world model contains only evidence ingested by registered adapters; it does not claim complete knowledge of humanity.",
+  "source_report_id": "f09adb8a3a79533403bb476d0c4f4fa78d934b8ed19c41c21817befa969b327a"
+}

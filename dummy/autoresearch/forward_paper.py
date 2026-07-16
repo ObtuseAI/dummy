@@ -20,6 +20,9 @@ from .candidate_replay import (
 from .experiment_ledger import ExperimentLedger
 from .external_evaluator import evaluate_external_generalization
 from .ledger_pipeline import connect_ledger_readonly, load_ledger_evidence
+from .ledger_pipeline import _decision_signal_snapshot, _market_type
+from autonomy.scanner import classify_vertical
+from autonomy.taxonomy import horizon_bucket, prediction_subject
 from .models import EvaluationPartition, iso, utc
 
 
@@ -38,6 +41,8 @@ class ForwardDecisionInput:
     count: int
     source_family_ids: tuple[str, ...]
     input_digest: str
+    cohort_scope: str
+    component_probability: float | None = None
 
 
 _UNSETTLED_QUERY = """
@@ -71,55 +76,83 @@ def load_unsettled_forward_inputs(
             _UNSETTLED_QUERY,
             (f"{ticker_prefix.upper()}%", iso(epoch_started_at)),
         ).fetchall()
+        issued = utc(issued_at)
+        rows: list[ForwardDecisionInput] = []
+        for record in records:
+            try:
+                decision_at = utc(record["created_at"])
+                incumbent = float(record["probability_yes"])
+                market = float(record["market_implied_yes"])
+                uncertainty = float(record["forecast_uncertainty"])
+                sources = json.loads(record["sources_used"] or "{}")
+            except (json.JSONDecodeError, TypeError, ValueError):
+                continue
+            if decision_at > issued or not (
+                0.0 < incumbent < 1.0 and 0.0 < market < 1.0
+            ):
+                continue
+            if not isinstance(sources, dict) or not sources:
+                continue
+            ticker = str(record["market_ticker"])
+            snapshot = _decision_signal_snapshot(
+                connection,
+                ticker=ticker,
+                decision_at=decision_at,
+            )
+            component = snapshot["component"]
+            source_families = tuple(sorted(str(key) for key in sources if str(key)))
+            vertical = classify_vertical(ticker).value.lower()
+            axis = (
+                horizon_bucket(ticker, snapshot["hours_to_close"])
+                if vertical == "crypto"
+                else (
+                    "live"
+                    if any("live" in source.lower() for source in source_families)
+                    else "pre"
+                )
+            )
+            cohort_scope = (
+                f"{vertical}|{prediction_subject(ticker)}|{_market_type(ticker)}|{axis}"
+            )
+            input_payload = {
+                "decision_id": str(record["decision_id"]),
+                "market_ticker": str(record["market_ticker"]),
+                "decision_at": iso(decision_at),
+                "incumbent_probability": incumbent,
+                "market_prior_probability": market,
+                "forecast_uncertainty": uncertainty,
+                "action": str(record["action"]),
+                "side": str(record["side"]),
+                "price_cents": int(record["price_cents"]),
+                "count": int(record["count"]),
+                "source_family_ids": list(source_families),
+                "cohort_scope": cohort_scope,
+                "component": component,
+            }
+            rows.append(
+                ForwardDecisionInput(
+                    decision_id=str(record["decision_id"]),
+                    market_ticker=str(record["market_ticker"]),
+                    event_cluster_id=group_key(str(record["market_ticker"])),
+                    decision_at=decision_at,
+                    incumbent_probability=incumbent,
+                    market_prior_probability=market,
+                    forecast_uncertainty=uncertainty,
+                    action=str(record["action"]),
+                    side=str(record["side"]),
+                    price_cents=int(record["price_cents"]),
+                    count=int(record["count"]),
+                    source_family_ids=source_families,
+                    input_digest=digest_json(input_payload),
+                    cohort_scope=cohort_scope,
+                    component_probability=(
+                        component["probability"] if component else None
+                    ),
+                )
+            )
+        return tuple(rows)
     finally:
         connection.close()
-    issued = utc(issued_at)
-    rows: list[ForwardDecisionInput] = []
-    for record in records:
-        try:
-            decision_at = utc(record["created_at"])
-            incumbent = float(record["probability_yes"])
-            market = float(record["market_implied_yes"])
-            uncertainty = float(record["forecast_uncertainty"])
-            sources = json.loads(record["sources_used"] or "{}")
-        except (json.JSONDecodeError, TypeError, ValueError):
-            continue
-        if decision_at > issued or not (0.0 < incumbent < 1.0 and 0.0 < market < 1.0):
-            continue
-        if not isinstance(sources, dict) or not sources:
-            continue
-        source_families = tuple(sorted(str(key) for key in sources if str(key)))
-        input_payload = {
-            "decision_id": str(record["decision_id"]),
-            "market_ticker": str(record["market_ticker"]),
-            "decision_at": iso(decision_at),
-            "incumbent_probability": incumbent,
-            "market_prior_probability": market,
-            "forecast_uncertainty": uncertainty,
-            "action": str(record["action"]),
-            "side": str(record["side"]),
-            "price_cents": int(record["price_cents"]),
-            "count": int(record["count"]),
-            "source_family_ids": list(source_families),
-        }
-        rows.append(
-            ForwardDecisionInput(
-                decision_id=str(record["decision_id"]),
-                market_ticker=str(record["market_ticker"]),
-                event_cluster_id=group_key(str(record["market_ticker"])),
-                decision_at=decision_at,
-                incumbent_probability=incumbent,
-                market_prior_probability=market,
-                forecast_uncertainty=uncertainty,
-                action=str(record["action"]),
-                side=str(record["side"]),
-                price_cents=int(record["price_cents"]),
-                count=int(record["count"]),
-                source_family_ids=source_families,
-                input_digest=digest_json(input_payload),
-            )
-        )
-    return tuple(rows)
 
 
 def build_forward_registry(
@@ -212,11 +245,11 @@ def issue_forward_observations(
     )
     ledger = ExperimentLedger(observation_ledger_path)
     existing = ledger.read_verified()
-    seen_decisions = {
-        str(entry.payload.get("decision_id")) for entry in existing
-    }
+    seen_decisions = {str(entry.payload.get("decision_id")) for entry in existing}
     appended = 0
     for row in rows:
+        if row.cohort_scope != str(active["scope"]):
+            continue
         if row.decision_id in seen_decisions:
             continue
         candidate_probability, abstain_reason = policy.decision(row)  # type: ignore[arg-type]
@@ -309,10 +342,9 @@ def grade_forward_observations(
             partition=EvaluationPartition.EXTERNAL_GENERALIZATION,
             policy=policy,
         )
-        if (
-            task.candidate_probability != observation.get("candidate_probability")
-            or task.candidate_abstained is not observation.get("candidate_abstained")
-        ):
+        if task.candidate_probability != observation.get(
+            "candidate_probability"
+        ) or task.candidate_abstained is not observation.get("candidate_abstained"):
             replay_mismatches += 1
             continue
         tasks.append(task)
