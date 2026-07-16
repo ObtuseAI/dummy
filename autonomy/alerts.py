@@ -40,6 +40,11 @@ SEVERITY = {
     "WATCHDOG_LEDGER_SIZE": "warning",
     "WATCHDOG_KILL_FILE": "critical",
     "WATCHDOG_DISK_FLOOR": "critical",
+    # Execution-policy tournament (WS-A2/F2): a challenger cohort accrued enough
+    # witnessed fill clusters to clear the evidence gate and become eligible for
+    # a promotion-ladder review. Evidence only -- never an automatic policy
+    # switch.
+    "EXECUTION_TOURNAMENT_GATE": "info",
     # Autonomous thresholded promotion (fusion-membership governance only;
     # live trading authorization remains operator-gated elsewhere).
     "AUTO_PROMOTION": "info",
@@ -82,7 +87,8 @@ def emit_alert(kind: str, message: str, detail: dict[str, Any] | None = None, no
 def evaluate_alerts(cycle_record: dict[str, Any], risk_state: dict[str, Any] | None,
                     gate_ready: bool, now_iso: str | None = None,
                     *, ledger_health: dict[str, Any] | None = None,
-                    backtest_freshness: dict[str, Any] | None = None) -> list[dict[str, Any]]:
+                    backtest_freshness: dict[str, Any] | None = None,
+                    tournament_summary: dict[str, Any] | None = None) -> list[dict[str, Any]]:
     """Decide which alerts to emit this cycle, de-duplicated against prior state."""
     state = _load_state()
     fired: list[dict[str, Any]] = []
@@ -178,6 +184,28 @@ def evaluate_alerts(cycle_record: dict[str, Any], risk_state: dict[str, Any] | N
                 backtest_freshness, now_iso,
             ))
         state["backtest_stale_alert_active"] = stale
+
+    # Execution tournament: a challenger cohort (not the control) cleared the
+    # fill-cluster evidence gate. Fire once per cohort on the rising edge so a
+    # standing eligibility does not spam; it is a review prompt, not a switch.
+    if tournament_summary:
+        gated = {
+            str(row.get("cohort"))
+            for row in (tournament_summary.get("ranking") or [])
+            if row.get("gate_met") and str(row.get("cohort")) != "C0"
+        }
+        already = set(state.get("tournament_gated_cohorts") or [])
+        newly = sorted(gated - already)
+        if newly:
+            fired.append(emit_alert(
+                "EXECUTION_TOURNAMENT_GATE",
+                f"execution cohort(s) {', '.join(newly)} cleared the fill-cluster "
+                "evidence gate; eligible for promotion-ladder review",
+                {"newly_gated_cohorts": newly,
+                 "headline": tournament_summary.get("headline", {})},
+                now_iso,
+            ))
+        state["tournament_gated_cohorts"] = sorted(gated | already)
 
     _save_state(state)
     return fired

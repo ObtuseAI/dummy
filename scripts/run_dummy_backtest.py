@@ -25,12 +25,16 @@ from autonomy.backtest import (  # noqa: E402
     write_backtest_report,
     write_latest_backtest_summary,
 )
+from autonomy.execution_tournament import write_report as write_tournament_report  # noqa: E402
 from autonomy.ledger import AutonomyLedger  # noqa: E402
 
 # Dedicated first-class adverse-selection artifact, produced alongside the
 # backtest summary. Documented name so the readiness/governance review can cite
 # it directly.
 ADVERSE_SELECTION_ARTIFACT = Path("runtime/autonomy/adverse_selection.json")
+# Dedicated execution-policy tournament artifact (WS-A2/F2). Per-cohort C0-C4
+# fill-conditioned evidence; evidence only, never a live policy switch.
+EXECUTION_TOURNAMENT_ARTIFACT = Path("runtime/autonomy/execution_tournament.json")
 
 
 def main() -> int:
@@ -50,6 +54,11 @@ def main() -> int:
             adverse = report.get("execution_adverse_selection") or {}
             if adverse:
                 write_adverse_selection_report(adverse, ADVERSE_SELECTION_ARTIFACT)
+            # Emit the dedicated execution-policy tournament artifact alongside
+            # the backtest summary (evidence only; no live behavior touched).
+            tournament = report.get("execution_tournament") or {}
+            if tournament:
+                write_tournament_report(tournament, EXECUTION_TOURNAMENT_ARTIFACT)
             # Refresh the authoritative freshness-stamped summary artifact so
             # downstream readiness/promotion evaluation never grades against
             # silently-aged evidence.

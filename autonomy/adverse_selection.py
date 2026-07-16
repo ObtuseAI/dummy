@@ -218,6 +218,7 @@ def load_execution_rows(conn: sqlite3.Connection) -> list[dict[str, Any]]:
             "market": float(market),
             "result": int(result),
             "filled": filled,
+            "submitted_at": str(submitted_at) if submitted_at is not None else None,
             "fill_price_cents": int(fill_price_cents) if fill_price_cents is not None else None,
             "delay_seconds": delay_seconds,
             "observed_cross_cents": observed_cross,
