@@ -10,4 +10,3 @@ def test_compounding_control_plane_prioritizes_source_gaps_without_execution() -
     assert report["proposal_count"] > 0
     assert report["live_execution_enabled"] is False
     assert report["top_objectives"][0]["kind"] in {"source_acquisition", "edge_terrain", "adapter_mining"}
-

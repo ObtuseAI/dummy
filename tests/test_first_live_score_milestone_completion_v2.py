@@ -13,4 +13,3 @@ def test_first_live_score_milestone_enabled_path_passes() -> None:
     assert report["first_live_score_milestone_status"] == "PASS_FIRST_REAL_LIVE_PUBLIC_SCORE"
     assert report["real_scored_count"] > 0
     assert report["low_sample_warning"] is True
-

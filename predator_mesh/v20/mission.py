@@ -52,4 +52,3 @@ class DummyMissionStateV6:
             "secret_values_exposed": False,
             "verdict": "PARTIAL",
         }
-

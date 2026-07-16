@@ -152,4 +152,3 @@ class SourceCredentialRequirementReport:
             "secret_values_exposed": False,
             "verdict": "PASS",
         }
-

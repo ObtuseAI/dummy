@@ -40,4 +40,3 @@ def test_generate_v20_reports_promotes_final_report_json(tmp_path, monkeypatch) 
     assert top_level["v20"]["final_report_v20"].endswith("final_report_v20.json")
     assert top_level["previous_final_report_snapshot"]["milestone"] == "OLDER_MILESTONE"
     assert top_level["v19"]["verdict"] == "PARTIAL"
-

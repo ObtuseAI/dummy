@@ -7,4 +7,3 @@ def test_no_caps_config_modification_v39() -> None:
     report = assert_current_test_report(__file__)
     assert report["caps_unchanged"] is True
     assert report["configs_caps_modified"] is False
-

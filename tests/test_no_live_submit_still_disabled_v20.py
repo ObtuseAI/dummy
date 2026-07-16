@@ -9,4 +9,3 @@ def test_no_live_submit_still_disabled_v20_report_passes() -> None:
     assert report["verdict"] == "PASS"
     assert report["enabled"] is False
     assert report["modified_by_v20"] is False
-

@@ -8,4 +8,3 @@ def test_no_direct_order_bypass_v39() -> None:
     assert report["safety_status"] == "PASS"
     assert report["order_endpoints_used"] is False
     assert report["cancel_endpoints_used"] is False
-

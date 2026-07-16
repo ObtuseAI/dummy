@@ -22,4 +22,3 @@ class DummyMissionStateV17:
             "secret_values_exposed": False,
             "verdict": "PASS",
         }
-

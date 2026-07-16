@@ -9,4 +9,3 @@ def test_no_mined_repo_execution_v39() -> None:
     assert report["mined_repo_imported"] is False
     assert report["mined_repo_executed"] is False
     assert report["blind_mined_code_copied"] is False
-

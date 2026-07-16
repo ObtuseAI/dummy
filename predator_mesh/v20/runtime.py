@@ -77,4 +77,3 @@ class ReportChainRuntimeProfilerV3:
             "secret_values_exposed": False,
             "verdict": "PASS",
         }
-

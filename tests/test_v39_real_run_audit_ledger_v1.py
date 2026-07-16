@@ -16,4 +16,3 @@ def test_v39_real_run_audit_ledger_enabled_records_counts() -> None:
     assert report["request_count"] > 0
     assert report["evidence_count"] > 0
     assert report["score_count"] > 0
-

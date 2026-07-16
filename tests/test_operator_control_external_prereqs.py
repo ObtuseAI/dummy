@@ -552,4 +552,3 @@ async def test_one_shot_live_armed_runs_full_completion_not_execute_once():
     assert "--market" not in joined
     assert "--scale" not in joined
     assert "--autonomy" not in joined
-

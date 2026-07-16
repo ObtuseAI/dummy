@@ -149,4 +149,3 @@ class CommercialMarketDataGate:
             "secret_values_exposed": False,
             "verdict": "PASS",
         }
-

@@ -41,4 +41,3 @@ def test_v38_exact_injected_env_selects_real_probe_run() -> None:
     assert gate["ack_decision"] == "EXACT_ACK_VALID"
     assert gate["real_probe_run_allowed"] is True
     assert gate["selected_probe_mode"] == "REAL_PROBE_RUN"
-

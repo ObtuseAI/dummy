@@ -8,4 +8,3 @@ def test_github_repo_score_uses_security_and_legal_dimensions() -> None:
     first = report["scores"][0]["score"]
     assert "terms_legal_clarity" in first
     assert "security_risk" in first
-

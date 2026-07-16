@@ -15,4 +15,3 @@ def test_source_universe_manifest_includes_required_categories_without_real_fixt
     assert all(source["truth_source_role"] != "GITHUB_TRUTH_SOURCE" for source in sources)
     assert all(source["fixture_claimed_real"] is False for source in sources)
     assert_source_candidate(sources[0])
-

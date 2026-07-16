@@ -9,4 +9,3 @@ def test_v38_still_passes_or_partial_expected_v39() -> None:
     assert report["v38_final_verdict"] in {"PASS", "PARTIAL"}
     assert report["blunder_separation_status"] == "PASS"
     assert report["canonical_identity_intact"] is True
-

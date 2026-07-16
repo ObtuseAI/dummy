@@ -7,4 +7,3 @@ def test_no_run_controller_to_execution_bridge_v39() -> None:
     report = assert_current_test_report(__file__)
     assert report["execution_bridge_present"] is False
     assert report["lane_to_execution_bridge_present"] is False
-

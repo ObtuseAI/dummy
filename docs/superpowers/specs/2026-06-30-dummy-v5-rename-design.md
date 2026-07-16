@@ -1,8 +1,8 @@
 # Dummy V5 Canonical Rename Design
 
-**Milestone:** `DUMMY_V5_CANONICAL_RENAME_REAL_KALSHI_READ_ONLY_AND_LIVE_CAP_REHEARSAL_V1`  
-**Date:** 2026-06-30  
-**Status:** Design approved (auto-permission mode)  
+**Milestone:** `DUMMY_V5_CANONICAL_RENAME_REAL_KALSHI_READ_ONLY_AND_LIVE_CAP_REHEARSAL_V1`
+**Date:** 2026-06-30
+**Status:** Design approved (auto-permission mode)
 
 ## Goal
 

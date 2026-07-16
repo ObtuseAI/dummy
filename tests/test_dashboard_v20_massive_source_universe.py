@@ -33,4 +33,3 @@ def test_dashboard_v20_endpoints_return_cached_source_universe_without_secrets()
         assert "BEGIN PRIVATE KEY" not in response.text
         assert "raw_prompt" not in response.text.lower()
         assert response.json()["live_submit_disabled"] is True
-

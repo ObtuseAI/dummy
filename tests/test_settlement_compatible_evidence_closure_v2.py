@@ -14,4 +14,3 @@ def test_settlement_compatible_evidence_enabled_path() -> None:
     assert report["settlement_compatible_evidence_closure_status"] == "PASS_SETTLEMENT_COMPATIBLE_EVIDENCE"
     assert report["settlement_compatible_evidence_count"] > 0
     assert report["validates_family_market_metric_source_timestamp"] is True
-

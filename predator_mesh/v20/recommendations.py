@@ -90,4 +90,3 @@ class SourceGapRecommendationEngine:
             {"source": "Polygon/Massive", "env_var": "POLYGON_API_KEY", "value_exposed": False},
         ]
         return {"workstream": "V20: API Key Need", "needs": needs, "api_key_values_exposed": False, "secret_values_exposed": False, "verdict": "PASS"}
-

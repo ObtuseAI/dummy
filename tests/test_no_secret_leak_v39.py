@@ -8,4 +8,3 @@ def test_no_secret_leak_v39() -> None:
     assert report["safety_status"] == "PASS"
     assert report["secret_values_exposed"] is False
     assert report["kalshi_private_keys_exposed"] is False
-

@@ -348,4 +348,3 @@ TERRAIN_STACKS = {
     "weather": WeatherEdgeTerrainStack,
     "sports": SportsEdgeTerrainStack,
 }
-

@@ -1103,5 +1103,3 @@ class V45ReportFactory:
     def build(self) -> dict[str, dict[str, Any]]:
         ctx = self.context()
         return {name: _component_payload(name, ctx) for name in DEFAULT_REQUIRED_REPORT_NAMES}
-
-

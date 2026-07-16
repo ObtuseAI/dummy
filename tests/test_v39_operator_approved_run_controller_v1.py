@@ -27,4 +27,3 @@ def test_v39_exact_gate_with_injected_readonly_transport_closes_first_score() ->
     assert report["settlement_compatible_evidence_count"] > 0
     assert report["real_observed_count"] > 0
     assert report["real_scored_count"] > 0
-

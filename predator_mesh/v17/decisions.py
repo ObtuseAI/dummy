@@ -140,4 +140,3 @@ class DecisionLedger:
             "secret_values_exposed": False,
             "verdict": "PASS",
         }
-

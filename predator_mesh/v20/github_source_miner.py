@@ -314,4 +314,3 @@ def _curated_repo_candidates() -> list[GitHubRepoCandidate]:
         )
         for repo, term, domains, relevance in specs
     ]
-

@@ -14,4 +14,3 @@ def test_nasdaq_terrain_marks_exchange_native_blockers_before_forecast() -> None
     assert blocker["exchange_native_missing"] is True
     assert no_trade["no_trade"] is True
     assert no_trade["live_execution_enabled"] is False
-

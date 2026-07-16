@@ -15,4 +15,3 @@ def test_dummy_mission_state_v39_enabled_path_passes_milestones() -> None:
     assert report["readonly_live_intelligence_status"] == "PASS_READONLY_LIVE_INTELLIGENCE"
     assert report["first_live_score_milestone_status"] == "PASS_FIRST_REAL_LIVE_PUBLIC_SCORE"
     assert report["real_scored_count"] > 0
-

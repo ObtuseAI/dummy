@@ -111,5 +111,3 @@ function Section({ title, data }) {
     </div>
   );
 }
-
-

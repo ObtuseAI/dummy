@@ -79,4 +79,3 @@ def assert_current_test_report(test_file: str) -> dict[str, Any]:
     }
     stem = test_file.rsplit("/", 1)[-1].rsplit("\\", 1)[-1].removesuffix(".py")
     return assert_v39_report_named(candidates[stem])
-

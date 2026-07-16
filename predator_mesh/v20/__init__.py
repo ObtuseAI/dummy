@@ -14,4 +14,3 @@ EDGE_DOMAINS = (
     "kalshi_market_terrain",
 )
 SOURCE_DOMAINS = (*CORE_DOMAINS, *EDGE_DOMAINS)
-

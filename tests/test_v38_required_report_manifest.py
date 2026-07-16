@@ -11,4 +11,3 @@ def test_v38_required_report_manifest_contains_completion_artifacts() -> None:
     assert "dashboard_v38_report_v1.json" in DEFAULT_REQUIRED_REPORT_NAMES
     assert "v38_api_surface_report_v1.json" in DEFAULT_REQUIRED_REPORT_NAMES
     assert "v38_dashboard_payload_safety_report_v1.json" in DEFAULT_REQUIRED_REPORT_NAMES
-

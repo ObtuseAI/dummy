@@ -74,4 +74,3 @@ class AutonomousCompoundingControlPlaneV3:
     def work_item_report(self, kind: str) -> dict[str, Any]:
         items = [objective.to_dict() for objective in self.objectives() if objective.kind == kind]
         return {"workstream": f"V20: {kind.replace('_', ' ').title()} Work Item Manifest", "items": items, "item_count": len(items), "secret_values_exposed": False, "verdict": "PASS"}
-

@@ -1,8 +1,8 @@
 # Phase B Report: Real-Market Forecast Loop + Calibration Spine
 
-**Status:** Complete  
-**Date:** 2026-07-01  
-**Worker:** Kimi Code CLI  
+**Status:** Complete
+**Date:** 2026-07-01
+**Worker:** Kimi Code CLI
 
 ## Summary
 

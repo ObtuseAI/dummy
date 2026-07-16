@@ -1780,4 +1780,3 @@ def security_reports_v21() -> dict[str, dict[str, Any]]:
         "blunder_separation_recheck_v21.json": _security_report("V21: Blunder Separation Recheck", blunder_separation_status="PASS"),
         "dummy_canonical_identity_report_v21.json": _security_report("V21: Dummy Canonical Identity", canonical_name="Dummy", dummy_renamed=False),
     }
-
