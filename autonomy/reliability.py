@@ -29,14 +29,50 @@ MIN_CALIBRATION_CLUSTERS = 200
 CALIBRATION_BINS = 10
 CALIBRATION_MAP_VERSION = 1
 
-# Curated rollout (emitted source strings), not auto-everything: the crypto
-# champion + challenger and the two largest MLB scopes.
-CALIBRATED_SOURCES = frozenset({
+# Curated rollout (emitted source strings), not auto-everything.
+#
+# Crypto champion + challenger.
+CRYPTO_CALIBRATED_SOURCES = frozenset({
     "crypto_spot_vol",
     "crypto_ewma_t",
-    "mlb_structural_winner",
-    "mlb_total_runs",
 })
+
+# Sports rollout (Wave-3). The winner + total families across every team league,
+# PRE-GAME and LIVE. A sharp sports model is routinely mis-calibrated at the
+# tails (a 0.80 favorite that wins 0.72), and the miscalibration differs by
+# phase -- a live in-game price built from a partial score carries different
+# reliability than a pre-game one. Because ``grading_scope`` embeds BOTH the
+# emitted source string AND the pre/live phase axis, each of these sources maps
+# to its OWN scope, so the per-context (pre vs live) split is automatic: live
+# and pre-game curves are fit and applied independently, never pooled. Every
+# scope is still individually gated by MIN_CALIBRATION_CLUSTERS -- a source
+# listed here that has not yet accrued >= 200 settled clusters simply gets no
+# map and the wrapper abstains (fail-closed, never a guess). Listing a source
+# makes it ELIGIBLE; the settled data decides whether it actually gets a curve.
+_TEAM_LEAGUES = ("mlb", "nba", "nfl", "nhl", "ncaaf", "ncaamb")
+
+
+def _sports_calibrated_sources() -> frozenset[str]:
+    winners: set[str] = set()
+    totals: set[str] = set()
+    for league in _TEAM_LEAGUES:
+        # Pre-game winner + total (MLB names its total "total_runs").
+        winners.add(f"{league}_structural_winner")
+        totals.add("mlb_total_runs" if league == "mlb" else f"{league}_game_total")
+        # Live per-context winner + total (MLB additionally exposes a
+        # plate-appearance-simulator "pa" live variant).
+        if league == "mlb":
+            winners.update({"mlb_live_winner", "mlb_pa_live_winner"})
+            totals.update({"mlb_live_total", "mlb_pa_live_total"})
+        else:
+            winners.add(f"{league}_live_winner")
+            totals.add(f"{league}_live_total")
+    return frozenset(winners | totals)
+
+
+SPORTS_CALIBRATED_SOURCES = _sports_calibrated_sources()
+
+CALIBRATED_SOURCES = CRYPTO_CALIBRATED_SOURCES | SPORTS_CALIBRATED_SOURCES
 
 Knot = tuple[float, float]  # (predicted, calibrated)
 
