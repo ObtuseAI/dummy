@@ -1,0 +1,62 @@
+[
+  {
+    "slug": "will-the-fed-decrease-interest-rates-by-25-bps-after-the-september-2026-meeting-586",
+    "question": "Will the Fed decrease interest rates by 25 bps after the September 2026 meeting?",
+    "outcomes": "[\"Yes\", \"No\"]",
+    "outcomePrices": "[\"0.0395\", \"0.9605\"]",
+    "clobTokenIds": "[\"57748138085022719760345772310040703848567377822400132842014290209986511882046\", \"28239418772633645184924651434956000849078365566842629564562475378531350731731\"]",
+    "bestBid": 0.039,
+    "bestAsk": 0.04,
+    "liquidityNum": 144018.02436,
+    "endDate": "2026-09-16T00:00:00Z",
+    "groupItemTitle": "25 bps decrease"
+  },
+  {
+    "slug": "will-the-fed-decrease-interest-rates-by-50-bps-after-the-july-2026-meeting",
+    "question": "Will the Fed decrease interest rates by 50+ bps after the July 2026 meeting?",
+    "outcomes": "[\"Yes\", \"No\"]",
+    "outcomePrices": "[\"0.0015\", \"0.9985\"]",
+    "clobTokenIds": "[\"34352156398446436078106018571351437965469399998092625112032289774684767742814\", \"81718924566344342339932153243056822500865643754622838691875214933560980686588\"]",
+    "bestBid": 0.001,
+    "bestAsk": 0.002,
+    "liquidityNum": 2107512.56559,
+    "endDate": "2026-07-29T00:00:00Z",
+    "groupItemTitle": "50+ bps decrease"
+  },
+  {
+    "slug": "will-core-cpi-yoy-be-2pt5-in-july-20260714151811924",
+    "question": "Will Core CPI YoY be 2.5% in July?",
+    "outcomes": "[\"Yes\", \"No\"]",
+    "outcomePrices": "[\"0.43\", \"0.57\"]",
+    "clobTokenIds": "[\"21165877623799363273688638478454462396208477227432465205651603985424448132529\", \"74920269851687974040897332621188152813403323397341740564873403180113777857040\"]",
+    "bestBid": 0.09,
+    "bestAsk": 0.77,
+    "liquidityNum": 1335.9564,
+    "endDate": "2026-08-12T03:59:00Z",
+    "groupItemTitle": "2.5%"
+  },
+  {
+    "slug": "will-core-cpi-yoy-be-2pt7-in-july-20260714151811926",
+    "question": "Will Core CPI YoY be 2.7% in July?",
+    "outcomes": "[\"Yes\", \"No\"]",
+    "outcomePrices": "[\"0.37\", \"0.63\"]",
+    "clobTokenIds": "[\"26726425063377276678276376482455624662457680247807663563894999940307455591550\", \"61884943782256445182560162490517368455880365089033500562108665068514454333453\"]",
+    "bestBid": 0.01,
+    "bestAsk": 0.73,
+    "liquidityNum": 1312.4451,
+    "endDate": "2026-08-12T03:59:00Z",
+    "groupItemTitle": "2.7%"
+  },
+  {
+    "slug": "will-core-cpi-yoy-be-2pt2-or-less-in-july-20260714151811921",
+    "question": "Will Core CPI YoY be 2.2% or less in July?",
+    "outcomes": "[\"Yes\", \"No\"]",
+    "outcomePrices": "[\"0.375\", \"0.625\"]",
+    "clobTokenIds": "[\"12688965872055618112998715552429852502338035361308144163063593350391486364934\", \"70515518259821435916180817058275758961236726245283991205971129990046441702978\"]",
+    "bestBid": 0.03,
+    "bestAsk": 0.72,
+    "liquidityNum": 172.8762,
+    "endDate": "2026-08-12T03:59:00Z",
+    "groupItemTitle": "\u22642.2%"
+  }
+]

@@ -46,6 +46,11 @@ SOURCE_TAXONOMY: dict[str, str] = {
     "sports_elo": "sports_elo",
     "sportsbook_consensus": "sportsbook",
     "cross_venue_polymarket": "cross_venue",
+    # Wave-2 E4: Polymarket cross-venue reference pricing extended to crypto and
+    # econ Kalshi markets. Separate source names -> separate grading scopes; the
+    # sports scope's earned champion status is NOT inherited (challenger-only).
+    "cross_venue_polymarket_crypto": "cross_venue",
+    "cross_venue_polymarket_econ": "cross_venue",
     "commodities_spot_vol": "commodities",
     "weather_openmeteo": "weather",
     "llm_debate": "llm",      # historical emitted source (present in old rows)
