@@ -9,4 +9,3 @@ def test_no_github_repo_code_execution_v20_report_passes() -> None:
     assert report["verdict"] == "PASS"
     assert report["cloned_repos"] == []
     assert report["executed_repo_code"] is False
-

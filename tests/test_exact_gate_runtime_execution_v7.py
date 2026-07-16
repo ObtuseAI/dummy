@@ -22,4 +22,3 @@ def test_fuzzy_v39_ack_is_partial_and_never_runs() -> None:
     assert report["real_probe_run_allowed"] is False
     assert report["fuzzy_ack_probe_run"] is False
     assert reports["dummy_mission_state_report_v25.json"]["verdict"] == "PARTIAL"
-

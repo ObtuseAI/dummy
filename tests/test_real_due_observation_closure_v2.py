@@ -15,4 +15,3 @@ def test_real_due_observation_closure_enabled_path() -> None:
     assert report["real_due_observation_closure_status"] == "PASS_REAL_DUE_OBSERVATION_CLOSURE"
     assert report["real_observed_count"] > 0
     assert report["observation_mode"] == "OBSERVED_REAL_LIVE_PUBLIC"
-

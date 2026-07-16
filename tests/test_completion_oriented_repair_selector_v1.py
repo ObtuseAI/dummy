@@ -14,4 +14,3 @@ def test_completion_repair_selector_enabled_path_expands_sample() -> None:
     report = v39_enabled_reports()["completion_oriented_repair_selector_v1_report.json"]
     assert report["selected_repair_action"] == "REAL_LIVE_SCORE_SAMPLE_EXPANSION"
     assert report["selects_order_cancel"] is False
-

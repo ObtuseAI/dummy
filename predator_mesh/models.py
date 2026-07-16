@@ -188,6 +188,3 @@ class MeshRun(BaseModel):
     stuck_tasks: list[Any] = Field(default_factory=list)
 
     model_config = {"arbitrary_types_allowed": True}
-
-
-

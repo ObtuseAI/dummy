@@ -65,4 +65,3 @@ class DomainScoreboardV4:
             for row in self.rows()
         ]
         return {"workstream": "V20: Edge Terrain Readiness Scoreboard", "readiness": rows, "secret_values_exposed": False, "verdict": "PARTIAL"}
-

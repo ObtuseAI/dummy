@@ -45,4 +45,3 @@ class ImprovementProposalFactory:
             "secret_values_exposed": False,
             "verdict": "PASS",
         }
-

@@ -129,4 +129,3 @@ _OFFICIAL_ADAPTERS = (
     OfficialAdapterStatus("defillama_crypto_context", "DefiLlama Crypto Context", "https://defillama.com/docs/api", "crypto", "PUBLIC_CONTEXT_READONLY", "STATIC_CURATED_FALLBACK", "Context only, not production truth."),
     OfficialAdapterStatus("ccxt_public_crypto_plan", "CCXT Public Crypto Plan", "https://github.com/ccxt/ccxt", "crypto", "OPEN_SOURCE_ADAPTER_PLAN", "ADAPTER_PLAN_ONLY", "Optional dependency not required for V20; no execution authority."),
 )
-

@@ -14,4 +14,3 @@ def test_source_truth_real_outcome_update_enabled_credits_real_counts() -> None:
     assert report["source_health_from_real_probes_only"] is True
     assert report["score_truth_from_real_scores_only"] is True
     assert report["real_scored_count"] > 0
-

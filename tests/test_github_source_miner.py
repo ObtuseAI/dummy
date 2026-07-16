@@ -14,4 +14,3 @@ def test_github_source_miner_is_bounded_and_adapter_only() -> None:
     assert report["cloned_repos"] == []
     assert report["executed_repo_code"] is False
     assert all(candidate["truth_source_role"] == "ADAPTER_CANDIDATE_ONLY" for candidate in report["repo_candidates"])
-

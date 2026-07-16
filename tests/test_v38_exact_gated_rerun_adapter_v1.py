@@ -16,4 +16,3 @@ def test_v38_rerun_readback_counts_enabled_path() -> None:
     assert report["v38_readback"]["real_probe_run_count"] > 0
     assert report["v38_readback"]["real_evidence_count"] > 0
     assert report["v38_readback"]["real_scored_count"] > 0
-

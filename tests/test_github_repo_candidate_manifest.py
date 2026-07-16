@@ -7,4 +7,3 @@ def test_github_repo_candidate_manifest_has_curated_fallback_candidates() -> Non
     report = assert_v20_report("github_repo_candidate_manifest_v1.json", "candidates")
     assert report["candidate_count"] > 0
     assert all(candidate["truth_source_role"] == "ADAPTER_CANDIDATE_ONLY" for candidate in report["candidates"])
-

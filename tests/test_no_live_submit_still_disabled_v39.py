@@ -8,4 +8,3 @@ def test_no_live_submit_still_disabled_v39() -> None:
     assert report["live_submit_disabled"] is True
     assert report["live_submit_enabled"] is False
     assert report["configs_live_submit_modified"] is False
-

@@ -11,4 +11,3 @@ def test_official_public_adapter_activation_pack_is_readonly_and_fallback_safe()
     assert report["write_endpoints_called"] == []
     assert report["bounded_timeouts"] is True
     assert report["fallback_safe"] is True
-

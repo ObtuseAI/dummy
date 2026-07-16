@@ -13,4 +13,3 @@ def test_readonly_live_intelligence_enabled_path_passes() -> None:
     assert report["readonly_live_intelligence_status"] == "PASS_READONLY_LIVE_INTELLIGENCE"
     assert report["real_probe_run_count"] > 0
     assert report["real_evidence_count"] > 0
-

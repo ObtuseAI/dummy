@@ -8,4 +8,3 @@ def test_github_source_stack_is_adapter_candidate_only() -> None:
     github_sources = [source for source in report["sources"] if source["source_class"] == "github_adapter_candidate"]
     assert github_sources
     assert all(source["truth_source_role"] == "ADAPTER_CANDIDATE_ONLY" for source in github_sources)
-

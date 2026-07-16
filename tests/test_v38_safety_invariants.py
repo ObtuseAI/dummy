@@ -30,4 +30,3 @@ def test_v38_safety_invariants_cover_live_trading_browser_mined_and_scoring_mode
         assert report["source_unavailable_forecast_scored"] is False, name
         assert report["not_due_forecast_scored"] is False, name
         assert report["unresolved_forecast_scored"] is False, name
-

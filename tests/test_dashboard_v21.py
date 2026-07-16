@@ -35,4 +35,3 @@ def test_dashboard_v21_endpoints_return_activation_breakout_without_secrets() ->
         payload = response.json()
         assert payload["live_submit_disabled"] is True
         assert payload["caps_unchanged"] is True
-

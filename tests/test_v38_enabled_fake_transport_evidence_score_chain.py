@@ -34,4 +34,3 @@ def test_v38_enabled_fake_transport_produces_real_live_public_score_chain() -> N
     assert chain["kalshi_readonly_status"] == "READONLY_ACCESS_UNAVAILABLE"
     assert chain["kalshi_blocks_other_public_families"] is False
     assert chain["calibration_low_sample_warning"] is True
-

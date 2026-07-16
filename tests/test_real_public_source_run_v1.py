@@ -17,4 +17,3 @@ def test_real_public_source_run_enabled_path_attempts_public_families() -> None:
     assert report["real_probe_run_count"] > 0
     assert set(["weather", "crypto", "public_event", "kalshi_readonly"]).issubset(set(report["source_families"]))
     assert report["kalshi_readonly_status"] == "READONLY_ACCESS_UNAVAILABLE"
-

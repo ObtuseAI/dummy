@@ -14,4 +14,3 @@ def test_live_calibration_low_sample_enabled_path_warns() -> None:
     assert report["live_calibration_low_sample_status"] == "PASS_LOW_SAMPLE_CALIBRATION"
     assert report["low_sample_warning"] is True
     assert report["real_scored_count"] > 0
-

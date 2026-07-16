@@ -16,4 +16,3 @@ def test_live_public_evidence_completion_enabled_counts_only_live_public_results
     assert report["real_evidence_count"] > 0
     assert report["eligible_evidence_mode"] == "LIVE_PUBLIC_PROBE_RESULT"
     assert report["fake_transport_evidence_entered"] is False
-

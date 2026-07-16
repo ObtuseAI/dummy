@@ -98,4 +98,3 @@ class EdgeAwareForecastPipelineV2:
             for candidate in self.candidates()
         ]
         return {"workstream": "V20: Edge Feature Contribution", "contributions": contributions, "secret_values_exposed": False, "verdict": "PARTIAL"}
-

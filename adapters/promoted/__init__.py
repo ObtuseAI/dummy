@@ -91,4 +91,3 @@ PROMOTED_MODULES: dict[str, str] = {
     "promptfoo_adapter": "promptfoo_adapter",
     "awesome_mcp_servers_adapter": "awesome_mcp_servers_adapter",
 }
-

@@ -21,4 +21,3 @@ def test_autonomous_workflow_dashboard_v38() -> None:
         assert payload["live_submit_disabled"] is True
         assert payload["caps_unchanged"] is True
         assert payload["execution_bridge_present"] is False
-

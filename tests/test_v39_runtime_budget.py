@@ -10,4 +10,3 @@ def test_v39_runtime_budget() -> None:
     assert report["normal_tests_live_network"] is False
     assert report["recursive_pytest_inside_unit_tests"] is False
     assert report["browser_calls_allowed"] is False
-

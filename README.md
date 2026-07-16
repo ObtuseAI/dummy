@@ -28,6 +28,68 @@ records the full lifecycle in an auditable ledger.
 Live execution remains fail-closed, evidence-gated, and subject to explicit
 operator authorization.
 
+## Architecture
+
+At the top level Dummy is a one-directional pipeline — public evidence flows in,
+competing forecasts are calibrated and fused by earned trust, allocation and
+risk gates size a candidate, and a hardened firewall is the only path to the
+Kalshi adapter. The autonomy loop orchestrates the cadence and the read-only
+dashboard observes it; neither can bypass the firewall or the risk gates.
+
+```mermaid
+flowchart TB
+    subgraph Ingest["Evidence &amp; ingest"]
+        FEEDS[Public feeds<br/>Kalshi · crypto venues · ESPN · macro/NWS]
+        INFLOW[predator_mesh/data_inflow<br/>+ adapters/]
+        OBS[(Deduplicated<br/>observation ledger)]
+    end
+
+    subgraph Forecast["Forecasting &amp; calibration"]
+        ENGINE[forecasting/ engine<br/>+ strategies/ source models]
+        COUNCIL[autonomy/specialists<br/>council per vertical]
+        CAL[calibration/<br/>trust · Brier · debias]
+        ROUTER[model_router/]
+    end
+
+    subgraph RiskAlloc["Risk &amp; allocation"]
+        FUSE[Trust-weighted fusion]
+        ALLOC[autonomy/allocator<br/>quarter-Kelly · stage ladder]
+        GOV[risk/governor<br/>drawdown · clusters · TTL]
+    end
+
+    subgraph Exec["Execution firewall"]
+        FW[live_firewall/firewall<br/>LIMIT-only · secret sentinel]
+        PRE[kalshi/presubmit]
+        PATH[execution/ paths]
+    end
+
+    ADAPTER[kalshi/client<br/>transport-witnessed adapter]
+    MARKET([Kalshi markets])
+    RECON[Reconcile &amp; settle<br/>services/ ledger]
+
+    BRAIN[[autonomy/brain<br/>predator loop · canary · backtest]]
+    DASH[[dashboard/ :8787<br/>read-only command center]]
+
+    FEEDS --> INFLOW --> OBS --> ENGINE
+    ENGINE --> COUNCIL --> FUSE
+    ENGINE --> FUSE
+    CAL -. earned trust .-> FUSE
+    ROUTER -.-> ENGINE
+    FUSE --> ALLOC --> GOV --> FW --> PRE --> PATH --> ADAPTER --> MARKET
+    MARKET --> RECON --> CAL
+    BRAIN -. orchestrates .-> ENGINE
+    BRAIN -.-> ALLOC
+    RECON -. evidence .-> BRAIN
+    OBS -.-> DASH
+    RECON -.-> DASH
+    GOV -.-> DASH
+```
+
+The runtime cadence of this pipeline — `scan → signal → fuse → allocate →
+risk → execute → reconcile → learn` — is described under [The loop](#the-loop),
+and the recursive calibration that closes it is under
+[Recursive improvement](#recursive-improvement).
+
 ## vNext: sovereign forecasting architecture
 
 Dummy's next architecture is a deterministic, typed forecasting ecology:

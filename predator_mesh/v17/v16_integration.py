@@ -48,4 +48,3 @@ class LiquidityWarningAttributionSchema:
             "secret_values_exposed": False,
             "verdict": "PASS",
         }
-

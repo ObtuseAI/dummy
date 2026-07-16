@@ -18,4 +18,3 @@ def test_source_universe_contains_required_tiers_domains_and_safe_candidates() -
     assert all(candidate.legality_class for candidate in candidates)
     assert all(candidate.approval_status for candidate in candidates)
     assert_source_candidate(candidates[0].to_dict())
-

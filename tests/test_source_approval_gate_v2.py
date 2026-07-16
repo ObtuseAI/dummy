@@ -12,4 +12,3 @@ def test_source_approval_gate_blocks_unapproved_and_commercial_sources() -> None
     assert report["unapproved_sources_activated"] == []
     assert report["source_api_key_values_exposed"] is False
     assert report["approval_status_counts"]["BLOCKED_LICENSE_REQUIRED"] > 0
-

@@ -78,4 +78,3 @@ class EdgeFocusedResearchSwarmV2:
     def task_manifest_report(self) -> dict[str, Any]:
         tasks = [task.to_dict() for task in self.tasks()]
         return {"workstream": "V20: Edge Research Task Manifest", "tasks": tasks, "task_count": len(tasks), "secret_values_exposed": False, "verdict": "PASS"}
-

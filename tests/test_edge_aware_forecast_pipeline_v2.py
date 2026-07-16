@@ -10,4 +10,3 @@ def test_edge_aware_forecast_pipeline_uses_source_sufficiency_no_trade_gate() ->
     assert report["no_heavy_ml"] is True
     assert report["outcome_leakage_detected"] is False
     assert report["no_trade_decision_count"] >= 2
-

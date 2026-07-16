@@ -15,4 +15,3 @@ def test_first_real_live_score_closure_enabled_path() -> None:
     assert report["first_real_live_score_closure_status"] == "PASS_FIRST_REAL_LIVE_SCORE"
     assert report["real_scored_count"] > 0
     assert report["low_sample_warning"] is True
-
