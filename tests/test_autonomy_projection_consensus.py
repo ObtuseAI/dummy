@@ -166,6 +166,26 @@ def test_aggregate_team_projections_rates():
     assert teams["SF"].runs_allowed_per_game == LEAGUE_AVG_RUNS_PER_GAME
 
 
+def test_aggregate_realistic_magnitudes_unclamped():
+    """Realistic full-roster sums land in MLB-sane ranges WITHOUT clamping.
+
+    (Phenon lesson: sanity-check magnitudes when mixing differently-scaled
+    sources -- season counting stats vs per-9 rates here.)
+    """
+    bat = [{"PlayerName": f"B{i}", "playerid": str(i), "Team": "KCR",
+            "R": 57.0, "wOBA": 0.32} for i in range(13)]  # ~741 team runs
+    pit = [{"PlayerName": f"P{i}", "playerid": str(100 + i), "Team": "KCR",
+            "ERA": 4.0, "IP": 118.0} for i in range(12)]  # ~1416 IP
+    teams = aggregate_team_projections(
+        parse_projections(bat, "steamer", "bat"),
+        parse_projections(pit, "steamer", "pit"))
+    kc = teams["KC"]  # KCR canonicalized on the way in
+    assert kc.runs_per_game == pytest.approx(741.0 / 162.0)  # ~4.57, no clamp
+    assert kc.runs_allowed_per_game == pytest.approx(4.0 * 1.08)  # ~4.32
+    assert kc.defense_is_projected
+    assert kc.batter_count == 13 and kc.pitcher_count == 12
+
+
 # ------------------------------------------------------------------------ book
 
 def test_book_refresh_and_lookup_through_any_namespace():

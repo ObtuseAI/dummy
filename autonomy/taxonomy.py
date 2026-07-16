@@ -88,6 +88,11 @@ SOURCE_TAXONOMY: dict[str, str] = {
     # reason as "mlb_intelligence"/"team_sports_intelligence": so the
     # registry-completeness tripwire resolves the bare registry name too.
     "power_ratings": "power_ratings",
+    # Fantasy leg #1: FanGraphs projection consensus prices MLB winner/total
+    # markets, so the MLB specialist owns its record. Exact entry (like
+    # "mlb_intelligence") because the source is named for its data source,
+    # not the league prefix.
+    "fangraphs_projection_consensus": "mlb",
 }
 
 # (prefix, specialist) resolved in order; the first match wins. Ordering only
