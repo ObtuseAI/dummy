@@ -18,8 +18,14 @@ ROOT = Path(__file__).resolve().parent.parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+from autonomy.adverse_selection import write_report as write_adverse_selection_report  # noqa: E402
 from autonomy.backtest import run_backtest, write_backtest_report  # noqa: E402
 from autonomy.ledger import AutonomyLedger  # noqa: E402
+
+# Dedicated first-class adverse-selection artifact, produced alongside the
+# backtest summary. Documented name so the readiness/governance review can cite
+# it directly.
+ADVERSE_SELECTION_ARTIFACT = Path("runtime/autonomy/adverse_selection.json")
 
 
 def _summary(report: dict) -> dict:
@@ -57,6 +63,9 @@ def _summary(report: dict) -> dict:
         "shadow_ttl_sensitivity": report.get("shadow_ttl_sensitivity", {}),
         "crypto_diagnostics": report.get("crypto_diagnostics", {}),
         "crypto_challenger_gates": report.get("crypto_challenger_gates", {}),
+        "execution_adverse_selection": (
+            report.get("execution_adverse_selection", {}) or {}
+        ).get("headline", {}),
         "weights_written": report.get("weights_written", False),
     }
 
@@ -73,6 +82,11 @@ def main() -> int:
         report = run_backtest(ledger, bootstrap_weights=args.bootstrap)
         if not args.no_write and report.get("settled_markets", 0) > 0:
             report["report_path"] = str(write_backtest_report(report))
+            # Emit the dedicated adverse-selection artifact alongside the
+            # backtest summary (measurement only; no live behavior touched).
+            adverse = report.get("execution_adverse_selection") or {}
+            if adverse:
+                write_adverse_selection_report(adverse, ADVERSE_SELECTION_ARTIFACT)
         print(json.dumps(_summary(report) if args.summary else report, indent=2, sort_keys=True))
     finally:
         ledger.close()

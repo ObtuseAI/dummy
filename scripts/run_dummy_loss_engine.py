@@ -25,11 +25,19 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from autonomy.loss_engine import build_loss_attribution, narrate_losses, write_report  # noqa: E402
+from autonomy.loss_engine import (  # noqa: E402
+    build_fill_loss_attribution,
+    build_loss_attribution,
+    filled_market_tickers,
+    narrate_losses,
+    write_report,
+)
 from autonomy.strategy_miner import load_settled_rows  # noqa: E402
 
 DEFAULT_DB = Path("runtime/autonomy/ledger.db")
 DEFAULT_OUT = Path("runtime/autonomy/loss_attribution.json")
+# WS-A1: fill-conditioned loss deconstruction (where the FILLED trades lose).
+DEFAULT_FILL_OUT = Path("runtime/autonomy/loss_attribution_fills.json")
 
 
 def _get_router():
@@ -48,12 +56,18 @@ def _get_router():
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--db", type=Path, default=DEFAULT_DB)
-    parser.add_argument("--out", type=Path, default=DEFAULT_OUT)
+    parser.add_argument("--out", type=Path, default=None)
+    parser.add_argument(
+        "--fills", action="store_true",
+        help="restrict attribution to the witnessed / would-have-filled subset"
+        " (WS-A1 adverse-selection localization) and write loss_attribution_fills.json",
+    )
     parser.add_argument(
         "--no-narration", action="store_true",
         help="skip the LLM commentary pass; write the deterministic artifact only",
     )
     args = parser.parse_args()
+    out_path = args.out or (DEFAULT_FILL_OUT if args.fills else DEFAULT_OUT)
     if not args.db.exists():
         print(json.dumps({"status": "NO_DB", "db": str(args.db)}))
         return 1
@@ -61,10 +75,15 @@ def main() -> int:
     conn = sqlite3.connect(f"file:{args.db}?mode=ro", uri=True)
     try:
         rows = load_settled_rows(conn)
+        fill_tickers = filled_market_tickers(conn) if args.fills else set()
     finally:
         conn.close()
 
-    attribution = build_loss_attribution(rows, now_iso=datetime.now(timezone.utc).isoformat())
+    now_iso = datetime.now(timezone.utc).isoformat()
+    if args.fills:
+        attribution = build_fill_loss_attribution(rows, fill_tickers, now_iso=now_iso)
+    else:
+        attribution = build_loss_attribution(rows, now_iso=now_iso)
     if not args.no_narration:
         try:
             attribution["narration"] = narrate_losses(attribution, _get_router())
@@ -76,18 +95,27 @@ def main() -> int:
             # future change to narrate_losses, or a router construction bug
             # in _get_router() surfacing here instead of returning None).
             attribution["narration"] = {}
-    write_report(attribution, args.out)
+    write_report(attribution, out_path)
 
     bleeding = sum(1 for scope in attribution["scopes"] if scope.get("verdict") == "bleeding")
-    print(json.dumps({
+    status = {
         "status": "OK",
+        "mode": "fills" if args.fills else "full",
         "settled_rows": attribution["settled_rows"],
         "scopes_evaluated": attribution["family_size"]["scopes_evaluated"],
         "buckets_evaluated": attribution["family_size"]["buckets_evaluated"],
         "bleeding_scopes": bleeding,
         "narrated": bool(attribution.get("narration")),
-        "out": str(args.out),
-    }))
+        "out": str(out_path),
+    }
+    if args.fills:
+        status.update({
+            "filled_markets": attribution.get("filled_markets"),
+            "fill_settled_rows": attribution.get("fill_settled_rows"),
+            "pooled_cluster_edge": attribution.get("pooled_cluster_edge"),
+            "pooled_cluster_edge_ci95": attribution.get("pooled_cluster_edge_ci95"),
+        })
+    print(json.dumps(status))
     return 0
 
 
