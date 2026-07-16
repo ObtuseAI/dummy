@@ -308,8 +308,17 @@ class PredatorBrain:
         # Refresh order fills before settlement accounting; a last-cycle fill
         # must be seen before deciding whether the order ever became a position.
         self.reconciler.reconcile_open_orders()
+        # Snapshot trust before settlements so a pathological recalibration
+        # (e.g. every crypto source pinned at the ceiling) can be reverted.
+        try:
+            pre_settlement_weights = self.ledger.all_weights()
+        except Exception:
+            pre_settlement_weights = {}
         self._apply_settlements(state, report)
         self._apply_phantom_settlements(report)
+        guard_weights = getattr(self.learner, "guard_cycle_weights", None)
+        if callable(guard_weights) and report.weight_updates:
+            guard_weights(report, pre_settlement_weights)
         # Phantom settlement discovery can also close a traded ticker.
         self._close_settled_positions(state)
 
@@ -406,7 +415,9 @@ class PredatorBrain:
                     report.notes.append("candidate_search_stopped_at_stage_position_cap")
                     break
                 continue
-            outcome = await self.executor.execute(decision)
+            outcome = await self.executor.execute(
+                decision, snapshot_ts=getattr(market, "fetched_at", None)
+            )
             self.ledger.record_outcome(outcome)
             if outcome.kind in (OutcomeKind.ACCEPTED, OutcomeKind.SHADOW) and outcome.order_id:
                 report.orders_placed += 1

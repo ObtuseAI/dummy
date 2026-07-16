@@ -47,13 +47,21 @@ def _maybe_recalibrate(now_iso: str) -> dict[str, Any] | None:
     except Exception:
         pass  # unreadable stamp -> recalibrate now
     try:
-        from autonomy.backtest import run_backtest
+        from autonomy.backtest import (
+            run_backtest,
+            summarize_backtest,
+            write_latest_backtest_summary,
+        )
         from autonomy.ledger import AutonomyLedger
         from autonomy.signals.market_debias import fit_curve, ledger_samples, write_curve
 
         ledger = AutonomyLedger()
         try:
             report = run_backtest(ledger, bootstrap_weights=True)
+            # Keep the authoritative summary artifact fresh: recalibration is
+            # the 6-hourly cadence of backtest evidence, so the fail-closed
+            # 24h freshness bound downstream stays green in steady state.
+            write_latest_backtest_summary(summarize_backtest(report))
             write_curve(fit_curve(ledger_samples(ledger)))
             from autonomy.self_improvement import (
                 DEFAULT_REPORT_PATH,
@@ -116,6 +124,17 @@ def run_one_cycle(now_iso: str, mode: SessionMode = SessionMode.SHADOW) -> dict[
     if recal is not None:
         record["recalibrated"] = True
 
+    # Read-only ledger health probe: file size, bloat flag, header pragmas.
+    # Surfaced on the heartbeat so a growing/locked ledger is operator-visible
+    # long before it becomes a CYCLE_ERROR streak. Never wedges the cycle.
+    ledger_health: dict[str, Any] | None = None
+    try:
+        from autonomy.ledger import ledger_health_probe
+
+        ledger_health = ledger_health_probe(RUNTIME_DIR / "ledger.db")
+    except Exception:
+        ledger_health = None
+
     _append_cycle_log(record)
     _write_heartbeat({
         "alive": True,
@@ -125,6 +144,7 @@ def run_one_cycle(now_iso: str, mode: SessionMode = SessionMode.SHADOW) -> dict[
         "last_signals": record.get("signals_generated"),
         "last_settlements": record.get("settlements"),
         "mode": mode.value,
+        "ledger_health": ledger_health,
     })
 
     # Operator alerts (self-stop / drawdown / gate-green / error streak).
@@ -148,7 +168,18 @@ def run_one_cycle(now_iso: str, mode: SessionMode = SessionMode.SHADOW) -> dict[
             gate_ready = bool(canary_readiness(check_balance=False).get("ready"))
         except Exception:
             gate_ready = False
-        evaluate_alerts(record, risk_state, gate_ready, now_iso)
+        backtest_freshness = None
+        try:
+            from autonomy.backtest import backtest_summary_freshness
+
+            backtest_freshness = backtest_summary_freshness()
+        except Exception:
+            backtest_freshness = None
+        evaluate_alerts(
+            record, risk_state, gate_ready, now_iso,
+            ledger_health=ledger_health,
+            backtest_freshness=backtest_freshness,
+        )
     except Exception:
         pass  # alerting must never wedge the cycle
 

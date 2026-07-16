@@ -138,6 +138,26 @@ MAX_MINUTES_TO_CLOSE = {
 INCUMBENT_MIN_EV_CENTS = 8.0
 INCUMBENT_MAX_UNCERTAINTY = 0.35
 INCUMBENT_MAX_ENTRY_CENTS = 75
+
+# Data-justified paper-capital quarantine (Wave-1 C1, 2026-07-16).
+# The crypto 1h exploratory and incumbent lanes are net losers on settled paper
+# evidence (exploratory: -338c net, Brier skill vs market -0.055; incumbent:
+# -558c net, Brier skill -0.481) while the 15m_direction lanes carry the edge.
+# Quarantined lanes stop allocating paper bankroll (no trades, no maker
+# quotes) but keep emitting observations and target-candidate forecasts, so
+# grading evidence continues to accrue and a lane can earn its way back
+# through the promotion machinery. Removal of a lane from this set is a
+# human, reviewed change citing fresh cohort evidence.
+PAPER_LANE_QUARANTINE: frozenset[tuple[str, str, str]] = frozenset({
+    ("CRYPTO", "exploratory", "1h"),
+    ("CRYPTO", "incumbent", "1h"),
+})
+
+
+def lane_quarantined(vertical: Any, strategy: str, timeframe: str) -> bool:
+    """True when a (vertical, strategy, timeframe) lane may not spend paper capital."""
+    value = vertical.value if hasattr(vertical, "value") else str(vertical)
+    return (str(value), str(strategy), str(timeframe)) in PAPER_LANE_QUARANTINE
 PAPER_RESEARCH_MIN_EV_CENTS = 3.0
 CONFIDENCE_HAIRCUT_SIGMAS = 0.5
 MAKER_TTL_SECONDS = 60
@@ -2731,6 +2751,7 @@ class CryptoPaperTwin:
         cycle_id = self.ledger.start_cycle(now)
         errors: list[str] = []
         observations_written = trades_opened = calibration_forecasts_recorded = 0
+        lane_trades_quarantined = 0
         target_candidate_forecasts_recorded = 0
         coverage_trades_recorded = 0
         coverage_scope_targets: dict[str, int] = {
@@ -3008,6 +3029,9 @@ class CryptoPaperTwin:
                                 "listing_duration_hours": listing_duration_hours,
                                 "price_target_selection": target_ladder,
                                 "paper_only": True,
+                                "lane_quarantined": lane_quarantined(
+                                    vertical, strategy, timeframe,
+                                ),
                             },
                             "created_at": now.isoformat(),
                         })
@@ -3045,6 +3069,11 @@ class CryptoPaperTwin:
                                 })
                             )
                         if not best_candidate.get("eligible") or not isinstance(market, MarketView):
+                            continue
+                        if lane_quarantined(vertical, strategy, timeframe):
+                            # Quarantined lane: the observation above is the
+                            # grading emission; no paper capital is spent.
+                            lane_trades_quarantined += 1
                             continue
                         assert strategy_cluster is not None
                         if self.ledger.has_lane_trade(
@@ -3169,6 +3198,7 @@ class CryptoPaperTwin:
                     target_candidate_forecasts_recorded
                 ),
                 errors=errors,
+                lane_trades_quarantined=lane_trades_quarantined,
             )
         except Exception as exc:
             errors.append(f"cycle:{type(exc).__name__}:{str(exc)[:160]}")
@@ -3192,6 +3222,7 @@ class CryptoPaperTwin:
                 ),
                 errors=errors,
                 failed=True,
+                lane_trades_quarantined=lane_trades_quarantined,
             )
         self.ledger.finish_cycle(cycle_id, report)
         return report
@@ -3216,6 +3247,7 @@ class CryptoPaperTwin:
         target_candidate_forecasts_recorded: int,
         errors: list[str],
         failed: bool = False,
+        lane_trades_quarantined: int = 0,
     ) -> dict[str, Any]:
         vertical_timeframes = {
             Vertical.CRYPTO: ("15m", "1h", "1d", "1w"),
@@ -3437,6 +3469,10 @@ class CryptoPaperTwin:
             "target_candidate_forecasts_recorded": target_candidate_forecasts_recorded,
             "maker_updates": maker_updates,
             "errors": errors,
+            "lane_trades_quarantined": lane_trades_quarantined,
+            "paper_lane_quarantine": sorted(
+                ":".join(lane) for lane in PAPER_LANE_QUARANTINE
+            ),
             "timeframes": list(vertical_timeframes[Vertical.CRYPTO]),
             "assets": list(ASSETS),
             "vertical_timeframes": {

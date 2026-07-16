@@ -10,12 +10,29 @@ import json
 import hashlib
 import math
 import sqlite3
+import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 from autonomy.ontology import Decision, Signal, TradeOutcome
 from autonomy.retention import install_signal_history
+
+# Concurrency hardening. The ledger is deliberately rollback-journal (NOT WAL):
+# retention.enforce_retention needs a non-WAL main DB to guarantee an atomic
+# archive+delete across the attached archive database. That correctness choice
+# means writers take a whole-database lock, so under concurrency (the 6-hourly
+# recalibration backtest holding a long read while a cycle tries to write) the
+# default 5s timeout expires and SQLite raises OperationalError("database is
+# locked") — the observed CYCLE_ERROR:OperationalError. The fix is to let
+# writers WAIT for the lock (busy_timeout) and to retry a bounded number of
+# times on the residual race, rather than switch journalling modes.
+LEDGER_BUSY_TIMEOUT_S = 30.0
+LEDGER_LOCK_RETRIES = 5
+LEDGER_LOCK_BACKOFF_S = 0.1
+# A ledger past this size is flagged for operator maintenance (checkpoint /
+# retention archival / VACUUM). The live ledger crossed 9 GiB before this guard.
+LEDGER_BLOAT_WARN_BYTES = 8 * 1024 ** 3
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS decisions (
@@ -147,19 +164,129 @@ def _external_observation_id(
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
 
+def ledger_health_probe(
+    db_path: Path | str = Path("runtime/autonomy/ledger.db"),
+) -> dict[str, Any]:
+    """Read-only ledger health snapshot for heartbeat/alerting surfaces.
+
+    Opens the database strictly ``mode=ro`` (never creates or mutates it) and
+    reports file size, bloat flag, and header pragmas. Any failure to probe is
+    itself a health finding (``probe_error``), never an exception — a daemon
+    heartbeat must not die on a sick database.
+    """
+    path = Path(db_path)
+    info: dict[str, Any] = {
+        "db_path": str(path),
+        "exists": path.exists(),
+        "size_bytes": 0,
+        "size_gib": 0.0,
+        "bloat_warn": False,
+        "bloat_warn_bytes": int(LEDGER_BLOAT_WARN_BYTES),
+        "probe_error": None,
+    }
+    if not path.exists():
+        return info
+    try:
+        size = path.stat().st_size
+        info["size_bytes"] = int(size)
+        info["size_gib"] = round(size / 1024 ** 3, 3)
+        info["bloat_warn"] = size >= LEDGER_BLOAT_WARN_BYTES
+    except OSError as exc:
+        info["probe_error"] = f"stat:{exc}"
+        return info
+    try:
+        connection = sqlite3.connect(
+            f"file:{path.resolve().as_posix()}?mode=ro", uri=True, timeout=5.0,
+        )
+        try:
+            for pragma in ("freelist_count", "page_size", "journal_mode"):
+                info[pragma] = connection.execute(f"PRAGMA {pragma}").fetchone()[0]
+            page_size = int(info.get("page_size") or 0)
+            freelist = int(info.get("freelist_count") or 0)
+            info["freelist_bytes"] = freelist * page_size
+        finally:
+            connection.close()
+    except sqlite3.Error as exc:
+        info["probe_error"] = f"{type(exc).__name__}:{exc}"
+    return info
+
+
 class AutonomyLedger:
     def __init__(self, db_path: Path | str = Path("runtime/autonomy/ledger.db")):
         self.db_path = Path(db_path)
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
         resolved = self.db_path.resolve()
         mode = "rw" if resolved.exists() else "rwc"
+        # Count of write operations that had to be retried after SQLITE_BUSY.
+        # A nonzero, growing value is the leading indicator of lock contention.
+        self._lock_retries = 0
         self._conn = sqlite3.connect(
-            f"file:{resolved.as_posix()}?mode={mode}", uri=True,
+            f"file:{resolved.as_posix()}?mode={mode}",
+            uri=True,
+            timeout=LEDGER_BUSY_TIMEOUT_S,
         )
+        # Wait for a held lock instead of raising immediately. Belt (connect
+        # timeout) and suspenders (explicit PRAGMA) — some builds honor one but
+        # not the other.
+        self._conn.execute(f"PRAGMA busy_timeout={int(LEDGER_BUSY_TIMEOUT_S * 1000)}")
         self._conn.executescript(_SCHEMA)
         self._migrate()
-        self._conn.commit()
+        self._retry_on_locked(self._conn.commit)
         install_signal_history(self._conn)
+
+    def _retry_on_locked(self, operation: Callable[[], Any]) -> Any:
+        """Run a write, retrying with backoff on SQLITE_BUSY within a bound.
+
+        busy_timeout already absorbs most contention; this catches the residual
+        race where the lock is grabbed between statements. Non-lock
+        OperationalErrors propagate immediately; so does the last lock error —
+        bounded retry, fail-closed, never an infinite spin.
+        """
+        delay = LEDGER_LOCK_BACKOFF_S
+        for attempt in range(LEDGER_LOCK_RETRIES):
+            try:
+                return operation()
+            except sqlite3.OperationalError as exc:
+                if "locked" not in str(exc).lower() or attempt == LEDGER_LOCK_RETRIES - 1:
+                    raise
+                self._lock_retries += 1
+                time.sleep(delay)
+                delay *= 2
+
+    def health(self) -> dict[str, Any]:
+        """Cheap operational health snapshot (file size + header pragmas).
+
+        Never runs integrity_check — that is a full scan and would be ruinous
+        on a multi-gigabyte ledger every cycle; see ``integrity_check`` for the
+        scheduled/operator-invoked probe.
+        """
+        try:
+            size = self.db_path.stat().st_size if self.db_path.exists() else 0
+        except OSError:
+            size = 0
+        info: dict[str, Any] = {
+            "db_path": str(self.db_path),
+            "size_bytes": int(size),
+            "size_gib": round(size / 1024 ** 3, 3),
+            "lock_retries": int(self._lock_retries),
+            "bloat_warn": size >= LEDGER_BLOAT_WARN_BYTES,
+        }
+        for pragma in ("freelist_count", "page_size", "journal_mode", "busy_timeout"):
+            try:
+                info[pragma] = self._conn.execute(f"PRAGMA {pragma}").fetchone()[0]
+            except Exception:
+                info[pragma] = None
+        return info
+
+    def integrity_check(self, quick: bool = True) -> dict[str, Any]:
+        """PRAGMA (quick_)integrity_check — the scheduled deep probe.
+
+        ``quick=True`` skips the expensive index cross-checks; ``quick=False``
+        is the operator-invoked full scan.
+        """
+        sql = "PRAGMA quick_check" if quick else "PRAGMA integrity_check"
+        rows = [str(r[0]) for r in self._conn.execute(sql).fetchall()]
+        return {"ok": rows == ["ok"], "quick": bool(quick), "result": rows[:20]}
 
     def _migrate(self) -> None:
         """Additive migrations for ledgers created before a column existed."""
@@ -322,7 +449,7 @@ class AutonomyLedger:
             for signal, error, is_duplicate in zip(signals, errors, duplicate):
                 reason = error or ("duplicate_signal" if is_duplicate else "batch_rejected")
                 self._reject_signal(signal, mode, reason, ingested_at)
-            self._conn.commit()
+            self._retry_on_locked(self._conn.commit)
             return [False] * len(signals)
 
         accepted: list[bool] = []
@@ -347,7 +474,7 @@ class AutonomyLedger:
                 ),
             )
             accepted.append(True)
-        self._conn.commit()
+        self._retry_on_locked(self._conn.commit)
         return accepted
 
     def record_signal(self, signal: Signal, mode: str = "live") -> bool:
@@ -367,7 +494,7 @@ class AutonomyLedger:
                 decision.abstain_reason, decision.created_at,
             ),
         )
-        self._conn.commit()
+        self._retry_on_locked(self._conn.commit)
 
     def record_outcome(self, outcome: TradeOutcome) -> None:
         self._conn.execute(
@@ -380,7 +507,7 @@ class AutonomyLedger:
                 outcome.created_at,
             ),
         )
-        self._conn.commit()
+        self._retry_on_locked(self._conn.commit)
 
     def settlement_result(self, market_ticker: str) -> bool | None:
         row = self._conn.execute(
@@ -393,21 +520,21 @@ class AutonomyLedger:
             "INSERT OR REPLACE INTO settlements(market_ticker, result_yes, settled_at) VALUES (?,?,?)",
             (market_ticker, 1 if result_yes else 0, _now()),
         )
-        self._conn.commit()
+        self._retry_on_locked(self._conn.commit)
 
     def record_bankroll(self, bankroll_cents: int, open_exposure_cents: int, stage: int) -> None:
         self._conn.execute(
             "INSERT INTO bankroll_curve(bankroll_cents, open_exposure_cents, stage, created_at) VALUES (?,?,?,?)",
             (bankroll_cents, open_exposure_cents, stage, _now()),
         )
-        self._conn.commit()
+        self._retry_on_locked(self._conn.commit)
 
     def record_lesson(self, scope: str, lesson: str, evidence: dict[str, Any] | None = None) -> None:
         self._conn.execute(
             "INSERT INTO lessons(scope, lesson, evidence, created_at) VALUES (?,?,?,?)",
             (scope, lesson[:2000], json.dumps(evidence or {}, sort_keys=True, default=str), _now()),
         )
-        self._conn.commit()
+        self._retry_on_locked(self._conn.commit)
 
     def record_external_observation(
         self,
@@ -453,7 +580,7 @@ class AutonomyLedger:
                 published_iso, parsed_value, unit.strip(), payload, _now(),
             ),
         )
-        self._conn.commit()
+        self._retry_on_locked(self._conn.commit)
         return cursor.rowcount > 0
 
     def external_observation_summary(self) -> dict[str, Any]:
@@ -533,7 +660,7 @@ class AutonomyLedger:
             " VALUES (?,?,?,?,?)",
             (source, weight, brier_sum, brier_count, _now()),
         )
-        self._conn.commit()
+        self._retry_on_locked(self._conn.commit)
 
     # ------------------------------------------------------------------
     # Queries for the learner / status surface

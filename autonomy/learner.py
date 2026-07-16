@@ -14,6 +14,7 @@ Three loops, all evidence-driven:
 from __future__ import annotations
 
 import json
+import os
 from typing import Any
 
 from autonomy.ledger import AutonomyLedger
@@ -24,16 +25,191 @@ ETA = 0.15
 WEIGHT_FLOOR = 0.05
 WEIGHT_CEILING = 8.0
 
+# --- Recalibration sanity guard ---------------------------------------------
+# A healthy trust vector discriminates: sources spread across the range by
+# demonstrated edge. A vector that collapses to a single value (especially the
+# ceiling) is not a signal, it is a saturation bug — a multiplicative-weights
+# loop that ran away, or a degenerate backtest. The guard below screens a
+# candidate weight vector for such pathologies BEFORE it is committed, so the
+# machine never trades on a trust surface that has stopped discriminating.
+CAP_EPS = 1e-6
+# A group in which >90% of members sit at the ceiling has stopped ranking.
+SUPERMAJORITY_CAP_FRACTION = 0.90
+# Uniformity is only diagnostic once there are enough members to be surprising.
+MIN_GROUP_FOR_UNIFORMITY = 3
+# A single recalibration should never multiply/divide a weight by more than
+# this. The per-settlement learner is rate-limited by ETA; a jump this large in
+# one cycle means many settlements pushed in lockstep (a correlated bug).
+MAX_RECAL_JUMP_RATIO = 6.0
+
 
 def brier(probability_yes: float, result_yes: bool) -> float:
     outcome = 1.0 if result_yes else 0.0
     return (probability_yes - outcome) ** 2
 
 
+def _source_group(source: str) -> str:
+    """Coarse vertical bucket from a source key, dependency-free.
+
+    ``crypto_ewma_t::cal`` -> ``crypto``; ``mlb_total_runs`` -> ``mlb``;
+    ``market_prior`` -> ``market``. Lets the guard catch a saturated *cluster*
+    (e.g. every crypto source at the ceiling) hiding inside an otherwise mixed
+    global vector.
+    """
+    base = str(source).split("::", 1)[0]
+    head = base.split("_", 1)[0]
+    return head or base
+
+
+def _uniformity_reasons(vec: dict[str, float], scope: str, ceiling: float) -> list[str]:
+    vals = [float(v) for v in vec.values()]
+    n = len(vals)
+    reasons: list[str] = []
+    if n < 2:
+        return reasons
+    if all(abs(v - ceiling) <= CAP_EPS for v in vals):
+        reasons.append(f"all_at_ceiling[{scope}:{n}]")
+    elif (
+        n >= MIN_GROUP_FOR_UNIFORMITY
+        and (max(vals) - min(vals)) <= CAP_EPS
+        # Exactly-neutral uniformity (every weight 1.0) is the documented
+        # cold-start prior, not saturation — only non-neutral collapse alarms.
+        and abs(vals[0] - 1.0) > CAP_EPS
+    ):
+        reasons.append(f"all_equal[{scope}:{n}]")
+    if n >= MIN_GROUP_FOR_UNIFORMITY:
+        at_cap = sum(1 for v in vals if abs(v - ceiling) <= CAP_EPS)
+        if at_cap / n > SUPERMAJORITY_CAP_FRACTION:
+            reasons.append(f"supermajority_at_cap[{scope}:{at_cap}/{n}]")
+    return reasons
+
+
+def screen_weight_vector(
+    candidate: dict[str, float],
+    previous: dict[str, float] | None = None,
+    *,
+    ceiling: float = WEIGHT_CEILING,
+    group: bool = True,
+) -> list[str]:
+    """Return the pathologies a candidate weight vector exhibits (empty = healthy).
+
+    Detects: all-equal-at-ceiling, all-equal-anywhere, a supermajority pinned at
+    the cap (whole-vector and per-vertical-group), and single-cycle weight jumps
+    beyond a sane bound versus ``previous``.
+    """
+    numeric = {
+        k: float(v) for k, v in (candidate or {}).items()
+        if isinstance(v, (int, float)) and not isinstance(v, bool)
+    }
+    if not numeric:
+        return []
+    reasons: list[str] = list(_uniformity_reasons(numeric, "all", ceiling))
+    if group:
+        groups: dict[str, dict[str, float]] = {}
+        for source, weight in numeric.items():
+            groups.setdefault(_source_group(source), {})[source] = weight
+        for name, vec in sorted(groups.items()):
+            reasons.extend(_uniformity_reasons(vec, name, ceiling))
+    if previous:
+        for source, weight in numeric.items():
+            old = previous.get(source)
+            if old is None:
+                continue
+            old = float(old)
+            if old > 0.0 and weight > 0.0:
+                ratio = max(weight / old, old / weight)
+                if ratio > MAX_RECAL_JUMP_RATIO:
+                    reasons.append(f"excess_jump[{source}:{ratio:.1f}x]")
+    seen: set[str] = set()
+    unique: list[str] = []
+    for reason in reasons:
+        if reason not in seen:
+            seen.add(reason)
+            unique.append(reason)
+    return unique
+
+
 class Learner:
-    def __init__(self, ledger: AutonomyLedger, router: Any | None = None):
+    def __init__(
+        self,
+        ledger: AutonomyLedger,
+        router: Any | None = None,
+        alert: Any | None = None,
+    ):
         self.ledger = ledger
         self._router = router
+        # Injectable alert sink for tests; production falls through to
+        # autonomy.alerts.emit_alert (gated off under the suite).
+        self._alert = alert
+
+    def _emit_alert(self, kind: str, message: str, detail: dict[str, Any]) -> None:
+        if self._alert is not None:
+            try:
+                self._alert(kind, message, detail)
+            except Exception:
+                pass
+            return
+        if os.environ.get("DUMMY_DAEMON_ALERTS", "1") != "1":
+            return
+        try:
+            from autonomy.alerts import emit_alert
+
+            emit_alert(kind, message, detail)
+        except Exception:
+            pass
+
+    def guard_cycle_weights(
+        self, report: Any, previous_weights: dict[str, float],
+    ) -> dict[str, Any]:
+        """Fail-closed screen of the weights this cycle applied.
+
+        ``report.weight_updates`` is the per-cycle global trust vector produced
+        by the multiplicative-weights learner. If it is pathological (e.g. every
+        crypto source pinned at the 8.0 ceiling), revert the affected sources to
+        their pre-cycle values, log the rejected vector via the alert sink, and
+        annotate the report. Previous weights are kept; nothing degenerate is
+        allowed to stand.
+        """
+        updates = {
+            k: float(v) for k, v in (getattr(report, "weight_updates", {}) or {}).items()
+            if isinstance(v, (int, float)) and not isinstance(v, bool)
+        }
+        reasons = screen_weight_vector(updates, previous_weights)
+        if not reasons:
+            return {"accepted": True, "reasons": []}
+        # Revert every trust row this cycle touched — the learner writes the
+        # same multiplier to global, vertical-scoped, and exact-scope keys, so
+        # a rejected vector must roll all of them back, not just the globals in
+        # weight_updates. A key with no prior row resets to the neutral 1.0.
+        try:
+            current = self.ledger.all_weights()
+        except Exception:
+            current = {}
+        changed = set(updates)
+        for key, value in current.items():
+            prior = previous_weights.get(key)
+            if prior is None or abs(float(value) - float(prior)) > 1e-12:
+                changed.add(key)
+        for key in changed:
+            self.ledger.update_weight(key, float(previous_weights.get(key, 1.0)))
+        detail = {
+            "reasons": reasons,
+            "rejected_weights": updates,
+            "reverted_to_prior": True,
+        }
+        self._emit_alert(
+            "RECAL_REJECTED",
+            "pathological recalibration weight vector rejected: " + ", ".join(reasons),
+            detail,
+        )
+        # Present the report as the prior (unchanged) surface downstream.
+        report.weight_updates = {
+            source: float(previous_weights.get(source, 1.0)) for source in updates
+        }
+        notes = getattr(report, "notes", None)
+        if isinstance(notes, list):
+            notes.append("recal_rejected:" + ",".join(reasons))
+        return {"accepted": False, "reasons": reasons}
 
     # ------------------------------------------------------------------
     # Loop 1: calibration -> trust weights

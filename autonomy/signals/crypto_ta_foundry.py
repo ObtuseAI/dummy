@@ -294,7 +294,11 @@ class CryptoTechnicalFoundrySignal:
             ),
             features={
                 "challenger_only": True,
-                "promotion_eligible": False,
+                # Evidence-driven now (autonomous thresholded promotion,
+                # 2026-07-16): stays challenger_only until the AutoPromotionEngine
+                # earns it a place from settled proof-of-profit. Eligibility is
+                # not promotion; the engine must still clear every ladder gate.
+                "promotion_eligible": True,
                 "point_in_time": True,
                 "public_read_only": True,
                 "clean_room_inspiration": "ObtuseAI/dopey indicator families (MIT)",

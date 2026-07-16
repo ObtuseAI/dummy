@@ -41,6 +41,10 @@ PAPER_ENTRIES_PATH = Path("runtime/autonomy/paper_entries.jsonl")
 # read-only council panel. Read-only reporting artifact -- see
 # autonomy/council_snapshot.py for the fail-closed contract.
 COUNCIL_SNAPSHOT_PATH = Path("runtime/autonomy/council_snapshot.json")
+# Wave-2 D1: cross-restart persistence for the sports pre-game close tracker,
+# so a monitor restart does not drop in-flight close candidates for games that
+# have not yet reached first pitch. Best-effort (see _load/_save helpers).
+SPORTS_CLOSE_STATE_PATH = Path("runtime/autonomy/sports_close_state.json")
 
 
 def _atomic_json(path: Path, value: dict) -> None:
@@ -108,6 +112,22 @@ def _build():
         except Exception:
             return None
 
+    def game_start_fn(market):
+        # Wave-2 D1: scheduled game start (ESPN Game.date) for a sports
+        # market, so the CLV close tracker anchors the closing line on first
+        # pitch instead of the Kalshi contract close. Routed to the market's
+        # specialist; crypto (and any specialist without game_start_time)
+        # yields None -> the sweep leaves it on the generic tape path.
+        # Fail-closed: unrouted / no resolver / any error -> None.
+        try:
+            specialist = council.route(market)
+            if specialist is None:
+                return None
+            resolver = getattr(specialist, "game_start_time", None)
+            return resolver(market) if resolver is not None else None
+        except Exception:
+            return None
+
     def ejection_fn(market):
         # Raw ESPN play observations only. The sweep adds its own receipt
         # timestamp and carries them as evidence; they never reprice a game or
@@ -143,7 +163,10 @@ def _build():
         except Exception:
             return None
 
-    return brain, council, forecast_fn, book_fn, specialist_fn, divergence_fn, ejection_fn
+    return (
+        brain, council, forecast_fn, book_fn, specialist_fn, divergence_fn,
+        ejection_fn, game_start_fn,
+    )
 
 
 FAST_OUT_PATH = Path("runtime/autonomy/mispricing_monitor_fast_latest.json")
@@ -165,6 +188,30 @@ def _persist_evidence(report: dict, tape_state: dict) -> None:
         print(json.dumps({"status": f"WS8_PERSIST_ERROR:{type(exc).__name__}", "error": str(exc)[:200]}))
 
 
+def _load_sports_close_tracker():
+    """Rebuild the sports close tracker from disk (fail-open to empty)."""
+    from autonomy.sports_clv import SportsCloseTracker
+
+    try:
+        if SPORTS_CLOSE_STATE_PATH.exists():
+            state = json.loads(SPORTS_CLOSE_STATE_PATH.read_text(encoding="utf-8"))
+            return SportsCloseTracker.from_state(state)
+    except Exception:
+        pass
+    return SportsCloseTracker()
+
+
+def _save_sports_close_tracker(tracker) -> None:
+    """Persist in-flight close candidates (best-effort, never wedges a pass)."""
+    try:
+        _atomic_json(SPORTS_CLOSE_STATE_PATH, tracker.to_state())
+    except Exception as exc:
+        print(json.dumps({
+            "status": f"SPORTS_CLOSE_PERSIST_ERROR:{type(exc).__name__}",
+            "error": str(exc)[:200],
+        }))
+
+
 def _persist_council_snapshot(council, report, ticker_specialist, now_iso) -> None:
     """WS-13: best-effort council snapshot write (never takes the pass down).
 
@@ -183,7 +230,7 @@ def _persist_council_snapshot(council, report, ticker_specialist, now_iso) -> No
 
 def _one_pass(
     brain, council, forecast_fn, book_fn, specialist_fn, divergence_fn,
-    ejection_fn, opportunist, tape_state,
+    ejection_fn, opportunist, tape_state, game_start_fn=None, sports_close=None,
 ) -> dict:
     brain.registry.on_cycle_start()  # warm/refresh source caches for this pass
     council.on_cycle_start()  # per-specialist warmup (isolated; failures skip)
@@ -202,9 +249,11 @@ def _one_pass(
     report = run_mispricing_sweep(
         markets, forecast_fn, now_iso=now_iso, book_fn=book_fn, opportunist=opportunist,
         specialist_fn=specialist_fn, divergence_fn=divergence_fn,
-        ejection_fn=ejection_fn,
+        ejection_fn=ejection_fn, game_start_fn=game_start_fn, sports_close=sports_close,
     )
     _persist_evidence(report, tape_state)
+    if sports_close is not None:
+        _save_sports_close_tracker(sports_close)  # Wave-2 D1: survive restarts
     _persist_council_snapshot(council, report, ticker_specialist, now_iso)
     # tape_rows/entries are now durably appended to their own JSONL files
     # (the CLV grader's real inputs); drop them from the dashboard-facing
@@ -274,9 +323,13 @@ def main() -> int:
 
     (
         brain, council, forecast_fn, book_fn, specialist_fn, divergence_fn,
-        ejection_fn,
+        ejection_fn, game_start_fn,
     ) = _build()
     opportunist = OpportunistEngine()  # stateful across passes within this process
+    # Wave-2 D1: sports pre-game close tracker, carried across passes and
+    # restored from disk so a restart keeps in-flight (not-yet-first-pitch)
+    # close candidates. Only the full sweep drives it (crypto is not sports).
+    sports_close = _load_sports_close_tracker()
     crypto_scanner = _crypto_scanner(brain)
     # WS-8: last-row-per-ticker tape index, carried across passes (both the
     # full sweep and the crypto fast lane share it) so a --loop run never
@@ -288,7 +341,8 @@ def main() -> int:
         try:
             report = _one_pass(
                 brain, council, forecast_fn, book_fn, specialist_fn, divergence_fn,
-                ejection_fn, opportunist, tape_state)
+                ejection_fn, opportunist, tape_state,
+                game_start_fn=game_start_fn, sports_close=sports_close)
             print(json.dumps({
                 "status": "OK",
                 "scanned": report["scanned"],

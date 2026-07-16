@@ -1,0 +1,107 @@
+"""Integration of the execution tournament into the backtest, alerts, dashboard.
+
+The tournament is an evaluation layer that rides the existing backtest pipeline
+(no new schtask): ``run_backtest`` must carry the per-cohort report, the
+authoritative summary must carry the compact view, the alert union must gate a
+challenger cohort on the rising edge, and the dashboard status panel must expose
+the compact tournament view.
+"""
+from __future__ import annotations
+
+import importlib.util
+from pathlib import Path
+
+import autonomy.alerts as alerts
+from autonomy.backtest import run_backtest, summarize_backtest
+
+_SPEC = importlib.util.spec_from_file_location(
+    "_tournament_fixture",
+    Path(__file__).with_name("test_execution_tournament.py"),
+)
+_FIXTURE = importlib.util.module_from_spec(_SPEC)
+_SPEC.loader.exec_module(_FIXTURE)
+
+
+def _wire_alert_paths(monkeypatch, tmp_path):
+    monkeypatch.setattr(alerts, "RUNTIME_DIR", tmp_path)
+    monkeypatch.setattr(alerts, "ALERTS_LOG", tmp_path / "alerts.jsonl")
+    monkeypatch.setattr(alerts, "ALERTS_LATEST", tmp_path / "alerts_latest.json")
+    monkeypatch.setattr(alerts, "ALERT_STATE", tmp_path / "alert_state.json")
+
+
+def test_run_backtest_carries_tournament(tmp_path):
+    ledger = _FIXTURE._tournament_ledger(tmp_path)
+    try:
+        report = run_backtest(ledger)
+    finally:
+        ledger.close()
+    tournament = report["execution_tournament"]
+    assert tournament["report_name"] == "EXECUTION_POLICY_TOURNAMENT"
+    assert [c["policy"]["cohort"] for c in tournament["cohorts"]] == [
+        "C0", "C1", "C2", "C3", "C4",
+    ]
+
+
+def test_summary_carries_compact_tournament(tmp_path):
+    ledger = _FIXTURE._tournament_ledger(tmp_path)
+    try:
+        summary = summarize_backtest(run_backtest(ledger))
+    finally:
+        ledger.close()
+    compact = summary["execution_tournament"]
+    assert compact["report_name"] == "EXECUTION_POLICY_TOURNAMENT"
+    assert len(compact["ranking"]) == 5
+    assert compact["policy_switch_authority"]["auto_switch"] is False
+
+
+def test_summary_tournament_empty_when_absent():
+    # A report with no tournament section yields an empty compact view, not a crash.
+    assert summarize_backtest({"report_name": "X"})["execution_tournament"] == {}
+
+
+def test_tournament_gate_alert_fires_once_on_rising_edge(monkeypatch, tmp_path):
+    _wire_alert_paths(monkeypatch, tmp_path)
+    summary = {
+        "ranking": [
+            {"cohort": "C0", "gate_met": True},
+            {"cohort": "C1", "gate_met": True},
+            {"cohort": "C3", "gate_met": False},
+        ],
+        "headline": {"leading_cohort": "C1"},
+    }
+    cycle = {"status": "OK"}
+    fired = alerts.evaluate_alerts(cycle, None, False, tournament_summary=summary)
+    kinds = [a["kind"] for a in fired]
+    assert "EXECUTION_TOURNAMENT_GATE" in kinds
+    gate = next(a for a in fired if a["kind"] == "EXECUTION_TOURNAMENT_GATE")
+    # The control (C0) is never a "challenger" that triggers the review prompt.
+    assert gate["detail"]["newly_gated_cohorts"] == ["C1"]
+    assert gate["severity"] == "info"
+    # Standing eligibility does not re-fire.
+    again = alerts.evaluate_alerts(cycle, None, False, tournament_summary=summary)
+    assert "EXECUTION_TOURNAMENT_GATE" not in [a["kind"] for a in again]
+
+
+def test_tournament_gate_alert_absent_without_summary(monkeypatch, tmp_path):
+    _wire_alert_paths(monkeypatch, tmp_path)
+    fired = alerts.evaluate_alerts({"status": "OK"}, None, False)
+    assert "EXECUTION_TOURNAMENT_GATE" not in [a["kind"] for a in fired]
+
+
+def test_dashboard_status_panel_exposes_tournament(tmp_path):
+    from autonomy import dashboard
+    from autonomy.execution_tournament import tournament_report, write_report
+
+    ledger = _FIXTURE._tournament_ledger(tmp_path)
+    try:
+        report = tournament_report(ledger._conn)
+    finally:
+        ledger.close()
+    runtime = tmp_path / "runtime"
+    runtime.mkdir()
+    write_report(report, runtime / "execution_tournament.json")
+    snapshot = dashboard.assemble_status_snapshot(runtime_dir=runtime)
+    panel = snapshot["execution_tournament"]
+    assert panel["report_name"] == "EXECUTION_POLICY_TOURNAMENT"
+    assert len(panel["ranking"]) == 5
+    assert "execution_tournament" in snapshot["data_ages"]

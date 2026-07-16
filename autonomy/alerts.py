@@ -25,6 +25,32 @@ SEVERITY = {
     "GATE_REGRESSION": "warning",
     "CYCLE_ERROR_STREAK": "warning",
     "SIGNAL_QUALITY_REJECTION": "warning",
+    # A recalibration produced a degenerate trust vector and was rejected.
+    "RECAL_REJECTED": "critical",
+    # The authoritative backtest summary is older than the freshness bound;
+    # downstream evaluation is fail-closed until it refreshes.
+    "BACKTEST_STALE": "warning",
+    # The ledger database is bloated or a read-only health probe failed.
+    "LEDGER_HEALTH": "warning",
+    # Ops watchdog (autonomy/watchdog.py): a scheduled task went silent, cycles
+    # are erroring in a streak, the ledger crossed its size ceiling, an operator
+    # kill file is present, or free disk fell below the floor.
+    "WATCHDOG_TASK_STALE": "critical",
+    "WATCHDOG_CYCLE_ERROR_STREAK": "warning",
+    "WATCHDOG_LEDGER_SIZE": "warning",
+    "WATCHDOG_KILL_FILE": "critical",
+    "WATCHDOG_DISK_FLOOR": "critical",
+    # Execution-policy tournament (WS-A2/F2): a challenger cohort accrued enough
+    # witnessed fill clusters to clear the evidence gate and become eligible for
+    # a promotion-ladder review. Evidence only -- never an automatic policy
+    # switch.
+    "EXECUTION_TOURNAMENT_GATE": "info",
+    # Autonomous thresholded promotion (fusion-membership governance only;
+    # live trading authorization remains operator-gated elsewhere).
+    "AUTO_PROMOTION": "info",
+    "AUTO_ESCALATION": "info",
+    "AUTO_DEMOTION": "warning",
+    "PROMOTION_RUN_ABORTED": "warning",
 }
 
 
@@ -59,7 +85,10 @@ def emit_alert(kind: str, message: str, detail: dict[str, Any] | None = None, no
 
 
 def evaluate_alerts(cycle_record: dict[str, Any], risk_state: dict[str, Any] | None,
-                    gate_ready: bool, now_iso: str | None = None) -> list[dict[str, Any]]:
+                    gate_ready: bool, now_iso: str | None = None,
+                    *, ledger_health: dict[str, Any] | None = None,
+                    backtest_freshness: dict[str, Any] | None = None,
+                    tournament_summary: dict[str, Any] | None = None) -> list[dict[str, Any]]:
     """Decide which alerts to emit this cycle, de-duplicated against prior state."""
     state = _load_state()
     fired: list[dict[str, Any]] = []
@@ -122,6 +151,61 @@ def evaluate_alerts(cycle_record: dict[str, Any], risk_state: dict[str, Any] | N
             now_iso,
         ))
     state["signal_rejection_active"] = rejected > 0
+
+    # Ledger health: bloat or a failed read-only probe. Fire once per episode
+    # so a persistent condition does not spam every cycle.
+    if ledger_health:
+        unhealthy = bool(ledger_health.get("bloat_warn")) or bool(
+            ledger_health.get("probe_error")
+        )
+        if unhealthy and not state.get("ledger_health_alert_active"):
+            fired.append(emit_alert(
+                "LEDGER_HEALTH",
+                "ledger health degraded: "
+                + ("bloat " if ledger_health.get("bloat_warn") else "")
+                + (f"probe_error={ledger_health.get('probe_error')}"
+                   if ledger_health.get("probe_error") else "")
+                + f"size={ledger_health.get('size_gib')}GiB",
+                ledger_health, now_iso,
+            ))
+        state["ledger_health_alert_active"] = unhealthy
+
+    # Backtest evidence staleness: the authoritative summary went 6 days stale
+    # once with no alarm. Fire on the rising edge of the stale episode.
+    if backtest_freshness is not None:
+        stale = bool(backtest_freshness.get("is_stale"))
+        if stale and not state.get("backtest_stale_alert_active"):
+            fired.append(emit_alert(
+                "BACKTEST_STALE",
+                "authoritative backtest summary is stale "
+                f"(age_hours={backtest_freshness.get('age_hours')}, "
+                f"reason={backtest_freshness.get('reason')}); "
+                "downstream evaluation is fail-closed",
+                backtest_freshness, now_iso,
+            ))
+        state["backtest_stale_alert_active"] = stale
+
+    # Execution tournament: a challenger cohort (not the control) cleared the
+    # fill-cluster evidence gate. Fire once per cohort on the rising edge so a
+    # standing eligibility does not spam; it is a review prompt, not a switch.
+    if tournament_summary:
+        gated = {
+            str(row.get("cohort"))
+            for row in (tournament_summary.get("ranking") or [])
+            if row.get("gate_met") and str(row.get("cohort")) != "C0"
+        }
+        already = set(state.get("tournament_gated_cohorts") or [])
+        newly = sorted(gated - already)
+        if newly:
+            fired.append(emit_alert(
+                "EXECUTION_TOURNAMENT_GATE",
+                f"execution cohort(s) {', '.join(newly)} cleared the fill-cluster "
+                "evidence gate; eligible for promotion-ladder review",
+                {"newly_gated_cohorts": newly,
+                 "headline": tournament_summary.get("headline", {})},
+                now_iso,
+            ))
+        state["tournament_gated_cohorts"] = sorted(gated | already)
 
     _save_state(state)
     return fired

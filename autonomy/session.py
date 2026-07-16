@@ -21,9 +21,14 @@ from autonomy.ontology import SessionMode
 from autonomy.reconciler import Reconciler
 from autonomy.risk_brain import RiskBrain
 from autonomy.scanner import MarketScanner
+from autonomy.staleness import DEFAULT_STALENESS_POLICY
 from autonomy.signals.base import SourceRegistry
 from autonomy.signals.commodities_spot import CommoditiesSpotVolSignal
 from autonomy.signals.cross_venue import CrossVenueSignal
+from autonomy.signals.cross_venue_macro import (
+    CrossVenueCryptoSignal,
+    CrossVenueEconSignal,
+)
 from autonomy.signals.crypto_spot import CryptoSpotVolSignal
 from autonomy.signals.market_debias import MarketDebiasSignal
 from autonomy.signals.market_prior import MarketPriorSignal
@@ -290,12 +295,38 @@ def build_brain(mode: SessionMode):
     # game forecast, and the trap detector when Elo fights the book.
     registry.register(SportsbookConsensusSignal())
     # New totals/first-inning models are recorded as challenger-only
-    # point-in-time evidence. Their own feature gate keeps them out of the
-    # execution ensemble until a settlement-backed promotion review.
+    # point-in-time evidence. Their challenger gate keeps them out of the
+    # execution ensemble until the autonomous promotion ladder (owner
+    # directive 2026-07-16, docs/AUTO_PROMOTION.md) earns them a per-scope
+    # place from settled proof-of-profit evidence.
     # UFC and Formula One intelligence retired 2026-07-12 (operator directive):
     # their markets route to no sports model and are simply never forecast.
     registry.register(BaseballIntelligenceSignal(seasons=seasons))
     registry.register(TeamSportsIntelligenceSignal(seasons=seasons))
+    # Fantasy triangulation leg #1: FanGraphs projection consensus. Per-team
+    # rest-of-season projection rates -> MLB winner/total fair value via the same
+    # baseball poisson plumbing the results-EWMA model prices with. Shares the one
+    # SeasonMonitor (skips fetches when MLB is dormant) and the ledger (each fetched
+    # projection snapshot is recorded as a point-in-time external observation).
+    # challenger_only=True on every emission; excluded from forecaster.fuse() until
+    # a settlement-backed promotion review. FanGraphs data is internal challenger
+    # evidence only -- never redistributed (see the module's ToS note).
+    from autonomy.signals.projection_consensus import ProjectionConsensusSignal
+
+    registry.register(ProjectionConsensusSignal(seasons=seasons, ledger=ledger))
+    # Fantasy triangulation leg #3: ESPN fantasy baseball (flb) crowd lean.
+    # Per-team public backing (percentOwned/ADP) blended with ESPN's own season
+    # projections -> a coarse MLB winner lean, plus a between-cycle scratch /
+    # availability feed (autonomy.ingest.fantasy.espn_fantasy.FantasyBook). Shares
+    # the one SeasonMonitor (skips fetches when MLB is dormant) and the ledger
+    # (each fetched player snapshot and each scratch event is recorded as a
+    # point-in-time external observation). challenger_only=True on every emission;
+    # excluded from forecaster.fuse() until a settlement-backed promotion review.
+    # ESPN fantasy data is internal challenger evidence only -- never redistributed
+    # (see the module's ToS note).
+    from autonomy.signals.espn_fantasy_crowd import EspnFantasyCrowdSignal
+
+    registry.register(EspnFantasyCrowdSignal(seasons=seasons, ledger=ledger))
     # WS-A2 (Phenon Harness): standalone power-ratings challenger (FPI/BPI +
     # Elo consensus winner/spread ladder + opportunistic divergence flag).
     # Shares the one SeasonMonitor instance like every other sports signal
@@ -303,12 +334,26 @@ def build_brain(mode: SessionMode):
     # defaults to the SAME on-disk state SportsEloSignal/
     # TeamSportsIntelligenceSignal already train each cycle -- read-only,
     # never a second trainer. Every emission is stamped challenger_only=True
-    # / promotion_eligible=False by the signal itself (see PowerRatingsSignal
+    # / promotion_eligible=True by the signal itself (see PowerRatingsSignal
     # docstring), so registering it here only makes it observable in the
-    # ledger; it stays excluded from forecaster.fuse() until a human
-    # promotion review.
+    # ledger; it stays excluded from forecaster.fuse() until the autonomous
+    # promotion ladder (docs/AUTO_PROMOTION.md) earns its exact scope a
+    # place from settled proof-of-profit evidence.
     registry.register(PowerRatingsSignal(seasons=seasons))
     registry.register(CrossVenueSignal())
+    # Wave-2 E4: Polymarket cross-venue reference pricing extended to CRYPTO and
+    # ECON Kalshi markets. Separate source names / taxonomy scopes -- these do
+    # NOT inherit the sports scope's earned champion status; every emission is
+    # challenger_only and stays out of forecaster.fuse() until the autonomous
+    # promotion ladder (docs/AUTO_PROMOTION.md) earns each exact scope a place
+    # from settled proof. Read-only Gamma + CLOB; no Polymarket execution ever.
+    # ECON markets are currently filtered out of the live scan (scanner verticals
+    # = {CRYPTO, SPORTS} after the 2026-07-11 econ-trading retirement), so the
+    # econ source is dormant-but-ready; the crypto source fires live. Each records
+    # Kalshi-vs-Polymarket divergence via record_external_observation for later
+    # CLV / disagreement-backtest campaigns.
+    registry.register(CrossVenueCryptoSignal(ledger=ledger))
+    registry.register(CrossVenueEconSignal(ledger=ledger))
     # Empirical price->outcome curve mined from settled-market history; no
     # curve artifact on disk means the source simply never opines.
     registry.register(MarketDebiasSignal())
@@ -390,7 +435,16 @@ def build_brain(mode: SessionMode):
         registry=registry,
         scanner=MarketScanner(),
         risk_brain=RiskBrain(state_path=risk_state_path),
-        executor=Executor(mode, quote_fn=quote_fn, shadow_book_fn=shadow_book_fetcher),
+        executor=Executor(
+            mode,
+            quote_fn=quote_fn,
+            shadow_book_fn=shadow_book_fetcher,
+            # Fail-closed stale-data submit gate (defaults documented in
+            # autonomy/staleness.py). A live submit additionally re-checks the
+            # venue halt state at the moment of submit.
+            staleness_policy=DEFAULT_STALENESS_POLICY,
+            exchange_status_fn=fetch_exchange_status if live else None,
+        ),
         reconciler=reconciler,
         learner=Learner(ledger, router=router),
         balance_fn=_live_balance_cents if live else None,

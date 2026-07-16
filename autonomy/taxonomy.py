@@ -46,6 +46,11 @@ SOURCE_TAXONOMY: dict[str, str] = {
     "sports_elo": "sports_elo",
     "sportsbook_consensus": "sportsbook",
     "cross_venue_polymarket": "cross_venue",
+    # Wave-2 E4: Polymarket cross-venue reference pricing extended to crypto and
+    # econ Kalshi markets. Separate source names -> separate grading scopes; the
+    # sports scope's earned champion status is NOT inherited (challenger-only).
+    "cross_venue_polymarket_crypto": "cross_venue",
+    "cross_venue_polymarket_econ": "cross_venue",
     "commodities_spot_vol": "commodities",
     "weather_openmeteo": "weather",
     "llm_debate": "llm",      # historical emitted source (present in old rows)
@@ -88,6 +93,16 @@ SOURCE_TAXONOMY: dict[str, str] = {
     # reason as "mlb_intelligence"/"team_sports_intelligence": so the
     # registry-completeness tripwire resolves the bare registry name too.
     "power_ratings": "power_ratings",
+    # Fantasy leg #1: FanGraphs projection consensus prices MLB winner/total
+    # markets, so the MLB specialist owns its record. Exact entry (like
+    # "mlb_intelligence") because the source is named for its data source,
+    # not the league prefix.
+    "fangraphs_projection_consensus": "mlb",
+    # Fantasy leg #3: ESPN fantasy (flb) crowd lean prices MLB winner markets,
+    # so the MLB specialist owns its record. Exact entry (like
+    # "fangraphs_projection_consensus") because the source is named for its data
+    # source, not the league prefix.
+    "espn_fantasy_crowd": "mlb",
 }
 
 # (prefix, specialist) resolved in order; the first match wins. Ordering only

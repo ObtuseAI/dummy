@@ -185,7 +185,7 @@ def test_baseball_signal_emits_isolated_winner_total_and_yrfi_challengers(tmp_pa
         "mlb_structural_winner", "mlb_total_runs", "mlb_first_inning_run",
     ]
     assert all(signal.features["challenger_only"] is True for signal in signals)
-    assert all(signal.features["promotion_eligible"] is False for signal in signals)
+    assert all(signal.features["promotion_eligible"] is True for signal in signals)
 
 
 def test_kxmlbspread_parses_to_a_run_spread_contract():
@@ -283,7 +283,7 @@ def test_baseball_signal_emits_run_spread_challenger(tmp_path):
     assert home_spread.source == "mlb_run_spread"
     assert away_spread.source == "mlb_run_spread"
     assert home_spread.features["challenger_only"] is True
-    assert home_spread.features["promotion_eligible"] is False
+    assert home_spread.features["promotion_eligible"] is True
     assert home_spread.features["market_type"] == "spread"
     assert 0.005 <= home_spread.probability_yes <= 0.995
     # The away pitcher (2.5 ERA) is far better than the home pitcher (5.2), so the
@@ -482,7 +482,7 @@ def test_statsapi_pa_simulator_registers_as_separately_graded_live_source(tmp_pa
         assert signal.features["pa_simulator"]["game_pk"] == 999
         assert signal.features["pa_simulator"]["batter_rate_coverage"] == 1.0
         assert signal.features["challenger_only"] is True
-        assert signal.features["promotion_eligible"] is False
+        assert signal.features["promotion_eligible"] is True
 
 
 def test_statsapi_pa_failure_falls_back_to_incumbent_live_source(tmp_path):
@@ -1049,7 +1049,7 @@ def test_power_ratings_challenger_signal_cannot_enter_execution_forecast():
     emitted = signal.generate(market)
     assert emitted is not None
     assert emitted.features["challenger_only"] is True
-    assert emitted.features["promotion_eligible"] is False
+    assert emitted.features["promotion_eligible"] is True
     assert EnsembleForecaster(Ledger()).fuse(market, [emitted]) is None
 
 

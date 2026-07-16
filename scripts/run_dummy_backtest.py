@@ -18,47 +18,23 @@ ROOT = Path(__file__).resolve().parent.parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from autonomy.backtest import run_backtest, write_backtest_report  # noqa: E402
+from autonomy.adverse_selection import write_report as write_adverse_selection_report  # noqa: E402
+from autonomy.backtest import (  # noqa: E402
+    run_backtest,
+    summarize_backtest,
+    write_backtest_report,
+    write_latest_backtest_summary,
+)
+from autonomy.execution_tournament import write_report as write_tournament_report  # noqa: E402
 from autonomy.ledger import AutonomyLedger  # noqa: E402
 
-
-def _summary(report: dict) -> dict:
-    policy = report.get("decision_policy") or {}
-    ensemble = policy.get("ensemble_metrics") or {}
-    walk_forward = (
-        policy.get("walk_forward_threshold_selection") or {}
-    ).get("aggregate_out_of_sample") or {}
-    return {
-        "report_name": report.get("report_name"),
-        "report_path": report.get("report_path"),
-        "created_at": report.get("created_at"),
-        "settled_markets": report.get("settled_markets"),
-        "decision_policy": {
-            "settled_markets": policy.get("settled_markets", 0),
-            "event_clusters": policy.get("event_clusters", 0),
-            "forecast_brier": ensemble.get("forecast_brier"),
-            "market_brier": ensemble.get("market_brier"),
-            "brier_skill_vs_market": ensemble.get("brier_skill_vs_market"),
-            "expected_calibration_error": ensemble.get("expected_calibration_error"),
-            "cluster_robust_advantage": policy.get("cluster_robust_advantage", {}),
-            "walk_forward_out_of_sample": walk_forward,
-            "online_forecast_drift": policy.get("online_forecast_drift", {}),
-            "sports_performance_cohorts": policy.get(
-                "sports_performance_cohorts", {}
-            ),
-        },
-        "signal_data_quality": report.get("signal_data_quality", {}),
-        "execution_quality_by_book": report.get("execution_quality_by_book", {}),
-        "execution_drift_by_book": report.get("execution_drift_by_book", {}),
-        "realized_trade_statistics": report.get("realized_trade_statistics", {}),
-        "fill_conditioned_decision_policy": report.get(
-            "fill_conditioned_decision_policy", {}
-        ),
-        "shadow_ttl_sensitivity": report.get("shadow_ttl_sensitivity", {}),
-        "crypto_diagnostics": report.get("crypto_diagnostics", {}),
-        "crypto_challenger_gates": report.get("crypto_challenger_gates", {}),
-        "weights_written": report.get("weights_written", False),
-    }
+# Dedicated first-class adverse-selection artifact, produced alongside the
+# backtest summary. Documented name so the readiness/governance review can cite
+# it directly.
+ADVERSE_SELECTION_ARTIFACT = Path("runtime/autonomy/adverse_selection.json")
+# Dedicated execution-policy tournament artifact (WS-A2/F2). Per-cohort C0-C4
+# fill-conditioned evidence; evidence only, never a live policy switch.
+EXECUTION_TOURNAMENT_ARTIFACT = Path("runtime/autonomy/execution_tournament.json")
 
 
 def main() -> int:
@@ -73,7 +49,24 @@ def main() -> int:
         report = run_backtest(ledger, bootstrap_weights=args.bootstrap)
         if not args.no_write and report.get("settled_markets", 0) > 0:
             report["report_path"] = str(write_backtest_report(report))
-        print(json.dumps(_summary(report) if args.summary else report, indent=2, sort_keys=True))
+            # Emit the dedicated adverse-selection artifact alongside the
+            # backtest summary (measurement only; no live behavior touched).
+            adverse = report.get("execution_adverse_selection") or {}
+            if adverse:
+                write_adverse_selection_report(adverse, ADVERSE_SELECTION_ARTIFACT)
+            # Emit the dedicated execution-policy tournament artifact alongside
+            # the backtest summary (evidence only; no live behavior touched).
+            tournament = report.get("execution_tournament") or {}
+            if tournament:
+                write_tournament_report(tournament, EXECUTION_TOURNAMENT_ARTIFACT)
+            # Refresh the authoritative freshness-stamped summary artifact so
+            # downstream readiness/promotion evaluation never grades against
+            # silently-aged evidence.
+            write_latest_backtest_summary(summarize_backtest(report))
+        print(json.dumps(
+            summarize_backtest(report) if args.summary else report,
+            indent=2, sort_keys=True,
+        ))
     finally:
         ledger.close()
     return 0 if report.get("settled_markets", 0) > 0 else 3

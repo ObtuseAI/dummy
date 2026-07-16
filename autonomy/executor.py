@@ -12,9 +12,11 @@ import hashlib
 import json
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
+from autonomy.execution_policy import ExecutionPolicy
 from autonomy.ontology import Decision, DecisionAction, OutcomeKind, SessionMode, TradeOutcome
+from autonomy.staleness import StalenessPolicy, evaluate_snapshot_freshness
 
 SESSION_PATH = Path("runtime/autonomy/session.json")
 KILL_PATH = Path("runtime/autonomy/KILL")
@@ -82,8 +84,22 @@ class Executor:
         adapter_factory: Any | None = None,
         quote_fn: Any | None = None,
         shadow_book_fn: Any | None = None,
+        staleness_policy: StalenessPolicy | None = None,
+        exchange_status_fn: Callable[[], dict[str, Any]] | None = None,
+        now_fn: Callable[[], float] | None = None,
+        execution_policy: ExecutionPolicy | None = None,
     ) -> None:
         self.mode = mode
+        # Typed execution policy (Wave-2 A2/F2). The default is the incumbent
+        # maker-only control (C0): when the policy is the control, execute()
+        # takes the exact pre-existing code path with zero new branches, so C0
+        # reproduces current behavior byte for byte. Only a non-control policy
+        # (an adverse-guard maker, or a taker/hybrid cohort under evaluation)
+        # consults the new guard hooks below. The tournament's taker/hybrid P&L
+        # is measured counterfactually in the replay layer
+        # (autonomy/execution_tournament.py); this executor stays maker-first on
+        # the live path and never crosses the spread here.
+        self.execution_policy = execution_policy or ExecutionPolicy.maker_only_control()
         self.session_path = session_path or SESSION_PATH
         self.kill_path = kill_path or KILL_PATH
         self.adapter_factory = adapter_factory
@@ -91,11 +107,30 @@ class Executor:
         # has crossed since the scan is skipped instead of filled as a taker.
         self.quote_fn = quote_fn
         self.shadow_book_fn = shadow_book_fn
+        # Stale-data submit gate. Active only when a policy is supplied; when
+        # active it is fail-closed (missing snapshot timestamp => refuse). Left
+        # None by most callers/tests so existing behavior is unchanged.
+        self.staleness_policy = staleness_policy
+        # Optional venue re-check at the moment of a LIVE submit (halt state can
+        # change between cycle start and submit). Fail-open on fetch error.
+        self.exchange_status_fn = exchange_status_fn
+        self._now_fn = now_fn or (lambda: datetime.now(timezone.utc).timestamp())
+        # Counter so a refusal is never a silent skip: surfaced on the executor
+        # for the daemon/dashboard, and each refusal is also recorded as a
+        # BLOCKED_LOCAL outcome in the ledger with its reason.
+        self.stale_block_count = 0
 
     def _idempotency_key(self, decision: Decision) -> str:
         return hashlib.sha256(f"autonomy|{decision.decision_id}".encode("utf-8")).hexdigest()[:32]
 
-    async def execute(self, decision: Decision) -> TradeOutcome:
+    async def execute(
+        self,
+        decision: Decision,
+        *,
+        snapshot_ts: Any | None = None,
+        is_live_market: bool = False,
+        market_prior_yes: float | None = None,
+    ) -> TradeOutcome:
         if decision.action is DecisionAction.ABSTAIN or decision.count < 1:
             return TradeOutcome(
                 decision_id=decision.decision_id,
@@ -108,6 +143,22 @@ class Executor:
                 broker_contacted=False,
                 detail={"note": "abstain"},
             )
+
+        # Stale-data submit gate (fail-closed). The driving book snapshot /
+        # price-feed candle that produced this edge must not have gone stale
+        # while the cycle churned. Applies to both shadow and live so paper
+        # evidence stays honest; disabled entirely when no policy is wired.
+        stale = self._stale_gate_block(decision, snapshot_ts, is_live_market)
+        if stale is not None:
+            return stale
+
+        # Execution-policy guard (Wave-2 A2/F2). No-op for the control policy;
+        # a non-control adverse-guard maker (C3) may refuse a quote whose model
+        # diverges from the market prior beyond the cap. Applied to both books
+        # so paper evidence honors the same guard the live policy would.
+        guarded = self._execution_policy_block(decision, market_prior_yes)
+        if guarded is not None:
+            return guarded
 
         if self.mode is SessionMode.SHADOW:
             submitted_at = datetime.now(timezone.utc)
@@ -182,6 +233,20 @@ class Executor:
             return self._blocked(decision, f"live session invalid: {session.get('reason', 'unknown')}")
         if kill_switch_active(self.kill_path):
             return self._blocked(decision, "kill switch active")
+
+        # Re-check venue halt state at the moment of submit, not just at cycle
+        # start: a maintenance window or trading pause can open mid-cycle.
+        # Fail-open on a fetch error (unknown is not down) to match the
+        # cycle-start doctrine and never become its own stall point.
+        if self.exchange_status_fn is not None:
+            try:
+                venue = self.exchange_status_fn() or {}
+            except Exception:
+                venue = {}
+            if venue.get("exchange_active") is False:
+                return self._blocked(decision, "exchange_maintenance_at_submit")
+            if venue.get("trading_active") is False:
+                return self._blocked(decision, "trading_halted_at_submit")
 
         # Real-time re-quote guard: if the freshest book shows our resting
         # maker price would now cross (take liquidity), skip — the edge was
@@ -285,6 +350,82 @@ class Executor:
             require_proof_lock=False,
             max_order_notional_cents=max(100, decision.notional_cents),
         )
+
+    def _stale_gate_block(
+        self, decision: Decision, snapshot_ts: Any | None, is_live_market: bool
+    ) -> TradeOutcome | None:
+        """Return a BLOCKED_LOCAL outcome if the driving snapshot is stale.
+
+        No-op (returns None) when no staleness policy is configured. When a
+        policy is configured the gate is fail-closed: a missing/unparseable/
+        future snapshot timestamp refuses the order just as a too-old one does.
+        """
+        if self.staleness_policy is None:
+            return None
+        verdict = evaluate_snapshot_freshness(
+            decision.market_ticker,
+            snapshot_ts,
+            self._now_fn(),
+            is_live_market=is_live_market,
+            policy=self.staleness_policy,
+        )
+        if verdict["fresh"]:
+            return None
+        self.stale_block_count += 1
+        return TradeOutcome(
+            decision_id=decision.decision_id,
+            market_ticker=decision.market_ticker,
+            kind=OutcomeKind.BLOCKED_LOCAL,
+            order_id=None,
+            fill_count=0,
+            fill_price_cents=None,
+            pnl_cents=None,
+            broker_contacted=False,
+            detail={
+                "reason": verdict["reason"],
+                "snapshot_age_seconds": verdict["age_seconds"],
+                "max_age_seconds": verdict["max_age_seconds"],
+                "stale_block_count": self.stale_block_count,
+            },
+        )
+
+    def _execution_policy_block(
+        self, decision: Decision, market_prior_yes: float | None
+    ) -> TradeOutcome | None:
+        """Refuse a quote the active execution policy's guards reject.
+
+        Returns None (no-op) for the control policy, so C0 reproduces current
+        behavior exactly. For a non-control adverse-guard maker (C3), a model
+        that diverges from the market prior beyond ``divergence_cap_cents`` is
+        refused: the wider the divergence, the more the fill is adverse
+        information rather than value. The guard fails open when no market prior
+        is available (it cannot evaluate divergence) rather than refusing blind.
+        """
+        policy = self.execution_policy
+        if policy.is_control():
+            return None
+        cap = policy.divergence_cap_cents
+        if cap is not None and market_prior_yes is not None:
+            model_yes = float(decision.forecast.probability_yes)
+            divergence_cents = abs(model_yes - float(market_prior_yes)) * 100.0
+            if divergence_cents > cap:
+                return TradeOutcome(
+                    decision_id=decision.decision_id,
+                    market_ticker=decision.market_ticker,
+                    kind=OutcomeKind.BLOCKED_LOCAL,
+                    order_id=None,
+                    fill_count=0,
+                    fill_price_cents=None,
+                    pnl_cents=None,
+                    broker_contacted=False,
+                    detail={
+                        "reason": "execution_policy_divergence_cap",
+                        "cohort": policy.cohort,
+                        "divergence_cents": round(divergence_cents, 4),
+                        "divergence_cap_cents": cap,
+                    },
+                )
+        return None
 
     def _blocked(self, decision: Decision, reason: str) -> TradeOutcome:
         return TradeOutcome(

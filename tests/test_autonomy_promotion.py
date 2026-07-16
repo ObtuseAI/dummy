@@ -207,7 +207,7 @@ def test_build_readiness_ranks_candidates_and_emits_demotions():
     # Candidate sorts first.
     assert report["scopes"][0]["scope"] == "crypto_a|btc|ladder|daily+"
     assert report["autonomous_gate_evaluation"] is True
-    assert report["promotion_activation"] == "HUMAN_ONLY"
+    assert report["promotion_activation"] == "AUTONOMOUS_THRESHOLDED"
     assert report["cross_cohort_evidence_transfer"] is False
 
 
