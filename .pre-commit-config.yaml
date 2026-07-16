@@ -1,0 +1,37 @@
+# Pre-commit hooks for Dummy.
+#
+# Lint: only `ruff check` is wired in (not `ruff format`). The repository's
+# quality gate is `python -m ruff check .` (see README "Safety invariants") and
+# it passes repository-wide; the ruff config (target version, per-file ignores)
+# lives in pyproject.toml and is reused here. `ruff format` is intentionally
+# omitted because the codebase is not ruff-format-formatted and enabling it
+# would rewrite thousands of files.
+#
+# Hygiene: the whitespace/EOF fixers are scoped away from data, fixtures,
+# vendored, and archived trees so they never mutate byte-sensitive content
+# (e.g. the hash-pinned `core/inherited_blunder` subtree, JSON test fixtures,
+# and cached research artifacts). They apply to live source only.
+exclude: |
+  (?x)^(
+    artifacts/|
+    archive/|
+    data/|
+    tests/fixtures/|
+    core/inherited_blunder/|
+    docs/assets/
+  )
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-yaml
+      - id: check-added-large-files
+        args: [--maxkb=2048]
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.15.21
+    hooks:
+      - id: ruff
+        name: ruff check
+        args: [--config, pyproject.toml]
