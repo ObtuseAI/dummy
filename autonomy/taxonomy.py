@@ -93,6 +93,11 @@ SOURCE_TAXONOMY: dict[str, str] = {
     # "mlb_intelligence") because the source is named for its data source,
     # not the league prefix.
     "fangraphs_projection_consensus": "mlb",
+    # Fantasy leg #3: ESPN fantasy (flb) crowd lean prices MLB winner markets,
+    # so the MLB specialist owns its record. Exact entry (like
+    # "fangraphs_projection_consensus") because the source is named for its data
+    # source, not the league prefix.
+    "espn_fantasy_crowd": "mlb",
 }
 
 # (prefix, specialist) resolved in order; the first match wins. Ordering only
