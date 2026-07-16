@@ -79,10 +79,19 @@ class PromotionRegistry:
         self.demotions_path = Path(demotions_path or DEFAULT_DEMOTIONS_PATH)
         self._promoted: set[str] = set()
         self._demoted: set[str] = set()
+        # Per-scope stage + fusion weight fraction (WS "autonomous thresholded
+        # promotion"). A stage-1 (probation) scope fuses at a capped weight; a
+        # stage-2 scope fuses at full weight. Entries written by a human before
+        # the autonomous ladder (or any entry lacking these keys) default to
+        # full weight so the file stays backward-compatible.
+        self._stage: dict[str, int] = {}
+        self._weight_fraction: dict[str, float] = {}
         self.reload()
 
     def reload(self) -> None:
         self._promoted = set()
+        self._stage = {}
+        self._weight_fraction = {}
         for entry in _load_json(self.promotions_path).get("promotions", []) or []:
             if not isinstance(entry, dict):
                 continue
@@ -91,14 +100,26 @@ class PromotionRegistry:
             market_type = entry.get("market_type")
             horizon = entry.get("horizon")
             if source and subject and market_type and horizon:
-                self._promoted.add(
-                    _scope_key(
-                        str(source),
-                        str(subject),
-                        str(market_type),
-                        str(horizon),
-                    )
+                key = _scope_key(
+                    str(source),
+                    str(subject),
+                    str(market_type),
+                    str(horizon),
                 )
+                self._promoted.add(key)
+                try:
+                    self._stage[key] = int(entry.get("stage", 2))
+                except (TypeError, ValueError):
+                    self._stage[key] = 2
+                fraction = entry.get("weight_fraction")
+                try:
+                    # A promotion with no weight_fraction is a full-weight
+                    # (legacy / human) promotion: never silently probation-cap it.
+                    self._weight_fraction[key] = (
+                        1.0 if fraction is None else float(fraction)
+                    )
+                except (TypeError, ValueError):
+                    self._weight_fraction[key] = 1.0
         self._demoted = set()
         for entry in _load_json(self.demotions_path).get("demotions", []) or []:
             if isinstance(entry, dict) and entry.get("scope"):
@@ -107,7 +128,7 @@ class PromotionRegistry:
                 self._demoted.add(entry)
 
     def is_promoted(self, scope_key: str) -> bool:
-        """A scope earns execution iff promoted by a human and not demoted."""
+        """A scope earns execution iff promoted and not since demoted."""
         return scope_key in self._promoted and scope_key not in self._demoted
 
     def is_promoted_signal(
@@ -115,11 +136,40 @@ class PromotionRegistry:
     ) -> bool:
         return self.is_promoted(grading_scope(source, ticker, features or {}))
 
+    def stage_for(self, scope_key: str) -> int | None:
+        """Ladder stage of an active promoted scope, else None."""
+        if not self.is_promoted(scope_key):
+            return None
+        return self._stage.get(scope_key, 2)
+
+    def weight_multiplier(self, scope_key: str) -> float:
+        """Fusion weight multiplier for an active promoted scope.
+
+        Stage 1 (probation) returns its capped fraction; stage 2 / legacy
+        full-weight promotions return 1.0. A scope that is not actively
+        promoted returns 1.0 as well, so callers can multiply unconditionally
+        (the forecaster only reaches this for a signal already admitted by
+        ``is_promoted_signal``, and a non-promoted signal is never scaled).
+        """
+        if not self.is_promoted(scope_key):
+            return 1.0
+        return self._weight_fraction.get(scope_key, 1.0)
+
+    def weight_multiplier_for_signal(
+        self, source: str, ticker: str, features: dict[str, Any] | None,
+    ) -> float:
+        return self.weight_multiplier(grading_scope(source, ticker, features or {}))
+
     def snapshot(self) -> dict[str, Any]:
+        active = sorted(self._promoted - self._demoted)
         return {
             "promoted": sorted(self._promoted),
             "auto_demoted": sorted(self._demoted),
-            "active": sorted(self._promoted - self._demoted),
+            "active": active,
+            "stages": {key: self._stage.get(key, 2) for key in active},
+            "weight_fractions": {
+                key: self._weight_fraction.get(key, 1.0) for key in active
+            },
         }
 
 
@@ -324,11 +374,16 @@ def build_readiness(
             "note": (
                 "Gate evaluation and evidence accrual are autonomous per exact "
                 "source|subject|market_type|horizon_or_phase cohort. Promotion "
-                "activation is HUMAN-ONLY: edit promotions.json in a reviewed "
-                "PR citing this report. Demotion is automatic."
+                "activation is AUTONOMOUS + THRESHOLDED (owner directive "
+                "2026-07-16): the AutoPromotionEngine promotes a scope with "
+                "statistical proof of profit into the fused ensemble, rail- "
+                "guarded and rate-limited; this report is the human-readable "
+                "evidence surface. Demotion is automatic and instant. Live "
+                "trading authorization (live_submit / second-proof / session "
+                "live auth) remains OPERATOR-ONLY and is not touched."
             ),
             "autonomous_gate_evaluation": True,
-            "promotion_activation": "HUMAN_ONLY",
+            "promotion_activation": "AUTONOMOUS_THRESHOLDED",
             "cross_cohort_evidence_transfer": False,
         },
         "demotions": {"demotions": demotions, "generated_at": now_iso},

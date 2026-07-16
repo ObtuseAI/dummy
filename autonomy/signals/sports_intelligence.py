@@ -662,7 +662,12 @@ class BaseballIntelligenceSignal:
             ),
             features={
                 "challenger_only": True,
-                "promotion_eligible": False,
+                # Evidence-driven now (autonomous thresholded promotion,
+                # 2026-07-16): stays challenger_only until the AutoPromotionEngine
+                # earns it a place from settled proof-of-profit. Marking it
+                # eligible does NOT promote it; the engine still must clear every
+                # ladder gate at its next scheduled run on the live machine.
+                "promotion_eligible": True,
                 "point_in_time": True,
                 "public_read_only": True,
                 "sport": "mlb",
@@ -1858,7 +1863,12 @@ class TeamSportsIntelligenceSignal:
             ),
             features={
                 "challenger_only": True,
-                "promotion_eligible": False,
+                # Evidence-driven now (autonomous thresholded promotion,
+                # 2026-07-16): stays challenger_only until the AutoPromotionEngine
+                # earns it a place from settled proof-of-profit. Marking it
+                # eligible does NOT promote it; the engine still must clear every
+                # ladder gate at its next scheduled run on the live machine.
+                "promotion_eligible": True,
                 "point_in_time": True,
                 "public_read_only": True,
                 "sport": parsed.sport,
@@ -2077,7 +2087,10 @@ class PowerRatingsSignal:
     """Standalone power-ratings challenger: winner+spread ladder + divergence.
 
     See the module comment block above for the two emissions. Every emitted
-    Signal is challenger_only/not promotion_eligible; a down/thin/all-
+    Signal is challenger_only and promotion_eligible (evidence-driven since
+    the 2026-07-16 autonomous-promotion directive; eligibility is not
+    promotion -- the AutoPromotionEngine must still earn each exact scope a
+    place, see docs/AUTO_PROMOTION.md). A down/thin/all-
     sources-none consensus (`consensus_margin` returns None) emits NO
     signal at all, byte-identical to this whole feature being disabled.
     """
@@ -2386,7 +2399,12 @@ class PowerRatingsSignal:
             ),
             features={
                 "challenger_only": True,
-                "promotion_eligible": False,
+                # Evidence-driven now (autonomous thresholded promotion,
+                # 2026-07-16): stays challenger_only until the AutoPromotionEngine
+                # earns it a place from settled proof-of-profit. Marking it
+                # eligible does NOT promote it; the engine still must clear every
+                # ladder gate at its next scheduled run on the live machine.
+                "promotion_eligible": True,
                 "point_in_time": True,
                 "public_read_only": True,
                 "sport": parsed.sport,

@@ -291,8 +291,10 @@ def build_brain(mode: SessionMode):
     # game forecast, and the trap detector when Elo fights the book.
     registry.register(SportsbookConsensusSignal())
     # New totals/first-inning models are recorded as challenger-only
-    # point-in-time evidence. Their own feature gate keeps them out of the
-    # execution ensemble until a settlement-backed promotion review.
+    # point-in-time evidence. Their challenger gate keeps them out of the
+    # execution ensemble until the autonomous promotion ladder (owner
+    # directive 2026-07-16, docs/AUTO_PROMOTION.md) earns them a per-scope
+    # place from settled proof-of-profit evidence.
     # UFC and Formula One intelligence retired 2026-07-12 (operator directive):
     # their markets route to no sports model and are simply never forecast.
     registry.register(BaseballIntelligenceSignal(seasons=seasons))
@@ -315,10 +317,11 @@ def build_brain(mode: SessionMode):
     # defaults to the SAME on-disk state SportsEloSignal/
     # TeamSportsIntelligenceSignal already train each cycle -- read-only,
     # never a second trainer. Every emission is stamped challenger_only=True
-    # / promotion_eligible=False by the signal itself (see PowerRatingsSignal
+    # / promotion_eligible=True by the signal itself (see PowerRatingsSignal
     # docstring), so registering it here only makes it observable in the
-    # ledger; it stays excluded from forecaster.fuse() until a human
-    # promotion review.
+    # ledger; it stays excluded from forecaster.fuse() until the autonomous
+    # promotion ladder (docs/AUTO_PROMOTION.md) earns its exact scope a
+    # place from settled proof-of-profit evidence.
     registry.register(PowerRatingsSignal(seasons=seasons))
     registry.register(CrossVenueSignal())
     # Empirical price->outcome curve mined from settled-market history; no

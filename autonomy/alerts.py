@@ -40,6 +40,12 @@ SEVERITY = {
     "WATCHDOG_LEDGER_SIZE": "warning",
     "WATCHDOG_KILL_FILE": "critical",
     "WATCHDOG_DISK_FLOOR": "critical",
+    # Autonomous thresholded promotion (fusion-membership governance only;
+    # live trading authorization remains operator-gated elsewhere).
+    "AUTO_PROMOTION": "info",
+    "AUTO_ESCALATION": "info",
+    "AUTO_DEMOTION": "warning",
+    "PROMOTION_RUN_ABORTED": "warning",
 }
 
 

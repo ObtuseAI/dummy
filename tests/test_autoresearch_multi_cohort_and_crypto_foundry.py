@@ -72,7 +72,7 @@ def test_clean_room_crypto_foundry_is_sparse_bounded_and_challenger_only() -> No
     assert signal is not None
     assert signal.source == "crypto_technical_foundry"
     assert signal.features["challenger_only"] is True
-    assert signal.features["promotion_eligible"] is False
+    assert signal.features["promotion_eligible"] is True
     assert abs(signal.features["shift_in_horizon_sigma"]) <= 0.35
 
 

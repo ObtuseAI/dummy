@@ -231,9 +231,12 @@ settlement): a book tape (one row per assessed market per monitor pass) plus
 close selection within a window, aggregated as `clv_bps` per
 `(specialist, market_type)` with per-event-cluster confidence intervals
 (never per-row — correlated same-event entries would shrink the interval
-dishonestly). **CLV is evidence for review, never a promotion gate** —
-settlement-backed contested Brier (`autonomy/backtest.py`, taxonomy-keyed via
-`autonomy/taxonomy.py`'s `grading_scope`) remains the sole gate, and
+dishonestly). **CLV feeds the autonomous promotion ladder as criterion (e)**
+(since 2026-07-16: a scope with CLV instrumentation must show a CLV mean CI
+lower bound > 0; a scope without it faces a higher cluster bar instead — see
+`docs/AUTO_PROMOTION.md`). Settlement-backed contested Brier
+(`autonomy/backtest.py`, taxonomy-keyed via
+`autonomy/taxonomy.py`'s `grading_scope`) remains the primary gate, and
 `autonomy/backtest.py`'s `trust_surface_by_specialist` rolls the per-scope
 contested-Brier record up to one (specialist, subject, market_type, phase)
 surface for
@@ -248,26 +251,36 @@ per-row) feeding the reported confidence interval. A human reads the artifact
 and edits the source constant in a reviewed PR; the tuner's own test suite
 asserts source-file hashes are byte-identical before and after a full run.
 
-**Promotion registry (WS-14).** `autonomy/promotion.py` is the only path a
-challenger scope can ever reach the live ensemble, under a strict contract:
-*promotion is human-only* (`runtime/autonomy/promotions.json` is edited by a
-person in a reviewed PR citing the readiness report — the system never writes
-it) and *demotion is automatic and one-way-safe* (a promoted scope's negative
-turn is written to `runtime/autonomy/auto_demotions.json` by the nightly
-readiness pass and the registry stops honoring it immediately — reducing risk
-never waits on a human, adding it always does). `EnsembleForecaster.fuse`
-consults `is_promoted_signal` at its existing `challenger_only` filter; a
-missing or corrupt promotions file means nobody is promoted, byte-identical
-to a build without the registry.
+**Promotion registry (WS-14) + autonomous thresholded promotion (2026-07-16).**
+`autonomy/promotion.py` is the only path a challenger scope can ever reach the
+live ensemble. By owner directive 2026-07-16, positive promotion is no longer
+human-only: the `AutoPromotionEngine` (`autonomy/auto_promotion.py`, run daily
+inside the readiness task by `autonomy/auto_promotion_runner.py`) promotes a
+scope into fusion when it clears a two-stage evidence ladder including a
+fee-adjusted counterfactual **proof of profit** — see
+`docs/AUTO_PROMOTION.md` for every threshold, rail, and the full rationale.
+Stage 1 fuses at a capped probation weight (25% of earned trust); stage 2
+(full weight) requires realized scope-attributed trade P&L. Every promotion,
+escalation, and demotion is recorded in an append-only hash-chained ledger
+(`runtime/autonomy/promotion_ledger.jsonl`) with the full evidence dossier,
+alerted via `autonomy/alerts.py`, and surfaced on the dashboard state JSON.
+*Demotion remains automatic, instant, and one-way-safe*
+(`runtime/autonomy/auto_demotions.json` — reducing risk never waits). A
+missing or corrupt promotions file still means nobody is promoted.
+
+**Scope of the directive: fusion membership only.** Live trading
+authorization — `configs/live_submit.json`, the second-proof sequence, and
+session live auth — remains **operator-gated** and is untouched by the
+autonomous ladder.
 
 Promotion and readiness scopes are exact four-axis cohorts:
 `source | subject | market_type | horizon_or_phase`. `subject` is the crypto
-asset, sports league, or exact contract series. The nightly evaluator accrues
+asset, sports league, or exact contract series. The daily evaluator accrues
 evidence and evaluates gates autonomously for each cohort; it never pools BTC
 with ETH, MLB with another league, winner with spread/total/YRFI-NRFI, or
 pregame with live. A legacy broad promotion entry without `subject` fails
-closed. Positive eligibility requests human review; negative evidence can
-autonomously contract or demote only that exact cohort.
+closed. Negative evidence can autonomously contract or demote only that exact
+cohort.
 
 **Dashboard council panel (WS-13).** The operator dashboard is a read-only
 process over runtime JSON files — it never holds a live `SpecialistRegistry`
