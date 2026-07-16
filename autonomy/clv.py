@@ -6,11 +6,14 @@ and converges roughly 10x faster -- a specialist that consistently beats the
 close surfaces promotion evidence long before its settlement-backed record
 is dense enough to trust on its own.
 
-CLV IS EVIDENCE FOR REVIEW, NEVER A PROMOTION GATE. Settlement-backed
-contested Brier (``autonomy/backtest.py``, already phase/horizon-keyed via
-``autonomy.taxonomy.grading_scope`` from WS-15) remains the sole promotion
-gate. Nothing in this module writes to the weights table or feeds a gating
-decision; it only produces a JSON-able report for human review.
+Since the 2026-07-16 autonomous-promotion directive, the CLV report is one
+criterion in the promotion ladder (stage 1 (e): a CLV-instrumented scope
+needs a positive CLV CI lower bound; an uninstrumented scope faces a higher
+cluster bar instead -- see docs/AUTO_PROMOTION.md). Settlement-backed
+contested Brier (``autonomy/backtest.py``, phase/horizon-keyed via
+``autonomy.taxonomy.grading_scope`` from WS-15) remains the primary gate.
+This module itself still only produces a JSON-able report; it never writes
+weights or governance files -- the AutoPromotionEngine consumes the report.
 
 Three focused pieces:
   * Book tape (``append_tape_rows`` / ``load_tape_rows``): one row per
@@ -271,9 +274,9 @@ def aggregate_clv(graded: list[dict[str, Any]]) -> dict[str, Any]:
     rule exactly -- one mean clv_bps per event cluster feeds
     autonomy.stats.mean_ci95, never the raw per-entry values.
 
-    EVIDENCE ONLY -- see module docstring. This never feeds a promotion
-    decision; settlement-backed contested Brier (autonomy/backtest.py)
-    remains the sole gate.
+    This report is consumed by the autonomous promotion ladder as its CLV
+    criterion (see module docstring); settlement-backed contested Brier
+    (autonomy/backtest.py) remains the primary gate.
     """
     groups: dict[tuple[str, str], dict[str, list[float]]] = {}
     for row in graded:
@@ -300,11 +303,12 @@ def aggregate_clv(graded: list[dict[str, Any]]) -> dict[str, Any]:
         "graded_entries": len(graded),
         "graded_event_clusters": len({row["event_cluster"] for row in graded}),
         "note": (
-            "CLV is evidence for review, not a promotion gate -- "
-            "settlement-backed contested Brier (autonomy/backtest.py) "
-            "remains the sole promotion gate. Aggregation uses "
-            "per-event-cluster means, never per-row CIs (correlated "
-            "same-event entries would shrink the interval dishonestly)."
+            "CLV is cluster-level evidence consumed by the autonomous "
+            "promotion ladder (stage-1 criterion (e), docs/AUTO_PROMOTION.md); "
+            "settlement-backed contested Brier (autonomy/backtest.py) remains "
+            "the primary gate. Aggregation uses per-event-cluster means, never "
+            "per-row CIs (correlated same-event entries would shrink the "
+            "interval dishonestly)."
         ),
     }
 

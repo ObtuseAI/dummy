@@ -25,6 +25,12 @@ SEVERITY = {
     "GATE_REGRESSION": "warning",
     "CYCLE_ERROR_STREAK": "warning",
     "SIGNAL_QUALITY_REJECTION": "warning",
+    # Autonomous thresholded promotion (fusion-membership governance only;
+    # live trading authorization remains operator-gated elsewhere).
+    "AUTO_PROMOTION": "info",
+    "AUTO_ESCALATION": "info",
+    "AUTO_DEMOTION": "warning",
+    "PROMOTION_RUN_ABORTED": "warning",
 }
 
 

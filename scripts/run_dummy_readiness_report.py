@@ -11,9 +11,16 @@ clusters and reports:
     negative -- written to auto_demotions.json, the only machine-authoritative
     governance file.
 
-Proposes; never promotes. promotions.json is edited by a person in a reviewed
-PR citing readiness_report.json. This runner has no session, execution, or
-capital authority.
+Since the 2026-07-16 owner directive this runner ALSO executes the autonomous
+thresholded promotion pass (autonomy/auto_promotion_runner.py) after the
+readiness report: a scope with statistical proof of profit auto-promotes into
+the fused ensemble at a capped probation weight, rail-guarded, rate-limited,
+and hash-chain audited. Fusion membership only -- this runner still has no
+session, execution, or capital authority, and live trading authorization
+(live_submit.json / second-proof / session live auth) remains operator-gated.
+``--skip-auto-promotion`` restores the report-only behavior. The existing
+DummyReadinessReport scheduled task keeps working unchanged (re-running the
+install script is optional; nothing about the task definition changed).
 """
 from __future__ import annotations
 
@@ -108,6 +115,10 @@ def _merge_demotions(path: Path, fresh: dict, now_iso: str) -> dict:
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--db", type=Path, default=DEFAULT_DB)
+    parser.add_argument(
+        "--skip-auto-promotion", action="store_true",
+        help="report only; skip the autonomous thresholded promotion pass",
+    )
     args = parser.parse_args()
     if not args.db.exists():
         print(json.dumps({"status": "NO_DB", "db": str(args.db)}))
@@ -171,6 +182,29 @@ def main() -> int:
     where_we_bleed = _where_we_bleed()
     if where_we_bleed:
         summary["where_we_bleed"] = where_we_bleed
+
+    # Autonomous thresholded promotion pass (owner directive 2026-07-16):
+    # runs INSIDE this existing daily task path -- no new schtasks. Crash-
+    # isolated: a failure here must never lose the readiness report above.
+    if not args.skip_auto_promotion:
+        try:
+            from autonomy.auto_promotion_runner import run_auto_promotion
+
+            state = run_auto_promotion(args.db)
+            summary["auto_promotion"] = {
+                "status": state.get("status"),
+                "promoted": state.get("promoted", []),
+                "escalated": state.get("escalated", []),
+                "demoted": state.get("demoted", []),
+                "deferred": state.get("deferred", []),
+                "replacement_candidates": state.get("replacement_candidates", []),
+                "reasons": state.get("reasons", []),
+            }
+        except Exception as exc:  # fail-closed: no promotion, report intact
+            summary["auto_promotion"] = {
+                "status": "ERROR", "error": f"{type(exc).__name__}: {exc}"[:300],
+            }
+
     print(json.dumps(summary))
     return 0
 

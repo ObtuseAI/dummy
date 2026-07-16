@@ -86,7 +86,7 @@ def test_challenger_winner_and_spread_hand_computed_via_margin_distribution(tmp_
     assert winner is not None
     assert winner.source == "power_ratings_nfl"
     assert winner.features["challenger_only"] is True
-    assert winner.features["promotion_eligible"] is False
+    assert winner.features["promotion_eligible"] is True
     assert winner.features["margin_model_version"] == POWER_RATINGS_MODEL_VERSION
     assert winner.features["ensemble_margin"] == 6.0
     assert winner.features["n_sources"] == 3

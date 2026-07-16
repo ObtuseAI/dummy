@@ -85,6 +85,19 @@ class EnsembleForecaster:
                 trust = scoped(signal.source, market.vertical.value)
             else:
                 trust = self.ledger.get_weight(signal.source, default=1.0)
+            # Stage-aware probation cap (autonomous thresholded promotion): a
+            # challenger promoted at STAGE 1 fuses at a fraction of its earned
+            # trust until it escalates to STAGE 2 on realized-trade evidence. A
+            # champion (never challenger_only) and a legacy full-weight
+            # promotion both scale by 1.0, so this is byte-identical for every
+            # pre-ladder path. Registries without the method (test doubles)
+            # also default to 1.0.
+            if bool((signal.features or {}).get("challenger_only")):
+                multiplier_fn = getattr(
+                    self.promotion, "weight_multiplier_for_signal", None)
+                if callable(multiplier_fn):
+                    trust = trust * float(multiplier_fn(
+                        signal.source, market.ticker, signal.features or {}))
             variance = max(1e-4, signal.uncertainty**2)
             weight = trust / variance
             weighted[signal.source] = weight

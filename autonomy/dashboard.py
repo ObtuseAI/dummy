@@ -233,6 +233,10 @@ def assemble_dashboard_state(runtime_dir: Path | None = None) -> dict[str, Any]:
     # WS-B: loss-deconstruction evolution engine artifact (read-only,
     # fail-closed to {} when absent -- see autonomy/loss_engine.py).
     loss_attribution = _load_json(rd / "loss_attribution.json") or {}
+    # Autonomous thresholded promotion (owner directive 2026-07-16): the daily
+    # engine's state artifact -- promotions/escalations/demotions/aborts with
+    # hash-chain refs. Read-only, fail-closed to {} when absent.
+    auto_promotion = _load_json(rd / "auto_promotion_state.json") or {}
     from autonomy.paper_dashboard import assemble_paper_dashboard, scheduled_task_status
     from autonomy.sports.dashboard import SPORTS_TASK_NAME, assemble_sports_dashboard
 
@@ -331,6 +335,7 @@ def assemble_dashboard_state(runtime_dir: Path | None = None) -> dict[str, Any]:
         "mispricing_monitor": mispricing_monitor,
         "clv_report": clv_report,
         "loss_attribution": loss_attribution,
+        "auto_promotion": auto_promotion,
         "council": council,
         "paper_operation": paper_operation,
         "paper_scheduler": paper_scheduler,
