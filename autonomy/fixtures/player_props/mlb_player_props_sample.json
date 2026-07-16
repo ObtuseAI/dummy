@@ -1,0 +1,52 @@
+{
+  "_note": "FIXTURE ONLY. Mirrors The Odds API v4 event-odds player-prop shape (oddsFormat=american). Committed sample so the FixturePropProvider has a realistic payload to parse offline. NOT live data; no provider was contacted to produce this.",
+  "sport_key": "baseball_mlb",
+  "events": [
+    {
+      "id": "fixture-evt-0001",
+      "sport_key": "baseball_mlb",
+      "commence_time": "2026-07-16T23:10:00Z",
+      "home_team": "Houston Astros",
+      "away_team": "Texas Rangers",
+      "bookmakers": [
+        {
+          "key": "draftkings",
+          "title": "DraftKings",
+          "last_update": "2026-07-16T21:00:00Z",
+          "markets": [
+            {
+              "key": "player_hits",
+              "outcomes": [
+                {"name": "Over", "description": "Jose Altuve", "price": -120, "point": 0.5},
+                {"name": "Under", "description": "Jose Altuve", "price": -110, "point": 0.5},
+                {"name": "Over", "description": "Yordan Alvarez", "price": 105, "point": 1.5},
+                {"name": "Under", "description": "Yordan Alvarez", "price": -130, "point": 1.5}
+              ]
+            },
+            {
+              "key": "player_total_bases",
+              "outcomes": [
+                {"name": "Over", "description": "Yordan Alvarez", "price": -105, "point": 1.5},
+                {"name": "Under", "description": "Yordan Alvarez", "price": -115, "point": 1.5}
+              ]
+            }
+          ]
+        },
+        {
+          "key": "fanduel",
+          "title": "FanDuel",
+          "last_update": "2026-07-16T21:01:00Z",
+          "markets": [
+            {
+              "key": "player_hits",
+              "outcomes": [
+                {"name": "Over", "description": "Jose Altuve", "price": -125, "point": 0.5},
+                {"name": "Under", "description": "Jose Altuve", "price": -105, "point": 0.5}
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
