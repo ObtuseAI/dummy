@@ -187,6 +187,45 @@ def poisson_spread_probability(
     return min(0.995, max(0.005, probability))
 
 
+def poisson_three_way(subject_mean: float, opponent_mean: float) -> tuple[float, float, float]:
+    """(P(subject>opp), P(tie), P(opp>subject)) for two independent Poisson
+    scores. A regulation tie is a real outcome (used for the 3-way first-five
+    winner market), so tie mass is reported explicitly rather than split."""
+    limit = max(25, int(math.ceil(max(subject_mean, opponent_mean) + 8.0)))
+    subject = [math.exp(-subject_mean)]
+    opponent = [math.exp(-opponent_mean)]
+    for runs in range(1, limit + 1):
+        subject.append(subject[-1] * subject_mean / runs)
+        opponent.append(opponent[-1] * opponent_mean / runs)
+    tie = sum(subject[k] * opponent[k] for k in range(limit + 1))
+    # P(subject > opponent) = sum_j P(opp=j) * P(subject >= j+1).
+    subject_tail = [0.0] * (limit + 2)
+    running = 0.0
+    for k in range(limit, -1, -1):
+        running += subject[k]
+        subject_tail[k] = running
+    subject_wins = sum(
+        opponent[j] * (subject_tail[j + 1] if j + 1 <= limit else 0.0)
+        for j in range(limit + 1)
+    )
+    opponent_wins = max(0.0, 1.0 - tie - subject_wins)
+    total = subject_wins + tie + opponent_wins
+    if total <= 0:
+        return 1 / 3, 1 / 3, 1 / 3
+    return subject_wins / total, tie / total, opponent_wins / total
+
+
+# The first five innings are 5/9 of the game by innings. Scoring is mildly
+# front-loaded and, more importantly, F5 is pitched almost entirely by the
+# STARTER (no bullpen, TTO penalty still accruing) -- which the run model already
+# reflects through the starter's ERA in expected runs. The linear innings share
+# plus a widened F5 uncertainty is the honest first-order challenger; the queued
+# refinement is a PA-sim F5 distribution (mlb_pa_sim already tracks
+# runs_through_5 with starter-dominance and TTO), which captures the
+# starter-vs-bullpen gap the linear share cannot.
+F5_RUN_SHARE = 5.0 / 9.0
+
+
 def remaining_innings(current_period: int | None) -> float:
     """Approximate innings left given the current inning (1-based).
 
@@ -478,6 +517,40 @@ class BaseballRunModel:
         return poisson_spread_probability(
             prediction.expected_away_runs, prediction.expected_home_runs, margin
         )
+
+    def team_total_probability(
+        self, prediction: BaseballPrediction, subject_is_home: bool, threshold: float
+    ) -> float:
+        """P(one team scores more than `threshold` runs). A team's run count is
+        Poisson at its expected runs; team totals are a total-family market, so
+        the park factor applies (mirrors ``total_probability``)."""
+        mean = prediction.expected_home_runs if subject_is_home else prediction.expected_away_runs
+        return poisson_over_probability(mean * prediction.park_factor, threshold)
+
+    def f5_total_probability(self, prediction: BaseballPrediction, threshold: float) -> float:
+        """P(first-five combined runs over `threshold`)."""
+        return poisson_over_probability(prediction.expected_total_runs * F5_RUN_SHARE, threshold)
+
+    def f5_spread_probability(
+        self, prediction: BaseballPrediction, subject_is_home: bool, margin: float
+    ) -> float:
+        """P(subject leads the first five by more than `margin` runs)."""
+        home = prediction.expected_home_runs * F5_RUN_SHARE
+        away = prediction.expected_away_runs * F5_RUN_SHARE
+        if subject_is_home:
+            return poisson_spread_probability(home, away, margin)
+        return poisson_spread_probability(away, home, margin)
+
+    def f5_outcome_probabilities(
+        self, prediction: BaseballPrediction
+    ) -> tuple[float, float, float]:
+        """(P(home leads F5), P(F5 tie), P(away leads F5)) for the 3-way market.
+
+        A first-five tie is a real, tradeable outcome, so the three legs are
+        reported separately and sum to 1."""
+        home = prediction.expected_home_runs * F5_RUN_SHARE
+        away = prediction.expected_away_runs * F5_RUN_SHARE
+        return poisson_three_way(home, away)
 
     def live_win_probability(
         self,
