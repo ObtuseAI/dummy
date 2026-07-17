@@ -279,6 +279,20 @@ def build_brain(mode: SessionMode):
     from autonomy.signals.crypto_flows import CryptoBtcLeadlagSignal
 
     registry.register(CryptoBtcLeadlagSignal(fetch_state=crypto_hub.state))
+    # Wave-8 adaptive challengers (operator directive 2026-07-17): patience —
+    # speak only inside the final 40% of a 15m/hourly window AND after spot
+    # confirms toward the reference — and KAMA momentum, whose drift weight
+    # adapts to the Kaufman efficiency ratio (trend speaks, chop converges to
+    # no-drift). Both challenger_only + fail-closed; preregistered with
+    # falsification conditions (scripts/preregister_wave8.py); graded per
+    # (asset x family x horizon) scope; execution only via WS-14 promotion.
+    from autonomy.signals.crypto_adaptive import (
+        CryptoKamaMomentumSignal,
+        CryptoPatienceSignal,
+    )
+
+    registry.register(CryptoPatienceSignal(fetch_state=crypto_hub.state))
+    registry.register(CryptoKamaMomentumSignal(fetch_state=crypto_hub.state))
     # CommoditiesSpotVolSignal is retained only as challenger evidence: with
     # COMMODITIES dropped from the scanner's trading verticals it no longer
     # receives tradable markets, but keeping it registered is harmless and
