@@ -160,9 +160,13 @@ class EnsembleForecaster:
         )
         fused_sigma = min(0.5, max(sigma_floor, inverse_precision, disagreement))
 
-        implied = None
-        if market.yes_bid is not None and market.yes_ask is not None and market.yes_ask > 0:
-            implied = ((market.yes_bid + market.yes_ask) / 2.0) / 100.0
+        # Honest-quote gate (Wave-5): a dead/wide book yields NO implied
+        # probability rather than a fabricated ~50c mid. Downstream this means
+        # no claimed edge, no decision benchmark, and no adverse-selection
+        # phantom on markets nobody is actually quoting.
+        from autonomy.quote_quality import honest_implied_yes
+
+        implied = honest_implied_yes(market.yes_bid, market.yes_ask)
         edge = probability - implied if implied is not None else 0.0
 
         normalized = {source: round(share, 4) for source, share in normalized.items()}

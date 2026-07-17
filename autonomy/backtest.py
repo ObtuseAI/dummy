@@ -137,7 +137,8 @@ class SourceScoreTracker:
         self.bins: list[list[float]] = [[0.0, 0.0, 0.0] for _ in range(CALIBRATION_BINS)]
 
     def observe(self, p: float, outcome: int, market_brier: float,
-                market_p: float | None = None, cluster_key: str | None = None) -> None:
+                market_p: float | None = None, cluster_key: str | None = None,
+                ticker: str | None = None) -> None:
         self.n += 1
         self.probability_sum += p
         self.outcome_sum += outcome
@@ -146,6 +147,14 @@ class SourceScoreTracker:
         self.logloss_sum += _log_loss(p, outcome)
         if source_brier < market_brier:
             self.beat_market += 1
+        # Wave-5 quarantine: pre-gate history whose recorded prior bears the
+        # fabricated-mid signature (dead crypto ladder books) still counts for
+        # accuracy/calibration, but must NOT mint contested edge.
+        if ticker is not None and market_p is not None:
+            from autonomy.quote_quality import suspect_crypto_contested_pair
+
+            if suspect_crypto_contested_pair(p, market_p, ticker):
+                market_p = None
         if market_p is not None and abs(p - market_p) >= CONTESTED_DISAGREEMENT:
             self.contested_n += 1
             brier_edge = market_brier - source_brier
@@ -1255,21 +1264,30 @@ def run_backtest(ledger: AutonomyLedger, bootstrap_weights: bool = False) -> dic
         rows = ledger.calibration_signals_for_market(ticker)
         latest = {str(row["source"]): float(row["probability_yes"]) for row in rows}
         features = {str(row["source"]): (row.get("features") or {}) for row in rows}
-        market_p = latest.get("market_prior", 0.5)
+        # Honest-benchmark gate (Wave-5): a market with no genuine market_prior
+        # emission has no point-in-time benchmark — grading every source
+        # against a fabricated 0.5 there was the audit's largest evidence
+        # contamination. Such markets contribute NOTHING to source trust.
+        market_p = latest.get("market_prior")
+        if market_p is None:
+            continue
         market_brier = _brier(market_p, result)
         vertical = classify_vertical(ticker).value
         cluster = group_key(ticker)
         for source, prob in latest.items():
             trackers.setdefault(source, SourceScoreTracker(source)).observe(
                 prob, result, market_brier, market_p=market_p, cluster_key=cluster,
+                ticker=ticker,
             )
             scoped_key = f"{source}@{vertical}"
             scoped_trackers.setdefault(scoped_key, SourceScoreTracker(scoped_key)).observe(
                 prob, result, market_brier, market_p=market_p, cluster_key=cluster,
+                ticker=ticker,
             )
             scope_key = grading_scope(source, ticker, features.get(source) or {})
             scope_trackers.setdefault(scope_key, SourceScoreTracker(scope_key)).observe(
                 prob, result, market_brier, market_p=market_p, cluster_key=cluster,
+                ticker=ticker,
             )
 
     # Realized decision P&L (settled decisions only).

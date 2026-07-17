@@ -238,13 +238,26 @@ class Learner:
                 "probability": float(signal["probability_yes"]),
                 "features": signal.get("features") or {},
             }
-        baseline = brier(
-            float((by_source.get("market_prior") or {}).get("probability", 0.5)),
-            result_yes,
-        )
+        # Honest-benchmark gate (Wave-5): trust moves ONLY against a genuine
+        # point-in-time market_prior emission. The old 0.5 default fabricated
+        # a coin-flip "market" on unquoted books, and beating it compounded
+        # crypto weights to the multiplicative cap (the saturation anomaly).
+        prior_evidence = by_source.get("market_prior")
+        if prior_evidence is None:
+            return {}
+        baseline_probability = float(prior_evidence["probability"])
+        baseline = brier(baseline_probability, result_yes)
+        from autonomy.quote_quality import CONTESTED_DISAGREEMENT
+
         updated: dict[str, float] = {}
         for source, evidence in by_source.items():
             probability = float(evidence["probability"])
+            # Contested-only trust movement: agreeing with the market is not
+            # evidence of skill, and the uncontested mass (deep-ITM/OTM ladder
+            # strikes where everyone is trivially right) must not compound
+            # weights. This also skips market_prior itself (gap 0 vs itself).
+            if abs(probability - baseline_probability) < CONTESTED_DISAGREEMENT:
+                continue
             score = brier(probability, result_yes)
             advantage = baseline - score  # positive = beat the market
             multiplier = pow(2.718281828, ETA * advantage / 0.25)  # 0.25 = max Brier scale

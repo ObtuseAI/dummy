@@ -210,6 +210,13 @@ def load_settled_rows(
         market_probability = _nearest_prior(str(ticker), stamp) if stamp is not None else None
         if market_probability is None:
             continue
+        # Wave-5 quarantine: drop pre-gate history whose recorded prior bears
+        # the fabricated-mid signature (dead crypto ladder books). Post-gate
+        # emissions can never form this pair (junk books emit no prior).
+        from autonomy.quote_quality import suspect_crypto_contested_pair
+
+        if suspect_crypto_contested_pair(float(probability), float(market_probability), str(ticker)):
+            continue
         try:
             features = json.loads(features_json or "{}")
         except json.JSONDecodeError:
