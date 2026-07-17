@@ -94,6 +94,114 @@ def devigged_home_probability(
     return sum(probabilities) / len(probabilities)
 
 
+def _half_point(line: float | None) -> bool:
+    """True for X.5 lines. Book quotes at integer lines can PUSH; a de-vig of
+    the two sides then prices P(cover | no push), which is not the Kalshi
+    binary P(margin/total beyond X). Only half-point quotes translate exactly,
+    so everything else is refused rather than approximated."""
+    if line is None:
+        return False
+    doubled = line * 2
+    return abs(doubled - round(doubled)) < 1e-9 and round(doubled) % 2 != 0
+
+
+def _points_equal(a: Any, b: float) -> bool:
+    try:
+        return abs(float(a) - b) < 1e-9
+    except (TypeError, ValueError):
+        return False
+
+
+def devigged_total_probability(
+    events: list[dict[str, Any]], team_a: str, team_b: str, line: float
+) -> tuple[float, int] | None:
+    """(avg de-vigged P(over ``line``), book count) across books quoting EXACTLY
+    that half-point line for the matching event; None when no book does.
+
+    Order-agnostic on the teams (a total does not care which side is home).
+    Books quoting a different line are skipped -- no derivative adjustment,
+    no false precision.
+    """
+    if not _half_point(line):
+        return None
+    event = _match_event(events or [], team_a, team_b) or _match_event(
+        events or [], team_b, team_a)
+    if event is None:
+        return None
+    probabilities: list[float] = []
+    for bookmaker in event.get("bookmakers", []) or []:
+        market = next(
+            (m for m in bookmaker.get("markets", []) or [] if m.get("key") == "totals"),
+            None,
+        )
+        if not market:
+            continue
+        over_odds = under_odds = None
+        for outcome in market.get("outcomes", []) or []:
+            if not _points_equal(outcome.get("point"), line):
+                continue
+            name = _norm(outcome.get("name"))
+            if name == "over":
+                over_odds = _american(outcome.get("price"))
+            elif name == "under":
+                under_odds = _american(outcome.get("price"))
+        devigged = devig_two_way(over_odds, under_odds)
+        if devigged is not None:
+            probabilities.append(devigged)
+    if not probabilities:
+        return None
+    return sum(probabilities) / len(probabilities), len(probabilities)
+
+
+def devigged_spread_probability(
+    events: list[dict[str, Any]],
+    home_team: str,
+    away_team: str,
+    subject_team: str,
+    line: float,
+) -> tuple[float, int] | None:
+    """(avg de-vigged P(``subject_team`` margin > ``line``), book count).
+
+    The Kalshi spread leg is "subject wins by more than ``line``" (Wave-10
+    convention; a negative line is the underdog side, margin > -1.5). The book
+    quotes the same event as ``subject_team`` at point == -line and the
+    opponent at +line; only exact half-point matches are used (see
+    ``_half_point``). None when unmatched or no book quotes that line.
+    """
+    if not _half_point(line):
+        return None
+    event = _match_event(events or [], home_team, away_team)
+    if event is None:
+        return None
+    subject_key = _norm(subject_team)
+    if not subject_key:
+        return None
+    probabilities: list[float] = []
+    for bookmaker in event.get("bookmakers", []) or []:
+        market = next(
+            (m for m in bookmaker.get("markets", []) or [] if m.get("key") == "spreads"),
+            None,
+        )
+        if not market:
+            continue
+        subject_odds = other_odds = None
+        for outcome in market.get("outcomes", []) or []:
+            name = _norm(outcome.get("name"))
+            if not name:
+                continue
+            is_subject = subject_key in name or name in subject_key
+            if is_subject and _points_equal(outcome.get("point"), -line):
+                subject_odds = _american(outcome.get("price"))
+            elif not is_subject and _points_equal(outcome.get("point"), line):
+                other_odds = _american(outcome.get("price"))
+        devigged = devig_two_way(subject_odds, other_odds)
+        if devigged is not None:
+            probabilities.append(devigged)
+    if not probabilities:
+        return None
+    return sum(probabilities) / len(probabilities), len(probabilities)
+
+
 def default_odds_api_fetch(sport_key: str, api_key: str) -> list[dict[str, Any]]:
     """Fetch h2h odds from The Odds API v4 (only called when armed)."""
     import httpx
