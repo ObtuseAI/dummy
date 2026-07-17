@@ -64,6 +64,22 @@ MINED_FAMILIES_PATH = RUNTIME_DIR / "mined_scope_families.json"
 WEIGHT_SATURATION_EPS = 1e-9
 
 
+def _valid_trust_key(key: str) -> bool:
+    """True for keys the CURRENT trust schema can still update.
+
+    Three live shapes: bare source (``crypto_spot_vol``), vertical-scoped
+    (``crypto_spot_vol@CRYPTO``), and exact scope (``scope:`` + the 4-part
+    ``source|subject|market_type|horizon_or_phase`` grading key). The stale
+    2026-07 branch wrote 3-part ``scope:`` keys; those rows are orphaned —
+    no code path updates them again — so a cap they froze at must not
+    permanently trip the saturation rail. ``scripts/migrate_trust_keys.py``
+    removes them; this filter is defense in depth until it runs.
+    """
+    if not key.startswith("scope:"):
+        return True
+    return key[len("scope:"):].count("|") == 3
+
+
 def _load_json(path: Path) -> dict[str, Any]:
     try:
         raw = json.loads(Path(path).read_text(encoding="utf-8"))
@@ -135,7 +151,8 @@ def gather_rails_inputs(
 
     saturated = any(
         float(weight) >= WEIGHT_CEILING - WEIGHT_SATURATION_EPS
-        for weight in (weights or {}).values()
+        for key, weight in (weights or {}).items()
+        if _valid_trust_key(str(key))
     )
 
     # Evidence artifact staleness: the heartbeat's last cycle IS the evidence
