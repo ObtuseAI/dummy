@@ -51,6 +51,10 @@ SEVERITY = {
     "AUTO_ESCALATION": "info",
     "AUTO_DEMOTION": "warning",
     "PROMOTION_RUN_ABORTED": "warning",
+    # Deployed-code drift (autonomy/code_drift.py): the running checkout is
+    # behind origin/main, so a healthy-looking daemon may be executing stale
+    # logic. Severity escalates to critical when far behind.
+    "CODE_DRIFT": "warning",
 }
 
 
