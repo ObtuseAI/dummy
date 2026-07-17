@@ -9,6 +9,7 @@ import os
 from typing import Any, Callable
 
 from autonomy.ontology import MarketView, Vertical
+from autonomy.sports_markets import discovery_series
 
 _VERTICAL_PREFIXES: list[tuple[str, Vertical]] = [
     ("KXHIGH", Vertical.WEATHER),
@@ -64,13 +65,14 @@ WATCHLIST_SERIES: list[str] = [
     "KXBTC15M", "KXETH15M", "KXSOL15M",
     "KXBTCD", "KXBTC", "KXETHD", "KXETH", "KXSOLD", "KXSOLE",
     "BTCD", "BTC", "ETHD", "ETH",
-    # Sports intelligence: active moneylines plus settlement-trained MLB runs
-    # challengers. UFC and Formula One retired 2026-07-12 (operator directive).
-    # All external reads are public GETs.
-    "KXMLBGAME", "KXNBAGAME", "KXNFLGAME", "KXNCAAFGAME", "KXNHLGAME",
-    "KXNCAAMBGAME", "KXWNBAGAME",
-    "KXMLBTOTAL", "KXMLBRFI", "KXMLBSPREAD",
-    "KXNBATOTAL", "KXNFLTOTAL", "KXNCAAFTOTAL", "KXNHLTOTAL", "KXNCAAMBTOTAL",
+    # Sports intelligence: the full per-game market surface is derived from the
+    # canonical registry (autonomy/sports_markets.SERIES_SPEC) and appended
+    # below -- winner / spread / total / team_total across MLB/NFL/NBA/NHL/
+    # NCAAF/NCAAMB/WNBA, plus MLB first-five (winner/spread/total) and the eight
+    # MLB player-prop families. Deriving discovery from the registry keeps the
+    # watchlist and the market-type classifier from drifting apart: a series is
+    # fetched exactly when a pricing path exists for it (spec.discover). UFC and
+    # Formula One retired 2026-07-12. All external reads are public GETs.
     # Commodities + econ trading retired 2026-07-11 (never demonstrated an edge
     # vs the sharp Kalshi price/econ markets). The Yahoo macro pipeline those
     # used now feeds CRYPTO as a risk-regime feature (crypto_macro_regime), not a
@@ -81,6 +83,13 @@ WATCHLIST_SERIES: list[str] = [
     # re-added or reached another way, classify_vertical still tags it and the
     # scan()-time vertical filter ({CRYPTO, SPORTS}) excludes it from trading.
 ]
+
+# Append the registry-derived per-game sports surface (deduped, order-stable).
+# This is the single knob that turns discovery on for a market type: flip its
+# SeriesSpec.discover in autonomy/sports_markets and it shows up here.
+for _series in discovery_series():
+    if _series not in WATCHLIST_SERIES:
+        WATCHLIST_SERIES.append(_series)
 
 
 def _public_base() -> str:

@@ -317,6 +317,12 @@ def build_brain(mode: SessionMode):
     from autonomy.signals.licensed_consensus import LicensedConsensusSignal
 
     registry.register(LicensedConsensusSignal())
+    # Wave-10: licensed player props (MLB) off the same governed slot -- per-event,
+    # metered, inert unless armed. Prices the app's Player Props tab from the
+    # multi-book de-vig, challenger-only.
+    from autonomy.signals.licensed_props import LicensedPlayerPropSignal
+
+    registry.register(LicensedPlayerPropSignal())
     # New totals/first-inning models are recorded as challenger-only
     # point-in-time evidence. Their challenger gate keeps them out of the
     # execution ensemble until the autonomous promotion ladder (owner
@@ -326,6 +332,12 @@ def build_brain(mode: SessionMode):
     # their markets route to no sports model and are simply never forecast.
     registry.register(BaseballIntelligenceSignal(seasons=seasons))
     registry.register(TeamSportsIntelligenceSignal(seasons=seasons))
+    # Wave-10: the rest of the MLB game-line surface -- team totals and first-five
+    # innings (winner 3-way / total / run line) -- off the same learned run model.
+    # Challenger-only, pre-game, each market type its own grading scope.
+    from autonomy.signals.mlb_segments import MlbSegmentSignal
+
+    registry.register(MlbSegmentSignal())
     # Fantasy triangulation leg #1: FanGraphs projection consensus. Per-team
     # rest-of-season projection rates -> MLB winner/total fair value via the same
     # baseball poisson plumbing the results-EWMA model prices with. Shares the one

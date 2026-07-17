@@ -25,6 +25,11 @@ ODDS_API_KEY_ENV = "DUMMY_ODDS_API_KEY"
 ODDS_API_ENABLED_ENV = "DUMMY_ODDS_API_ENABLED"
 BASE = "https://api.the-odds-api.com/v4"
 CONSENSUS_MARKETS = "h2h,totals,spreads"
+# Event list rarely changes within a day (new games appear slowly); player-prop
+# lines move faster (lineups, scratches), so they carry a shorter cache than the
+# game-line consensus.
+EVENTS_TTL_SECONDS = 3600          # 1h
+PROPS_TTL_SECONDS = 900            # 15 min
 
 
 def is_armed(env: dict[str, str] | None = None) -> bool:
@@ -102,3 +107,44 @@ class OddsApiClient:
             f"odds|{sport_key}|{CONSENSUS_MARKETS}|us", _fetch, cost=ODDS_CALL_COST)
         events = payload if isinstance(payload, list) else []
         return events, source
+
+    def list_events(self, sport_key: str) -> tuple[list[dict[str, Any]], str]:
+        """(events, source): the sport's event list (id + team names). The
+        ``/events`` endpoint is free (0 credits, like ``/sports``), so it never
+        touches the budget; cached ~1h. Empty on any failure (fail-closed)."""
+        if not self.available:
+            return [], "inert"
+
+        def _fetch() -> tuple[Any, int | None]:
+            return self._http_get(
+                f"{BASE}/sports/{sport_key}/events", {"apiKey": self.api_key})
+
+        payload, source = self.budget.budgeted_fetch(
+            f"events|{sport_key}", _fetch, cost=0, ttl=EVENTS_TTL_SECONDS)
+        events = payload if isinstance(payload, list) else []
+        return events, source
+
+    def event_player_props(
+        self, sport_key: str, event_id: str, markets: str
+    ) -> tuple[dict[str, Any] | None, str]:
+        """(event_odds, source): budgeted per-event player props. Props live only
+        on the per-event endpoint and are metered per market, so this costs one
+        credit per requested market (region=us) and defers to the governor for
+        TTL caching + the daily cap. Fail-closed: None if the slot is unarmed,
+        the budget is spent, or the fetch errors."""
+        if not self.available:
+            return None, "inert"
+        cost = max(1, len([m for m in markets.split(",") if m]))
+
+        def _fetch() -> tuple[Any, int | None]:
+            return self._http_get(
+                f"{BASE}/sports/{sport_key}/events/{event_id}/odds",
+                {"apiKey": self.api_key, "regions": "us",
+                 "markets": markets, "oddsFormat": "american"},
+            )
+
+        payload, source = self.budget.budgeted_fetch(
+            f"props|{sport_key}|{event_id}|{markets}", _fetch,
+            cost=cost, ttl=PROPS_TTL_SECONDS)
+        event = payload if isinstance(payload, dict) else None
+        return event, source
