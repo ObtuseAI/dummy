@@ -43,13 +43,40 @@ MAX_HONEST_SPREAD_CENTS = 20
 CONTESTED_DISAGREEMENT = 0.05
 
 # Historical-fabrication signature: recorded prior in the coin-flip band while
-# the model claims near-certainty. Legitimate 30-point disagreements against a
-# genuinely 50/50 *quoted* book exist but are rare and unverifiable in the
-# pre-gate history (spreads were not persisted), so the quarantine trades a
-# sliver of honest signal for removing a mountain of fabricated edge.
+# the model claims near-certainty (beyond 90/10 -- the exact pattern measured
+# in the audit: 240 such crypto ladder decisions, model "right" 99.2% of the
+# time against an average 0.42 phantom mid). Legitimate versions of this
+# pattern exist but were unverifiable pre-gate (spreads were not persisted),
+# so the quarantine trades a sliver of honest signal for removing a mountain
+# of fabricated edge -- and it applies ONLY to rows recorded before
+# QUOTE_GATE_EPOCH: after the emission gate deployed, a dead book produces no
+# prior at all, so any post-epoch pair is real by construction.
 SUSPECT_PRIOR_LOW = 0.35
 SUSPECT_PRIOR_HIGH = 0.65
-SUSPECT_GAP = 0.30
+SUSPECT_MODEL_EXTREME_LOW = 0.10
+SUSPECT_MODEL_EXTREME_HIGH = 0.90
+
+# The moment the honest-quote emission gate ships to the live box. Rows
+# created at/after this instant cannot carry a fabricated prior; the
+# historical quarantine automatically retires for them.
+QUOTE_GATE_EPOCH = "2026-07-17T00:00:00+00:00"
+
+
+def _before_gate_epoch(created_at: str | None) -> bool:
+    """True when a row predates the emission gate (or its stamp is unreadable
+    -- unreadable is treated as pre-gate, the quarantine-eligible side)."""
+    if created_at is None:
+        return True
+    from datetime import datetime, timezone
+
+    try:
+        stamp = datetime.fromisoformat(str(created_at).replace("Z", "+00:00"))
+        if stamp.tzinfo is None:
+            stamp = stamp.replace(tzinfo=timezone.utc)
+        epoch = datetime.fromisoformat(QUOTE_GATE_EPOCH)
+        return stamp < epoch
+    except (TypeError, ValueError):
+        return True
 
 
 def honest_implied_yes(
@@ -82,20 +109,26 @@ def suspect_crypto_contested_pair(
     probability_yes: float,
     market_prior: float | None,
     ticker: str | None,
+    created_at: str | None = None,
 ) -> bool:
-    """True when a (model, recorded-prior) pair matches the fabrication
-    signature on a CRYPTO market -- quarantine it from contested evidence.
+    """True when a pre-gate (model, recorded-prior) pair matches the
+    fabrication signature on a CRYPTO market -- quarantine it from contested
+    evidence.
 
-    Applies only to history written before the emission-side gate existed;
-    post-gate rows can never form this pair because a dead book no longer
-    produces a prior at all.
+    Rows created at/after :data:`QUOTE_GATE_EPOCH` are never suspect: the
+    emission gate means a dead book no longer produces a prior, so any
+    post-epoch pair is real by construction. Omitting ``created_at`` treats
+    the row as pre-gate (the quarantine-eligible side).
     """
     if market_prior is None or ticker is None:
+        return False
+    if not _before_gate_epoch(created_at):
         return False
     prior = float(market_prior)
     if not (SUSPECT_PRIOR_LOW <= prior <= SUSPECT_PRIOR_HIGH):
         return False
-    if abs(float(probability_yes) - prior) < SUSPECT_GAP:
+    p = float(probability_yes)
+    if SUSPECT_MODEL_EXTREME_LOW < p < SUSPECT_MODEL_EXTREME_HIGH:
         return False
     try:
         from autonomy.ontology import Vertical

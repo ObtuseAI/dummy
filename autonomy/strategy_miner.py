@@ -215,7 +215,9 @@ def load_settled_rows(
         # emissions can never form this pair (junk books emit no prior).
         from autonomy.quote_quality import suspect_crypto_contested_pair
 
-        if suspect_crypto_contested_pair(float(probability), float(market_probability), str(ticker)):
+        if suspect_crypto_contested_pair(
+            float(probability), float(market_probability), str(ticker), str(created_at),
+        ):
             continue
         try:
             features = json.loads(features_json or "{}")

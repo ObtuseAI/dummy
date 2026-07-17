@@ -138,7 +138,7 @@ class SourceScoreTracker:
 
     def observe(self, p: float, outcome: int, market_brier: float,
                 market_p: float | None = None, cluster_key: str | None = None,
-                ticker: str | None = None) -> None:
+                ticker: str | None = None, created_at: str | None = None) -> None:
         self.n += 1
         self.probability_sum += p
         self.outcome_sum += outcome
@@ -153,7 +153,7 @@ class SourceScoreTracker:
         if ticker is not None and market_p is not None:
             from autonomy.quote_quality import suspect_crypto_contested_pair
 
-            if suspect_crypto_contested_pair(p, market_p, ticker):
+            if suspect_crypto_contested_pair(p, market_p, ticker, created_at):
                 market_p = None
         if market_p is not None and abs(p - market_p) >= CONTESTED_DISAGREEMENT:
             self.contested_n += 1
@@ -1264,6 +1264,7 @@ def run_backtest(ledger: AutonomyLedger, bootstrap_weights: bool = False) -> dic
         rows = ledger.calibration_signals_for_market(ticker)
         latest = {str(row["source"]): float(row["probability_yes"]) for row in rows}
         features = {str(row["source"]): (row.get("features") or {}) for row in rows}
+        stamps = {str(row["source"]): row.get("created_at") for row in rows}
         # Honest-benchmark gate (Wave-5): a market with no genuine market_prior
         # emission has no point-in-time benchmark — grading every source
         # against a fabricated 0.5 there was the audit's largest evidence
@@ -1275,19 +1276,20 @@ def run_backtest(ledger: AutonomyLedger, bootstrap_weights: bool = False) -> dic
         vertical = classify_vertical(ticker).value
         cluster = group_key(ticker)
         for source, prob in latest.items():
+            stamp = stamps.get(source)
             trackers.setdefault(source, SourceScoreTracker(source)).observe(
                 prob, result, market_brier, market_p=market_p, cluster_key=cluster,
-                ticker=ticker,
+                ticker=ticker, created_at=stamp,
             )
             scoped_key = f"{source}@{vertical}"
             scoped_trackers.setdefault(scoped_key, SourceScoreTracker(scoped_key)).observe(
                 prob, result, market_brier, market_p=market_p, cluster_key=cluster,
-                ticker=ticker,
+                ticker=ticker, created_at=stamp,
             )
             scope_key = grading_scope(source, ticker, features.get(source) or {})
             scope_trackers.setdefault(scope_key, SourceScoreTracker(scope_key)).observe(
                 prob, result, market_brier, market_p=market_p, cluster_key=cluster,
-                ticker=ticker,
+                ticker=ticker, created_at=stamp,
             )
 
     # Realized decision P&L (settled decisions only).

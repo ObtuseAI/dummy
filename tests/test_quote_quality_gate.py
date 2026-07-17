@@ -131,26 +131,37 @@ def test_learner_contested_win_moves_weights_up():
 
 # ---- historical quarantine ----------------------------------------------------
 
+_PRE_GATE = "2026-07-10T12:00:00+00:00"   # before the emission gate deployed
+_POST_GATE = "2026-07-18T12:00:00+00:00"  # after: priors are real by construction
+
+
 def test_suspect_pair_matches_fabrication_signature():
+    assert suspect_crypto_contested_pair(0.99, 0.42, "KXBTC-26JUL17-B64000", _PRE_GATE) is True
+    assert suspect_crypto_contested_pair(0.01, 0.50, "KXSOL15M-26JUL162130-30", _PRE_GATE) is True
+    # no created_at -> treated as pre-gate (quarantine-eligible)
     assert suspect_crypto_contested_pair(0.99, 0.42, "KXBTC-26JUL17-B64000") is True
-    assert suspect_crypto_contested_pair(0.01, 0.50, "KXSOL15M-26JUL162130-30") is True
     # honest patterns survive
-    assert suspect_crypto_contested_pair(0.60, 0.42, "KXBTC-26JUL17-B64000") is False   # gap < 0.30
-    assert suspect_crypto_contested_pair(0.99, 0.20, "KXBTC-26JUL17-B64000") is False   # prior outside band
+    assert suspect_crypto_contested_pair(0.80, 0.50, "KXBTC-26JUL17-B64000", _PRE_GATE) is False  # model not extreme
+    assert suspect_crypto_contested_pair(0.99, 0.20, "KXBTC-26JUL17-B64000", _PRE_GATE) is False  # prior outside band
     # sports never quarantined (books are real)
-    assert suspect_crypto_contested_pair(0.99, 0.45, "KXMLBGAME-26JUL17NYYBOS-NYY") is False
+    assert suspect_crypto_contested_pair(0.99, 0.45, "KXMLBGAME-26JUL17NYYBOS-NYY", _PRE_GATE) is False
+    # post-gate rows are immune: the emission gate makes their priors real
+    assert suspect_crypto_contested_pair(0.99, 0.42, "KXBTC-26JUL17-B64000", _POST_GATE) is False
 
 
 def test_tracker_quarantines_suspect_contested_rows():
     tracker = SourceScoreTracker("crypto_spot_vol")
     market_p = 0.45
     tracker.observe(0.99, 1, _brier(market_p, 1), market_p=market_p,
-                    cluster_key="c1", ticker="KXBTC-26JUL17-B64000")
+                    cluster_key="c1", ticker="KXBTC-26JUL17-B64000", created_at=_PRE_GATE)
     assert tracker.n == 1                 # accuracy still counted
     assert tracker.contested_n == 0       # phantom edge NOT minted
     tracker.observe(0.99, 1, _brier(market_p, 1), market_p=market_p,
-                    cluster_key="c2", ticker="KXMLBGAME-26JUL17NYYBOS-NYY")
+                    cluster_key="c2", ticker="KXMLBGAME-26JUL17NYYBOS-NYY", created_at=_PRE_GATE)
     assert tracker.contested_n == 1       # real sports book still graded
+    tracker.observe(0.99, 1, _brier(market_p, 1), market_p=market_p,
+                    cluster_key="c3", ticker="KXBTC-26JUL17-B64000", created_at=_POST_GATE)
+    assert tracker.contested_n == 2       # post-gate crypto pair is real
 
 
 # ---- trust-key hygiene --------------------------------------------------------
