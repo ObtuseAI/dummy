@@ -11,8 +11,13 @@ prior, not the forecast.
 Controls (all computed per source over settled, market-benchmarked rows):
 
   * shuffled_labels  — outcomes randomly permuted within the source's rows.
-    Any surviving contested edge is leakage from features into labels or a
-    broken benchmark. Expectation: CI spans 0.
+    This measures ROW-LEVEL DISCRIMINATION: real_edge - shuffled_edge. On an
+    informative-prior panel, shuffling weakens the BENCHMARK too, so a
+    calibrated extreme-heavy source can "survive" the shuffle on rate
+    structure alone — survival is therefore never flagged as contamination.
+    Instead, a source claiming positive edge whose discrimination is <= 0 is
+    NOTED as rate-based (its edge lives in calibration/base-rate structure,
+    not in knowing which row resolves YES).
   * rotated_priors   — each row graded against ANOTHER market's recorded
     prior (deterministic rotation). Reported as diagnostic context only:
     genuine skill ALSO survives rotation (scrambling the benchmark makes it
@@ -53,8 +58,11 @@ BOOTSTRAP_RESAMPLES = 500
 CONTESTED_DISAGREEMENT = 0.05
 SEED = 20260717               # deterministic battery; reruns reproduce
 
-# Placebo-prior inflation beyond this ratio marks prior-dependent "edge".
+# Placebo-prior inflation beyond this ratio marks prior-dependent "edge" —
+# but only when the real edge is MATERIAL; a near-zero real edge makes the
+# ratio explode meaninglessly for any calibrated extreme-heavy source.
 PLACEBO_INFLATION_RATIO = 3.0
+MATERIAL_EDGE = 0.01
 # An honest market's average contested price tracks realized prevalence;
 # beyond this gap (while claiming positive edge) the benchmark is suspect.
 MAX_BENCHMARK_PREVALENCE_GAP = 0.15
@@ -138,7 +146,8 @@ def run_battery_for_source(source: str, rows: Iterable[Any]) -> dict[str, Any]:
         "rows": len(data),
         "real_edge": real,
         "controls": {},
-        "flags": [],
+        "flags": [],   # contamination-suspect signals only
+        "notes": [],   # honest structural observations (never "flagged")
     }
     if real is None or len(data) < MIN_CONTESTED_ROWS:
         result["status"] = "insufficient_rows"
@@ -146,14 +155,17 @@ def run_battery_for_source(source: str, rows: Iterable[Any]) -> dict[str, Any]:
 
     rng = random.Random(SEED)
 
-    # 1. Shuffled labels: permute outcomes.
+    # 1. Shuffled labels -> row-level discrimination measurement.
     outcomes = [row["result_yes"] for row in data]
     rng.shuffle(outcomes)
     shuffled = [dict(row, result_yes=outcome) for row, outcome in zip(data, outcomes)]
     ci = _cluster_bootstrap_ci(_contested_edges(shuffled))
     result["controls"]["shuffled_labels"] = ci
-    if ci and ci["lower"] > 0:
-        result["flags"].append("edge_survives_shuffled_labels")
+    if ci is not None:
+        discrimination = round(real["mean"] - ci["mean"], 6)
+        result["controls"]["row_discrimination"] = discrimination
+        if real["lower"] > 0 and discrimination <= 0:
+            result["notes"].append("edge_is_rate_based_not_row_level")
 
     # 2. Rotated priors (diagnostic only — genuine skill also survives this,
     # since a scrambled benchmark is weaker, not stronger).
@@ -188,12 +200,15 @@ def run_battery_for_source(source: str, rows: Iterable[Any]) -> dict[str, Any]:
         result["flags"].append("random_forecaster_beats_market")
 
     # 4. Placebo prior: grade against a flat coin instead of the real prior.
+    # Material-edge gate: the inflation ratio is only meaningful when the
+    # claimed real edge is itself material; otherwise any calibrated
+    # extreme-heavy source trivially crushes a coin.
     placebo = [dict(row, market_probability=0.5) for row in data]
     ci = _cluster_bootstrap_ci(_contested_edges(placebo))
     result["controls"]["placebo_prior"] = ci
     if (
-        ci and real["mean"] > 0
-        and ci["mean"] > PLACEBO_INFLATION_RATIO * max(1e-6, real["mean"])
+        ci and real["mean"] >= MATERIAL_EDGE
+        and ci["mean"] > PLACEBO_INFLATION_RATIO * real["mean"]
         and ci["lower"] > 0
     ):
         result["flags"].append("edge_inflates_against_placebo_prior")
