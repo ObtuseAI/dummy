@@ -55,6 +55,10 @@ SEVERITY = {
     # behind origin/main, so a healthy-looking daemon may be executing stale
     # logic. Severity escalates to critical when far behind.
     "CODE_DRIFT": "warning",
+    # Negative-control battery (autonomy/negative_controls.py): a source's
+    # "edge" survived a scrambled world — contamination, not skill. The
+    # evidence feeding trust/promotion for that source is suspect.
+    "NEGATIVE_CONTROL_FLAG": "warning",
 }
 
 
