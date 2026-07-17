@@ -50,7 +50,12 @@ def test_devig_returns_none_when_no_h2h_prices():
     assert devigged_home_probability(events, "Houston Astros", "Texas Rangers") is None
 
 
-def test_provider_is_inert_unless_armed():
+def test_provider_is_inert_unless_armed(monkeypatch):
+    # api_key=None falls back to the environment, so an armed workstation
+    # (the live box carries DUMMY_ODDS_API_KEY since Wave-9) would leak a real
+    # key into this inertness check. Isolate from ambient env.
+    monkeypatch.delenv("DUMMY_ODDS_API_KEY", raising=False)
+    monkeypatch.delenv("DUMMY_ODDS_API_ENABLED", raising=False)
     # No key / not enabled -> available False -> always None (even with a feed).
     disabled = LicensedOddsProvider(api_key=None, enabled=False,
                                     fetch_fn=lambda s, k: _events(-150, 130))

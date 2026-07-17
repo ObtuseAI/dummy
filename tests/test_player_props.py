@@ -81,6 +81,10 @@ def test_licensed_provider_disabled_by_default(monkeypatch):
 
 
 def test_licensed_provider_requires_both_key_and_enable(monkeypatch):
+    # api_key=None falls back to the environment; isolate from an armed
+    # workstation's real key (present on the live box since Wave-9).
+    monkeypatch.delenv("DUMMY_ODDS_API_KEY", raising=False)
+    monkeypatch.delenv("DUMMY_ODDS_API_ENABLED", raising=False)
     # Key present but not enabled -> still inert.
     assert LicensedPropProvider(api_key="k", enabled=False, fetch_fn=_boom_fetch).available is False
     # Enabled but no key -> still inert.

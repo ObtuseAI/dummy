@@ -103,7 +103,9 @@ async def test_report_generator_times_out_within_90s(tmp_path, monkeypatch):
         result = await orchestrator_main(run_tests=False)
     elapsed = asyncio.get_event_loop().time() - start
 
-    assert elapsed < 20, f"Orchestrator blocked for {elapsed:.1f}s"
+    # Bound must prove the 120s stall was cut, not that the runner is fast:
+    # the non-stalled generators run for real and can eat 25s+ on shared CI.
+    assert elapsed < 60, f"Orchestrator blocked for {elapsed:.1f}s"
     assert result["verdict"] in ("PASS", "PARTIAL", "FAIL")
     assert (artifacts / "tests_summary.json").exists()
     assert (artifacts / "final_report.json").exists()
