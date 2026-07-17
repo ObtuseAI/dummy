@@ -28,22 +28,22 @@ async def test_mock_fallback_for_each_task():
 
 
 @pytest.mark.asyncio
-async def test_hybrid_review_resolves_to_deepseek_when_available(monkeypatch):
+async def test_hybrid_review_resolves_to_glm_when_available(monkeypatch):
     monkeypatch.setenv("OPENROUTER_API_KEY", "sk-openrouter-test")
     router = ModelRouter()
     decision = router.route(ModelTask.HYBRID_REVIEW)
-    assert decision.provider_name == "deepseek_v4_flash"
-    assert decision.model_name == "deepseek/deepseek-chat"
+    assert decision.provider_name == "glm_5_2"
+    assert decision.model_name == "z-ai/glm-5.2"
 
 
 @pytest.mark.asyncio
-async def test_hybrid_review_fallback_when_deepseek_unavailable(monkeypatch, no_project_env):
+async def test_hybrid_review_fallback_when_glm_unavailable(monkeypatch, no_project_env):
     monkeypatch.delenv("DEEPSEEK_API_KEY", raising=False)
     monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
     router = ModelRouter()
     decision = router.route(ModelTask.HYBRID_REVIEW)
     assert decision.provider_name == "mock"
-    assert decision.fallback_reason == "deepseek_v4_flash_credentials_missing"
+    assert decision.fallback_reason == "glm_5_2_credentials_missing"
 
 
 @pytest.mark.asyncio
@@ -51,9 +51,9 @@ async def test_preferred_provider_used_when_key_present(monkeypatch):
     monkeypatch.setenv("OPENROUTER_API_KEY", "sk-openrouter-test")
     router = ModelRouter()
 
-    assert router.route(ModelTask.FORECAST_OPINION).provider_name == "deepseek_v4_flash"
+    assert router.route(ModelTask.FORECAST_OPINION).provider_name == "glm_5_2"
     assert router.route(ModelTask.STRATEGY_CRITIQUE).provider_name == "minimax_m3"
-    assert router.route(ModelTask.RISK_CRITIQUE).provider_name == "deepseek_v4_flash"
+    assert router.route(ModelTask.RISK_CRITIQUE).provider_name == "minimax_m3"
     assert router.route(ModelTask.NO_TRADE_REASON).provider_name == "minimax_m3"
 
 
