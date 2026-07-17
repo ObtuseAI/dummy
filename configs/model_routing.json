@@ -1,24 +1,23 @@
 {
   "default_provider": {
-    "forecast_opinion": "deepseek_v4_flash",
+    "forecast_opinion": "glm_5_2",
     "strategy_critique": "minimax_m3",
-    "risk_critique": "deepseek_v4_flash",
+    "risk_critique": "minimax_m3",
     "no_trade_reason": "minimax_m3",
-    "trade_draft": "deepseek_v4_flash",
+    "trade_draft": "glm_5_2",
     "calibration_note": "minimax_m3",
-    "market_thesis": "minimax_m3",
+    "market_thesis": "glm_5_2",
     "hybrid_review": "hybrid"
   },
   "provider_configs": {
-    "deepseek_v4_flash": {
+    "glm_5_2": {
       "api_base": "https://openrouter.ai/api",
       "api_key_env": "OPENROUTER_API_KEY",
-      "model_name": "deepseek/deepseek-chat",
+      "model_name": "z-ai/glm-5.2",
       "model_aliases": [
-        "deepseek-chat",
-        "deepseek-v3",
-        "deepseek/deepseek-chat",
-        "deepseek-v4-flash"
+        "glm-5.2",
+        "z-ai/glm-5.2",
+        "glm5.2"
       ],
       "rpm": 60,
       "tpm": 100000,
@@ -28,11 +27,28 @@
     "minimax_m3": {
       "api_base": "https://openrouter.ai/api",
       "api_key_env": "OPENROUTER_API_KEY",
-      "model_name": "minimax/minimax-01",
+      "model_name": "minimax/minimax-m3",
       "model_aliases": [
+        "minimax-m3",
+        "MiniMax-M3",
+        "minimax/minimax-m3",
         "minimax-01",
-        "MiniMax-Text-01",
         "minimax/minimax-01"
+      ],
+      "rpm": 60,
+      "tpm": 100000,
+      "timeout_seconds": 20.0,
+      "route_mode": "openrouter"
+    },
+    "deepseek_v4_flash": {
+      "api_base": "https://openrouter.ai/api",
+      "api_key_env": "OPENROUTER_API_KEY",
+      "model_name": "deepseek/deepseek-chat",
+      "model_aliases": [
+        "deepseek-chat",
+        "deepseek-v3",
+        "deepseek/deepseek-chat",
+        "deepseek-v4-flash"
       ],
       "rpm": 60,
       "tpm": 100000,

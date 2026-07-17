@@ -171,5 +171,13 @@ class OpenMeteoWeatherSignal:
                 f"{len(temps)}-model ensemble {parsed['kind']} for {city['name']} {parsed['date_iso']}: "
                 f"mean={mean:.1f}F spread={spread:.1f}F sigma={sigma:.1f}F vs threshold {parsed['threshold']}"
             ),
-            features={"mean_f": mean, "sigma_f": sigma, "models": len(temps), "city": parsed["city"]},
+            # Weather was retired as an execution-grade source on 2026-07-11
+            # (contested edge -0.050, CI95 upper -0.024 — a significant net
+            # loser when contested). The signal keeps emitting for evidence
+            # continuity, but challenger-only: it re-enters fusion only if the
+            # promotion ladder ever re-earns it a place.
+            features={
+                "mean_f": mean, "sigma_f": sigma, "models": len(temps),
+                "city": parsed["city"], "challenger_only": True,
+            },
         )
