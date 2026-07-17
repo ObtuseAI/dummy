@@ -317,6 +317,12 @@ def build_brain(mode: SessionMode):
     from autonomy.signals.licensed_consensus import LicensedConsensusSignal
 
     registry.register(LicensedConsensusSignal())
+    # Wave-10: licensed player props (MLB) off the same governed slot -- per-event,
+    # metered, inert unless armed. Prices the app's Player Props tab from the
+    # multi-book de-vig, challenger-only.
+    from autonomy.signals.licensed_props import LicensedPlayerPropSignal
+
+    registry.register(LicensedPlayerPropSignal())
     # New totals/first-inning models are recorded as challenger-only
     # point-in-time evidence. Their challenger gate keeps them out of the
     # execution ensemble until the autonomous promotion ladder (owner

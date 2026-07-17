@@ -23,6 +23,7 @@ market type emits its own source string, so each earns its own grading scope.
 """
 from __future__ import annotations
 
+import re
 from pathlib import Path
 from typing import Any
 
@@ -47,7 +48,9 @@ def _teams_from_ticker(ticker: str) -> tuple[str, str] | None:
     dated = _date_and_remainder(parts[1])
     if dated is None:
         return None
-    return _split_mlb_teams(_strip_start_time(dated[1]))
+    token = _strip_start_time(dated[1])
+    token = re.sub(r"G\d$", "", token)   # drop a doubleheader game-number suffix
+    return _split_mlb_teams(token)
 
 
 class MlbSegmentSignal:

@@ -41,9 +41,12 @@ from autonomy.odds_providers import ODDS_API_ENABLED_ENV, ODDS_API_KEY_ENV, _mat
 from autonomy.signals.sportsbook import devig_two_way
 from autonomy.sports.espn import _american
 
-# Prop markets are namespaced ``player_*`` in the licensed feed; h2h/spreads/
-# totals are handled elsewhere (odds_providers / sportsbook).
-_PROP_MARKET_PREFIX = "player_"
+# Prop markets in the licensed feed. The provider's real MLB keys are
+# ``batter_*`` / ``pitcher_*`` (verified live 2026-07-17, e.g. batter_home_runs,
+# pitcher_strikeouts); older fixtures used a generic ``player_*`` namespace.
+# Accept all three so the de-vig runs against real payloads AND the committed
+# fixtures. h2h / spreads / totals are handled elsewhere (odds_providers).
+_PROP_MARKET_PREFIXES = ("player_", "batter_", "pitcher_")
 
 
 @dataclass(frozen=True)
@@ -109,7 +112,7 @@ def parse_event_props(event: dict[str, Any]) -> list[PropQuote]:
             if not isinstance(market, dict):
                 continue
             market_key = str(market.get("key") or "")
-            if not market_key.startswith(_PROP_MARKET_PREFIX):
+            if not market_key.startswith(_PROP_MARKET_PREFIXES):
                 continue
             for (player, point), sides in _book_prop_pairs(market).items():
                 over, under = sides.get("over"), sides.get("under")
