@@ -195,9 +195,12 @@ SERIES_SPEC: dict[str, SeriesSpec] = {
     "KXWNBAGAME": _winner("wnba", discover=True),
     "KXWNBASPREAD": _line("wnba", SPREAD, discover=True),
     "KXWNBATOTAL": _line("wnba", TOTAL, discover=True),
-    "KXWNBA1HWINNER": _winner("wnba", H1, discover=False),
-    "KXWNBA1HSPREAD": _line("wnba", SPREAD, H1, discover=False),
-    "KXWNBA1HTOTAL": _line("wnba", TOTAL, H1, discover=False),
+    # Wave-13: first-half surface priced (basketball half kernel). The 1H
+    # winner is 3-way -- an explicit TIE leg exists (verified live 2026-07-17:
+    # KXWNBA1HWINNER-26JUL17CONNPHX-TIE).
+    "KXWNBA1HWINNER": _winner("wnba", H1, discover=True, three_way=True),
+    "KXWNBA1HSPREAD": _line("wnba", SPREAD, H1, discover=True),
+    "KXWNBA1HTOTAL": _line("wnba", TOTAL, H1, discover=True),
     "KXWNBA2HWINNER": _winner("wnba", H2, discover=False),
     "KXWNBA2HSPREAD": _line("wnba", SPREAD, H2, discover=False),
     "KXWNBA2HTOTAL": _line("wnba", TOTAL, H2, discover=False),
