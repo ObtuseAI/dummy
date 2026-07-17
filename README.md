@@ -24,6 +24,13 @@ records the full lifecycle in an auditable ledger.
   adversarial arenas, event-purged walk-forward validation, calibration and
   risk analytics, deterministic replay buffers, and bounded recursive
   challenger evolution.
+- **Autonomous-improvement arsenal:** a two-stage promotion ladder that earns
+  challengers their place from settled evidence, a counterfactual
+  execution-policy tournament, pre-game CLV capture, keyless fantasy and
+  cross-venue intake, empirical per-scope reliability curves, an event-driven
+  live-game poller, governance-gated player-prop plumbing, and an
+  Intelligence-Lab campaign sweep with Benjamini-Hochberg false-discovery
+  control. See [`docs/IMPROVEMENT_WAVES.md`](docs/IMPROVEMENT_WAVES.md).
 
 Live execution remains fail-closed, evidence-gated, and subject to explicit
 operator authorization.
@@ -426,6 +433,38 @@ default), reconciles settlements, and grades every source against reality.
   mutates no source, parameter, or promotion.
 - **Reflexion**: losing decisions distilled into structured lessons via the
   model router.
+
+## Autonomous improvement (waves 1–4)
+
+Branch-first, fail-closed feature waves layered on the autonomy core. Every new
+signal is challenger-only and reaches execution solely through the promotion
+ladder; nothing here touches the allocator, executor, or risk directly. Full
+program summary in [`docs/IMPROVEMENT_WAVES.md`](docs/IMPROVEMENT_WAVES.md).
+
+- **Promotion ladder** — a two-stage autonomous engine promotes a scope only on
+  ≥300 independent event-clusters, contested-Brier edge CI95 lower > 0,
+  non-negative CLV, and no degradation; auto-demotion is one-way-safe.
+  Promotion to execution authority is still a human edit of `promotions.json`.
+- **Execution-policy tournament** — C0–C4 counterfactual cohorts replay the
+  actionable ledger to rank maker/taker/adverse-guard policies; report-only,
+  never auto-switched.
+- **Sports CLV** — freezes the pre-game close as the true closing line, feeding
+  the promotion ladder's CLV criterion.
+- **Fantasy & cross-venue intake** — keyless ESPN fantasy (ownership/scratch)
+  and Polymarket cross-venue reference pricing, each a challenger source.
+- **Empirical reliability curves** — isotonic per-scope recalibration for crypto
+  and every sports league, pre-game and live, gated by cluster count.
+- **Live-game poller** — event-driven, reacts to score/inning/base-out/status
+  deltas; off by default behind an explicit flag.
+- **Player-prop plumbing** — fixtures-first, behind an unopened, key-gated
+  governance slot.
+- **Intelligence-Lab sweep** — mines the instrumented evidence across many
+  cohorts on the visible partition only, controlling the portfolio
+  false-discovery rate with Benjamini-Hochberg and disclosing the full family
+  searched.
+
+Verify any worktree the way CI does with `bash scripts/verify_wave_clean.sh`
+(add `--cov` for the coverage gate).
 
 ## Success measurement and execution truth
 
