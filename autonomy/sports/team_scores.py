@@ -27,6 +27,10 @@ LEAGUE_SCORE_CONFIGS = {
     "nfl": LeagueScoreConfig(22.5, 2.0, 10.5, 10.0, 0.12),
     "ncaaf": LeagueScoreConfig(28.0, 3.0, 15.0, 14.0, 0.12),
     "nhl": LeagueScoreConfig(3.1, 0.18, 2.3, 2.0),
+    # Wave-12: in-season mid-July, so evidence accrues immediately. ~82 points
+    # per team in the current scoring environment; 44-game season -> a faster
+    # EWMA than the NBA's 82-game 0.08 but slower than football's 0.12.
+    "wnba": LeagueScoreConfig(82.0, 2.5, 13.0, 11.5, 0.10),
 }
 
 

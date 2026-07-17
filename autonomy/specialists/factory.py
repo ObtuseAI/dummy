@@ -14,7 +14,7 @@ from autonomy.specialists.crypto import CryptoSpecialist
 from autonomy.specialists.mlb import MlbSpecialist
 from autonomy.specialists.team_leagues import TeamLeagueSpecialist
 
-TEAM_LEAGUES = ("nba", "nfl", "ncaaf", "nhl", "ncaamb")
+TEAM_LEAGUES = ("nba", "nfl", "ncaaf", "nhl", "ncaamb", "wnba")
 
 
 def _source_by_name(sources: list[Any], name: str) -> Any:

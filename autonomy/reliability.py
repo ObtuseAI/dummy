@@ -54,7 +54,7 @@ CRYPTO_CALIBRATED_SOURCES = frozenset({
 # listed here that has not yet accrued >= 200 settled clusters simply gets no
 # map and the wrapper abstains (fail-closed, never a guess). Listing a source
 # makes it ELIGIBLE; the settled data decides whether it actually gets a curve.
-_TEAM_LEAGUES = ("mlb", "nba", "nfl", "nhl", "ncaaf", "ncaamb")
+_TEAM_LEAGUES = ("mlb", "nba", "nfl", "nhl", "ncaaf", "ncaamb", "wnba")
 
 
 def _sports_calibrated_sources() -> frozenset[str]:

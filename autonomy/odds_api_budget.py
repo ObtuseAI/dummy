@@ -17,11 +17,21 @@ month of credits in hours. This governor makes every licensed fetch:
 
 Deterministic and injectable (clock, fetch, paths) so the whole policy is
 unit-tested without a network or a wall clock.
+
+Wave-12 adds the PAYLOAD ARCHIVE: every PAID live fetch is appended to a
+gzip-compressed monthly JSONL shard before the TTL cache eventually discards
+it. Historical odds cost extra money on the API, so the archive is the only
+record of data already paid for; it is what lets a future de-vig variant, steam
+detector, or multi-book CLV anchor regrade HISTORY instead of waiting weeks of
+wall clock for new evidence. Strictly fail-open: an archive error never
+disturbs the fetch path. Free endpoints (cost 0) are re-fetchable and skipped.
 """
 from __future__ import annotations
 
+import gzip
 import hashlib
 import json
+import os
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -30,6 +40,10 @@ from typing import Any, Callable
 RUNTIME_DIR = Path("runtime/autonomy")
 BUDGET_PATH = RUNTIME_DIR / "odds_api_budget.json"
 CACHE_DIR = RUNTIME_DIR / "odds_api_cache"
+ARCHIVE_DIR = RUNTIME_DIR / "odds_api_archive"
+# Operator override for the archive location (e.g. a roomier drive on the live
+# box). The archive is append-only telemetry, safe to relocate at any time.
+ARCHIVE_DIR_ENV = "DUMMY_ODDS_ARCHIVE_DIR"
 
 DEFAULT_DAILY_CREDITS = 500          # ≈ 15k/month; buffer under a 20k plan
 DEFAULT_TTL_SECONDS = 1200           # 20 min: a sport is pulled at most 3x/hr
@@ -60,11 +74,16 @@ class OddsApiBudget:
         daily_credits: int = DEFAULT_DAILY_CREDITS,
         budget_path: Path | None = None,
         cache_dir: Path | None = None,
+        archive_dir: Path | None = None,
         now_fn: Callable[[], float] | None = None,
     ) -> None:
         self.daily_credits = int(daily_credits)
         self.budget_path = Path(budget_path or BUDGET_PATH)
         self.cache_dir = Path(cache_dir or CACHE_DIR)
+        env_archive = os.environ.get(ARCHIVE_DIR_ENV)
+        self.archive_dir = Path(
+            archive_dir if archive_dir is not None
+            else (env_archive or ARCHIVE_DIR))
         self._now = now_fn or time.time
 
     # -- clock helpers ---------------------------------------------------------
@@ -154,6 +173,30 @@ class OddsApiBudget:
             json.dumps({"fetched_at": self._now(), "payload": payload}, sort_keys=True),
             encoding="utf-8")
 
+    # -- payload archive (Wave-12) ---------------------------------------------
+
+    def _archive_path(self) -> Path:
+        month = time.strftime("%Y-%m", time.gmtime(self._now()))
+        return self.archive_dir / f"odds_{month}.jsonl.gz"
+
+    def archive_payload(self, cache_key: str, payload: Any, remaining: int | None) -> None:
+        """Append one paid fetch to the monthly gzip shard. FAIL-OPEN: the
+        archive is telemetry; no exception may ever reach the fetch path."""
+        try:
+            self.archive_dir.mkdir(parents=True, exist_ok=True)
+            line = json.dumps({
+                "ts": self._now(),
+                "key": cache_key,
+                "remaining": remaining,
+                "payload": payload,
+            }, sort_keys=True)
+            # "at" appends a fresh gzip member; concatenated members are a
+            # valid gzip stream, so shards stay readable with one gzip.open.
+            with gzip.open(self._archive_path(), "at", encoding="utf-8") as fh:
+                fh.write(line + "\n")
+        except Exception:
+            pass
+
     # -- the governed fetch ----------------------------------------------------
 
     def budgeted_fetch(
@@ -182,6 +225,10 @@ class OddsApiBudget:
                 return None, "error"
             self.record_spend(cost, remaining)
             self.cache_put(cache_key, payload)
+            if cost > 0:
+                # Paid data is not re-fetchable without buying it again;
+                # archive it. Free endpoints (cost 0) are skipped.
+                self.archive_payload(cache_key, payload, remaining)
             return payload, "live"
         if cached is not None:
             return cached[0], "stale"
