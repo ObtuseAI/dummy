@@ -45,6 +45,10 @@ SOURCE_TAXONOMY: dict[str, str] = {
     "market_debias": "market",
     "sports_elo": "sports_elo",
     "sportsbook_consensus": "sportsbook",
+    # Wave-9: licensed multi-book (The Odds API) de-vig consensus. Same
+    # specialist home as the single-book ESPN consensus; graded head-to-head
+    # against it under its own source scope (challenger-only).
+    "licensed_consensus": "sportsbook",
     "cross_venue_polymarket": "cross_venue",
     # Wave-2 E4: Polymarket cross-venue reference pricing extended to crypto and
     # econ Kalshi markets. Separate source names -> separate grading scopes; the

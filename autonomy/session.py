@@ -309,6 +309,14 @@ def build_brain(mode: SessionMode):
     # De-vigged sportsbook moneyline + open->close steam: the sharpest public
     # game forecast, and the trap detector when Elo fights the book.
     registry.register(SportsbookConsensusSignal())
+    # Licensed multi-book consensus (Wave-9). Fully inert unless the operator
+    # armed the governance slot (DUMMY_ODDS_API_KEY + DUMMY_ODDS_API_ENABLED=1);
+    # when armed it de-vigs the ~8-book Odds API consensus (credit-governed:
+    # in-season gate + TTL cache + daily budget) as a challenger-only source,
+    # graded head-to-head against the single-book ESPN line.
+    from autonomy.signals.licensed_consensus import LicensedConsensusSignal
+
+    registry.register(LicensedConsensusSignal())
     # New totals/first-inning models are recorded as challenger-only
     # point-in-time evidence. Their challenger gate keeps them out of the
     # execution ensemble until the autonomous promotion ladder (owner
