@@ -49,8 +49,30 @@ def test_skilled_source_passes_battery():
     assert result["real_edge"]["lower"] > 0            # genuinely positive
     shuffled = result["controls"]["shuffled_labels"]
     assert shuffled["lower"] <= 0                       # edge dies in a scrambled world
+    assert result["controls"]["row_discrimination"] > 0  # real per-row skill
+    assert result["notes"] == []
     # Honest benchmark: average contested price tracks realized prevalence.
     assert result["controls"]["benchmark_calibration"]["gap"] < 0.15
+
+
+def test_rate_based_edge_is_noted_not_flagged():
+    """A constant forecaster with a small calibration-level edge: shuffling
+    outcomes changes nothing (both sides are constants), so discrimination is
+    zero — the edge is rate-based structure, disclosed as a note, never a
+    contamination flag."""
+    rows = []
+    for i in range(400):
+        rows.append({
+            "probability_yes": 0.05,                    # constant model
+            "market_probability": 0.13,                 # constant, slightly soft prior
+            "result_yes": int(_det(i, "rate") < 0.05),  # ~5% YES
+            "event_cluster": f"C{i}",
+            "created_at": f"2026-07-{(i % 28) + 1:02d}T12:00:00+00:00",
+        })
+    result = run_battery_for_source("rate_based", rows)
+    assert result["status"] == "clean"
+    assert "edge_is_rate_based_not_row_level" in result["notes"]
+    assert result["controls"]["row_discrimination"] <= 0
 
 
 def test_fabricated_prior_source_is_flagged():
