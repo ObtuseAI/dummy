@@ -110,20 +110,34 @@ def cohorts_from_records(
 def _paired_brier_test(
     candidate: ScoredCandidate, rows: tuple[LedgerEvidenceRow, ...]
 ) -> tuple[int, float, float] | None:
-    """(n, mean_brier_gain, one_sided_p) on the visible rows, or None if n<2.
+    """(n_clusters, mean_brier_gain, one_sided_p), or None if < 2 clusters.
 
-    Per row: gain = (prior - y)^2 - (p_candidate - y)^2. Positive gain means the
-    candidate beat the market prior. A one-sample z on the paired gains gives a
-    one-sided p (H0: no gain). Rows here are already independent event-cluster
-    snapshots (the partition plan purged cross-partition clusters), so paired-
-    by-row is a defensible cluster-independent test.
+    Gain = (prior - y)^2 - (p_candidate - y)^2; positive means the candidate
+    beat the market prior. A one-sample z on the paired gains gives a one-sided
+    p (H0: no gain).
+
+    CRITICAL: the unit of independent evidence is the EVENT CLUSTER, not the row.
+    One cluster (e.g. a 15m window) can carry many correlated strike rows; scoring
+    them as independent understates variance and inflates significance -- so each
+    cluster is first collapsed to its mean prediction / mean outcome / mean prior
+    (the same one-unit-per-cluster convention as ``fit_reliability_map``), and the
+    z-test runs over clusters. The partition plan already froze each cluster to a
+    single date, so a cluster never spans partitions here.
     """
-    gains: list[float] = []
+    # cluster_id -> [sum_p, sum_y, sum_prior, count]
+    agg: dict[str, list[float]] = {}
     for row in rows:
         y = 1.0 if row.result_yes else 0.0
         p = min(1.0, max(0.0, float(candidate.predict(row))))
-        prior = row.market_prior_probability
-        gains.append((prior - y) ** 2 - (p - y) ** 2)
+        acc = agg.setdefault(str(row.event_cluster_id), [0.0, 0.0, 0.0, 0.0])
+        acc[0] += p
+        acc[1] += y
+        acc[2] += row.market_prior_probability
+        acc[3] += 1.0
+    gains: list[float] = []
+    for sum_p, sum_y, sum_prior, count in agg.values():
+        mean_p, mean_y, mean_prior = sum_p / count, sum_y / count, sum_prior / count
+        gains.append((mean_prior - mean_y) ** 2 - (mean_p - mean_y) ** 2)
     n = len(gains)
     if n < _MIN_SCORING_ROWS:
         return None

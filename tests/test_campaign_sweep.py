@@ -50,6 +50,44 @@ _OVERCOMPLEX = ScoredCandidate("adds_dep", "adds a dependency",
                                lambda row: row.incumbent_probability, ComplexityProfile(added_dependencies=1))
 
 
+def _row_in_cluster(cluster, idx, *, our_prob, prior=0.5, result=True):
+    day = (idx % 27) + 1
+    return clv_evidence_row({
+        "decision_id": f"c-{cluster}-{idx}",
+        "market_ticker": f"KXMLB-{cluster}-{idx}",
+        "event_cluster_id": cluster,
+        "decision_at": f"2026-07-{day:02d}T18:00:00+00:00",
+        "settlement_received_at": f"2026-07-{day:02d}T23:30:00+00:00",
+        "our_probability": our_prob,
+        "close_probability": prior,
+        "result_yes": result,
+        "subject": "nyy",
+        "vertical": "sports",
+        "market_type": "winner",
+        "phase": "pre",
+    })
+
+
+def test_paired_brier_scores_per_cluster_not_per_row():
+    # ONE event cluster with 20 correlated strike rows must count as ONE unit of
+    # evidence (n=1 -> None), never as 20 independent observations. This is the
+    # fix for the inflated-significance bug: correlated rows sharing a cluster
+    # cannot manufacture significance.
+    rows = tuple(_row_in_cluster("clusterA", i, our_prob=0.9, result=True) for i in range(20))
+    assert _paired_brier_test(_GOOD, rows) is None  # 20 rows, 1 cluster -> not enough
+
+    # Two clusters (10 correlated rows each) collapse to n=2 clusters, not 20.
+    two = tuple(
+        _row_in_cluster("clusterA", i, our_prob=0.8, result=True) for i in range(10)
+    ) + tuple(
+        _row_in_cluster("clusterB", i, our_prob=0.2, result=False) for i in range(10)
+    )
+    result = _paired_brier_test(_GOOD, two)
+    assert result is not None
+    n, _gain, _p = result
+    assert n == 2  # clusters, not the 20 rows
+
+
 # ---- grouping ----------------------------------------------------------------
 
 def test_cohorts_grouped_by_scope():
