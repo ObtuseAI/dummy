@@ -43,6 +43,11 @@ CRYPTO_HOURLY_MAX_HOURS = 3.0
 SOURCE_TAXONOMY: dict[str, str] = {
     "market_prior": "market",
     "market_debias": "market",
+    # Wave-14: the brain's own post-debate fused probability, recorded per
+    # scored market so pick accuracy is measurable (autonomy/picks.py). The
+    # OUTPUT of fusion, never a candidate: challenger_only=False keeps it out
+    # of the promotion ladder, and fusion never reads ledger rows back.
+    "fused_forecast": "fused",
     "sports_elo": "sports_elo",
     "sportsbook_consensus": "sportsbook",
     # Wave-9: licensed multi-book (The Odds API) de-vig consensus. Same

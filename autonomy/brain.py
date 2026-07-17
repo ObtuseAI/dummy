@@ -384,6 +384,23 @@ class PredatorBrain:
             await self._adjudicate_top_k(forecaster, scored, report)
             scored.sort(key=lambda t: edge_velocity(t[0], t[1]), reverse=True)
 
+        # Wave-14 (picks-first directive): persist the FINAL post-debate fused
+        # probability for every scored market as its own ledger row, so pick
+        # accuracy and calibration are measured on everything the machine
+        # opines on -- not just the handful it trades. Never feeds back into
+        # fusion (fusion consumes registry signals, not ledger rows) and never
+        # blocks the cycle.
+        from autonomy.picks import build_fused_signal
+
+        for market, forecast, _signals in scored:
+            try:
+                self.ledger.record_signal(
+                    build_fused_signal(market.ticker, forecast),
+                    mode=self.mode.value,
+                )
+            except Exception:
+                pass
+
         from autonomy.correlation import group_key
 
         allocator = Allocator(
