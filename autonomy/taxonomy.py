@@ -119,6 +119,10 @@ _SPECIALIST_PREFIXES: tuple[tuple[str, str], ...] = (
     # Licensed player props (licensed_prop_<stat>) are the sportsbook-consensus
     # family, same home as licensed_consensus (Wave-10).
     ("licensed_prop_", "sportsbook"),
+    # Wave-11 line-market sub-sources (licensed_consensus_total/_spread) share
+    # the sportsbook home; the bare "licensed_consensus" winner source stays an
+    # exact SOURCE_TAXONOMY entry above.
+    ("licensed_consensus_", "sportsbook"),
     ("mlb_", "mlb"),
     ("nfl_", "nfl"),
     ("ncaaf_", "ncaaf"),
