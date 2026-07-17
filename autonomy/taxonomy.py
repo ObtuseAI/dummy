@@ -83,6 +83,8 @@ SOURCE_TAXONOMY: dict[str, str] = {
     "ncaaf": "ncaaf",
     "nhl": "nhl",
     "ncaamb": "ncaamb",
+    # Wave-12: WNBA joins the routed team leagues (TeamLeagueSpecialist).
+    "wnba": "wnba",
     # WS-A2 (Phenon Harness): the power-ratings challenger emits
     # "power_ratings_<league>" per league (autonomy/signals/
     # sports_intelligence.py::PowerRatingsSignal) -- exact entries, not a

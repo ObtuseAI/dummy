@@ -140,6 +140,7 @@ _TEAM_WINNER_SERIES = {
     "KXNCAAFGAME": "ncaaf",
     "KXNHLGAME": "nhl",
     "KXNCAAMBGAME": "ncaamb",
+    "KXWNBAGAME": "wnba",
 }
 _TEAM_TOTAL_SERIES = {
     "KXNBATOTAL": "nba",
@@ -147,6 +148,7 @@ _TEAM_TOTAL_SERIES = {
     "KXNCAAFTOTAL": "ncaaf",
     "KXNHLTOTAL": "nhl",
     "KXNCAAMBTOTAL": "ncaamb",
+    "KXWNBATOTAL": "wnba",
 }
 _TEAM_SPREAD_SERIES = {
     "KXNBASPREAD": "nba",
@@ -154,6 +156,7 @@ _TEAM_SPREAD_SERIES = {
     "KXNCAAFSPREAD": "ncaaf",
     "KXNHLSPREAD": "nhl",
     "KXNCAAMBSPREAD": "ncaamb",
+    "KXWNBASPREAD": "wnba",
 }
 
 

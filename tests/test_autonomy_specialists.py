@@ -137,7 +137,7 @@ def test_factory_routes_each_vertical_to_exactly_one_specialist():
 
     council = build_specialist_registry(_FakeSourceRegistry())
     names = [specialist.name for specialist in council.specialists()]
-    assert names == ["mlb", "nba", "nfl", "ncaaf", "nhl", "ncaamb", "crypto"]
+    assert names == ["mlb", "nba", "nfl", "ncaaf", "nhl", "ncaamb", "wnba", "crypto"]
 
     cases = {
         "KXMLBGAME-26JUL122005HOUTEX-HOU": "mlb",
@@ -146,6 +146,8 @@ def test_factory_routes_each_vertical_to_exactly_one_specialist():
         "KXNHLGAME-26OCT09NYRBOS-NYR": "nhl",
         "KXNCAAFGAME-26SEP05TEXOU-TEX": "ncaaf",
         "KXNCAAMBGAME-26NOV20DUKEUNC-DUKE": "ncaamb",
+        # Wave-12: WNBA joined the routed team leagues.
+        "KXWNBAGAME-26JUL12LVNY-LV": "wnba",
     }
     for ticker, expected in cases.items():
         routed = council.route(_market(ticker, "winner?"))
@@ -155,9 +157,8 @@ def test_factory_routes_each_vertical_to_exactly_one_specialist():
         "KXBTCD-26JUL1217-T71249.99", "BTC above?", vertical=Vertical.CRYPTO))
     assert crypto is not None and crypto.name == "crypto"
 
-    # No specialist claims WNBA or retired/unknown series: route -> None and
-    # callers fall back to their pre-council behavior.
-    assert council.route(_market("KXWNBAGAME-26JUL12LVNY-LV", "WNBA winner?")) is None
+    # No specialist claims retired/unknown series: route -> None and callers
+    # fall back to their pre-council behavior.
     assert council.route(_market("KXUFCFIGHT-26JUL12ABCDEF-ABC", "UFC?")) is None
 
 
