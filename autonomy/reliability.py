@@ -27,6 +27,11 @@ from autonomy.taxonomy import grading_scope
 DEFAULT_MAPS_PATH = Path("runtime/autonomy/reliability_maps.json")
 MIN_CALIBRATION_CLUSTERS = 200
 CALIBRATION_BINS = 10
+# Sports scopes: a season cannot reach the crypto cluster bar mid-year, so
+# sports maps fit at a lower bar with coarser bins (honesty preserved by
+# having ~10+ clusters per bin on average, same ratio as crypto's 200/10).
+SPORTS_MIN_CALIBRATION_CLUSTERS = 60
+SPORTS_CALIBRATION_BINS = 6
 CALIBRATION_MAP_VERSION = 1
 
 # Curated rollout (emitted source strings), not auto-everything.
@@ -183,7 +188,22 @@ def fit_maps_from_rows(
              str(row.event_cluster)))
     maps: dict[str, list[Knot]] = {}
     for scope, pairs in grouped.items():
-        knots = fit_reliability_map(pairs)
+        # Sports seasons cannot accrue 200 clusters per scope mid-season (MLB
+        # totals sits at ~45 after six weeks), so the crypto bar left the
+        # calibration machinery permanently dark for the scopes that need it
+        # most (MLB totals is measurably overconfident above the 60th
+        # percentile). Sports scopes use a lower cluster bar with COARSER bins
+        # -- fewer knots per cluster keeps the isotonic fit honest at the
+        # smaller n; crypto keeps the original 200/10.
+        source_of_scope = scope.split("|", 1)[0]
+        if source_of_scope in SPORTS_CALIBRATED_SOURCES:
+            knots = fit_reliability_map(
+                pairs,
+                bins=SPORTS_CALIBRATION_BINS,
+                min_clusters=SPORTS_MIN_CALIBRATION_CLUSTERS,
+            )
+        else:
+            knots = fit_reliability_map(pairs)
         if knots is not None:
             maps[scope] = knots
     return maps

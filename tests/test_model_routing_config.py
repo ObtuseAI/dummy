@@ -20,35 +20,37 @@ def test_load_default_config():
     cfg = load_model_routing_config()
     assert cfg.mock_fallback_enabled is True
     assert cfg.max_prompt_length == 16000
-    assert "deepseek_v4_flash" in cfg.provider_configs
+    assert "glm_5_2" in cfg.provider_configs
     assert "minimax_m3" in cfg.provider_configs
+    # deepseek remains configured as a fallback alias target only.
+    assert "deepseek_v4_flash" in cfg.provider_configs
 
 
 def test_provider_configs_are_parsed():
     cfg = load_model_routing_config()
-    ds = cfg.provider_configs["deepseek_v4_flash"]
-    assert isinstance(ds, ProviderConfig)
-    assert ds.api_base == "https://openrouter.ai/api"
-    assert ds.api_key_env == "OPENROUTER_API_KEY"
-    assert ds.model_name == "deepseek/deepseek-chat"
-    assert ds.rpm == 60
-    assert ds.timeout_seconds == 20.0
+    glm = cfg.provider_configs["glm_5_2"]
+    assert isinstance(glm, ProviderConfig)
+    assert glm.api_base == "https://openrouter.ai/api"
+    assert glm.api_key_env == "OPENROUTER_API_KEY"
+    assert glm.model_name == "z-ai/glm-5.2"
+    assert glm.rpm == 60
+    assert glm.timeout_seconds == 20.0
 
     mx = cfg.provider_configs["minimax_m3"]
     assert mx.api_base == "https://openrouter.ai/api"
     assert mx.api_key_env == "OPENROUTER_API_KEY"
-    assert mx.model_name == "minimax/minimax-01"
+    assert mx.model_name == "minimax/minimax-m3"
 
 
 def test_default_provider_mapping():
     cfg = load_model_routing_config()
-    assert cfg.default_provider["forecast_opinion"] == "deepseek_v4_flash"
+    assert cfg.default_provider["forecast_opinion"] == "glm_5_2"
     assert cfg.default_provider["strategy_critique"] == "minimax_m3"
-    assert cfg.default_provider["risk_critique"] == "deepseek_v4_flash"
+    assert cfg.default_provider["risk_critique"] == "minimax_m3"
     assert cfg.default_provider["no_trade_reason"] == "minimax_m3"
-    assert cfg.default_provider["trade_draft"] == "deepseek_v4_flash"
+    assert cfg.default_provider["trade_draft"] == "glm_5_2"
     assert cfg.default_provider["calibration_note"] == "minimax_m3"
-    assert cfg.default_provider["market_thesis"] == "minimax_m3"
+    assert cfg.default_provider["market_thesis"] == "glm_5_2"
     assert cfg.default_provider["hybrid_review"] == "hybrid"
 
 

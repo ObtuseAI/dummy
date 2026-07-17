@@ -40,7 +40,10 @@ class ModelRouter:
     def route(self, task: ModelTask) -> ModelRouteDecision:
         default = self.config.default_provider.get(task.value, "mock")
         if default == "hybrid":
-            default = "deepseek_v4_flash"
+            # The hybrid panel's primary reviewer is GLM-5.2 (operator
+            # directive 2026-07-17: GLM-5.2 + MiniMax-M3 hybrid); the M3
+            # counter-view is requested by the panel caller, not the router.
+            default = "glm_5_2"
         pc = self.config.provider_configs.get(default)
         model = pc.model_name if pc else "mock"
         if not self.providers[default].available:

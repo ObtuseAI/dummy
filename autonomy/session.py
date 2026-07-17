@@ -7,6 +7,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
+from autonomy.execution_policy import ExecutionPolicy
 from autonomy.executor import (
     AUTONOMY_ACK,
     KILL_PATH,
@@ -444,6 +445,11 @@ def build_brain(mode: SessionMode):
             # venue halt state at the moment of submit.
             staleness_policy=DEFAULT_STALENESS_POLICY,
             exchange_status_fn=fetch_exchange_status if live else None,
+            # Operator-selected execution policy (DUMMY_EXECUTION_POLICY env,
+            # the explicit-config leg of POLICY_SWITCH_AUTHORITY). Defaults to
+            # the maker-only control; C1 adopts the tournament's gate-eligible
+            # taker cohort for both shadow and live books.
+            execution_policy=ExecutionPolicy.from_env(),
         ),
         reconciler=reconciler,
         learner=Learner(ledger, router=router),

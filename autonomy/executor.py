@@ -90,15 +90,14 @@ class Executor:
         execution_policy: ExecutionPolicy | None = None,
     ) -> None:
         self.mode = mode
-        # Typed execution policy (Wave-2 A2/F2). The default is the incumbent
-        # maker-only control (C0): when the policy is the control, execute()
-        # takes the exact pre-existing code path with zero new branches, so C0
-        # reproduces current behavior byte for byte. Only a non-control policy
-        # (an adverse-guard maker, or a taker/hybrid cohort under evaluation)
-        # consults the new guard hooks below. The tournament's taker/hybrid P&L
-        # is measured counterfactually in the replay layer
-        # (autonomy/execution_tournament.py); this executor stays maker-first on
-        # the live path and never crosses the spread here.
+        # Typed execution policy (Wave-2 A2/F2; Wave-5 taker path). The default
+        # is the incumbent maker-only control (C0): when the policy is the
+        # control, execute() takes the exact pre-existing code path with zero
+        # new branches, so C0 reproduces current behavior byte for byte. A
+        # non-control adverse-guard maker (C3) consults the divergence guard;
+        # a taker policy (C1, tournament-backed 2026-07-17) reprices orders to
+        # cross the freshest book in BOTH shadow and live paths via
+        # _apply_taker_policy — fail-closed, EV re-checked net of taker fee.
         self.execution_policy = execution_policy or ExecutionPolicy.maker_only_control()
         self.session_path = session_path or SESSION_PATH
         self.kill_path = kill_path or KILL_PATH
@@ -160,13 +159,28 @@ class Executor:
         if guarded is not None:
             return guarded
 
+        # Taker policy (Wave-5, tournament-backed): when the operator-selected
+        # policy takes liquidity (C1), reprice the order to cross the freshest
+        # book instead of resting a maker quote. Applied BEFORE the shadow/live
+        # fork so paper evidence accrues under the same policy the live path
+        # would use. Fail-closed on any missing/unpriceable book or an EV (net
+        # of the taker fee) below the policy minimum.
+        repriced = self._apply_taker_policy(decision)
+        if isinstance(repriced, TradeOutcome):
+            return repriced
+        decision = repriced
+
         if self.mode is SessionMode.SHADOW:
             submitted_at = datetime.now(timezone.utc)
             expiration_ts = int(submitted_at.timestamp()) + order_ttl_seconds(
                 decision.market_ticker
             )
             detail: dict[str, Any] = {
-                "note": "shadow maker order pending witnessed fill",
+                "note": (
+                    "shadow taker order (crossed book) pending witnessed fill"
+                    if self.execution_policy.mode == "taker"
+                    else "shadow maker order pending witnessed fill"
+                ),
                 "state": "resting",
                 "side": decision.side,
                 "count": decision.count,
@@ -250,8 +264,10 @@ class Executor:
 
         # Real-time re-quote guard: if the freshest book shows our resting
         # maker price would now cross (take liquidity), skip — the edge was
-        # computed as a maker and adverse selection has arrived.
-        if self.quote_fn is not None:
+        # computed as a maker and adverse selection has arrived. (Maker path
+        # only: a taker policy crossing the book is the intent, not adverse
+        # selection — its EV was just re-checked against the same fresh book.)
+        if self.quote_fn is not None and self.execution_policy.mode != "taker":
             try:
                 fresh = self.quote_fn(decision.market_ticker)
             except Exception:
@@ -426,6 +442,46 @@ class Executor:
                     },
                 )
         return None
+
+    def _apply_taker_policy(self, decision: Decision) -> "Decision | TradeOutcome":
+        """Reprice a decision to cross the freshest book under a taker policy.
+
+        No-op (returns the decision unchanged) unless the active policy's mode
+        is taker. Otherwise: fetch the freshest book, require a priceable ask
+        for the decision's side, re-check EV net of the Kalshi taker fee
+        against ``taker_min_ev_cents``, and return a copy of the decision
+        priced at the ask. Every failure blocks fail-closed — a taker policy
+        never silently degrades back into a resting maker quote.
+        """
+        if self.execution_policy.mode != "taker":
+            return decision
+        fresh = None
+        if self.quote_fn is not None:
+            try:
+                fresh = self.quote_fn(decision.market_ticker)
+            except Exception:
+                fresh = None
+        ask = (fresh or {}).get(f"{decision.side}_ask")
+        if ask is None:
+            return self._blocked(decision, "taker_no_fresh_book")
+        try:
+            ask = int(ask)
+        except (TypeError, ValueError):
+            return self._blocked(decision, "taker_ask_unpriceable")
+        if not (1 <= ask <= 99):
+            return self._blocked(decision, "taker_ask_unpriceable")
+        from dataclasses import replace as dataclass_replace
+
+        from autonomy.fees import kalshi_taker_fee_cents
+
+        p_yes = float(decision.forecast.probability_yes)
+        p_side = p_yes if decision.side == "yes" else 1.0 - p_yes
+        fee = kalshi_taker_fee_cents(ask, decision.count, decision.market_ticker)
+        ev_per_contract = p_side * 100.0 - ask - (fee / max(1, decision.count))
+        min_ev = float(self.execution_policy.taker_min_ev_cents or 0.0)
+        if ev_per_contract < min_ev:
+            return self._blocked(decision, "taker_ev_below_min")
+        return dataclass_replace(decision, price_cents=ask)
 
     def _blocked(self, decision: Decision, reason: str) -> TradeOutcome:
         return TradeOutcome(

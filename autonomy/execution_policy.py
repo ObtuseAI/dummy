@@ -246,6 +246,35 @@ class ExecutionPolicy:
             taker_min_ev_cents=float(taker_min_ev_cents),
         )
 
+    @classmethod
+    def from_env(cls, env: dict[str, str] | None = None) -> ExecutionPolicy:
+        """The operator-selected live execution policy (the explicit-config leg
+        of :data:`POLICY_SWITCH_AUTHORITY`).
+
+        ``DUMMY_EXECUTION_POLICY`` selects a cohort: ``C0`` (default control),
+        ``C1`` (taker-only, the 2026-07-17 tournament's gate-eligible near-
+        leader at +4.4c/contract vs the control's -8.9c), or ``C3`` (adverse-
+        guard maker). ``C2`` needs its walk-forward fold selector and ``C4``
+        needs a cross-cycle order-state machine before they can drive the LIVE
+        submit path, so those values — and anything unrecognized — fail closed
+        to the control rather than approximating a policy the operator did not
+        get.
+        """
+        import os
+
+        raw = str((env if env is not None else os.environ).get(
+            ENV_EXECUTION_POLICY_VAR, "") or "").strip().upper()
+        if raw == COHORT_TAKER:
+            return cls.taker_only()
+        if raw == COHORT_ADVERSE_GUARD_MAKER:
+            return cls.adverse_guard_maker()
+        return cls.maker_only_control()
+
+
+# Operator env switch consumed by ExecutionPolicy.from_env (whitelisted in
+# core/env_loader.RUNTIME_ENV_REFS so the daemon picks it up from .env).
+ENV_EXECUTION_POLICY_VAR = "DUMMY_EXECUTION_POLICY"
+
 
 def default_cohorts() -> tuple[ExecutionPolicy, ...]:
     """The canonical C0-C4 tournament field, control first."""
@@ -265,6 +294,7 @@ __all__ = [
     "COHORT_ORDER",
     "COHORT_TAKER",
     "COHORT_TAKER_WALK_FORWARD",
+    "ENV_EXECUTION_POLICY_VAR",
     "ExecutionPolicy",
     "MODES",
     "MODE_HYBRID",

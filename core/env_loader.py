@@ -28,7 +28,14 @@ LIVE_PROOF_ENV_REFS = {
     "DUMMY_LIVE_PROOF_ACK",
 }
 
-ALLOWED_ENV_REFS = KALSHI_ENV_REFS | LIVE_PROOF_ENV_REFS
+# Operator runtime switches (non-secret): the live LLM panel opt-in and the
+# execution-policy cohort selection. Values are plain flags, never secrets.
+RUNTIME_ENV_REFS = {
+    "DUMMY_DEBATE_LIVE",
+    "DUMMY_EXECUTION_POLICY",
+}
+
+ALLOWED_ENV_REFS = KALSHI_ENV_REFS | LIVE_PROOF_ENV_REFS | RUNTIME_ENV_REFS
 
 
 def _parse_dotenv(path: Path) -> dict[str, str]:
