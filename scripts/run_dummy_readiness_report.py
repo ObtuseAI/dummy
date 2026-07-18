@@ -213,6 +213,22 @@ def main() -> int:
         clv_by_scope=clv_by_scope,
         challenger_gated_scopes=challenger_gated)
 
+    # Wave-14 (picks-first directive 2026-07-17): outcome-grounded pick
+    # accuracy + calibration for the FUSED forecast, leading the report.
+    # No market benchmark enters this section -- ground truth is settlements.
+    # Fail-open: a picks failure must never cost the readiness report.
+    try:
+        from autonomy.picks import pick_accuracy_report  # noqa: E402
+
+        picks_conn = sqlite3.connect(f"file:{args.db}?mode=ro", uri=True)
+        try:
+            built["report"]["picks"] = pick_accuracy_report(picks_conn)
+        finally:
+            picks_conn.close()
+    except Exception as exc:
+        built["report"]["picks"] = {
+            "status": "ERROR", "error": f"{type(exc).__name__}: {exc}"[:200]}
+
     _write_json(REPORT_PATH, built["report"])
     merged_demotions = _merge_demotions(DEFAULT_DEMOTIONS_PATH, built["demotions"], now_iso)
     _write_json(DEFAULT_DEMOTIONS_PATH, merged_demotions)
@@ -239,6 +255,20 @@ def main() -> int:
     where_we_bleed = _where_we_bleed()
     if where_we_bleed:
         summary["where_we_bleed"] = where_we_bleed
+
+    # Wave-14: the one-line picks readout (fused accuracy is the headline
+    # number under the picks-first directive; absent until rows accrue).
+    try:
+        fused = (built["report"].get("picks") or {}).get("sources", [])
+        overall = fused[0]["overall"] if fused else {}
+        if overall.get("n"):
+            summary["fused_picks"] = {
+                "n": overall["n"],
+                "hit_rate": overall.get("hit_rate"),
+                "brier": overall.get("brier"),
+            }
+    except Exception:
+        pass
 
     # Autonomous thresholded promotion pass (owner directive 2026-07-16):
     # runs INSIDE this existing daily task path -- no new schtasks. Crash-
