@@ -400,6 +400,15 @@ class PredatorBrain:
                 )
             except Exception:
                 pass
+        # Wave-15: publish the bet board straight from this cycle's in-memory
+        # scores (titles included, ledger untouched -- the dashboard reads the
+        # artifact, never contends with this process's write lock).
+        try:
+            from autonomy.bet_board import write_board_artifact
+
+            write_board_artifact([(m, f) for m, f, _s in scored])
+        except Exception:
+            pass
 
         from autonomy.correlation import group_key
 

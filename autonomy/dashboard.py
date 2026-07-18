@@ -997,7 +997,7 @@ function renderBoard(){
    if(!rows.length)continue;
    section+=`<div class="section-title" style="margin:10px 0 6px;font-size:12px;color:var(--muted)">${esc(bt.replace(/_/g,' ').toUpperCase())} · ${rows.length}</div>`
     +'<div class="table-wrap"><table><tr><th>#</th><th>market</th><th>pick</th><th>tier</th><th>dummy prob</th><th>market prob</th><th>edge</th><th>as of</th></tr>'
-    +rows.map(r=>`<tr><td>${r.rank}</td><td><b>${esc(r.matchup)}</b><div class="muted" style="font-size:10px">${esc(r.ticker)}</div></td><td>${r.pick?`<b class="${r.pick==='yes'?'ok':'bad'}">${r.pick.toUpperCase()}</b>`:'<span class="muted">—</span>'}</td><td>${tierPill(r.tier)}</td><td><b>${(r.probability*100).toFixed(1)}%</b></td><td>${r.market_probability!=null?(r.market_probability*100).toFixed(1)+'%':'—'}</td>${edgeCell(r.edge)}<td class="muted">${(r.as_of||'').slice(11,16)}</td></tr>`).join('')
+    +rows.map(r=>`<tr><td>${r.rank}</td><td><b>${esc(r.title||r.matchup)}</b><div class="muted" style="font-size:10px">${esc(r.ticker)}</div></td><td>${r.pick?`<b class="${r.pick==='yes'?'ok':'bad'}">${r.pick.toUpperCase()}</b>`:'<span class="muted">—</span>'}</td><td>${tierPill(r.tier)}</td><td><b>${(r.probability*100).toFixed(1)}%</b></td><td>${r.market_probability!=null?(r.market_probability*100).toFixed(1)+'%':'—'}</td>${edgeCell(r.edge)}<td class="muted">${(r.as_of||b.generated_at||'').slice(11,16)}</td></tr>`).join('')
     +'</table></div>';
   }
   if(section) html+=`<div class="section-title" style="margin:16px 0 4px">${esc(lg.toUpperCase())}</div>`+section;
