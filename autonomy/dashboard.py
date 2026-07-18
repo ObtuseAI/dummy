@@ -488,6 +488,8 @@ def assemble_dashboard_state(runtime_dir: Path | None = None) -> dict[str, Any]:
             for c in cycles if c.get("bankroll_cents") is not None
         ][-30:],
         "alerts": alerts,
+        # Wave-16: the mounted live-game poller's session summary.
+        "live_poller": _load_json(rd / "live_poller_status.json") or {},
     }
 
 
@@ -638,6 +640,7 @@ _HTML = """<!doctype html>
  <div class="card"><h2>Scheduler fleet</h2><div id="fleet"></div></div>
  <div class="card" style="grid-column:1/-1"><h2>Council of specialists</h2><div id="council"></div></div>
  <div class="card"><h2>Liveness</h2><div id="live"></div></div>
+ <div class="card"><h2>Live game poller</h2><div id="livePoller"></div></div>
  <div class="card"><h2>Live canary gate</h2><div id="canary"></div></div>
  <div class="card"><h2>Risk</h2><div id="risk"></div></div>
  <div class="card"><h2>Forecast validation</h2><div id="validation"></div></div>
@@ -855,6 +858,14 @@ async function tick(){
    kv('status', `<span class="pill ${hb.alive?'live':'dead'}">${hb.alive?'ALIVE':'STALE'}</span>`)
    +kv('last cycle', hb.last_cycle_at||'—')+kv('last status', hb.last_status||'—')
    +kv('mode', hb.mode||'—')+kv('orders', hb.last_orders_placed??'—')+kv('signals', hb.last_signals??'—');
+ const lp=d.live_poller||{};
+ document.getElementById('livePoller').innerHTML =
+   kv('status', lp.status||'NOT RUN', lp.status==='SESSION_COMPLETE'||lp.status==='BUDGET_EXHAUSTED'?'ok':lp.status==='IDLE_NO_LIVE_GAMES'?'':'warn')
+   +kv('live games', lp.live_games??'—')
+   +kv('events this session', lp.events_recorded??'—')
+   +kv('polls', lp.polls??'—')
+   +kv('last session', (lp.at||'—').slice(11,19))
+   +kv('leagues', (lp.leagues||[]).join(', ')||'—');
  const c=d.canary||{};
  document.getElementById('canary').innerHTML =
    kv('ready', c.ready?'<b class="ok">YES</b>':'<b class="warn">NO</b>')
