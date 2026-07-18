@@ -96,6 +96,17 @@ class PromotionConfig:
     max_promotions_per_day: int = MAX_PROMOTIONS_PER_DAY
     stage2_min_trades: int = STAGE2_MIN_TRADES
     contested_disagreement: float = CONTESTED_DISAGREEMENT
+    # Wave-21: the ROI proof-of-profit door -- a SECOND, independent route to
+    # stage-1 promotion. A scope whose contested counterfactual record shows
+    # >= +5% fee-adjusted return on entry cost (cluster-bootstrap CI strictly
+    # above zero, at volume, over a real span) promotes even when the
+    # Brier-evidence door (beat rate / edge CI) has not cleared: money made
+    # against real quotes is its own proof. Correlation cap, daily cap, and
+    # probation weight still apply -- the door changes the EVIDENCE admitted,
+    # never the rails.
+    roi_path_min_roi: float = 0.05
+    roi_path_min_clusters: int = 200
+    roi_path_min_span_days: float = 7.0
 
     def as_dict(self) -> dict[str, Any]:
         return {
@@ -110,6 +121,9 @@ class PromotionConfig:
             "max_promotions_per_day": self.max_promotions_per_day,
             "stage2_min_trades": self.stage2_min_trades,
             "contested_disagreement": self.contested_disagreement,
+            "roi_path_min_roi": self.roi_path_min_roi,
+            "roi_path_min_clusters": self.roi_path_min_clusters,
+            "roi_path_min_span_days": self.roi_path_min_span_days,
         }
 
 
@@ -386,6 +400,83 @@ class ScopeEvidence:
     def failing_criteria(self) -> list[str]:
         d = self.dossier()
         return [k for k, v in d.items() if isinstance(v, dict) and v.get("pass") is False]
+
+
+def roi_door_evidence(
+    scope: str,
+    rows: list[Any],
+    *,
+    config: PromotionConfig = DEFAULT_CONFIG,
+) -> dict[str, Any]:
+    """The Wave-21 ROI proof-of-profit door: an INDEPENDENT stage-1 route.
+
+    Contested counterfactual record only (same disagreement bar as every
+    other gate): per cluster, sum fee-adjusted net dollars and entry cost;
+    scope ROI is the ratio of sums. The CI is a deterministic cluster-
+    resampled RATIO bootstrap (resample clusters with replacement, ratio of
+    the resampled sums), so correlated emissions inside one settlement never
+    manufacture confidence. Pass requires volume, span, point ROI at the
+    bar, and the CI floor strictly above zero.
+    """
+    import random
+
+    contested = [
+        r for r in rows if _is_contested(r, config.contested_disagreement)
+    ]
+    net_by_cluster: dict[str, float] = {}
+    cost_by_cluster: dict[str, float] = {}
+    timestamps: list[float] = []
+    for r in contested:
+        cluster = str(r.event_cluster)
+        market_p = _clamp01(r.market_probability)
+        side_yes = float(r.probability_yes) >= market_p
+        entry_cost = market_p if side_yes else (1.0 - market_p)
+        net_by_cluster[cluster] = net_by_cluster.get(cluster, 0.0) + counterfactual_pnl(r)
+        cost_by_cluster[cluster] = cost_by_cluster.get(cluster, 0.0) + entry_cost
+        ts = _row_ts(r)
+        if ts is not None:
+            timestamps.append(ts)
+
+    clusters = sorted(net_by_cluster)
+    n_clusters = len(clusters)
+    span_days = ((max(timestamps) - min(timestamps)) / 86400.0) if timestamps else 0.0
+    total_cost = sum(cost_by_cluster.values())
+    roi = (sum(net_by_cluster.values()) / total_cost) if total_cost > 0 else None
+
+    roi_ci: dict[str, Any] | None = None
+    if roi is not None and n_clusters >= 2:
+        rng = random.Random(f"roi_door:{scope}")
+        ratios: list[float] = []
+        for _ in range(1000):
+            sample = [clusters[rng.randrange(n_clusters)] for _ in range(n_clusters)]
+            cost = sum(cost_by_cluster[c] for c in sample)
+            if cost <= 0:
+                continue
+            ratios.append(sum(net_by_cluster[c] for c in sample) / cost)
+        if ratios:
+            roi_ci = {
+                "lower": round(_percentile(ratios, 0.025), 6),
+                "upper": round(_percentile(ratios, 0.975), 6),
+            }
+
+    passed = (
+        roi is not None
+        and n_clusters >= config.roi_path_min_clusters
+        and span_days >= config.roi_path_min_span_days
+        and roi >= config.roi_path_min_roi
+        and roi_ci is not None and (roi_ci.get("lower") or 0.0) > 0.0
+    )
+    return {
+        "pass": bool(passed),
+        "roi_on_entry_cost": round(roi, 6) if roi is not None else None,
+        "roi_ci95": roi_ci,
+        "threshold_roi": config.roi_path_min_roi,
+        "n_clusters": n_clusters,
+        "threshold_clusters": config.roi_path_min_clusters,
+        "span_days": round(span_days, 3),
+        "threshold_span_days": config.roi_path_min_span_days,
+        "n_contested": len(contested),
+    }
 
 
 def build_scope_evidence(
@@ -699,15 +790,53 @@ class AutoPromotionEngine:
                 config=cfg,
             )
             if not evidence.evidence_pass():
+                # Wave-21: the ROI proof-of-profit door. A scope that fails
+                # the Brier-evidence gates still promotes when its contested
+                # counterfactual record clears >= roi_path_min_roi on entry
+                # cost with a CI floor above zero, at volume, over a real
+                # span. Correlation cap and the daily cap apply unchanged.
+                roi_door = roi_door_evidence(scope, rows, config=cfg)
+                if roi_door["pass"]:
+                    if not evidence.correlation.get("ok"):
+                        result.replacement_candidates.append(ScopeDecision(
+                            scope=scope, action="REPLACEMENT_CANDIDATE", stage=1,
+                            weight_fraction=0.0,
+                            dossier={**evidence.dossier(), "roi_door": roi_door},
+                            reason="ROI door passed but correlated > %.2f with %s" % (
+                                cfg.correlation_cap,
+                                evidence.correlation.get("with_source")),
+                        ))
+                        continue
+                    decision = ScopeDecision(
+                        scope=scope, action="PROMOTE", stage=1,
+                        weight_fraction=cfg.stage1_weight_fraction,
+                        dossier={**evidence.dossier(), "roi_door": roi_door,
+                                 "promotion_path": "roi_proof_of_profit"},
+                        reason="ROI door: >= %.0f%% fee-adjusted return on entry"
+                               " cost, CI floor > 0" % (cfg.roi_path_min_roi * 100),
+                    )
+                    rank = float((roi_door.get("roi_ci95") or {}).get("lower") or 0.0)
+                    add_candidates.append((rank, decision))
+                    continue
                 dossier = evidence.dossier()
+                dossier["roi_door"] = roi_door
                 failing = sorted(
                     key for key, value in dossier.items()
                     if isinstance(value, dict) and value.get("pass") is False
+                    and key != "roi_door"
                 )
+                reason = "failed: " + (", ".join(failing) or "unknown")
+                if not roi_door["pass"]:
+                    reason += " (roi door: %s)" % (
+                        "roi %.3f < %.2f" % (roi_door["roi_on_entry_cost"],
+                                             cfg.roi_path_min_roi)
+                        if roi_door.get("roi_on_entry_cost") is not None
+                        and roi_door["roi_on_entry_cost"] < cfg.roi_path_min_roi
+                        else "volume/span/ci short")
                 result.declined.append(ScopeDecision(
                     scope=scope, action="DECLINED", stage=0,
                     weight_fraction=0.0, dossier=dossier,
-                    reason="failed: " + (", ".join(failing) or "unknown"),
+                    reason=reason,
                 ))
                 continue
             if not evidence.correlation.get("ok"):
@@ -776,6 +905,7 @@ __all__ = [
     "correlation_guard",
     "ScopeEvidence",
     "build_scope_evidence",
+    "roi_door_evidence",
     "demotion_breach",
     "RailsInputs",
     "RailsVerdict",
