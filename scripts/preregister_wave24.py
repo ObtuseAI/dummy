@@ -51,7 +51,7 @@ def main() -> int:
     registry = PreregistrationRegistry()
     for registration in REGISTRATIONS:
         record = registry.register(**registration)
-        print(f"{record['candidate_id']}: {record['status']} ({record['content_hash'][:12]})")
+        print(f"{record.candidate_id}: registered ({record.prereg_id[:12]})")
     return 0
 
 
