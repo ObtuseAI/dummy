@@ -13,6 +13,16 @@ import argparse
 import sys
 from pathlib import Path
 
+# Windowless launch (pythonw, the scheduled task): stdio handles are None and
+# uvicorn's default logging dies wiring a StreamHandler to them. Point both at
+# a log file so the server survives headless and stays debuggable.
+if sys.stdout is None or sys.stderr is None:
+    _log_dir = Path(__file__).resolve().parent.parent / "runtime" / "autonomy"
+    _log_dir.mkdir(parents=True, exist_ok=True)
+    _stream = open(_log_dir / "dashboard_stdout.log", "a", encoding="utf-8", buffering=1)
+    sys.stdout = sys.stdout or _stream
+    sys.stderr = sys.stderr or _stream
+
 ROOT = Path(__file__).resolve().parent.parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
