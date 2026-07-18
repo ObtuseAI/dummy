@@ -23,6 +23,7 @@ if (-not (Test-Path $pythonw)) { throw "pythonw.exe not found at $pythonw" }
 $vbs = @{
     "DummyShadowPredator"   = "$repo\scripts\tasks\launch_shadow_predator.vbs"
     "DummySimulationTrainer" = "$repo\scripts\tasks\launch_simulation_trainer.vbs"
+    "DummyVnextShadow"      = "$repo\scripts\tasks\launch_vnext_shadow.vbs"
 }
 
 foreach ($task in Get-ScheduledTask -TaskName "Dummy*") {

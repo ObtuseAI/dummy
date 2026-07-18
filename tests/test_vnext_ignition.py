@@ -1,8 +1,10 @@
 """Wave-26: the vNext shadow runtime ignition -- board-driven episodes, real
-settlement completion, real held-out cases."""
+settlement completion, real held-out cases. Wave-27: ledger-contention
+resilience -- a busy single-writer ledger defers, never fails the pass."""
 from __future__ import annotations
 
 import json
+import sqlite3
 from datetime import datetime, timedelta, timezone
 
 import autonomy.vnext_runtime as runtime
@@ -116,3 +118,37 @@ def test_pass_survives_missing_board_and_ledger(monkeypatch, tmp_path):
         board={}, db_path=str(tmp_path / "absent.db"))
     assert summary["issued"] == 0 and summary["completed"] == 0
     assert (tmp_path / "vnext_status.json").exists()
+
+
+def test_locked_ledger_reads_as_busy(monkeypatch, tmp_path):
+    # A concurrent EXCLUSIVE writer makes the read-only settlement read raise
+    # OperationalError("database is locked"); the helper classifies it "busy".
+    monkeypatch.setattr(runtime, "_LEDGER_BUSY_TIMEOUT_MS", 150)
+    db = tmp_path / "ledger.db"
+    AutonomyLedger(db)  # create the schema
+    holder = sqlite3.connect(db)
+    holder.execute("BEGIN EXCLUSIVE")
+    holder.execute(
+        "CREATE TABLE IF NOT EXISTS _lock_probe (x INTEGER)")
+    try:
+        settled, held, note = runtime._read_ledger_state(str(db), ["KXBTC15M-x-15"])
+    finally:
+        holder.rollback()
+        holder.close()
+    assert note == "busy" and settled == {} and held == ()
+
+
+def test_busy_ledger_defers_completion_but_still_issues(monkeypatch, tmp_path):
+    _patch_paths(monkeypatch, tmp_path)
+    ledger = AutonomyLedger(tmp_path / "ledger.db")
+    _seed_fused_history(ledger)
+    # Simulate a busy ledger: the read soft-fails, so completion is deferred,
+    # but issuing (board-only) still runs and no hard error is recorded.
+    monkeypatch.setattr(
+        runtime, "_read_ledger_state", lambda *a, **k: ({}, (), "busy"))
+    summary = runtime.run_shadow_pass(
+        board=_board(_board_row()), db_path=str(tmp_path / "ledger.db"))
+    assert summary["ledger_busy"] is True
+    assert summary["errors"] == []
+    assert summary["issued"] == 1 and summary["pending"] == 1
+    assert summary["completed"] == 0
