@@ -281,6 +281,47 @@ def _crypto_scanner(brain):
     )
 
 
+def _sports_scanner(brain):
+    """A sports-only scanner over the brain's watchlist (fresh Kalshi quotes)."""
+    from autonomy.ontology import Vertical
+    from autonomy.scanner import MarketScanner, classify_vertical
+
+    sports_series = [
+        series for series in brain.scanner.watchlist
+        if classify_vertical(series) is Vertical.SPORTS
+    ]
+    return MarketScanner(
+        fetch_series=brain.scanner.fetch_series,
+        watchlist=sports_series,
+        verticals={Vertical.SPORTS},
+    )
+
+
+def sports_live_micro_pass(
+    sports_scanner, forecast_fn, book_fn, opportunist, *, now_iso: str,
+    specialist_fn=None, tape_state: dict | None = None,
+) -> dict:
+    """Sports-only micro-pass (Wave-17): fresh Kalshi quotes, WARM model cache.
+
+    The live-burst analog of ``crypto_micro_pass``: no registry/council
+    warmup -- model caches persist from the last full pass, only sports
+    quotes are re-read, so an in-game score change reaches the mispricing
+    surface in seconds instead of on the next full-sweep cadence. Callers
+    gate it on the Wave-16 live tape (``autonomy.live_tape``): quiet tape,
+    no pass.
+    """
+    markets = sports_scanner.scan()
+    report = run_mispricing_sweep(
+        markets, forecast_fn, now_iso=now_iso, book_fn=book_fn, opportunist=opportunist,
+        specialist_fn=specialist_fn,
+    )
+    if tape_state is not None:
+        _persist_evidence(report, tape_state)
+    report.pop("tape_rows", None)
+    report.pop("entries", None)
+    return report
+
+
 def crypto_micro_pass(
     crypto_scanner, forecast_fn, book_fn, opportunist, *, now_iso: str,
     specialist_fn=None, tape_state: dict | None = None,
@@ -319,6 +360,9 @@ def main() -> int:
                         help="run crypto-only micro-passes between full sweeps")
     parser.add_argument("--fast-interval", type=int, default=30,
                         help="seconds between crypto micro-passes (with --crypto-fast)")
+    parser.add_argument("--live-burst-seconds", type=int, default=0,
+                        help="after the full pass, burst sports micro-passes for up to this many "
+                             "seconds while the live tape shows fresh in-game events (0 = off)")
     args = parser.parse_args()
 
     (
@@ -331,6 +375,7 @@ def main() -> int:
     # close candidates. Only the full sweep drives it (crypto is not sports).
     sports_close = _load_sports_close_tracker()
     crypto_scanner = _crypto_scanner(brain)
+    sports_scanner = _sports_scanner(brain)
     # WS-8: last-row-per-ticker tape index, carried across passes (both the
     # full sweep and the crypto fast lane share it) so a --loop run never
     # re-reads the whole tape file to dedup; a fresh process warm-starts it
@@ -394,6 +439,41 @@ def main() -> int:
                 time.sleep(interval)
     else:
         _tick()
+        # Wave-17 live burst: while real in-game events are landing on the
+        # Wave-16 tape, re-read sports quotes every ~20s with WARM models so
+        # a score change reaches the mispricing surface in seconds. Bounded
+        # by --live-burst-seconds so the invocation still exits well inside
+        # the task cadence (fire-and-exit preserved); a quiet tape ends the
+        # burst immediately.
+        if args.live_burst_seconds > 0:
+            from autonomy.live_tape import fresh_live_games
+
+            burst_deadline = time.monotonic() + args.live_burst_seconds
+            while time.monotonic() < burst_deadline:
+                try:
+                    live_games = fresh_live_games(120.0)
+                except Exception:
+                    break
+                if not live_games:
+                    break
+                time.sleep(min(20.0, max(0.0, burst_deadline - time.monotonic())))
+                try:
+                    now_iso = datetime.now(timezone.utc).isoformat()
+                    report = sports_live_micro_pass(
+                        sports_scanner, forecast_fn, book_fn, opportunist,
+                        now_iso=now_iso, specialist_fn=specialist_fn,
+                        tape_state=tape_state)
+                    print(json.dumps({
+                        "status": "LIVE_BURST_OK",
+                        "live_games": len(live_games),
+                        "scanned": report["scanned"],
+                        "opportunities": report["opportunity_count"],
+                    }))
+                except Exception as exc:
+                    print(json.dumps({
+                        "status": f"LIVE_BURST_ERROR:{type(exc).__name__}",
+                        "error": str(exc)[:200]}))
+                    break
     return 0
 
 

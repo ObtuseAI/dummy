@@ -390,14 +390,29 @@ class PredatorBrain:
         # opines on -- not just the handful it trades. Never feeds back into
         # fusion (fusion consumes registry signals, not ledger rows) and never
         # blocks the cycle.
-        from autonomy.picks import build_fused_signal
+        from autonomy.picks import (
+            build_calibrated_fused_signal,
+            build_fused_signal,
+            load_fused_maps,
+        )
 
+        # Wave-17: nightly reliability maps for the fused output (empty until
+        # enough Wave-14 rows settle -- the shadow calibration self-activates
+        # as evidence accrues, no switch to flip).
+        try:
+            fused_maps = load_fused_maps()
+        except Exception:
+            fused_maps = {}
         for market, forecast, _signals in scored:
             try:
                 self.ledger.record_signal(
                     build_fused_signal(market.ticker, forecast),
                     mode=self.mode.value,
                 )
+                calibrated = build_calibrated_fused_signal(
+                    market.ticker, forecast, fused_maps)
+                if calibrated is not None:
+                    self.ledger.record_signal(calibrated, mode=self.mode.value)
             except Exception:
                 pass
         # Wave-15: publish the bet board straight from this cycle's in-memory

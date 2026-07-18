@@ -77,7 +77,13 @@ def _sports_calibrated_sources() -> frozenset[str]:
 
 SPORTS_CALIBRATED_SOURCES = _sports_calibrated_sources()
 
-CALIBRATED_SOURCES = CRYPTO_CALIBRATED_SOURCES | SPORTS_CALIBRATED_SOURCES
+# Wave-17: the fused output itself earns per-scope reliability maps once its
+# Wave-14 rows settle; the brain then emits a SHADOW "fused_forecast::cal"
+# variant so the correction's value is measured head-to-head before it is
+# ever allowed to touch the decision path.
+CALIBRATED_SOURCES = (
+    CRYPTO_CALIBRATED_SOURCES | SPORTS_CALIBRATED_SOURCES | frozenset({"fused_forecast"})
+)
 
 Knot = tuple[float, float]  # (predicted, calibrated)
 
