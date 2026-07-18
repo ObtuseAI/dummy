@@ -349,6 +349,13 @@ def build_brain(mode: SessionMode):
 
     for _segment_league in ("wnba", "nba", "ncaamb", "nfl", "ncaaf"):
         registry.register(BasketballSegmentSignal(league=_segment_league))
+    # Wave-22: the Universal Sports Engine sidecar's champion-ensemble view,
+    # priced from the use_predictions.json artifact (the ARTIFACT is the
+    # boundary -- an absent/broken sidecar leaves this signal inert).
+    # Challenger-only per league (use_sim_<league>), two-door ladder as usual.
+    from autonomy.signals.use_sim import UseSimSignal
+
+    registry.register(UseSimSignal())
     # Fantasy triangulation leg #1: FanGraphs projection consensus. Per-team
     # rest-of-season projection rates -> MLB winner/total fair value via the same
     # baseball poisson plumbing the results-EWMA model prices with. Shares the one
