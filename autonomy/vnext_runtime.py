@@ -266,6 +266,36 @@ def settlements_for(conn: sqlite3.Connection, tickers: list[str]) -> dict[str, b
     return {str(t): bool(r) for t, r in rows}
 
 
+# The autonomy ledger is a single-writer, non-WAL SQLite file the brain writes
+# every cycle. A read-only settlement/held-out read that lands mid-write raises
+# OperationalError("database is locked"). Because completion is deferrable, that
+# is an expected transient, not a failure -- honored below by returning a
+# "busy" note the pass treats as a soft skip.
+_LEDGER_BUSY_TIMEOUT_MS = 8000
+
+
+def _read_ledger_state(
+    db_path: str, pending_ids: list[str]
+) -> tuple[dict[str, bool], tuple[Any, ...], str | None]:
+    """(settled_map, held_out_cases, note): note is None | "busy" | "ledger:<Exc>"."""
+    conn = None
+    try:
+        conn = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True, timeout=10)
+        conn.execute(f"PRAGMA busy_timeout = {_LEDGER_BUSY_TIMEOUT_MS}")
+        settled_map = settlements_for(conn, pending_ids)
+        held_out = held_out_cases_from_ledger(conn)
+        return settled_map, held_out, None
+    except sqlite3.OperationalError as exc:
+        if "locked" in str(exc).lower() or "busy" in str(exc).lower():
+            return {}, (), "busy"
+        return {}, (), f"ledger:{type(exc).__name__}"
+    except sqlite3.Error as exc:
+        return {}, (), f"ledger:{type(exc).__name__}"
+    finally:
+        if conn is not None:
+            conn.close()
+
+
 def run_shadow_pass(
     *,
     board: dict[str, Any] | None = None,
@@ -292,19 +322,15 @@ def run_shadow_pass(
 
     # ---- COMPLETE settled episodes (and expire the abandoned) --------------
     kept: list[dict[str, Any]] = []
-    settled_map: dict[str, bool] = {}
-    conn = None
-    try:
-        conn = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True, timeout=10)
-        settled_map = settlements_for(
-            conn, [str(p.get("market_id")) for p in pending])
-        held_out = held_out_cases_from_ledger(conn)
-    except sqlite3.Error as exc:
-        summary["errors"].append(f"ledger:{type(exc).__name__}")
-        held_out = ()
-    finally:
-        if conn is not None:
-            conn.close()
+    settled_map, held_out, note = _read_ledger_state(
+        db_path, [str(p.get("market_id")) for p in pending])
+    # Completion is deferrable: pending persists and the next pass retries, so
+    # a busy single-writer ledger is a soft skip, never a hard error. ISSUE
+    # below touches only the board artifact and always runs.
+    if note == "busy":
+        summary["ledger_busy"] = True
+    elif note is not None:
+        summary["errors"].append(note)
 
     ledger_sink = JsonlEpisodeLedger(EPISODES_PATH)
     for record in pending:
