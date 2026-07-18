@@ -405,14 +405,16 @@ class PredatorBrain:
             fused_maps = {}
         for market, forecast, _signals in scored:
             try:
-                self.ledger.record_signal(
-                    build_fused_signal(market.ticker, forecast),
-                    mode=self.mode.value,
-                )
+                # Ledger mode is an evidence-provenance axis accepting only
+                # live/retro -- the brain records everything (incl. its own
+                # per-source signals above) under the default, session mode
+                # notwithstanding. Passing mode=self.mode.value ("shadow")
+                # silently rejected 24k fused rows as invalid_mode.
+                self.ledger.record_signal(build_fused_signal(market.ticker, forecast))
                 calibrated = build_calibrated_fused_signal(
                     market.ticker, forecast, fused_maps)
                 if calibrated is not None:
-                    self.ledger.record_signal(calibrated, mode=self.mode.value)
+                    self.ledger.record_signal(calibrated)
             except Exception:
                 pass
         # Wave-15: publish the bet board straight from this cycle's in-memory

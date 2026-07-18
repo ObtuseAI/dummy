@@ -19,7 +19,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any, Callable, Iterable
 
 from autonomy.ontology import MarketView, Signal
 from autonomy.taxonomy import grading_scope
@@ -203,16 +203,61 @@ def fit_maps_from_rows(
         # smaller n; crypto keeps the original 200/10.
         source_of_scope = scope.split("|", 1)[0]
         if source_of_scope in SPORTS_CALIBRATED_SOURCES:
-            knots = fit_reliability_map(
-                pairs,
-                bins=SPORTS_CALIBRATION_BINS,
-                min_clusters=SPORTS_MIN_CALIBRATION_CLUSTERS,
-            )
+            def _fit(fit_pairs):
+                return fit_reliability_map(
+                    fit_pairs,
+                    bins=SPORTS_CALIBRATION_BINS,
+                    min_clusters=SPORTS_MIN_CALIBRATION_CLUSTERS,
+                )
         else:
-            knots = fit_reliability_map(pairs)
+            def _fit(fit_pairs):
+                return fit_reliability_map(fit_pairs)
+        knots = _validated_fit(pairs, _fit)
         if knots is not None:
             maps[scope] = knots
     return maps
+
+
+# Publishing a map is a claim that the correction HELPS. Wave-18 forensics
+# found the btc|ladder|hourly ::cal shadows bleeding WORSE than their raw
+# parents (-3.3% vs -1.0% cluster edge): an isotonic fit on a thin noisy
+# scope memorizes noise, and forward grading then pays for it. Every map must
+# now beat the identity transform on held-out clusters before it is
+# published at all.
+_VALIDATION_HOLDOUT_MODULUS = 5      # ~20% of clusters held out
+_VALIDATION_MIN_HOLDOUT_PAIRS = 10
+
+
+def _validated_fit(
+    pairs: list[tuple[float, float, str]],
+    fit_fn: Callable[[list[tuple[float, float, str]]], list[Knot] | None],
+) -> list[Knot] | None:
+    """Fit on ~80% of clusters, publish only if the map beats identity on the
+    held-out ~20% (Brier), then refit on everything for the published knots.
+
+    The holdout split is deterministic by cluster-id hash, so one cluster's
+    rows never straddle the split and reruns agree. Insufficient holdout ->
+    no map (a correction that cannot be validated is not published)."""
+    import hashlib
+
+    def _held_out(cluster: str) -> bool:
+        digest = hashlib.sha256(str(cluster).encode("utf-8")).digest()
+        return digest[0] % _VALIDATION_HOLDOUT_MODULUS == 0
+
+    fit_pairs = [pair for pair in pairs if not _held_out(pair[2])]
+    holdout = [pair for pair in pairs if _held_out(pair[2])]
+    if len(holdout) < _VALIDATION_MIN_HOLDOUT_PAIRS:
+        return None
+    candidate = fit_fn(fit_pairs)
+    if candidate is None:
+        return None
+    brier_raw = sum((p - y) ** 2 for p, y, _ in holdout) / len(holdout)
+    brier_cal = sum(
+        (apply_reliability(candidate, p) - y) ** 2 for p, y, _ in holdout
+    ) / len(holdout)
+    if brier_cal >= brier_raw:
+        return None
+    return fit_fn(pairs)
 
 
 class ReliabilityMaps:

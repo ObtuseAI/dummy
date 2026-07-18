@@ -24,13 +24,23 @@ from autonomy.ontology import MarketView, Signal, Vertical
 from autonomy.signals.sports_intelligence import MODEL_DIR
 from autonomy.sports.basketball_segments import (
     SEGMENT_MODEL_VERSION,
-    first_half_outcome_probabilities,
-    first_half_spread_probability,
-    first_half_total_probability,
+    segment_outcome_probabilities,
+    segment_spread_probability,
+    segment_total_probability,
+    team_total_probability,
 )
 from autonomy.sports.espn import EspnClient, canonical_team
+from autonomy.sports.segment_shares import segment_share
 from autonomy.sports.team_scores import LEAGUE_SCORE_CONFIGS, TeamScoreModel
-from autonomy.sports_markets import H1, SPREAD, TOTAL, WINNER, classify
+from autonomy.sports_markets import FULL, SPREAD, TEAM_TOTAL, TOTAL, WINNER, classify
+
+# Source-name vernacular per registry segment key, matching the Kalshi series
+# naming and the Wave-13 sources already graded (wnba_1h_* stays wnba_1h_*).
+_SEGMENT_LABEL = {
+    "h1": "1h", "h2": "2h",
+    "q1": "1q", "q2": "2q", "q3": "3q", "q4": "4q",
+    "p1": "1p", "p2": "2p", "p3": "3p",
+}
 
 # parts[1] of a game ticker: YY MON DD [HHMM] TEAMS [G<n>]. Spread titles on
 # the half surface carry no "A vs B" clause ("Will Phoenix win the 1H by over
@@ -87,10 +97,12 @@ class BasketballSegmentSignal:
                 pass  # keep the last-loaded state rather than go cold on a blip
 
     def _handles(self, info) -> bool:
+        if info is None or info.league != self.league or info.is_prop:
+            return False
+        if info.segment == FULL:
+            return info.market_type == TEAM_TOTAL
         return (
-            info is not None
-            and info.league == self.league
-            and info.segment == H1
+            segment_share(self.league, info.segment) is not None
             and info.market_type in (WINNER, TOTAL, SPREAD)
         )
 
@@ -121,30 +133,7 @@ class BasketballSegmentSignal:
         away = canonical_team(self.league, game.away)
 
         subject_home = False
-        if info.market_type == WINNER:
-            p_home, p_tie, p_away = first_half_outcome_probabilities(
-                prediction, margin_sigma)
-            if info.is_tie:
-                probability, label = p_tie, "tie"
-            else:
-                if not info.subject:
-                    return None
-                subject = canonical_team(self.league, info.subject)
-                if subject == home:
-                    probability, label, subject_home = p_home, subject, True
-                elif subject == away:
-                    probability, label = p_away, subject
-                else:
-                    return None
-            source = f"{self.league}_1h_winner"
-            detail = f"first-half {label}"
-        elif info.market_type == TOTAL:
-            if info.threshold is None:
-                return None
-            probability = first_half_total_probability(prediction, info.threshold)
-            source = f"{self.league}_1h_total"
-            detail = f"first-half over {info.threshold:g}"
-        else:  # SPREAD
+        if info.market_type == TEAM_TOTAL:
             if info.threshold is None or not info.subject:
                 return None
             subject = canonical_team(self.league, info.subject)
@@ -152,10 +141,51 @@ class BasketballSegmentSignal:
                 subject_home = True
             elif subject != away:
                 return None
-            probability = first_half_spread_probability(
+            probability = team_total_probability(
                 prediction, subject_home, info.threshold, margin_sigma)
-            source = f"{self.league}_1h_spread"
-            detail = f"{subject} first-half by >{info.threshold:g}"
+            source = f"{self.league}_team_total"
+            detail = f"{subject} team over {info.threshold:g}"
+        else:
+            share = segment_share(self.league, info.segment)
+            if share is None:
+                return None
+            label = _SEGMENT_LABEL.get(info.segment, info.segment)
+            if info.market_type == WINNER:
+                p_home, p_tie, p_away = segment_outcome_probabilities(
+                    prediction, margin_sigma, share)
+                if info.is_tie:
+                    probability, side = p_tie, "tie"
+                else:
+                    if not info.subject:
+                        return None
+                    subject = canonical_team(self.league, info.subject)
+                    if subject == home:
+                        probability, side, subject_home = p_home, subject, True
+                    elif subject == away:
+                        probability, side = p_away, subject
+                    else:
+                        return None
+                source = f"{self.league}_{label}_winner"
+                detail = f"{label} {side}"
+            elif info.market_type == TOTAL:
+                if info.threshold is None:
+                    return None
+                probability = segment_total_probability(
+                    prediction, info.threshold, share)
+                source = f"{self.league}_{label}_total"
+                detail = f"{label} over {info.threshold:g}"
+            else:  # SPREAD
+                if info.threshold is None or not info.subject:
+                    return None
+                subject = canonical_team(self.league, info.subject)
+                if subject == home:
+                    subject_home = True
+                elif subject != away:
+                    return None
+                probability = segment_spread_probability(
+                    prediction, subject_home, info.threshold, margin_sigma, share)
+                source = f"{self.league}_{label}_spread"
+                detail = f"{subject} {label} by >{info.threshold:g}"
 
         # Half-splitting a full-game read adds real model risk on top of the
         # underlying score model's own uncertainty; widen and floor it.
