@@ -438,16 +438,21 @@ def test_run_promotes_an_earned_scope_end_to_end(tmp_path):
     assert state2["promotions_used_today_before_run"] == 1
 
 
-def test_run_without_clv_defers_the_same_scope_at_400_clusters(tmp_path):
+def test_run_without_clv_promotes_via_the_roi_door(tmp_path):
     # Same evidence, no CLV instrumentation: 320 clusters < the 450-cluster
-    # no-CLV bar -> no promotion. The no-CLV path is strictly harder.
+    # no-CLV bar, so the EVIDENCE door stays shut (that path is strictly
+    # harder without CLV). Wave-21: the seeded scope's counterfactual record
+    # is genuinely profitable, so the ROI proof-of-profit door -- the
+    # operator's second, independent route -- admits it at stage 1 anyway:
+    # money made against real quotes is its own proof, with the door's own
+    # volume/span/CI bars and the unchanged correlation + daily-cap rails.
     db = _seed_promotable_db(tmp_path)
     rd = _fresh_runtime(tmp_path)
     state = run_auto_promotion(
         db, runtime_dir=rd, now_ts=NOW_TS, now_iso=NOW_ISO,
         exchange_anomaly_check=lambda: False, alert_fn=lambda *a, **k: None)
     assert state["status"] == "OK"
-    assert state["promoted"] == []
+    assert state["promoted"] == ["crypto_ta_foundry|btc|15m_direction|15m"]
 
 
 def test_run_demotes_a_promoted_scope_and_sticks_it(tmp_path):
