@@ -10,13 +10,24 @@ latest fused emission per still-open market inside a freshness window,
 grouped (league, market type) via the series registry and ranked by absolute
 edge within each group plus one global top list.
 
-Read-only, cheap (indexed single-source scan + settlement anti-join), and
-display-only: nothing here feeds fusion, trust, promotion, or execution.
+Two paths, artifact-first (matching every other dashboard panel):
+
+  * ``write_board_artifact`` -- the brain calls this at the end of each cycle
+    with the in-memory (market, forecast) pairs it just scored, atomically
+    writing ``runtime/autonomy/bet_board.json``. No DB involved: the cycle
+    already holds every row, titles included, and the busy ledger (single
+    writer, non-WAL) must never be contended for a display read.
+  * ``assemble_bet_board`` -- serve the fresh artifact; only when it is
+    missing/stale fall back to a busy-tolerant read of the Wave-14
+    ``fused_forecast`` ledger rows (cold-start path).
+
+Display-only: nothing here feeds fusion, trust, promotion, or execution.
 """
 from __future__ import annotations
 
 import json
 import sqlite3
+from pathlib import Path
 from typing import Any
 
 from autonomy.picks import FUSED_SOURCE, NO_PICK_BAND
@@ -27,6 +38,11 @@ from autonomy.taxonomy import prediction_subject
 # scanner re-prices continuously; anything stale usually means the market
 # closed or left the watchlist).
 FRESH_HOURS = 36.0
+
+BOARD_PATH = Path("runtime/autonomy/bet_board.json")
+# Cycles run every ~10 minutes; an artifact older than this is treated as
+# stale and the ledger fallback is consulted instead.
+ARTIFACT_FRESH_SECONDS = 2 * 3600.0
 
 # Confidence tiers on distance from the coin flip, mirroring picks grading:
 # inside NO_PICK_BAND there is no pick at all.
@@ -65,17 +81,109 @@ def _matchup(ticker: str) -> str:
     return parts[1] if len(parts) >= 2 else str(ticker)
 
 
+def _finish_board(board_rows: list[dict[str, Any]], **extra: Any) -> dict[str, Any]:
+    """Rank, group, and wrap raw board rows into the served payload."""
+    def _rank_key(row: dict[str, Any]) -> tuple[float, float]:
+        edge = row.get("edge")
+        return (abs(edge) if edge is not None else -1.0,
+                abs(row["probability"] - 0.5))
+
+    board_rows.sort(key=_rank_key, reverse=True)
+    for position, row in enumerate(board_rows, start=1):
+        row["rank"] = position
+    groups: dict[str, dict[str, list[dict[str, Any]]]] = {}
+    for row in board_rows:
+        groups.setdefault(row["league"], {}).setdefault(row["bet_type"], []).append(row)
+    return {
+        "rows": len(board_rows),
+        "top": board_rows[:25],
+        "groups": groups,
+        "note": (
+            "Display-only ranking of every market the brain currently prices. "
+            "Edge = fused probability minus the market-implied probability."),
+        **extra,
+    }
+
+
+def write_board_artifact(
+    scored: list[tuple[Any, Any]],
+    *,
+    path: Path | None = None,
+    now_iso: str | None = None,
+) -> dict[str, Any]:
+    """Write the board from the cycle's in-memory (market, forecast) pairs.
+
+    Called by the brain at the end of every cycle -- titles included, no DB
+    touched, atomic replace so the dashboard never reads a torn file."""
+    from datetime import datetime, timezone
+
+    board_rows: list[dict[str, Any]] = []
+    for market, forecast in scored:
+        probability = float(forecast.probability_yes)
+        market_prob = forecast.market_implied_yes
+        league, bet_type = _group_of(market.ticker)
+        board_rows.append({
+            "ticker": market.ticker,
+            "title": getattr(market, "title", None) or _matchup(market.ticker),
+            "matchup": _matchup(market.ticker),
+            "league": league,
+            "bet_type": bet_type,
+            "probability": round(probability, 4),
+            "market_probability": (
+                round(float(market_prob), 4)
+                if isinstance(market_prob, (int, float)) else None),
+            "edge": (round(probability - float(market_prob), 4)
+                     if isinstance(market_prob, (int, float)) else None),
+            "pick": ("yes" if probability >= 0.5 else "no")
+                    if _tier(probability) else None,
+            "tier": _tier(probability),
+            "uncertainty": round(float(forecast.uncertainty), 3),
+        })
+    payload = _finish_board(
+        board_rows,
+        generated_at=now_iso or datetime.now(timezone.utc).isoformat(),
+        source="cycle_artifact",
+    )
+    target = path or BOARD_PATH
+    target.parent.mkdir(parents=True, exist_ok=True)
+    temporary = target.with_suffix(".tmp")
+    temporary.write_text(json.dumps(payload, sort_keys=True), encoding="utf-8")
+    temporary.replace(target)
+    return payload
+
+
+def _artifact_board(path: Path) -> dict[str, Any] | None:
+    from datetime import datetime, timezone
+
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+        generated = payload.get("generated_at")
+        stamp = datetime.fromisoformat(str(generated))
+        age = (datetime.now(timezone.utc) - stamp).total_seconds()
+    except (OSError, ValueError, TypeError):
+        return None
+    if age > ARTIFACT_FRESH_SECONDS:
+        return None
+    payload["age_seconds"] = round(age, 1)
+    return payload
+
+
 def assemble_bet_board(
     db_path: str = "runtime/autonomy/ledger.db",
     *,
     fresh_hours: float = FRESH_HOURS,
     conn: sqlite3.Connection | None = None,
+    artifact_path: Path | None = None,
 ) -> dict[str, Any]:
-    """The board payload: {generated_rows, top, groups: {league: {type: [rows]}}}."""
+    """The board payload: cycle artifact first, ledger fallback (cold start)."""
+    if conn is None:
+        artifact = _artifact_board(artifact_path or BOARD_PATH)
+        if artifact is not None:
+            return artifact
     owns = conn is None
     if conn is None:
         try:
-            conn = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
+            conn = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True, timeout=10)
         except sqlite3.Error as exc:
             return {"error": f"{type(exc).__name__}: {exc}", "rows": 0, "groups": {}}
     try:
@@ -136,26 +244,4 @@ def assemble_bet_board(
             "as_of": created_at,
         })
 
-    def _rank_key(row: dict[str, Any]) -> tuple[float, float]:
-        edge = row["edge"]
-        return (abs(edge) if edge is not None else -1.0,
-                abs(row["probability"] - 0.5))
-
-    board_rows.sort(key=_rank_key, reverse=True)
-    for position, row in enumerate(board_rows, start=1):
-        row["rank"] = position
-
-    groups: dict[str, dict[str, list[dict[str, Any]]]] = {}
-    for row in board_rows:
-        groups.setdefault(row["league"], {}).setdefault(row["bet_type"], []).append(row)
-
-    return {
-        "rows": len(board_rows),
-        "top": board_rows[:25],
-        "groups": groups,
-        "fresh_hours": fresh_hours,
-        "note": (
-            "Display-only ranking of every market the brain currently prices "
-            "(latest fused_forecast per open market). Edge = fused probability "
-            "minus the market-implied probability at emission time."),
-    }
+    return _finish_board(board_rows, fresh_hours=fresh_hours, source="ledger_fallback")

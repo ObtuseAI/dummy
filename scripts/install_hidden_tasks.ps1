@@ -46,8 +46,14 @@ foreach ($task in Get-ScheduledTask -TaskName "Dummy*") {
     else {
         Write-Host "SKIP $name (unrecognized action: $($action.Execute))"; continue
     }
-    Set-ScheduledTask -TaskName $name -Action $new | Out-Null
-    Write-Host "HID  $name"
+    try {
+        Set-ScheduledTask -TaskName $name -Action $new -ErrorAction Stop | Out-Null
+        Write-Host "HID  $name"
+    } catch {
+        # Tasks registered elevated refuse modification from a normal shell.
+        # Rerun this script from an elevated PowerShell to finish them.
+        Write-Host "DENIED $name (rerun this script as administrator)"
+    }
 }
 
 # Desktop shortcut: dashboard as an app window.
