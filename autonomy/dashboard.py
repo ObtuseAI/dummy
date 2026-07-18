@@ -594,33 +594,107 @@ def _tournament_status_panel(report: dict[str, Any]) -> dict[str, Any]:
 
 
 _HTML = """<!doctype html>
-<html><head><meta charset="utf-8"><title>Dummy Predator</title>
+<html><head><meta charset="utf-8"><title>DUMMY — the board</title>
 <style>
- :root{color-scheme:dark;--bg:#080b11;--panel:#101620;--panel2:#151d29;--line:#243041;--text:#e6edf3;--muted:#8b98a8;--blue:#58a6ff;--green:#3fb950;--amber:#d29922;--red:#f85149}
- *{box-sizing:border-box} body{font-family:Inter,ui-sans-serif,system-ui,-apple-system,Segoe UI,sans-serif;background:radial-gradient(circle at 15% -10%,#14233a 0,transparent 35%),var(--bg);color:var(--text);margin:0;padding:24px;max-width:1800px;margin-inline:auto}
- h1{color:var(--text);font-size:22px;margin:0 0 4px;letter-spacing:-.4px} .sub{color:var(--muted);font-size:12px;margin-bottom:16px}
- .topbar{display:flex;align-items:flex-start;justify-content:space-between;gap:18px;margin-bottom:18px}.eyebrow{font-size:10px;letter-spacing:1.4px;text-transform:uppercase;color:var(--blue);font-weight:800}.controls{display:flex;align-items:center;gap:8px;flex-wrap:wrap;justify-content:flex-end}.btn{border:1px solid var(--line);border-radius:8px;padding:9px 14px;background:#172131;color:var(--text);font-weight:750;cursor:pointer}.btn:hover{border-color:var(--blue)}.btn.start{background:#12331f;border-color:#245f38;color:#78dc91}.btn.stop{background:#35191b;border-color:#713034;color:#ff8b91}.btn:disabled{opacity:.45;cursor:wait}
- .hero{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px;margin-bottom:14px}.metric{background:linear-gradient(145deg,var(--panel2),#0e141d);border:1px solid var(--line);border-radius:10px;padding:13px}.metric .label{text-transform:uppercase;letter-spacing:.7px;color:var(--muted);font-size:10px;font-weight:750}.metric .value{font-size:24px;font-weight:800;margin-top:5px}.metric .note{font-size:10px;color:var(--muted);margin-top:3px}
- .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:14px}
- .card{background:linear-gradient(145deg,var(--panel),#0d121a);border:1px solid var(--line);border-radius:10px;padding:14px;overflow:hidden}
- .card h2{font-size:11px;text-transform:uppercase;letter-spacing:.8px;color:var(--muted);margin:0 0 10px}
- .kv{display:flex;justify-content:space-between;font-size:13px;padding:2px 0}
- .kv b{color:#e6edf3} .ok{color:#3fb950} .warn{color:#d29922} .bad{color:#f85149}
- table{width:100%;border-collapse:collapse;font-size:12px} td,th{text-align:left;padding:7px 8px;border-bottom:1px solid #21262d;vertical-align:top}
- th{color:#8b949e;font-weight:600} .pill{padding:1px 7px;border-radius:10px;font-size:11px}
- .live{background:#0d3b1e;color:#3fb950} .dead{background:#3b0d0d;color:#f85149}
- .paper-grid{display:grid;grid-template-columns:1.1fr .9fr;gap:14px;margin-bottom:14px}.span{grid-column:1/-1}.table-wrap{overflow:auto;max-height:420px}.explain{max-width:520px;color:#b7c2cf;line-height:1.35}.muted{color:var(--muted)}.bar{height:7px;background:#202a37;border-radius:5px;overflow:hidden;margin:5px 0 10px}.bar>i{display:block;height:100%;background:linear-gradient(90deg,var(--blue),#7ee787);border-radius:5px}.chart{width:100%;height:170px}.control-msg{min-height:16px;color:var(--muted);font-size:11px}.section-title{font-size:14px;margin:22px 0 10px}.truth{border-left:3px solid var(--amber);padding:8px 10px;background:#211b10;color:#d7c8a0;font-size:11px;margin-top:10px}
- .banner{display:none;border-radius:10px;padding:11px 14px;margin-bottom:14px;font-size:13px;font-weight:700;border:1px solid var(--line)}
- .banner.show{display:block}.banner.bad{background:#2d1113;border-color:#713034;color:#ff9ba0}.banner.warn{background:#2a2109;border-color:#6b5518;color:#e8c76c}.banner.ok{background:#0e2a18;border-color:#245f38;color:#7ee787}.banner.muted{background:#141b26;color:var(--muted)}
- @media(max-width:900px){body{padding:14px}.topbar{display:block}.controls{justify-content:flex-start;margin-top:12px}.paper-grid{grid-template-columns:1fr}}
+ /* ————— Totalizator: pitch-green board, chalk lettering, amber lamps ————— */
+ :root{color-scheme:dark;
+   --board:#152218;--felt:#1B2A20;--felt-deep:#122016;
+   --groove:#0C1510;--ridge:#27392C;
+   --chalk:#E9E2CE;--chalk-dim:#98A08A;--brass:#6E6248;
+   --lamp:#F2B63C;--turf:#7FAF7A;--clay:#C75F49;
+   --blue:var(--lamp);--green:var(--turf);--amber:var(--lamp);--red:var(--clay);
+   --display:'Bahnschrift SemiCondensed','Bahnschrift','Franklin Gothic Medium','Arial Narrow',sans-serif;
+   --body:'Segoe UI',system-ui,sans-serif;
+   --mono:'Cascadia Mono',Consolas,monospace}
+ *{box-sizing:border-box}
+ body{font-family:var(--body);background:
+   linear-gradient(180deg,#101B13 0,var(--board) 140px),var(--board);
+   color:var(--chalk);margin:0;padding:0 26px 40px;max-width:1800px;margin-inline:auto}
+ ::selection{background:var(--lamp);color:var(--board)}
+ :focus-visible{outline:2px solid var(--lamp);outline-offset:2px}
+ h1{font-family:var(--display);font-weight:600;font-size:34px;letter-spacing:.06em;margin:0;color:var(--chalk)}
+ .sub{color:var(--chalk-dim);font-size:12px}
+ /* masthead */
+ .topbar{display:flex;align-items:flex-end;justify-content:space-between;gap:18px;padding:20px 0 12px}
+ .eyebrow{font-family:var(--display);font-size:11px;letter-spacing:.34em;text-transform:uppercase;color:var(--brass);font-weight:400}
+ .controls{display:flex;align-items:center;gap:8px;flex-wrap:wrap;justify-content:flex-end}
+ .btn{border:1px solid var(--brass);border-radius:0;padding:8px 14px;background:transparent;color:var(--chalk);font-family:var(--display);font-size:12px;letter-spacing:.08em;text-transform:uppercase;cursor:pointer}
+ .btn:hover{border-color:var(--chalk);background:rgba(233,226,206,.05)}
+ .btn.start{border-color:var(--turf);color:var(--turf)} .btn.stop{border-color:var(--clay);color:var(--clay)}
+ .btn:disabled{opacity:.4;cursor:wait}
+ input{border-radius:0}
+ /* the tape */
+ .tape{border-top:1px solid var(--ridge);border-bottom:1px solid var(--groove);background:var(--felt-deep);overflow:hidden;white-space:nowrap;font-family:var(--mono);font-size:12px;color:var(--chalk-dim);margin:0 -26px}
+ .tape-inner{display:inline-block;padding:7px 0;animation:tape 60s linear infinite;will-change:transform}
+ .tape:hover .tape-inner{animation-play-state:paused}
+ .tape b{color:var(--chalk);font-weight:600} .tape .up{color:var(--turf)} .tape .down{color:var(--clay)} .tape .hot{color:var(--lamp)}
+ .tape-item{margin:0 26px} .tape-item::after{content:'·';margin-left:26px;color:var(--brass)}
+ @keyframes tape{from{transform:translateX(0)}to{transform:translateX(-50%)}}
+ /* the board (hero) */
+ .board-frame{margin:18px 0 8px;border:1px solid var(--groove);border-top:3px double var(--brass);background:var(--felt)}
+ .board-head{display:flex;align-items:baseline;justify-content:space-between;gap:14px;padding:12px 16px 10px;border-bottom:1px solid var(--groove);flex-wrap:wrap}
+ .board-title{font-family:var(--display);font-size:20px;letter-spacing:.22em;text-transform:uppercase;color:var(--chalk)}
+ .board-title small{color:var(--brass);letter-spacing:.34em;font-size:11px;display:block}
+ #betBoard{padding:4px 16px 14px;max-height:52vh;overflow:auto}
+ .lamp{font-family:var(--display);font-variant-numeric:tabular-nums;font-size:19px;font-weight:600;color:var(--chalk)}
+ td .lamp{letter-spacing:.02em}
+ .lamp-live{color:var(--lamp);text-shadow:0 0 14px rgba(242,182,60,.55)}
+ .lamp-flip{animation:lampflip .9s ease-out}
+ @keyframes lampflip{0%{color:var(--lamp);text-shadow:0 0 18px rgba(242,182,60,.9)}100%{}}
+ /* structure: engraved slats instead of floating cards */
+ .section-title{font-family:var(--display);font-size:13px;letter-spacing:.3em;text-transform:uppercase;color:var(--brass);margin:30px 0 10px;display:flex;align-items:center;gap:12px}
+ .section-title::after{content:'';flex:1;border-top:1px solid var(--groove);border-bottom:1px solid var(--ridge);height:0}
+ .hero{display:grid;grid-template-columns:repeat(auto-fit,minmax(168px,1fr));gap:1px;background:var(--groove);border:1px solid var(--groove);margin-bottom:14px}
+ .metric{background:var(--felt);padding:12px 14px}
+ .metric .label{font-family:var(--display);text-transform:uppercase;letter-spacing:.14em;color:var(--chalk-dim);font-size:10px}
+ .metric .value{font-family:var(--display);font-variant-numeric:tabular-nums;font-size:26px;font-weight:600;margin-top:4px}
+ .metric .note{font-size:10px;color:var(--chalk-dim);margin-top:3px}
+ .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(270px,1fr));gap:14px}
+ .paper-grid{display:grid;grid-template-columns:1.1fr .9fr;gap:14px;margin-bottom:14px}
+ .card{background:var(--felt);border:1px solid var(--groove);border-top:1px solid var(--ridge);border-radius:0;padding:14px;overflow:hidden}
+ .card h2{font-family:var(--display);font-size:11px;text-transform:uppercase;letter-spacing:.18em;color:var(--chalk-dim);margin:0 0 10px;font-weight:400}
+ .card h2::before{content:'▸ ';color:var(--brass)}
+ .kv{display:flex;justify-content:space-between;font-size:13px;padding:2px 0;gap:10px}
+ .kv b{color:var(--chalk);font-variant-numeric:tabular-nums}
+ .ok{color:var(--turf)} .warn{color:var(--lamp)} .bad{color:var(--clay)}
+ table{width:100%;border-collapse:collapse;font-size:12.5px}
+ td,th{text-align:left;padding:7px 8px;border-bottom:1px solid var(--groove);vertical-align:top}
+ tr:hover td{background:rgba(233,226,206,.028)}
+ th{font-family:var(--display);color:var(--brass);font-weight:400;letter-spacing:.1em;text-transform:uppercase;font-size:10.5px}
+ .pill{padding:1px 8px;border-radius:0;font-size:11px;font-family:var(--display);letter-spacing:.08em}
+ .live{background:transparent;color:var(--turf);border:1px solid var(--turf)}
+ .dead{background:transparent;color:var(--clay);border:1px solid var(--clay)}
+ .pulse{display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--turf);margin-right:6px;animation:pulse 2.4s ease-in-out infinite}
+ @keyframes pulse{0%,100%{opacity:1}50%{opacity:.25}}
+ .span{grid-column:1/-1}.table-wrap{overflow:auto;max-height:420px}
+ .explain{max-width:540px;color:#BCC4AC;line-height:1.4}
+ .muted{color:var(--chalk-dim)}
+ .bar{height:6px;background:var(--groove);overflow:hidden;margin:5px 0 10px}
+ .bar>i{display:block;height:100%;background:var(--turf)}
+ .chart{width:100%;height:170px}
+ .control-msg{min-height:16px;color:var(--chalk-dim);font-size:11px}
+ .truth{border-left:3px solid var(--brass);padding:8px 10px;background:var(--felt-deep);color:#C9BFA2;font-size:11px;margin-top:10px}
+ .banner{display:none;border-radius:0;padding:11px 14px;margin:14px 0;font-size:13px;font-weight:600;border:1px solid var(--brass)}
+ .banner.show{display:block}
+ .banner.bad{border-color:var(--clay);color:var(--clay);background:var(--felt-deep)}
+ .banner.warn{border-color:var(--lamp);color:var(--lamp);background:var(--felt-deep)}
+ .banner.ok{border-color:var(--turf);color:var(--turf);background:var(--felt-deep)}
+ .banner.muted{background:var(--felt-deep);color:var(--chalk-dim)}
+ code,.mono{font-family:var(--mono)}
+ @media(max-width:900px){body{padding:0 14px 30px}.topbar{display:block}.controls{justify-content:flex-start;margin-top:12px}.paper-grid{grid-template-columns:1fr}h1{font-size:26px}}
+ @media(prefers-reduced-motion:reduce){.tape-inner{animation:none}.lamp-flip{animation:none}.pulse{animation:none}}
 </style></head><body>
-<div class="topbar"><div><div class="eyebrow">Evidence-gated operations</div><h1>DUMMY // paper trading command center</h1><div class="sub" id="ts">loading…</div></div>
+<div class="topbar"><div><div class="eyebrow">Totalizator · evidence-gated · paper only</div><h1>DUMMY</h1><div class="sub" id="ts">loading…</div></div>
 <div class="controls"><span id="schedulerBadge" class="pill dead">CHECKING</span><button id="startBtn" class="btn start" onclick="controlPaper('start')">Start paper twin</button><button id="stopBtn" class="btn stop" onclick="controlPaper('stop')">Stop after cycle</button><div id="controlMsg" class="control-msg"></div></div></div>
+<div class="tape"><div class="tape-inner" id="tape"><span class="tape-item muted">warming the tape…</span></div></div>
 <div id="authBanner" class="banner"></div>
-<div class="section-title" style="margin-top:0">Bet board — every market priced, ranked by edge</div>
-<div class="topbar"><div><div class="eyebrow">Picks-first</div><div class="sub" id="boardMeta">loading board…</div></div>
-<div class="controls"><input id="boardFilter" placeholder="filter: league / bet type / ticker" style="background:#172131;border:1px solid var(--line);border-radius:8px;padding:9px 12px;color:var(--text);min-width:260px" oninput="renderBoard()"/></div></div>
-<div id="betBoard" class="card" style="margin-bottom:18px"><div class="muted">Waiting for the first fused-forecast rows (they record on every brain cycle).</div></div>
+<div class="board-frame">
+ <div class="board-head">
+  <div class="board-title">The Board<small id="boardMeta">chalking up…</small></div>
+  <div class="controls"><input id="boardFilter" placeholder="filter: league / bet type / ticker" style="background:var(--felt-deep);border:1px solid var(--brass);padding:8px 12px;color:var(--chalk);min-width:260px;font-family:var(--mono);font-size:12px" oninput="renderBoard()"/></div>
+ </div>
+ <div id="betBoard"><div class="muted" style="padding:12px 0">Waiting for the first priced cycle — the brain chalks this board every run.</div></div>
+</div>
 <div class="hero">
  <div class="metric"><div class="label">Scheduler</div><div class="value" id="mScheduler">—</div><div class="note" id="mNext">Windows task</div></div>
  <div class="metric"><div class="label">Active paper trades</div><div class="value" id="mOpen">—</div><div class="note" id="mRisk">quote-simulated positions</div></div>
@@ -875,6 +949,7 @@ async function tick(){
  let d; try{ d=await resp.json(); }catch(e){ document.getElementById('ts').textContent='backend unreachable'; return; }
  if(generation!==tickGeneration)return;
  document.getElementById('ts').textContent='updated '+new Date().toLocaleTimeString()+(d.stale_cache?' · stale cache':'')+staleNote(d.data_ages);
+ _lastTick=d; try{renderTape(d);}catch(e){}
  try{renderPaper(d);renderSports(d);}catch(e){document.getElementById('ts').textContent+=' · paper render error: '+e.message;console.error('paper render',e);}
  renderSession(d.session||{},d.heartbeat||{});
  renderFleet(d.scheduler_fleet||[]);
@@ -1031,11 +1106,18 @@ async function tick(){
 }
 tick(); setInterval(tick, 15000);
 let _board=null;
-function edgeCell(e){ if(e==null)return '<td class="muted">—</td>'; const p=(e*100).toFixed(1)+'%'; return `<td class="${e>0?'ok':e<0?'bad':''}"><b>${e>0?'+':''}${p}</b></td>`; }
-function tierPill(t){ if(!t)return '<span class="muted">no pick</span>'; const style=t==='A'?'background:#0d3b1e;color:#3fb950':t==='B'?'background:#2a2109;color:#e8c76c':'background:#141b26;color:#8b98a8'; return `<span class="pill" style="${style}">${t}</span>`; }
+let _prevProbs={};    // ticker -> probability from the LAST poll; a change flips the lamp
+let _movers=[];       // biggest re-prices this poll, fed to the tape
+function edgeCell(e){ if(e==null)return '<td class="muted">—</td>'; const p=(e*100).toFixed(1)+'%'; return `<td class="${e>0?'ok':e<0?'bad':''}"><b class="lamp" style="font-size:15px">${e>0?'+':''}${p}</b></td>`; }
+function tierPill(t){ if(!t)return '<span class="muted">no pick</span>'; const cls=t==='A'?'live':''; const style=t==='B'?'border:1px solid var(--lamp);color:var(--lamp)':t==='C'?'border:1px solid var(--brass);color:var(--chalk-dim)':''; return `<span class="pill ${cls}" style="${style}">${t}</span>`; }
+function probLamp(r){
+ const prev=_prevProbs[r.ticker];
+ const flipped=prev!=null&&Math.abs(prev-r.probability)>=0.005;
+ return `<span class="lamp ${flipped?'lamp-flip':''}">${(r.probability*100).toFixed(1)}</span><span class="muted" style="font-size:11px">%</span>`;
+}
 function renderBoard(){
  const b=_board; const el=document.getElementById('betBoard'); if(!b)return;
- if(b.error){ el.innerHTML='<div class="warn">board error: '+esc(b.error)+'</div>'; return; }
+ if(b.error){ el.innerHTML='<div class="warn" style="padding:12px 0">board error: '+esc(b.error)+'</div>'; return; }
  const q=(document.getElementById('boardFilter').value||'').toLowerCase();
  const groups=b.groups||{};
  const leagues=Object.keys(groups).sort();
@@ -1046,18 +1128,56 @@ function renderBoard(){
   for(const bt of Object.keys(types).sort()){
    const rows=types[bt].filter(r=>!q||lg.includes(q)||bt.includes(q)||r.ticker.toLowerCase().includes(q));
    if(!rows.length)continue;
-   section+=`<div class="section-title" style="margin:10px 0 6px;font-size:12px;color:var(--muted)">${esc(bt.replace(/_/g,' ').toUpperCase())} · ${rows.length}</div>`
-    +'<div class="table-wrap"><table><tr><th>#</th><th>market</th><th>pick</th><th>tier</th><th>dummy prob</th><th>market prob</th><th>edge</th><th>as of</th></tr>'
-    +rows.map(r=>`<tr><td>${r.rank}</td><td><b>${esc(r.title||r.matchup)}</b><div class="muted" style="font-size:10px">${esc(r.ticker)}</div></td><td>${r.pick?`<b class="${r.pick==='yes'?'ok':'bad'}">${r.pick.toUpperCase()}</b>`:'<span class="muted">—</span>'}</td><td>${tierPill(r.tier)}</td><td><b>${(r.probability*100).toFixed(1)}%</b></td><td>${r.market_probability!=null?(r.market_probability*100).toFixed(1)+'%':'—'}</td>${edgeCell(r.edge)}<td class="muted">${(r.as_of||b.generated_at||'').slice(11,16)}</td></tr>`).join('')
+   section+=`<div style="font-family:var(--display);font-size:11px;letter-spacing:.18em;color:var(--chalk-dim);margin:12px 0 4px">${esc(bt.replace(/_/g,' ').toUpperCase())} <span style="color:var(--brass)">· ${rows.length}</span></div>`
+    +'<div class="table-wrap"><table><tr><th style="width:34px">#</th><th>market</th><th>pick</th><th>tier</th><th>dummy</th><th>market</th><th>edge</th><th>as of</th></tr>'
+    +rows.map(r=>`<tr><td class="muted" style="font-family:var(--display)">${r.rank}</td><td><b>${esc(r.title||r.matchup)}</b><div class="muted mono" style="font-size:10px">${esc(r.ticker)}</div></td><td>${r.pick?`<b class="${r.pick==='yes'?'ok':'bad'}" style="font-family:var(--display);letter-spacing:.1em">${r.pick.toUpperCase()}</b>`:'<span class="muted">—</span>'}</td><td>${tierPill(r.tier)}</td><td>${probLamp(r)}</td><td class="muted" style="font-variant-numeric:tabular-nums">${r.market_probability!=null?(r.market_probability*100).toFixed(1)+'%':'—'}</td>${edgeCell(r.edge)}<td class="muted">${(r.as_of||b.generated_at||'').slice(11,16)}</td></tr>`).join('')
     +'</table></div>';
   }
-  if(section) html+=`<div class="section-title" style="margin:16px 0 4px">${esc(lg.toUpperCase())}</div>`+section;
+  if(section) html+=`<div class="section-title" style="margin:18px 0 2px">${esc(lg.toUpperCase())}</div>`+section;
  }
- el.innerHTML=html||'<div class="muted">No open priced markets match.</div>';
- document.getElementById('boardMeta').textContent=`${b.rows||0} open markets priced · ranked by |edge| · updated ${new Date().toLocaleTimeString()}`;
+ el.innerHTML=html||'<div class="muted" style="padding:12px 0">No open priced markets match.</div>';
+ document.getElementById('boardMeta').textContent=`${b.rows||0} markets chalked · ranked by edge · ${new Date().toLocaleTimeString()}`;
 }
+function trackMovers(b){
+ const movers=[];
+ for(const lg of Object.values(b.groups||{})) for(const rows of Object.values(lg)) for(const r of rows){
+  const prev=_prevProbs[r.ticker];
+  if(prev!=null&&Math.abs(prev-r.probability)>=0.01)
+   movers.push({t:r.title||r.matchup,d:r.probability-prev,p:r.probability});
+ }
+ movers.sort((a,x)=>Math.abs(x.d)-Math.abs(a.d));
+ _movers=movers.slice(0,5);
+ const next={};
+ for(const lg of Object.values(b.groups||{})) for(const rows of Object.values(lg)) for(const r of rows) next[r.ticker]=r.probability;
+ return next;
+}
+function renderTape(d){
+ const items=[];
+ const hb=(d&&d.heartbeat)||{};
+ items.push(`<b>${hb.alive?'<span class="up">MACHINE ALIVE</span>':'<span class="down">MACHINE STALE</span>'}</b> ${esc(hb.last_status||'')}`);
+ const lp=(d&&d.live_poller)||{};
+ if(lp.live_games) items.push(`<span class="hot">${lp.live_games} LIVE ${lp.live_games===1?'GAME':'GAMES'}</span> on the poller · ${lp.events_recorded??0} plays taped`);
+ for(const m of _movers) items.push(`${esc(m.t)} <b class="${m.d>0?'up':'down'}">${m.d>0?'▲':'▼'} ${(m.p*100).toFixed(1)}%</b>`);
+ const board=_board||{};
+ for(const r of (board.top||[]).slice(0,4)) if(r.edge!=null) items.push(`${esc(r.title||r.matchup)} <b>${(r.probability*100).toFixed(1)}%</b> <span class="${r.edge>0?'up':'down'}">edge ${r.edge>0?'+':''}${(r.edge*100).toFixed(1)}</span>`);
+ for(const a of ((d&&d.alerts)||[]).slice(-2)) items.push(`<span class="${a.severity==='critical'?'down':'hot'}">${esc(a.kind||'')}</span> ${esc(a.message||'')}`);
+ const use=(d&&d.use_sidecar)||{};
+ if(use.predictions) items.push(`sidecar holds <b>${use.predictions}</b> sim prices · ${use.outcomes_on_tape??0} finals taped`);
+ if(!items.length) return;
+ const half=items.map(i=>`<span class="tape-item">${i}</span>`).join('');
+ const el=document.getElementById('tape');
+ if(el) el.innerHTML=half+half;   // doubled for the seamless loop
+}
+let _lastTick=null;
 async function boardTick(){
- try{ const r=await fetch('/api/bet_board'); _board=await r.json(); renderBoard(); }
+ try{
+  const r=await fetch('/api/bet_board'); const b=await r.json();
+  _board=b;
+  const next=trackMovers(b);
+  renderBoard();
+  _prevProbs=next;
+  renderTape(_lastTick);
+ }
  catch(e){ document.getElementById('boardMeta').textContent='board unreachable'; }
 }
 boardTick(); setInterval(boardTick, 30000);
