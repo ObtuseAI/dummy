@@ -60,6 +60,62 @@ def build_fused_signal(market_ticker: str, forecast: Any) -> Signal:
     )
 
 
+def load_fused_maps() -> dict[str, Any]:
+    """The nightly reliability maps, filtered to fused-forecast scopes.
+
+    Fail-closed: a missing/malformed artifact means no maps, which means no
+    calibrated shadow rows -- never an error in the cycle path."""
+    import json
+
+    from autonomy.reliability import DEFAULT_MAPS_PATH
+
+    try:
+        payload = json.loads(DEFAULT_MAPS_PATH.read_text(encoding="utf-8"))
+        maps = payload.get("maps") or {}
+    except (OSError, ValueError, TypeError):
+        return {}
+    return {
+        scope: knots for scope, knots in maps.items()
+        if str(scope).startswith(f"{FUSED_SOURCE}|") and knots
+    }
+
+
+def build_calibrated_fused_signal(
+    market_ticker: str, forecast: Any, maps: dict[str, Any],
+) -> Signal | None:
+    """The SHADOW calibrated fused row (``fused_forecast::cal``), or None
+    when no reliability map covers this market's fused scope yet.
+
+    A monotone transform of the raw fused row, graded under its own source
+    axis so raw-vs-calibrated is measured head-to-head on settlements before
+    the correction is ever allowed near the decision path (the same
+    discipline as the WS-18 per-source ::cal challengers)."""
+    if not maps:
+        return None
+    from autonomy.reliability import apply_reliability
+    from autonomy.taxonomy import grading_scope
+
+    raw = build_fused_signal(market_ticker, forecast)
+    scope = grading_scope(FUSED_SOURCE, market_ticker, raw.features)
+    knots = maps.get(scope)
+    if not knots:
+        return None
+    corrected = apply_reliability(
+        [tuple(k) for k in knots], raw.probability_yes)
+    return Signal(
+        source=f"{FUSED_SOURCE}::cal",
+        market_ticker=market_ticker,
+        probability_yes=corrected,
+        uncertainty=raw.uncertainty,
+        rationale=f"calibrated {raw.probability_yes:.3f}->{corrected:.3f} ({scope})",
+        features={
+            **raw.features,
+            "calibration_scope": scope,
+            "raw_probability": raw.probability_yes,
+        },
+    )
+
+
 def _scope_of(ticker: str) -> tuple[str, str]:
     """(league, market_type) from the series registry; crypto/econ tickers
     fall to ("other", "other") rather than being dropped."""

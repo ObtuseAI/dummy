@@ -160,6 +160,10 @@ def specialist_for(source: str) -> str:
     a taxonomy home.
     """
     name = str(source or "")
+    # WS-18 calibrated shadows ("{source}::cal") are monotone transforms of
+    # their parent: same specialist home, own grading scope.
+    if name.endswith("::cal"):
+        name = name[:-5]
     if name in SOURCE_TAXONOMY:
         return SOURCE_TAXONOMY[name]
     for prefix, label in _SPECIALIST_PREFIXES:
