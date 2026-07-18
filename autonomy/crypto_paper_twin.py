@@ -1932,6 +1932,53 @@ def maker_fill_witness(
     }
 
 
+ADAPTIVE_BAR_MIN_SETTLED = 30
+ADAPTIVE_BAR_WINDOW = 100
+ADAPTIVE_BAR_CAP_CENTS = 5.0
+
+
+def adaptive_entry_bars(conn: sqlite3.Connection) -> dict[tuple[str, str], float]:
+    """Per-(timeframe, strategy) self-tightening EV bar (Wave-23).
+
+    Forensics: the 1h lanes bled (-849c across 353 settled) while 15m
+    exploratory profited -- the same static entry policy cannot fit both.
+    Each lane's bar now rises by its OWN realized mean per-trade loss over
+    its most recent settled window (capped, >= a minimum sample), and simply
+    stays at the policy default while the lane is healthy. It never loosens
+    below baseline, forecasts/observations continue regardless (evidence
+    accrual is untouched -- only paper ORDER flow tightens), and a lane that
+    recovers on paper-worthy quotes re-earns its default bar as the window
+    turns. Forced-coverage diagnostics are exempt at the call site.
+    """
+    rows = conn.execute(
+        """
+        SELECT timeframe, strategy, taker_pnl_cents FROM (
+            SELECT timeframe, strategy, taker_pnl_cents,
+                   ROW_NUMBER() OVER (
+                       PARTITION BY timeframe, strategy
+                       ORDER BY settled_at DESC
+                   ) AS recency
+            FROM trades
+            WHERE taker_pnl_cents IS NOT NULL AND settled_at IS NOT NULL
+        ) WHERE recency <= ?
+        """,
+        (ADAPTIVE_BAR_WINDOW,),
+    ).fetchall()
+    pnl: dict[tuple[str, str], list[float]] = {}
+    for row in rows:
+        pnl.setdefault(
+            (str(row["timeframe"]), str(row["strategy"])), []
+        ).append(float(row["taker_pnl_cents"]))
+    bars: dict[tuple[str, str], float] = {}
+    for key, values in pnl.items():
+        if len(values) < ADAPTIVE_BAR_MIN_SETTLED:
+            continue
+        mean = sum(values) / len(values)
+        if mean < 0.0:
+            bars[key] = round(min(ADAPTIVE_BAR_CAP_CENTS, -mean), 2)
+    return bars
+
+
 def _candidate(
     market: MarketView,
     forecast: Forecast,
@@ -1941,6 +1988,7 @@ def _candidate(
     timeframe: str,
     genome: ResearchGenome,
     hourly_calibration: HourlyCalibrationProfile | None = None,
+    entry_bar_adjustment: float = 0.0,
 ) -> dict[str, Any]:
     target = price_target_metadata(market, timeframe)
     if market.vertical is Vertical.CRYPTO and not bool(target["valid"]):
@@ -2045,6 +2093,9 @@ def _candidate(
         raw_probability = raw
     if strategy != HOURLY_CALIBRATED_STRATEGY:
         raw_probability = probability
+    # Wave-23: the lane's self-learned bar (0.0 while healthy) tightens the
+    # EV requirement by the lane's own realized bleed.
+    min_ev += max(0.0, float(entry_bar_adjustment))
     raw_edge = abs(probability - market_probability) * 100.0
     options: list[dict[str, Any]] = []
     for side, win_probability, ask in (
@@ -2126,6 +2177,7 @@ def _candidate(
         ),
         "policy": {
             "min_ev_cents": min_ev,
+            "entry_bar_adjustment_cents": round(max(0.0, float(entry_bar_adjustment)), 2),
             "max_uncertainty": max_uncertainty,
             "max_entry_price_cents": max_price,
             "edge_threshold_cents": edge_threshold,
@@ -2785,6 +2837,16 @@ class CryptoPaperTwin:
                 proposed, now=now, proposed_id=proposed_id,
             )
             active_genome = ResearchGenome.from_mapping(epoch.get("genome")) or proposed
+            # Wave-23: each (timeframe, strategy) lane learns its own entry
+            # bar from its own recent settled record -- a bleeding lane
+            # raises its EV requirement by its realized per-trade loss
+            # (capped), a healthy lane keeps the policy default. Failure
+            # converts to selectivity instead of repeating itself.
+            try:
+                entry_bars = adaptive_entry_bars(self.ledger.connection)
+            except Exception:
+                entry_bars = {}
+            self._entry_bars = entry_bars
             listed_compatible_markets = [
                 market for market in markets
                 if cohort_for_market(market) is not None
@@ -2872,6 +2934,8 @@ class CryptoPaperTwin:
                                     hourly_calibration
                                     if strategy == HOURLY_CALIBRATED_STRATEGY else None
                                 ),
+                                entry_bar_adjustment=entry_bars.get(
+                                    (timeframe, strategy), 0.0),
                             ))
                             candidates[-1]["vertical"] = vertical.value
                         if candidates:
@@ -3500,6 +3564,12 @@ class CryptoPaperTwin:
             # should use cohorts for vertical-separated evidence.
             "lanes": cohort_lanes[crypto_name],
             "cohorts": cohort_lanes,
+            # Wave-23: lanes' self-learned entry bars (empty while healthy).
+            "entry_bar_adjustments": {
+                f"{timeframe}:{strategy}": value
+                for (timeframe, strategy), value in sorted(
+                    getattr(self, "_entry_bars", {}).items())
+            },
             "phase_2_forward_selection": {
                 "frozen_epoch": active,
                 "candidate_gates": cohort_forward[crypto_name],
