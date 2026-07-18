@@ -494,6 +494,8 @@ def assemble_dashboard_state(runtime_dir: Path | None = None) -> dict[str, Any]:
         "self_improvement": _load_json(rd / "self_improvement_plan.json") or {},
         # Wave-22: the Universal Sports Engine sidecar's artifact summary.
         "use_sidecar": _use_sidecar_summary(rd),
+        # Wave-26: the vNext sovereign-forecasting shadow runtime.
+        "vnext_shadow": _load_json(rd / "vnext_shadow_status.json") or {},
     }
 
 
@@ -742,6 +744,7 @@ _HTML = """<!doctype html>
  <div class="card"><h2>Live game poller</h2><div id="livePoller"></div></div>
  <div class="card"><h2>Self-improvement plan</h2><div id="selfImprovement" class="table-wrap"></div></div>
  <div class="card"><h2>Universal Sports Engine sidecar</h2><div id="useSidecar"></div></div>
+ <div class="card"><h2>vNext shadow organisms</h2><div id="vnextShadow"></div></div>
  <div class="card"><h2>Live canary gate</h2><div id="canary"></div></div>
  <div class="card"><h2>Risk</h2><div id="risk"></div></div>
  <div class="card"><h2>Forecast validation</h2><div id="validation"></div></div>
@@ -960,6 +963,15 @@ async function tick(){
    kv('status', `<span class="pill ${hb.alive?'live':'dead'}">${hb.alive?'ALIVE':'STALE'}</span>`)
    +kv('last cycle', hb.last_cycle_at||'—')+kv('last status', hb.last_status||'—')
    +kv('mode', hb.mode||'—')+kv('orders', hb.last_orders_placed??'—')+kv('signals', hb.last_signals??'—');
+ const vx=d.vnext_shadow||{};
+ document.getElementById('vnextShadow').innerHTML=
+   kv('episodes on ledger', vx.episodes_on_ledger??0, (vx.episodes_on_ledger||0)>0?'ok':'')
+   +kv('pending settlement', vx.pending??'—')
+   +kv('issued last pass', vx.issued??'—')
+   +kv('completed last pass', vx.completed??'—')
+   +kv('errors', (vx.errors||[]).length, (vx.errors||[]).length?'warn':'ok')
+   +kv('last pass', (vx.at||'—').slice(11,19))
+   +'<div class="truth">Shadow-only: simulated execution, human-only promotion. Evidence accrues toward the six open vNext claims.</div>';
  const useS=d.use_sidecar||{};
  document.getElementById('useSidecar').innerHTML=
    kv('status', useS.status||'NOT RUN', useS.status==='OK'?'ok':'warn')
