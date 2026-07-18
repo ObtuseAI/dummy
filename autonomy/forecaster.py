@@ -47,7 +47,12 @@ SOURCE_FAMILIES = {
 
 
 class EnsembleForecaster:
-    def __init__(self, ledger: AutonomyLedger, promotion: Any = None):
+    def __init__(
+        self,
+        ledger: AutonomyLedger,
+        promotion: Any = None,
+        negative_scopes: frozenset[str] | None = None,
+    ):
         self.ledger = ledger
         # Promotion registry (WS-14). Default loads the standard governance
         # files; missing files => nobody promoted => this filter is unchanged
@@ -58,13 +63,35 @@ class EnsembleForecaster:
 
             promotion = PromotionRegistry()
         self.promotion = promotion
+        # Wave-19 fusion floor: scopes the settled evidence grades
+        # SIGNIFICANTLY NEGATIVE (cluster-edge CI95 upper < 0) are excluded
+        # from fusion entirely -- a contributor measurably worse than the
+        # market on a scope must not move the fused probability there. The
+        # source keeps EMITTING (challenger grading continues, so a scope
+        # that recovers exits the map on evidence), and market_prior is
+        # exempt (the anchor is the benchmark, never a suppressible view).
+        # Fail-open: no/stale artifact -> empty set -> byte-identical fusion.
+        if negative_scopes is None:
+            from autonomy.no_edge_map import load_negative_scopes
+
+            negative_scopes = load_negative_scopes()
+        self._negative_scopes = negative_scopes
+
+    def _floor_excluded(self, signal: Signal, market: MarketView) -> bool:
+        if not self._negative_scopes or signal.source == "market_prior":
+            return False
+        from autonomy.taxonomy import grading_scope
+
+        scope = grading_scope(signal.source, market.ticker, signal.features or {})
+        return scope in self._negative_scopes
 
     def fuse(self, market: MarketView, signals: list[Signal]) -> Forecast | None:
         active_signals = [
             signal for signal in signals
-            if not bool((signal.features or {}).get("challenger_only"))
-            or self.promotion.is_promoted_signal(
-                signal.source, market.ticker, signal.features or {})
+            if (not bool((signal.features or {}).get("challenger_only"))
+                or self.promotion.is_promoted_signal(
+                    signal.source, market.ticker, signal.features or {}))
+            and not self._floor_excluded(signal, market)
         ]
         if not active_signals:
             return None

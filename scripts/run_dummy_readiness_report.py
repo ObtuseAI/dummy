@@ -285,6 +285,7 @@ def main() -> int:
                 "demoted": state.get("demoted", []),
                 "deferred": state.get("deferred", []),
                 "replacement_candidates": state.get("replacement_candidates", []),
+                "declined": state.get("declined", []),
                 "reasons": state.get("reasons", []),
             }
         except Exception as exc:  # fail-closed: no promotion, report intact
