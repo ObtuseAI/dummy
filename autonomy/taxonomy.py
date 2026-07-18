@@ -54,6 +54,10 @@ SOURCE_TAXONOMY: dict[str, str] = {
     # specialist home as the single-book ESPN consensus; graded head-to-head
     # against it under its own source scope (challenger-only).
     "licensed_consensus": "sportsbook",
+    # Wave-30: market-pressure challenger -- reads multi-book line MOVEMENT
+    # (steam / reverse line movement / dispersion) off the same book data.
+    # Same sportsbook home; challenger-only, its own grading scope.
+    "market_pressure": "sportsbook",
     "cross_venue_polymarket": "cross_venue",
     # Wave-2 E4: Polymarket cross-venue reference pricing extended to crypto and
     # econ Kalshi markets. Separate source names -> separate grading scopes; the
