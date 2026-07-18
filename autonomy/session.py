@@ -293,6 +293,13 @@ def build_brain(mode: SessionMode):
 
     registry.register(CryptoPatienceSignal(fetch_state=crypto_hub.state))
     registry.register(CryptoKamaMomentumSignal(fetch_state=crypto_hub.state))
+    # Wave-24: the chartist -- candlestick patterns, regular + hidden
+    # divergences, trends/channels, cross-examined across the 5m/15m/1h/4h/1d
+    # ladder; abstains outright when the timeframes argue. Challenger-only,
+    # same shared hub (zero extra fetches).
+    from autonomy.signals.crypto_chartist import CryptoChartistSignal
+
+    registry.register(CryptoChartistSignal(fetch_state=crypto_hub.state))
     # CommoditiesSpotVolSignal is retained only as challenger evidence: with
     # COMMODITIES dropped from the scanner's trading verticals it no longer
     # receives tradable markets, but keeping it registered is harmless and
