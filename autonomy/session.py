@@ -338,13 +338,17 @@ def build_brain(mode: SessionMode):
     from autonomy.signals.mlb_segments import MlbSegmentSignal
 
     registry.register(MlbSegmentSignal())
-    # Wave-13: basketball first-half surface (3-way winner / total / spread)
-    # off the same TeamScoreModel state the full-game signal warms. One
-    # instance per in-season league; NBA/NCAAMB flip on at their season
-    # starts. Challenger-only, pre-game only.
+    # Wave-13/18: the full segment + team-total surface (3-way segment
+    # winners, segment totals/spreads, team totals) off the same
+    # TeamScoreModel state the full-game signal warms, one instance per
+    # league with a share table. Dormant leagues cost nothing (no markets
+    # listed -> applicable() never fires); when a season starts the surface
+    # is already priced. Challenger-only, pre-game only. NHL joins when
+    # Kalshi lists its period/team-total series (none registered yet).
     from autonomy.signals.basketball_segments import BasketballSegmentSignal
 
-    registry.register(BasketballSegmentSignal(league="wnba"))
+    for _segment_league in ("wnba", "nba", "ncaamb", "nfl", "ncaaf"):
+        registry.register(BasketballSegmentSignal(league=_segment_league))
     # Fantasy triangulation leg #1: FanGraphs projection consensus. Per-team
     # rest-of-season projection rates -> MLB winner/total fair value via the same
     # baseball poisson plumbing the results-EWMA model prices with. Shares the one

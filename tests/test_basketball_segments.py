@@ -150,9 +150,10 @@ def test_wnba_1h_series_discovered_and_three_way():
     assert spec_for("KXWNBA1HWINNER").three_way is True
     assert spec_for("KXWNBA1HSPREAD").discover is True
     assert spec_for("KXWNBA1HTOTAL").discover is True
-    # Second-half + quarters stay staged.
-    assert spec_for("KXWNBA2HWINNER").discover is False
-    assert spec_for("KXWNBA1QTOTAL").discover is False
+    # Wave-18: the second half + quarters joined the discovered surface.
+    assert spec_for("KXWNBA2HWINNER").discover is True
+    assert spec_for("KXWNBA2HWINNER").three_way is True
+    assert spec_for("KXWNBA1QTOTAL").discover is True
 
 
 def test_segment_sources_have_a_taxonomy_home():

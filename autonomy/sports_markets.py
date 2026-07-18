@@ -134,40 +134,40 @@ SERIES_SPEC: dict[str, SeriesSpec] = {
     "KXNFLTEAMTOTAL": _line("nfl", TEAM_TOTAL, discover=True),
     "KXNFLTEAMPTS": _line("nfl", TEAM_TOTAL, discover=False),
     # Halves / quarters (segment lines) -- registered, staged for the segment wave.
-    "KXNFL1HWINNER": _winner("nfl", H1, discover=False),
-    "KXNFL1HSPREAD": _line("nfl", SPREAD, H1, discover=False),
-    "KXNFL1HTOTAL": _line("nfl", TOTAL, H1, discover=False),
-    "KXNFL2HWINNER": _winner("nfl", H2, discover=False),
-    "KXNFL2HSPREAD": _line("nfl", SPREAD, H2, discover=False),
-    "KXNFL2HTOTAL": _line("nfl", TOTAL, H2, discover=False),
-    "KXNFL1QSPREAD": _line("nfl", SPREAD, Q1, discover=False),
-    "KXNFL1QTOTAL": _line("nfl", TOTAL, Q1, discover=False),
-    "KXNFL2QSPREAD": _line("nfl", SPREAD, Q2, discover=False),
-    "KXNFL2QTOTAL": _line("nfl", TOTAL, Q2, discover=False),
-    "KXNFL3QSPREAD": _line("nfl", SPREAD, Q3, discover=False),
-    "KXNFL3QTOTAL": _line("nfl", TOTAL, Q3, discover=False),
-    "KXNFL4QSPREAD": _line("nfl", SPREAD, Q4, discover=False),
-    "KXNFL4QTOTAL": _line("nfl", TOTAL, Q4, discover=False),
+    "KXNFL1HWINNER": _winner("nfl", H1, discover=True, three_way=True),
+    "KXNFL1HSPREAD": _line("nfl", SPREAD, H1, discover=True),
+    "KXNFL1HTOTAL": _line("nfl", TOTAL, H1, discover=True),
+    "KXNFL2HWINNER": _winner("nfl", H2, discover=True, three_way=True),
+    "KXNFL2HSPREAD": _line("nfl", SPREAD, H2, discover=True),
+    "KXNFL2HTOTAL": _line("nfl", TOTAL, H2, discover=True),
+    "KXNFL1QSPREAD": _line("nfl", SPREAD, Q1, discover=True),
+    "KXNFL1QTOTAL": _line("nfl", TOTAL, Q1, discover=True),
+    "KXNFL2QSPREAD": _line("nfl", SPREAD, Q2, discover=True),
+    "KXNFL2QTOTAL": _line("nfl", TOTAL, Q2, discover=True),
+    "KXNFL3QSPREAD": _line("nfl", SPREAD, Q3, discover=True),
+    "KXNFL3QTOTAL": _line("nfl", TOTAL, Q3, discover=True),
+    "KXNFL4QSPREAD": _line("nfl", SPREAD, Q4, discover=True),
+    "KXNFL4QTOTAL": _line("nfl", TOTAL, Q4, discover=True),
 
     # ===================== NBA =====================
     "KXNBAGAME": _winner("nba", discover=True),
     "KXNBASPREAD": _line("nba", SPREAD, discover=True),
     "KXNBATOTAL": _line("nba", TOTAL, discover=True),
     "KXNBATEAMTOTAL": _line("nba", TEAM_TOTAL, discover=True),
-    "KXNBA1HWINNER": _winner("nba", H1, discover=False),
-    "KXNBA1HSPREAD": _line("nba", SPREAD, H1, discover=False),
-    "KXNBA1HTOTAL": _line("nba", TOTAL, H1, discover=False),
-    "KXNBA2HWINNER": _winner("nba", H2, discover=False),
-    "KXNBA2HSPREAD": _line("nba", SPREAD, H2, discover=False),
-    "KXNBA2HTOTAL": _line("nba", TOTAL, H2, discover=False),
-    "KXNBA1QSPREAD": _line("nba", SPREAD, Q1, discover=False),
-    "KXNBA1QTOTAL": _line("nba", TOTAL, Q1, discover=False),
-    "KXNBA2QSPREAD": _line("nba", SPREAD, Q2, discover=False),
-    "KXNBA2QTOTAL": _line("nba", TOTAL, Q2, discover=False),
-    "KXNBA3QSPREAD": _line("nba", SPREAD, Q3, discover=False),
-    "KXNBA3QTOTAL": _line("nba", TOTAL, Q3, discover=False),
-    "KXNBA4QSPREAD": _line("nba", SPREAD, Q4, discover=False),
-    "KXNBA4QTOTAL": _line("nba", TOTAL, Q4, discover=False),
+    "KXNBA1HWINNER": _winner("nba", H1, discover=True, three_way=True),
+    "KXNBA1HSPREAD": _line("nba", SPREAD, H1, discover=True),
+    "KXNBA1HTOTAL": _line("nba", TOTAL, H1, discover=True),
+    "KXNBA2HWINNER": _winner("nba", H2, discover=True, three_way=True),
+    "KXNBA2HSPREAD": _line("nba", SPREAD, H2, discover=True),
+    "KXNBA2HTOTAL": _line("nba", TOTAL, H2, discover=True),
+    "KXNBA1QSPREAD": _line("nba", SPREAD, Q1, discover=True),
+    "KXNBA1QTOTAL": _line("nba", TOTAL, Q1, discover=True),
+    "KXNBA2QSPREAD": _line("nba", SPREAD, Q2, discover=True),
+    "KXNBA2QTOTAL": _line("nba", TOTAL, Q2, discover=True),
+    "KXNBA3QSPREAD": _line("nba", SPREAD, Q3, discover=True),
+    "KXNBA3QTOTAL": _line("nba", TOTAL, Q3, discover=True),
+    "KXNBA4QSPREAD": _line("nba", SPREAD, Q4, discover=True),
+    "KXNBA4QTOTAL": _line("nba", TOTAL, Q4, discover=True),
 
     # ===================== NHL =====================
     "KXNHLGAME": _winner("nhl", discover=True),
@@ -179,17 +179,17 @@ SERIES_SPEC: dict[str, SeriesSpec] = {
     "KXNCAAFSPREAD": _line("ncaaf", SPREAD, discover=True),
     "KXNCAAFTOTAL": _line("ncaaf", TOTAL, discover=True),
     "KXNCAAFTEAMTOTAL": _line("ncaaf", TEAM_TOTAL, discover=True),
-    "KXNCAAF1HWINNER": _winner("ncaaf", H1, discover=False),
+    "KXNCAAF1HWINNER": _winner("ncaaf", H1, discover=True, three_way=True),
 
     # ===================== NCAAMB =====================
     "KXNCAAMBGAME": _winner("ncaamb", discover=True),
     "KXNCAAMBSPREAD": _line("ncaamb", SPREAD, discover=True),
     "KXNCAAMBTOTAL": _line("ncaamb", TOTAL, discover=True),
-    "KXNCAAMB1HWINNER": _winner("ncaamb", H1, discover=False),
-    "KXNCAAMB1HSPREAD": _line("ncaamb", SPREAD, H1, discover=False),
-    "KXNCAAMB1HTOTAL": _line("ncaamb", TOTAL, H1, discover=False),
-    "KXNCAAMB2HSPREAD": _line("ncaamb", SPREAD, H2, discover=False),
-    "KXNCAAMB2HTOTAL": _line("ncaamb", TOTAL, H2, discover=False),
+    "KXNCAAMB1HWINNER": _winner("ncaamb", H1, discover=True, three_way=True),
+    "KXNCAAMB1HSPREAD": _line("ncaamb", SPREAD, H1, discover=True),
+    "KXNCAAMB1HTOTAL": _line("ncaamb", TOTAL, H1, discover=True),
+    "KXNCAAMB2HSPREAD": _line("ncaamb", SPREAD, H2, discover=True),
+    "KXNCAAMB2HTOTAL": _line("ncaamb", TOTAL, H2, discover=True),
 
     # ===================== WNBA =====================
     "KXWNBAGAME": _winner("wnba", discover=True),
@@ -201,17 +201,17 @@ SERIES_SPEC: dict[str, SeriesSpec] = {
     "KXWNBA1HWINNER": _winner("wnba", H1, discover=True, three_way=True),
     "KXWNBA1HSPREAD": _line("wnba", SPREAD, H1, discover=True),
     "KXWNBA1HTOTAL": _line("wnba", TOTAL, H1, discover=True),
-    "KXWNBA2HWINNER": _winner("wnba", H2, discover=False),
-    "KXWNBA2HSPREAD": _line("wnba", SPREAD, H2, discover=False),
-    "KXWNBA2HTOTAL": _line("wnba", TOTAL, H2, discover=False),
-    "KXWNBA1QSPREAD": _line("wnba", SPREAD, Q1, discover=False),
-    "KXWNBA1QTOTAL": _line("wnba", TOTAL, Q1, discover=False),
-    "KXWNBA2QSPREAD": _line("wnba", SPREAD, Q2, discover=False),
-    "KXWNBA2QTOTAL": _line("wnba", TOTAL, Q2, discover=False),
-    "KXWNBA3QSPREAD": _line("wnba", SPREAD, Q3, discover=False),
-    "KXWNBA3QTOTAL": _line("wnba", TOTAL, Q3, discover=False),
-    "KXWNBA4QSPREAD": _line("wnba", SPREAD, Q4, discover=False),
-    "KXWNBA4QTOTAL": _line("wnba", TOTAL, Q4, discover=False),
+    "KXWNBA2HWINNER": _winner("wnba", H2, discover=True, three_way=True),
+    "KXWNBA2HSPREAD": _line("wnba", SPREAD, H2, discover=True),
+    "KXWNBA2HTOTAL": _line("wnba", TOTAL, H2, discover=True),
+    "KXWNBA1QSPREAD": _line("wnba", SPREAD, Q1, discover=True),
+    "KXWNBA1QTOTAL": _line("wnba", TOTAL, Q1, discover=True),
+    "KXWNBA2QSPREAD": _line("wnba", SPREAD, Q2, discover=True),
+    "KXWNBA2QTOTAL": _line("wnba", TOTAL, Q2, discover=True),
+    "KXWNBA3QSPREAD": _line("wnba", SPREAD, Q3, discover=True),
+    "KXWNBA3QTOTAL": _line("wnba", TOTAL, Q3, discover=True),
+    "KXWNBA4QSPREAD": _line("wnba", SPREAD, Q4, discover=True),
+    "KXWNBA4QTOTAL": _line("wnba", TOTAL, Q4, discover=True),
 }
 
 
@@ -287,14 +287,19 @@ def _parse_date(token: str) -> str | None:
 def _teams_from_title(title: str) -> tuple[str, str] | None:
     """Extract the two display names from a ``A vs B ...`` title, best-effort."""
     # Strip a trailing market-descriptor clause so it doesn't leak into team B.
+    # Wave-18: segment vocabulary added (Second/Half/Quarter/Period, 1H/2H,
+    # 1Q-4Q, 1P-3P) -- a "A vs B: Second Half Total?" title previously left
+    # ": Second Half" glued onto team B and broke the matchup lookup. A
+    # trailing colon on team B (segment-title separator) is stripped too.
     head = re.split(
         r"\s+(?:Winner|Spread|Total|Team Total|Run|Runs|Points|Goals|"
-        r"First|Total Runs|Total Points|Total Goals)\b",
+        r"First|Second|Half|Quarter|Period|[1-4]Q|[12]H|[1-3]P|"
+        r"Total Runs|Total Points|Total Goals)\b",
         title, maxsplit=1, flags=re.IGNORECASE)[0]
     names = re.split(r"\s+vs\.?\s+", head, maxsplit=1, flags=re.IGNORECASE)
     if len(names) != 2:
         return None
-    a, b = names[0].strip(" ?"), names[1].strip(" ?")
+    a, b = names[0].strip(" ?"), names[1].strip(" ?:")
     if not a or not b:
         return None
     return a, b

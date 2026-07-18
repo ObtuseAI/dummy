@@ -117,7 +117,13 @@ def test_sports_scope_fits_at_lower_cluster_bar():
             self.ticker = f"T-{i}"
             self.event_cluster = f"E{i}"
             self.probability_yes = 0.9 if i % 2 else 0.6
-            self.result_yes = (i % 100) < (72 if i % 2 else 55)
+            # STRONG miscalibration spread evenly across i (0.9 realizes 30%,
+            # 0.6 realizes 60% in every stretch of ten): Wave-18's validation
+            # gate holds out ~20% of clusters and refuses maps that do not
+            # improve there, so the fixture's correction must be large enough
+            # to survive any holdout draw -- this test pins the CLUSTER BAR,
+            # not the validation margin.
+            self.result_yes = (i // 2) % 10 < (3 if i % 2 else 6)
             self.features = {}
             self.scope = scope
 

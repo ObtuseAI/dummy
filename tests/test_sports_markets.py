@@ -137,8 +137,13 @@ def test_discovery_is_subset_of_registered_and_has_the_new_types():
               "KXWNBAGAME", "KXWNBASPREAD", "KXWNBATOTAL",
               "KXNBASPREAD", "KXNFLTEAMTOTAL", "KXNHLSPREAD"]:
         assert s in disc, s
-    # Segment lines are registered but staged (not yet discovered).
-    assert "KXNFL1QTOTAL" in reg and "KXNFL1QTOTAL" not in disc
+    # Wave-18: segment lines joined the discovered surface (halves 3-way);
+    # only series with no pricing path stay staged (thin MLB F3/F7, the
+    # duplicate NFL team-points series).
+    assert "KXNFL1QTOTAL" in disc
+    assert "KXNFL1HWINNER" in disc and spec_for("KXNFL1HWINNER").three_way is True
+    assert "KXMLBF3" in reg and "KXMLBF3" not in disc
+    assert "KXNFLTEAMPTS" in reg and "KXNFLTEAMPTS" not in disc
     assert spec_for("KXMLBF5").three_way is True
 
 
