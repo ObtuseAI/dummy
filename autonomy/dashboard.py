@@ -575,6 +575,11 @@ def assemble_status_snapshot(runtime_dir: Path | None = None) -> dict[str, Any]:
         "execution_tournament": _tournament_status_panel(panels_raw["execution_tournament"]),
         "alerts": _tail_jsonl(rd / "alerts.jsonl", 20),
         "recent_cycles": _tail_jsonl(rd / "cycles.jsonl", 10),
+        # Both are cheap runtime-file reads (no ledger), so they belong in the
+        # fast snapshot too: /api/autonomy 503s under a busy ledger, and without
+        # these the vNext and USE cards would render blank on that fallback.
+        "vnext_shadow": _load_json(rd / "vnext_shadow_status.json") or {},
+        "use_sidecar": _use_sidecar_summary(rd),
     }
 
 
@@ -933,6 +938,25 @@ function staleNote(ages){
  const stale=Object.entries(ages).filter(([k,v])=>v&&v.stale).map(([k,v])=>`${k} (${v.age_seconds==null?'no timestamp':Math.round(v.age_seconds)+'s'})`);
  return stale.length?` · STALE DATA: ${stale.join(', ')}`:'';
 }
+function renderVnext(vx){
+ document.getElementById('vnextShadow').innerHTML=
+   kv('episodes on ledger', vx.episodes_on_ledger??0, (vx.episodes_on_ledger||0)>0?'ok':'')
+   +kv('pending settlement', vx.pending??'—')
+   +kv('issued last pass', vx.issued??'—')
+   +kv('completed last pass', vx.completed??'—')
+   +kv('errors', (vx.errors||[]).length, (vx.errors||[]).length?'warn':'ok')
+   +(vx.ledger_busy?kv('ledger','busy · completions deferred','warn'):'')
+   +kv('last pass', (vx.at||'—').slice(11,19))
+   +'<div class="truth">Shadow-only: simulated execution, human-only promotion. Evidence accrues toward the six open vNext claims.</div>';
+}
+function renderUseSidecar(useS){
+ document.getElementById('useSidecar').innerHTML=
+   kv('status', useS.status||'NOT RUN', useS.status==='OK'?'ok':'warn')
+   +kv('predictions', useS.predictions??'—')
+   +Object.entries(useS.provenance||{}).map(([k,v])=>kv('· '+k, v)).join('')
+   +kv('outcomes on tape', useS.outcomes_on_tape??0)
+   +kv('generated', (useS.generated_at||'—').slice(11,19));
+}
 async function tick(){
  const generation=++tickGeneration;
  let resp; try{ resp=await fetch('/api/autonomy'); }catch(e){ document.getElementById('ts').textContent='backend unreachable'; return; }
@@ -945,6 +969,7 @@ async function tick(){
    const hb=s.heartbeat||{};
    document.getElementById('live').innerHTML=kv('status',`<span class="pill ${hb.alive?'live':'dead'}">${hb.alive?'ALIVE':'STALE'}</span>`)+kv('last cycle',hb.last_cycle_at||'—')+kv('last status',hb.last_status||'—')+kv('mode',hb.mode||'—');
    document.getElementById('alerts').innerHTML=(s.alerts||[]).slice().reverse().map(a=>`<div class="kv"><span class="${a.severity=='critical'?'bad':a.severity=='warning'?'warn':'ok'}">${a.kind}</span><span>${a.message}</span><b>${(a.at||'').slice(11,19)}</b></div>`).join('')||'<div class="sub">no alerts</div>';
+   try{renderVnext(s.vnext_shadow||{});renderUseSidecar(s.use_sidecar||{});}catch(e){}
    document.getElementById('ts').textContent='full report computing · showing fast snapshot '+new Date().toLocaleTimeString()+staleNote(s.data_ages);
   }catch(e){document.getElementById('ts').textContent='full report computing…';}
   return;
@@ -963,22 +988,7 @@ async function tick(){
    kv('status', `<span class="pill ${hb.alive?'live':'dead'}">${hb.alive?'ALIVE':'STALE'}</span>`)
    +kv('last cycle', hb.last_cycle_at||'—')+kv('last status', hb.last_status||'—')
    +kv('mode', hb.mode||'—')+kv('orders', hb.last_orders_placed??'—')+kv('signals', hb.last_signals??'—');
- const vx=d.vnext_shadow||{};
- document.getElementById('vnextShadow').innerHTML=
-   kv('episodes on ledger', vx.episodes_on_ledger??0, (vx.episodes_on_ledger||0)>0?'ok':'')
-   +kv('pending settlement', vx.pending??'—')
-   +kv('issued last pass', vx.issued??'—')
-   +kv('completed last pass', vx.completed??'—')
-   +kv('errors', (vx.errors||[]).length, (vx.errors||[]).length?'warn':'ok')
-   +kv('last pass', (vx.at||'—').slice(11,19))
-   +'<div class="truth">Shadow-only: simulated execution, human-only promotion. Evidence accrues toward the six open vNext claims.</div>';
- const useS=d.use_sidecar||{};
- document.getElementById('useSidecar').innerHTML=
-   kv('status', useS.status||'NOT RUN', useS.status==='OK'?'ok':'warn')
-   +kv('predictions', useS.predictions??'—')
-   +Object.entries(useS.provenance||{}).map(([k,v])=>kv('· '+k, v)).join('')
-   +kv('outcomes on tape', useS.outcomes_on_tape??0)
-   +kv('generated', (useS.generated_at||'—').slice(11,19));
+ try{renderVnext(d.vnext_shadow||{});renderUseSidecar(d.use_sidecar||{});}catch(e){}
  const si=d.self_improvement||{};
  document.getElementById('selfImprovement').innerHTML=(si.items&&si.items.length)
   ?('<table><tr><th>#</th><th>kind</th><th>target</th><th>owner</th><th>next</th></tr>'
