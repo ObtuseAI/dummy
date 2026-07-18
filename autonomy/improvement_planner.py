@@ -161,6 +161,33 @@ def assemble_plan(runtime_dir: Path | None = None) -> dict[str, Any]:
                             " the shadow also fails, this cell is a model gap",
                 })
 
+    # 7) USE sidecar (Wave-22): where the simulation partner stands -- how
+    # much training tape it has accrued toward its first recursive tune, and
+    # whether the predictions artifact is flowing.
+    use_predictions = _load(rd / "use_predictions.json")
+    try:
+        with (rd / "use_outcomes.jsonl").open(encoding="utf-8") as fh:
+            tape = sum(1 for _ in fh)
+    except OSError:
+        tape = 0
+    if use_predictions or tape:
+        status = use_predictions.get("status")
+        items.append({
+            "kind": "use_sidecar_status",
+            "target": "universal-sports-engine",
+            "severity": 1.0 if status == "ENGINE_ABSENT" else 0.3,
+            "evidence": {"predictions_status": status,
+                         "outcomes_on_tape": tape,
+                         "tune_gate": 300},
+            "closed_loops": ["use_recursive_tuning"],
+            "owner": "operator" if status == "ENGINE_ABSENT" else "machine",
+            "next": ("sidecar checkout missing -- restore it or set"
+                     " DUMMY_USE_ENGINE_PATH" if status == "ENGINE_ABSENT"
+                     else "USE's own recursive tuner fires at >=300 taped"
+                          " outcomes; champions promote by its preregistered"
+                          " gates"),
+        })
+
     items.sort(key=lambda item: -float(item.get("severity") or 0.0))
     counts: dict[str, int] = {}
     for item in items:
@@ -180,6 +207,8 @@ def assemble_plan(runtime_dir: Path | None = None) -> dict[str, Any]:
             "tuner_auto_promote (step-capped runtime overrides)",
             "strategy_miner (FDR-controlled rule mining, nightly)",
             "live_poller + burst_repricing (event-driven)",
+            "use_sidecar (strengths -> simulation -> outcomes; USE's own"
+            " champion governance tunes on our settled games)",
         ],
     }
 

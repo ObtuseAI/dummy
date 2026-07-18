@@ -492,6 +492,29 @@ def assemble_dashboard_state(runtime_dir: Path | None = None) -> dict[str, Any]:
         "live_poller": _load_json(rd / "live_poller_status.json") or {},
         # Wave-20: the machine's own ranked improvement plan.
         "self_improvement": _load_json(rd / "self_improvement_plan.json") or {},
+        # Wave-22: the Universal Sports Engine sidecar's artifact summary.
+        "use_sidecar": _use_sidecar_summary(rd),
+    }
+
+
+def _use_sidecar_summary(rd: Path) -> dict[str, Any]:
+    predictions = _load_json(rd / "use_predictions.json") or {}
+    provenance: dict[str, int] = {}
+    for row in predictions.get("rows") or []:
+        if isinstance(row, dict) and "error" not in row:
+            key = str(row.get("provenance"))
+            provenance[key] = provenance.get(key, 0) + 1
+    try:
+        with (rd / "use_outcomes.jsonl").open(encoding="utf-8") as fh:
+            outcomes = sum(1 for _ in fh)
+    except OSError:
+        outcomes = 0
+    return {
+        "status": predictions.get("status"),
+        "generated_at": predictions.get("generated_at"),
+        "predictions": sum(provenance.values()),
+        "provenance": provenance,
+        "outcomes_on_tape": outcomes,
     }
 
 
@@ -644,6 +667,7 @@ _HTML = """<!doctype html>
  <div class="card"><h2>Liveness</h2><div id="live"></div></div>
  <div class="card"><h2>Live game poller</h2><div id="livePoller"></div></div>
  <div class="card"><h2>Self-improvement plan</h2><div id="selfImprovement" class="table-wrap"></div></div>
+ <div class="card"><h2>Universal Sports Engine sidecar</h2><div id="useSidecar"></div></div>
  <div class="card"><h2>Live canary gate</h2><div id="canary"></div></div>
  <div class="card"><h2>Risk</h2><div id="risk"></div></div>
  <div class="card"><h2>Forecast validation</h2><div id="validation"></div></div>
@@ -861,6 +885,13 @@ async function tick(){
    kv('status', `<span class="pill ${hb.alive?'live':'dead'}">${hb.alive?'ALIVE':'STALE'}</span>`)
    +kv('last cycle', hb.last_cycle_at||'—')+kv('last status', hb.last_status||'—')
    +kv('mode', hb.mode||'—')+kv('orders', hb.last_orders_placed??'—')+kv('signals', hb.last_signals??'—');
+ const useS=d.use_sidecar||{};
+ document.getElementById('useSidecar').innerHTML=
+   kv('status', useS.status||'NOT RUN', useS.status==='OK'?'ok':'warn')
+   +kv('predictions', useS.predictions??'—')
+   +Object.entries(useS.provenance||{}).map(([k,v])=>kv('· '+k, v)).join('')
+   +kv('outcomes on tape', useS.outcomes_on_tape??0)
+   +kv('generated', (useS.generated_at||'—').slice(11,19));
  const si=d.self_improvement||{};
  document.getElementById('selfImprovement').innerHTML=(si.items&&si.items.length)
   ?('<table><tr><th>#</th><th>kind</th><th>target</th><th>owner</th><th>next</th></tr>'
