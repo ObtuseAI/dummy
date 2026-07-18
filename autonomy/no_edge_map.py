@@ -75,3 +75,29 @@ def write_no_edge_map(no_edge_map: dict[str, Any], path: Path | None = None) -> 
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(no_edge_map, indent=2, sort_keys=True), encoding="utf-8")
     return path
+
+
+# A map older than this no longer reflects the current evidence; a stale
+# artifact must not keep suppressing (or un-suppressing) fusion members.
+NEGATIVE_SCOPE_MAX_AGE_DAYS = 7.0
+
+
+def load_negative_scopes(path: Path | None = None) -> frozenset[str]:
+    """Scopes the evidence grades SIGNIFICANTLY NEGATIVE (CI95 upper < 0),
+    for the Wave-19 fusion floor. Fail-open: missing/malformed/stale artifact
+    -> empty set (no suppression on guesswork)."""
+    try:
+        payload = json.loads((path or MAP_PATH).read_text(encoding="utf-8"))
+        generated = datetime.fromisoformat(str(payload.get("generated_at")))
+        age_days = (
+            datetime.now(timezone.utc) - generated
+        ).total_seconds() / 86400.0
+        if age_days > NEGATIVE_SCOPE_MAX_AGE_DAYS:
+            return frozenset()
+        return frozenset(
+            str(entry.get("scope"))
+            for entry in payload.get("significantly_negative") or []
+            if isinstance(entry, dict) and entry.get("scope")
+        )
+    except (OSError, ValueError, TypeError):
+        return frozenset()

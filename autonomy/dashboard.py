@@ -490,6 +490,8 @@ def assemble_dashboard_state(runtime_dir: Path | None = None) -> dict[str, Any]:
         "alerts": alerts,
         # Wave-16: the mounted live-game poller's session summary.
         "live_poller": _load_json(rd / "live_poller_status.json") or {},
+        # Wave-20: the machine's own ranked improvement plan.
+        "self_improvement": _load_json(rd / "self_improvement_plan.json") or {},
     }
 
 
@@ -641,6 +643,7 @@ _HTML = """<!doctype html>
  <div class="card" style="grid-column:1/-1"><h2>Council of specialists</h2><div id="council"></div></div>
  <div class="card"><h2>Liveness</h2><div id="live"></div></div>
  <div class="card"><h2>Live game poller</h2><div id="livePoller"></div></div>
+ <div class="card"><h2>Self-improvement plan</h2><div id="selfImprovement" class="table-wrap"></div></div>
  <div class="card"><h2>Live canary gate</h2><div id="canary"></div></div>
  <div class="card"><h2>Risk</h2><div id="risk"></div></div>
  <div class="card"><h2>Forecast validation</h2><div id="validation"></div></div>
@@ -858,6 +861,12 @@ async function tick(){
    kv('status', `<span class="pill ${hb.alive?'live':'dead'}">${hb.alive?'ALIVE':'STALE'}</span>`)
    +kv('last cycle', hb.last_cycle_at||'—')+kv('last status', hb.last_status||'—')
    +kv('mode', hb.mode||'—')+kv('orders', hb.last_orders_placed??'—')+kv('signals', hb.last_signals??'—');
+ const si=d.self_improvement||{};
+ document.getElementById('selfImprovement').innerHTML=(si.items&&si.items.length)
+  ?('<table><tr><th>#</th><th>kind</th><th>target</th><th>owner</th><th>next</th></tr>'
+    +si.items.slice(0,12).map((x,i)=>`<tr><td>${i+1}</td><td>${esc(x.kind)}</td><td class="explain">${esc(String(x.target||''))}</td><td class="${x.owner==='machine'?'ok':'warn'}">${esc(x.owner)}</td><td class="explain">${esc(x.next||'')}</td></tr>`).join('')
+    +'</table><div class="muted" style="margin-top:6px">closed loops: '+(si.closed_loops_active||[]).length+' active · generated '+((si.generated_at||'').slice(11,19))+'</div>')
+  :'<div class="muted">Waiting for the first self-improvement chain run.</div>';
  const lp=d.live_poller||{};
  document.getElementById('livePoller').innerHTML =
    kv('status', lp.status||'NOT RUN', lp.status==='SESSION_COMPLETE'||lp.status==='BUDGET_EXHAUSTED'?'ok':lp.status==='IDLE_NO_LIVE_GAMES'?'':'warn')

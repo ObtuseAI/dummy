@@ -590,6 +590,10 @@ class EngineResult:
     demotions: list[ScopeDecision] = field(default_factory=list)
     replacement_candidates: list[ScopeDecision] = field(default_factory=list)
     deferred: list[ScopeDecision] = field(default_factory=list)
+    # Wave-19: eligible scopes that FAILED the dossier gates, full dossier
+    # retained. Previously these vanished silently and diagnosing a
+    # non-promotion meant re-deriving every criterion by hand.
+    declined: list[ScopeDecision] = field(default_factory=list)
     generated_at: str = ""
 
     def to_dict(self) -> dict[str, Any]:
@@ -602,6 +606,7 @@ class EngineResult:
             "demotions": [d.to_dict() for d in self.demotions],
             "replacement_candidates": [d.to_dict() for d in self.replacement_candidates],
             "deferred": [d.to_dict() for d in self.deferred],
+            "declined": [d.to_dict() for d in self.declined],
         }
 
 
@@ -694,6 +699,16 @@ class AutoPromotionEngine:
                 config=cfg,
             )
             if not evidence.evidence_pass():
+                dossier = evidence.dossier()
+                failing = sorted(
+                    key for key, value in dossier.items()
+                    if isinstance(value, dict) and value.get("pass") is False
+                )
+                result.declined.append(ScopeDecision(
+                    scope=scope, action="DECLINED", stage=0,
+                    weight_fraction=0.0, dossier=dossier,
+                    reason="failed: " + (", ".join(failing) or "unknown"),
+                ))
                 continue
             if not evidence.correlation.get("ok"):
                 result.replacement_candidates.append(ScopeDecision(

@@ -627,6 +627,18 @@ def run_auto_promotion(
         config=config,
         alert_fn=alert_fn,
     )
+    # Wave-19: declined-but-eligible scopes keep their FULL dossiers in a
+    # dedicated artifact (dashboard/forensics readable; not the hash chain --
+    # declines are evidence snapshots, not risk actions) and a compact
+    # {scope, reason} list rides the state summary. Diagnosing "why didn't X
+    # promote" is now a file read, not an evening of re-derivation.
+    _write_json(runtime_dir / "promotion_declines.json", {
+        "generated_at": now_iso,
+        "declined": [d.to_dict() for d in result.declined],
+    })
+    applied["declined"] = [
+        {"scope": d.scope, "reason": d.reason} for d in result.declined
+    ]
     # Engine demotions also land in the sticky auto_demotions.json file the
     # registry honors (same merge discipline as the readiness runner: a
     # demotion never un-sticks without a human).

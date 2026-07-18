@@ -322,6 +322,14 @@ _SPECS: list[_TunableSpec] = [
         _sigma_grid(team_scores.LEAGUE_SCORE_CONFIGS["ncaaf"].total_sigma), "ncaaf", "total", ("total",),
         _reprice_team_scores_total,
     ),
+    # Wave-19: WNBA totals price off the same generic TeamScoreModel normal
+    # (Wave-12 config, prior grounded on live ladders) and are in season NOW,
+    # so the walk-forward loop can tighten the sigma as evidence accrues.
+    _spec(
+        "wnba_total_sigma", team_scores.LEAGUE_SCORE_CONFIGS["wnba"].total_sigma,
+        _sigma_grid(team_scores.LEAGUE_SCORE_CONFIGS["wnba"].total_sigma), "wnba", "total", ("total",),
+        _reprice_team_scores_total,
+    ),
     _spec(
         "nhl_home_edge", NHL_HOME_EDGE,
         [round(NHL_HOME_EDGE + step, 4) for step in (-0.10, -0.05, 0.0, 0.05, 0.10)],

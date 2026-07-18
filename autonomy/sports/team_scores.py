@@ -70,7 +70,18 @@ class TeamScoreModel:
 
     @property
     def config(self) -> LeagueScoreConfig:
-        return LEAGUE_SCORE_CONFIGS[self.league]
+        base = LEAGUE_SCORE_CONFIGS[self.league]
+        # Wave-20: evidence-earned runtime override for the total sigma (the
+        # walk-forward tuner's consumed family). Code constant = default;
+        # missing artifact = byte-identical behavior.
+        from dataclasses import replace
+
+        from autonomy.tuned_params import value_in_force
+
+        tuned = value_in_force(f"{self.league}_total_sigma", base.total_sigma)
+        if tuned != base.total_sigma:
+            return replace(base, total_sigma=tuned)
+        return base
 
     def _team(self, abbreviation: str) -> TeamScoreState:
         return self.teams.setdefault(abbreviation.upper(), TeamScoreState(
