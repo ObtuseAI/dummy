@@ -138,6 +138,15 @@ def write_board_artifact(
                     if _tier(probability) else None,
             "tier": _tier(probability),
             "uncertainty": round(float(forecast.uncertainty), 3),
+            # Wave-26: the cycle's live book, captured point-in-time so the
+            # vNext shadow runtime issues episodes from this artifact with
+            # zero additional network reads.
+            "yes_bid": getattr(market, "yes_bid", None),
+            "yes_ask": getattr(market, "yes_ask", None),
+            "no_bid": getattr(market, "no_bid", None),
+            "no_ask": getattr(market, "no_ask", None),
+            "liquidity": getattr(market, "liquidity", None),
+            "close_time": getattr(market, "close_time", None),
         })
     payload = _finish_board(
         board_rows,

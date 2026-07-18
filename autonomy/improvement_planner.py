@@ -188,6 +188,25 @@ def assemble_plan(runtime_dir: Path | None = None) -> dict[str, Any]:
                           " gates"),
         })
 
+    # 8) vNext shadow runtime (Wave-26): episode-evidence accrual toward the
+    # six open sovereign-forecasting claims.
+    vnext = _load(rd / "vnext_shadow_status.json")
+    if vnext:
+        errors = vnext.get("errors") or []
+        items.append({
+            "kind": "vnext_shadow_status",
+            "target": "sovereign-forecasting",
+            "severity": 2.0 if errors else 0.3,
+            "evidence": {"episodes_on_ledger": vnext.get("episodes_on_ledger"),
+                         "pending": vnext.get("pending"),
+                         "errors": errors[:3]},
+            "closed_loops": ["vnext_shadow_episodes"],
+            "owner": "machine" if not errors else "operator",
+            "next": ("episode errors need triage" if errors else
+                     "episodes accrue toward the six open empirical claims;"
+                     " promotion review stays human-only"),
+        })
+
     items.sort(key=lambda item: -float(item.get("severity") or 0.0))
     counts: dict[str, int] = {}
     for item in items:
@@ -209,6 +228,8 @@ def assemble_plan(runtime_dir: Path | None = None) -> dict[str, Any]:
             "live_poller + burst_repricing (event-driven)",
             "use_sidecar (strengths -> simulation -> outcomes; USE's own"
             " champion governance tunes on our settled games)",
+            "vnext_shadow_episodes (organism forecasts graded on verified"
+            " settlements; claims gates open until proven)",
         ],
     }
 
