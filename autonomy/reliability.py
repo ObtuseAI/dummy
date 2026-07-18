@@ -203,16 +203,18 @@ def fit_maps_from_rows(
         # smaller n; crypto keeps the original 200/10.
         source_of_scope = scope.split("|", 1)[0]
         if source_of_scope in SPORTS_CALIBRATED_SOURCES:
-            def _fit(fit_pairs):
+            def _fit(fit_pairs, min_clusters=SPORTS_MIN_CALIBRATION_CLUSTERS):
                 return fit_reliability_map(
                     fit_pairs,
                     bins=SPORTS_CALIBRATION_BINS,
-                    min_clusters=SPORTS_MIN_CALIBRATION_CLUSTERS,
+                    min_clusters=min_clusters,
                 )
+            bar = SPORTS_MIN_CALIBRATION_CLUSTERS
         else:
-            def _fit(fit_pairs):
-                return fit_reliability_map(fit_pairs)
-        knots = _validated_fit(pairs, _fit)
+            def _fit(fit_pairs, min_clusters=MIN_CALIBRATION_CLUSTERS):
+                return fit_reliability_map(fit_pairs, min_clusters=min_clusters)
+            bar = MIN_CALIBRATION_CLUSTERS
+        knots = _validated_fit(pairs, _fit, min_clusters=bar)
         if knots is not None:
             maps[scope] = knots
     return maps
@@ -230,14 +232,19 @@ _VALIDATION_MIN_HOLDOUT_PAIRS = 10
 
 def _validated_fit(
     pairs: list[tuple[float, float, str]],
-    fit_fn: Callable[[list[tuple[float, float, str]]], list[Knot] | None],
+    fit_fn: Callable[..., list[Knot] | None],
+    *,
+    min_clusters: int,
 ) -> list[Knot] | None:
     """Fit on ~80% of clusters, publish only if the map beats identity on the
     held-out ~20% (Brier), then refit on everything for the published knots.
 
     The holdout split is deterministic by cluster-id hash, so one cluster's
-    rows never straddle the split and reruns agree. Insufficient holdout ->
-    no map (a correction that cannot be validated is not published)."""
+    rows never straddle the split and reruns agree. The validation-stage fit
+    uses a proportionally reduced cluster bar (the split removes ~20% of the
+    clusters; a scope legitimately AT the bar must not fail it for having
+    been split) -- the published refit keeps the full bar. Insufficient
+    holdout -> no map (an unvalidatable correction is not published)."""
     import hashlib
 
     def _held_out(cluster: str) -> bool:
@@ -248,7 +255,12 @@ def _validated_fit(
     holdout = [pair for pair in pairs if _held_out(pair[2])]
     if len(holdout) < _VALIDATION_MIN_HOLDOUT_PAIRS:
         return None
-    candidate = fit_fn(fit_pairs)
+    reduced_bar = max(
+        2,
+        (min_clusters * (_VALIDATION_HOLDOUT_MODULUS - 1))
+        // _VALIDATION_HOLDOUT_MODULUS,
+    )
+    candidate = fit_fn(fit_pairs, min_clusters=reduced_bar)
     if candidate is None:
         return None
     brier_raw = sum((p - y) ** 2 for p, y, _ in holdout) / len(holdout)
@@ -257,7 +269,7 @@ def _validated_fit(
     ) / len(holdout)
     if brier_cal >= brier_raw:
         return None
-    return fit_fn(pairs)
+    return fit_fn(pairs, min_clusters=min_clusters)
 
 
 class ReliabilityMaps:
