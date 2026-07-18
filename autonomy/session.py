@@ -330,6 +330,14 @@ def build_brain(mode: SessionMode):
     from autonomy.signals.licensed_props import LicensedPlayerPropSignal
 
     registry.register(LicensedPlayerPropSignal())
+    # Wave-30: market-pressure challenger -- reads the multi-book line-movement
+    # archive and nudges toward the sharp side (cross-book steam + reverse line
+    # movement against the public lean + soft-line dispersion). Challenger-only,
+    # fail-closed, graded on settlement + CLV; preregistered
+    # (scripts/preregister_wave30.py). Inert when the archive is empty.
+    from autonomy.signals.market_pressure import MarketPressureSignal
+
+    registry.register(MarketPressureSignal())
     # New totals/first-inning models are recorded as challenger-only
     # point-in-time evidence. Their challenger gate keeps them out of the
     # execution ensemble until the autonomous promotion ladder (owner
