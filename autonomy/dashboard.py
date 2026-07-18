@@ -590,6 +590,10 @@ _HTML = """<!doctype html>
 <div class="topbar"><div><div class="eyebrow">Evidence-gated operations</div><h1>DUMMY // paper trading command center</h1><div class="sub" id="ts">loading…</div></div>
 <div class="controls"><span id="schedulerBadge" class="pill dead">CHECKING</span><button id="startBtn" class="btn start" onclick="controlPaper('start')">Start paper twin</button><button id="stopBtn" class="btn stop" onclick="controlPaper('stop')">Stop after cycle</button><div id="controlMsg" class="control-msg"></div></div></div>
 <div id="authBanner" class="banner"></div>
+<div class="section-title" style="margin-top:0">Bet board — every market priced, ranked by edge</div>
+<div class="topbar"><div><div class="eyebrow">Picks-first</div><div class="sub" id="boardMeta">loading board…</div></div>
+<div class="controls"><input id="boardFilter" placeholder="filter: league / bet type / ticker" style="background:#172131;border:1px solid var(--line);border-radius:8px;padding:9px 12px;color:var(--text);min-width:260px" oninput="renderBoard()"/></div></div>
+<div id="betBoard" class="card" style="margin-bottom:18px"><div class="muted">Waiting for the first fused-forecast rows (they record on every brain cycle).</div></div>
 <div class="hero">
  <div class="metric"><div class="label">Scheduler</div><div class="value" id="mScheduler">—</div><div class="note" id="mNext">Windows task</div></div>
  <div class="metric"><div class="label">Active paper trades</div><div class="value" id="mOpen">—</div><div class="note" id="mRisk">quote-simulated positions</div></div>
@@ -975,6 +979,37 @@ async function tick(){
    (d.alerts||[]).slice().reverse().map(a=>`<div class="kv"><span class="${a.severity=='critical'?'bad':a.severity=='warning'?'warn':'ok'}">${a.kind}</span><span>${a.message}</span><b>${(a.at||'').slice(11,19)}</b></div>`).join('') || '<div class="sub">no alerts</div>';
 }
 tick(); setInterval(tick, 15000);
+let _board=null;
+function edgeCell(e){ if(e==null)return '<td class="muted">—</td>'; const p=(e*100).toFixed(1)+'%'; return `<td class="${e>0?'ok':e<0?'bad':''}"><b>${e>0?'+':''}${p}</b></td>`; }
+function tierPill(t){ if(!t)return '<span class="muted">no pick</span>'; const style=t==='A'?'background:#0d3b1e;color:#3fb950':t==='B'?'background:#2a2109;color:#e8c76c':'background:#141b26;color:#8b98a8'; return `<span class="pill" style="${style}">${t}</span>`; }
+function renderBoard(){
+ const b=_board; const el=document.getElementById('betBoard'); if(!b)return;
+ if(b.error){ el.innerHTML='<div class="warn">board error: '+esc(b.error)+'</div>'; return; }
+ const q=(document.getElementById('boardFilter').value||'').toLowerCase();
+ const groups=b.groups||{};
+ const leagues=Object.keys(groups).sort();
+ let html='';
+ for(const lg of leagues){
+  const types=groups[lg];
+  let section='';
+  for(const bt of Object.keys(types).sort()){
+   const rows=types[bt].filter(r=>!q||lg.includes(q)||bt.includes(q)||r.ticker.toLowerCase().includes(q));
+   if(!rows.length)continue;
+   section+=`<div class="section-title" style="margin:10px 0 6px;font-size:12px;color:var(--muted)">${esc(bt.replace(/_/g,' ').toUpperCase())} · ${rows.length}</div>`
+    +'<div class="table-wrap"><table><tr><th>#</th><th>market</th><th>pick</th><th>tier</th><th>dummy prob</th><th>market prob</th><th>edge</th><th>as of</th></tr>'
+    +rows.map(r=>`<tr><td>${r.rank}</td><td><b>${esc(r.matchup)}</b><div class="muted" style="font-size:10px">${esc(r.ticker)}</div></td><td>${r.pick?`<b class="${r.pick==='yes'?'ok':'bad'}">${r.pick.toUpperCase()}</b>`:'<span class="muted">—</span>'}</td><td>${tierPill(r.tier)}</td><td><b>${(r.probability*100).toFixed(1)}%</b></td><td>${r.market_probability!=null?(r.market_probability*100).toFixed(1)+'%':'—'}</td>${edgeCell(r.edge)}<td class="muted">${(r.as_of||'').slice(11,16)}</td></tr>`).join('')
+    +'</table></div>';
+  }
+  if(section) html+=`<div class="section-title" style="margin:16px 0 4px">${esc(lg.toUpperCase())}</div>`+section;
+ }
+ el.innerHTML=html||'<div class="muted">No open priced markets match.</div>';
+ document.getElementById('boardMeta').textContent=`${b.rows||0} open markets priced · ranked by |edge| · updated ${new Date().toLocaleTimeString()}`;
+}
+async function boardTick(){
+ try{ const r=await fetch('/api/bet_board'); _board=await r.json(); renderBoard(); }
+ catch(e){ document.getElementById('boardMeta').textContent='board unreachable'; }
+}
+boardTick(); setInterval(boardTick, 30000);
 </script></body></html>"""
 
 
@@ -1065,6 +1100,20 @@ def build_app():
         # Fast, precomputed snapshot: fresh runtime JSON + watchdog only, never
         # ledger.db. Always responsive, even while /api/autonomy recomputes.
         return JSONResponse(assemble_status_snapshot())
+
+    @app.get("/api/bet_board")
+    def api_bet_board() -> JSONResponse:
+        # Wave-15: every market the brain currently prices, ranked. A bounded
+        # single-source read (latest fused_forecast per open market) -- cheap
+        # enough to serve uncached, and isolated so a board error is a JSON
+        # error field, never a 500 that breaks the page.
+        from autonomy.bet_board import assemble_bet_board
+
+        try:
+            return JSONResponse(assemble_bet_board())
+        except Exception as exc:
+            return JSONResponse({"error": f"{type(exc).__name__}: {exc}"[:200],
+                                 "rows": 0, "groups": {}})
 
     def _scheduler_control(
         action: str, request: Request, task_name: str | None = None
