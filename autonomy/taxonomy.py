@@ -117,6 +117,18 @@ SOURCE_TAXONOMY: dict[str, str] = {
     # "fangraphs_projection_consensus") because the source is named for its data
     # source, not the league prefix.
     "espn_fantasy_crowd": "mlb",
+    # Wave-22: the Universal Sports Engine sidecar challenger. Per-league
+    # emitted sources route to the league specialists (power_ratings
+    # precedent: exact entries, one prefix cannot fan out per league); the
+    # bare registry name resolves for the completeness tripwire.
+    "use_sim": "use_sim",
+    "use_sim_mlb": "mlb",
+    "use_sim_nba": "nba",
+    "use_sim_wnba": "wnba",
+    "use_sim_nfl": "nfl",
+    "use_sim_ncaaf": "ncaaf",
+    "use_sim_ncaamb": "ncaamb",
+    "use_sim_nhl": "nhl",
 }
 
 # (prefix, specialist) resolved in order; the first match wins. Ordering only
