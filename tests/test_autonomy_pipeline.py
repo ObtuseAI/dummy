@@ -557,6 +557,10 @@ def test_reconciler_detects_settlements(tmp_path):
 
 
 def test_full_shadow_cycle_places_shadow_orders(tmp_path, monkeypatch):
+    # Isolate from any cwd-relative runtime/no_edge_map.json: the fusion floor is
+    # tested on its own; here the strong crypto signal must drive an order
+    # regardless of whatever scopes live evidence has floored.
+    monkeypatch.setattr("autonomy.no_edge_map.load_negative_scopes", lambda *a, **k: frozenset())
     from autonomy.brain import PredatorBrain
     from autonomy.signals.crypto_spot import CryptoSpotVolSignal
 
