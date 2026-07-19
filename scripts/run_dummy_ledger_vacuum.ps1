@@ -12,13 +12,25 @@ $ErrorActionPreference = "Stop"
 $ledger = "D:\DummyRuntime\autonomy\ledger.db"
 $python = "C:\Python314\python.exe"
 
+# Skip cheaply when there is little to reclaim -- a scheduled run must not pause
+# the runtime unless the freelist is big enough to be worth the downtime.
+$minFreeGiB = [double]$env:DUMMY_VACUUM_MIN_FREE_GIB
+if ($minFreeGiB -le 0) { $minFreeGiB = 1.5 }
+$freeGiB = [double](& $python -c "import sqlite3;c=sqlite3.connect(r'$ledger',timeout=30);f=c.execute('PRAGMA freelist_count').fetchone()[0];p=c.execute('PRAGMA page_size').fetchone()[0];c.close();print(f*p/1024**3)")
+if ($freeGiB -lt $minFreeGiB) {
+    Write-Host ("freelist {0:N2}GiB < {1:N2}GiB threshold -- skipping VACUUM (no runtime pause)" -f $freeGiB, $minFreeGiB)
+    exit 0
+}
+Write-Host ("freelist {0:N2}GiB >= {1:N2}GiB threshold -- proceeding with VACUUM" -f $freeGiB, $minFreeGiB)
+
 $rmSrc = @'
 using System;using System.Collections.Generic;using System.Runtime.InteropServices;
 public static class RMV{[DllImport("rstrtmgr.dll",CharSet=CharSet.Unicode)]static extern int RmStartSession(out uint h,int f,string k);[DllImport("rstrtmgr.dll")]static extern int RmEndSession(uint h);[DllImport("rstrtmgr.dll",CharSet=CharSet.Unicode)]static extern int RmRegisterResources(uint h,uint n,string[] f,uint na,IntPtr a,uint ns,string[] s);[StructLayout(LayoutKind.Sequential)]struct UP{public int PID;public System.Runtime.InteropServices.ComTypes.FILETIME t;}[StructLayout(LayoutKind.Sequential,CharSet=CharSet.Unicode)]struct PI{public UP Process;[MarshalAs(UnmanagedType.ByValTStr,SizeConst=256)]public string n;[MarshalAs(UnmanagedType.ByValTStr,SizeConst=64)]public string s;public uint at;public uint st;public uint ts;[MarshalAs(UnmanagedType.Bool)]public bool r;}[DllImport("rstrtmgr.dll")]static extern int RmGetList(uint h,out uint need,ref uint got,[In,Out]PI[] a,ref uint reb);public static List<int> H(string p){var r=new List<int>();uint h;if(RmStartSession(out h,0,Guid.NewGuid().ToString())!=0)return r;try{string[] f={p};if(RmRegisterResources(h,1,f,0,IntPtr.Zero,0,null)!=0)return r;uint need=0,got=0,reb=0;RmGetList(h,out need,ref got,null,ref reb);if(need==0)return r;var a=new PI[need];got=need;if(RmGetList(h,out need,ref got,a,ref reb)==0)for(uint i=0;i<got;i++)r.Add(a[i].Process.PID);}finally{RmEndSession(h);}return r;}}
 '@
 Add-Type -TypeDefinition $rmSrc -Language CSharp
 
-$tasks = Get-ScheduledTask -TaskName "Dummy*"
+# Exclude self so a scheduled DummyLedgerVacuum run doesn't disable its own task.
+$tasks = Get-ScheduledTask -TaskName "Dummy*" | Where-Object { $_.TaskName -ne "DummyLedgerVacuum" }
 try {
     Write-Host "=== disabling $($tasks.Count) Dummy* tasks (pausing the runtime) ==="
     foreach ($t in $tasks) {
