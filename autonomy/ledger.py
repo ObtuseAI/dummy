@@ -243,10 +243,39 @@ class AutonomyLedger:
         # timeout) and suspenders (explicit PRAGMA) — some builds honor one but
         # not the other.
         self._conn.execute(f"PRAGMA busy_timeout={int(LEDGER_BUSY_TIMEOUT_S * 1000)}")
+        self._apply_perf_pragmas()
         self._conn.executescript(_SCHEMA)
         self._migrate()
         self._retry_on_locked(self._conn.commit)
         install_signal_history(self._conn)
+
+    def _apply_perf_pragmas(self) -> None:
+        """Tune the connection for a multi-GB ledger (env-overridable).
+
+        The default 2 MB page cache means every per-cycle index update and every
+        backtest scan reads cold pages from disk; ``synchronous=FULL`` fsyncs
+        each of the ~15k per-cycle commits. A large cache keeps hot pages
+        resident and NORMAL is crash-safe against an app crash on a rollback
+        journal (it can only lose the last transaction on OS/power loss, which is
+        acceptable for a paper shadow ledger and does not affect the atomic
+        archive+delete retention relies on). journal_mode is untouched -- the
+        ledger stays non-WAL. Best-effort: never block ledger construction.
+        """
+        import os
+
+        cache_mb = int(os.environ.get("DUMMY_LEDGER_CACHE_MB", "512"))
+        sync = os.environ.get("DUMMY_LEDGER_SYNCHRONOUS", "NORMAL").upper()
+        mmap_mb = int(os.environ.get("DUMMY_LEDGER_MMAP_MB", "0"))
+        try:
+            if cache_mb > 0:
+                self._conn.execute(f"PRAGMA cache_size=-{cache_mb * 1024}")  # negative => KiB
+            if sync in ("OFF", "NORMAL", "FULL", "EXTRA"):
+                self._conn.execute(f"PRAGMA synchronous={sync}")
+            self._conn.execute("PRAGMA temp_store=MEMORY")
+            if mmap_mb > 0:
+                self._conn.execute(f"PRAGMA mmap_size={mmap_mb * 1024 * 1024}")
+        except sqlite3.OperationalError:
+            pass
 
     def _retry_on_locked(self, operation: Callable[[], Any]) -> Any:
         """Run a write, retrying with backoff on SQLITE_BUSY within a bound.

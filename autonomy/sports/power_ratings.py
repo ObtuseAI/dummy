@@ -42,10 +42,10 @@ committed for them since FPI/BPI share one parser and one JSON shape.
 """
 from __future__ import annotations
 
-import statistics
 from dataclasses import dataclass
 from typing import Any, Callable, Protocol, runtime_checkable
 
+from autonomy import faststats as statistics  # Fraction-based statistics is a per-cycle hot spot
 from autonomy.sports.espn import LEAGUE_TO_ESPN, canonical_team
 
 _BASE_URL = "https://site.web.api.espn.com/apis/fitt/v3/sports"

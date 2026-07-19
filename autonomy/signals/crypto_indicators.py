@@ -8,11 +8,11 @@ later point-in-time evidence justifies an explicit promotion.
 from __future__ import annotations
 
 import math
-import statistics
 import time
 from datetime import datetime, timezone
 from typing import Any, Callable
 
+from autonomy import faststats as statistics  # Fraction-based statistics is a per-cycle hot spot
 from autonomy.ontology import MarketView, Signal, Vertical
 from autonomy.signals.crypto_spot import (
     _PRODUCTS,
