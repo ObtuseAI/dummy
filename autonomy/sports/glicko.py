@@ -14,7 +14,9 @@ answers a matchup win probability -- the seed for a challenger rating source.
 """
 from __future__ import annotations
 
+import json
 import math
+from pathlib import Path
 from typing import Any
 
 from autonomy.sports.history_store import SportsHistoryStore
@@ -119,6 +121,7 @@ class LakeGlickoRatings:
         self._r: dict[str, float] = {}
         self._rd: dict[str, float] = {}
         self._vol: dict[str, float] = {}
+        self._seen: set[str] = set()      # game_ids already folded in (idempotent warm)
 
     def _state(self, team: str) -> tuple[float, float, float]:
         return (self._r.get(team, _BASE_R), self._rd.get(team, _BASE_RD),
@@ -137,7 +140,11 @@ class LakeGlickoRatings:
         opponents' ratings *frozen at the start of the period* (so intra-period
         games don't leak into one another)."""
         pending: dict[str, list[tuple[float, float, float]]] = {}
+        applied: list[str] = []
         for game in period:
+            gid = game.get("game_id")
+            if gid in self._seen:            # already folded in -> warm is idempotent
+                continue
             home, away = game.get("home"), game.get("away")
             hs, as_ = game.get("home_score"), game.get("away_score")
             if not home or not away or hs is None or as_ is None:
@@ -147,9 +154,12 @@ class LakeGlickoRatings:
             r_a, rd_a, _ = self._state(away)
             pending.setdefault(home, []).append((r_a, rd_a, home_score))
             pending.setdefault(away, []).append((r_h, rd_h, 1.0 - home_score))
+            if gid is not None:
+                applied.append(gid)
         for team, opps in pending.items():
             r, rd, vol = self._state(team)
             self._r[team], self._rd[team], self._vol[team] = self.engine.update(r, rd, vol, opps)
+        self._seen.update(applied)
 
     @staticmethod
     def group_periods(games: list[dict[str, Any]], period_key: str = "day") -> list[list[dict[str, Any]]]:
@@ -177,3 +187,33 @@ class LakeGlickoRatings:
         r_h, rd_h, _ = self._state(home)
         r_a, rd_a, _ = self._state(away)
         return self.engine.expected_score(r_h + home_advantage, rd_h, r_a, rd_a)
+
+    # ---- persistence: warm once, then update incrementally across restarts --
+    def save(self, path: Path | str) -> None:
+        target = Path(path)
+        target.parent.mkdir(parents=True, exist_ok=True)
+        tmp = target.with_suffix(target.suffix + ".tmp")
+        tmp.write_text(json.dumps({
+            "league": self.league,
+            "teams": {t: [self._r[t], self._rd.get(t, _BASE_RD), self._vol.get(t, _BASE_VOL)]
+                      for t in self._r},
+            "seen": sorted(self._seen),
+        }), encoding="utf-8")
+        tmp.replace(target)
+
+    @classmethod
+    def load(
+        cls, store: SportsHistoryStore, league: str, path: Path | str, *, tau: float = 0.5,
+    ) -> "LakeGlickoRatings":
+        """Load persisted ratings if present (else a cold instance). Follow with
+        :meth:`warm` to fold in any games that settled since the last save --
+        already-seen games are skipped, so the catch-up touches only new rows."""
+        ratings = cls(store, league=league, tau=tau)
+        try:
+            blob = json.loads(Path(path).read_text(encoding="utf-8"))
+        except Exception:  # noqa: BLE001 -- no/partial state => cold start
+            return ratings
+        for team, (r, rd, vol) in (blob.get("teams") or {}).items():
+            ratings._r[team], ratings._rd[team], ratings._vol[team] = float(r), float(rd), float(vol)
+        ratings._seen = set(blob.get("seen") or [])
+        return ratings

@@ -40,7 +40,7 @@ def _store(tmp_path):
 
 
 def test_prices_the_stronger_team(tmp_path):
-    sig = SportsGlickoSignal(espn=FakeEspn(home="AAA", away="BBB"), store=_store(tmp_path), seasons=AllInSeason())
+    sig = SportsGlickoSignal(espn=FakeEspn(home="AAA", away="BBB"), store=_store(tmp_path), seasons=AllInSeason(), ratings_dir=tmp_path)
     m = _market("KXNFLGAME-25SEP10AAABBB-AAA")
     assert sig.applicable(m)
     s = sig.generate(m)
@@ -50,20 +50,20 @@ def test_prices_the_stronger_team(tmp_path):
 
 
 def test_away_subject_is_complement(tmp_path):
-    sig = SportsGlickoSignal(espn=FakeEspn(home="AAA", away="BBB"), store=_store(tmp_path), seasons=AllInSeason())
+    sig = SportsGlickoSignal(espn=FakeEspn(home="AAA", away="BBB"), store=_store(tmp_path), seasons=AllInSeason(), ratings_dir=tmp_path)
     s = sig.generate(_market("KXNFLGAME-25SEP10AAABBB-BBB"))     # subject = away underdog
     assert s is not None and s.probability_yes < 0.5
 
 
 def test_abstains_when_game_already_started(tmp_path):
-    sig = SportsGlickoSignal(espn=FakeEspn(status="in"), store=_store(tmp_path), seasons=AllInSeason())
+    sig = SportsGlickoSignal(espn=FakeEspn(status="in"), store=_store(tmp_path), seasons=AllInSeason(), ratings_dir=tmp_path)
     assert sig.generate(_market("KXNFLGAME-25SEP10AAABBB-AAA")) is None
 
 
 def test_abstains_with_no_lake(tmp_path):
     # store that raises on use -> signal must fail closed, never crash
     sig = SportsGlickoSignal(espn=FakeEspn(), store=SportsHistoryStore(tmp_path / "empty.db"),
-                             seasons=AllInSeason())
+                             seasons=AllInSeason(), ratings_dir=tmp_path)
     s = sig.generate(_market("KXNFLGAME-25SEP10AAABBB-AAA"))
     # empty lake -> both teams default-rated -> ~0.5 with high uncertainty (not None)
     assert s is not None and 0.4 < s.probability_yes < 0.6 and s.uncertainty >= 0.15

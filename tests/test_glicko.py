@@ -60,3 +60,23 @@ def test_lake_ratings_are_point_in_time_and_sensible(tmp_path):
     # a team never seen is at the default rating
     assert abs(ratings.rating("ZZZ") - 1500.0) < 1e-9
     st.close()
+
+
+def test_warm_is_idempotent_and_persists(tmp_path):
+    st = SportsHistoryStore(tmp_path / "h.db")
+    st.upsert_game(_game("g1", "2025-09-01T00:00:00Z", "AAA", "BBB", 30, 10))
+    st.upsert_game(_game("g2", "2025-09-08T00:00:00Z", "BBB", "AAA", 10, 27))
+
+    r = LakeGlickoRatings(st, league="nfl").warm("2025-10-01T00:00:00Z")
+    rating_after_first = r.rating("AAA")
+    r.warm("2025-10-01T00:00:00Z")                       # re-warm: already-seen games are skipped
+    assert abs(r.rating("AAA") - rating_after_first) < 1e-9
+
+    # persist -> load -> a later game folds in incrementally (only the new row)
+    path = tmp_path / "glicko_nfl.json"
+    r.save(path)
+    st.upsert_game(_game("g3", "2025-09-15T00:00:00Z", "AAA", "BBB", 24, 20))
+    loaded = LakeGlickoRatings.load(st, "nfl", path).warm("2025-10-01T00:00:00Z")
+    assert loaded.rating("AAA") > rating_after_first     # AAA won again -> rating rose
+    assert "g1" in loaded._seen and "g3" in loaded._seen
+    st.close()

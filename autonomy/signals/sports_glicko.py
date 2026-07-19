@@ -33,13 +33,17 @@ class SportsGlickoSignal:
     name = "sports_glicko"
 
     def __init__(self, espn: EspnClient | None = None,
-                 store: SportsHistoryStore | None = None, seasons: Any = None) -> None:
+                 store: SportsHistoryStore | None = None, seasons: Any = None,
+                 ratings_dir: Any = None) -> None:
+        from pathlib import Path
+
         from autonomy.specialists.seasons import SeasonMonitor
 
         self.espn = espn or EspnClient()
         self._store = store
         self._ratings: dict[str, LakeGlickoRatings] = {}
         self._as_of: str | None = None
+        self.ratings_dir = Path(ratings_dir) if ratings_dir else Path("runtime/autonomy")
         self.seasons = seasons or SeasonMonitor(espn=self.espn)
 
     # ---- lake-backed ratings, cached per league per cycle ----------------
@@ -62,8 +66,16 @@ class SportsGlickoSignal:
         store = self.store()
         if store is None:
             return None
+        # Load persisted ratings, then fold in only games settled since the last
+        # save (already-seen games skipped) -> no full multi-season replay each
+        # cycle once the lake is deep. Persist the caught-up state.
+        path = self.ratings_dir / f"glicko_{league}.json"
         try:
-            ratings = LakeGlickoRatings(store, league=league).warm(self._now())
+            ratings = LakeGlickoRatings.load(store, league, path).warm(self._now())
+            try:
+                ratings.save(path)
+            except Exception:  # noqa: BLE001 -- a failed save must not block pricing
+                pass
         except Exception:  # noqa: BLE001
             return None
         self._ratings[league] = ratings
