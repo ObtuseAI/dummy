@@ -75,6 +75,18 @@
       "model_name": "qwen/qwen-2.5-72b-instruct",
       "rpm": 60, "tpm": 100000, "timeout_seconds": 20.0,
       "route_mode": "openrouter"
+    },
+    "claude_cli": {
+      "api_base": "", "api_key_env": "",
+      "model_name": "claude-sonnet-5",
+      "model_aliases": ["claude", "sonnet", "claude-cli"],
+      "rpm": 10, "tpm": 100000, "timeout_seconds": 90.0
+    },
+    "codex_cli": {
+      "api_base": "", "api_key_env": "",
+      "model_name": "gpt-5-codex",
+      "model_aliases": ["codex", "gpt-codex", "codex-cli"],
+      "rpm": 10, "tpm": 100000, "timeout_seconds": 90.0
     }
   },
   "mock_fallback_enabled": true,
