@@ -640,12 +640,70 @@ class MainWindow(QtWidgets.QMainWindow):
         self.tray = QtWidgets.QSystemTrayIcon(icon, self)
         self.tray.setToolTip("Dummy Tote")
         menu = QtWidgets.QMenu()
-        menu.addAction("Show", self.showNormal)
-        menu.addAction("Quit", QtWidgets.QApplication.quit)
+        menu.addAction("Open App", self._open_app)
+        menu.addAction("Open Dashboard", self._open_dashboard)
+        menu.addSeparator()
+        menu.addAction("Exit", QtWidgets.QApplication.quit)
         self.tray.setContextMenu(menu)
         self.tray.activated.connect(
-            lambda r: self.showNormal() if r == QtWidgets.QSystemTrayIcon.Trigger else None)
+            lambda r: self._open_app() if r in (
+                QtWidgets.QSystemTrayIcon.Trigger, QtWidgets.QSystemTrayIcon.DoubleClick) else None)
         self.tray.show()
+        # Wave-54: native toasts on opened/settled bets. Seed silently so a first
+        # run never blasts historical settlements, then poll the outcomes table.
+        from desktop.dummy_tote import bet_notify
+
+        self._bet_notify = bet_notify
+        try:
+            bet_notify.seed_silently()
+            self._bet_last_id = bet_notify.read_state()
+        except Exception:
+            self._bet_last_id = 0
+        self._bet_timer = QtCore.QTimer(self)
+        self._bet_timer.timeout.connect(self._check_bet_events)
+        self._bet_timer.start(30000)
+
+    def _open_app(self):
+        self.showNormal()
+        self.raise_()
+        self.activateWindow()
+
+    def _open_dashboard(self):
+        import os
+        import subprocess
+
+        url = os.environ.get("DUMMY_DASHBOARD_URL") or "http://127.0.0.1:8787/"
+        edge = os.path.join(os.environ.get("ProgramFiles(x86)", ""),
+                            "Microsoft", "Edge", "Application", "msedge.exe")
+        no_window = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+        try:
+            if os.path.exists(edge):
+                subprocess.Popen([edge, f"--app={url}"], creationflags=no_window)
+            else:
+                os.startfile(url)  # noqa: S606 -- open the local dashboard URL
+        except OSError:
+            try:
+                os.startfile(url)  # noqa: S606
+            except OSError:
+                pass
+
+    def _check_bet_events(self):
+        try:
+            events, new_last = self._bet_notify.collect_events(self._bet_last_id)
+            if new_last <= self._bet_last_id:
+                return
+            for ev in events[:6]:
+                level = (QtWidgets.QSystemTrayIcon.Warning if ev["warning"]
+                         else QtWidgets.QSystemTrayIcon.Information)
+                self.tray.showMessage(ev["title"], ev["body"], level, 6000)
+            extra = len(events) - min(len(events), 6)
+            if extra > 0:
+                self.tray.showMessage("Dummy", f"+{extra} more bet events",
+                                      QtWidgets.QSystemTrayIcon.Information, 5000)
+            self._bet_last_id = new_last
+            self._bet_notify.write_state(new_last)
+        except Exception:
+            pass
 
     def refresh(self):
         snap = self.data.snapshot()
