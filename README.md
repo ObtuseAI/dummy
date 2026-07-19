@@ -1,6 +1,30 @@
-# Dummy
+<h1 align="center">Dummy</h1>
 
-Private, evidence-gated prediction-market intelligence for crypto and sports.
+<p align="center">
+  <strong>Evidence-gated prediction-market intelligence for crypto &amp; sports.</strong><br>
+  An autonomous organism that gathers point-in-time public evidence, calibrates
+  competing forecasts, earns every source its trust from settled outcomes, and
+  explains and records each paper decision in an auditable ledger.
+</p>
+
+<p align="center">
+  <img src="https://img.shields.io/badge/python-3.14-4b8bbe" alt="Python 3.14">
+  <img src="https://img.shields.io/badge/tests-5906%20passing-2ea44f" alt="5906 tests passing">
+  <img src="https://img.shields.io/badge/mode-SHADOW%20·%20paper-1f9d55" alt="Shadow paper mode">
+  <img src="https://img.shields.io/badge/promotion%20to%20capital-human--gated-e0a100" alt="Human-gated">
+  <img src="https://img.shields.io/badge/execution-fail--closed-c0392b" alt="Fail-closed">
+</p>
+
+<p align="center">
+  <img src="docs/assets/tote-overview.png" alt="The Dummy Tote — evidence board" width="900">
+</p>
+
+<p align="center">
+  <em>The <strong>Dummy Tote</strong> — a native command board over the live paper runtime:
+  system state, ranked edges, and the day's top picks, read straight from the
+  runtime artifacts.</em>
+</p>
+
 Dummy collects point-in-time public evidence, calibrates competing forecasts,
 simulates and stress-tests challengers, explains every paper decision, and
 records the full lifecycle in an auditable ledger.
@@ -34,6 +58,26 @@ records the full lifecycle in an auditable ledger.
 
 Live execution remains fail-closed, evidence-gated, and subject to explicit
 operator authorization.
+
+## The command board
+
+The **Dummy Tote** is a true native desktop app (PySide6) that reads only the
+runtime artifacts the scheduled loops already write — it never touches the
+trading path. Its views turn the live paper runtime into a racetrack
+totalizator: pitch-green felt, brass rules, and amber lamps that flip on every
+re-price.
+
+| Bet board — the full per-game surface | Live mispricing |
+|:--:|:--:|
+| [![Bet board](docs/assets/tote-betboard.png)](docs/assets/tote-betboard.png) | [![Mispricing](docs/assets/tote-mispricing.png)](docs/assets/tote-mispricing.png) |
+| Every priced market ranked by edge, with A/B/C conviction tiers | Model vs de-vigged book vs price — challenger evidence, never auto-staked |
+
+| Crypto paper twin | Promotion readiness |
+|:--:|:--:|
+| [![Crypto](docs/assets/tote-crypto.png)](docs/assets/tote-crypto.png) | [![Readiness](docs/assets/tote-readiness.png)](docs/assets/tote-readiness.png) |
+| Throughput funnel — paper trades vs the discipline of policy rejection | Every challenger scope, closest to promotion first |
+
+A read-only web command center is also served at `http://127.0.0.1:8787`.
 
 ## Architecture
 
