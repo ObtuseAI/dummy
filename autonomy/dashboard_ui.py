@@ -319,7 +319,67 @@ function scopeView(vert,label){
   h+='<div class="card reveal"><h3>Model vs market <span class="r">Brier, lower better</span></h3>'+accuracyBars(s)+'</div>';
   h+='<div class="card pad0 reveal"><h3 style="padding:var(--s3) var(--s3) var(--s2)">Current picks <span class="r">by edge</span></h3>'+picksTable(sc.picks)+'</div>';
   h+='</div>';
+  h+=extrasSection(sc.extras||{},label);
   return h;
+}
+function extrasSection(x,label){
+  const hasCouncil=!!x.council, hasClv=(x.clv||[]).length, hasMisp=(x.mispricing||[]).length, hasEj=(x.ejections||[]).length;
+  if(!hasCouncil&&!hasClv&&!hasMisp&&!hasEj)return '';
+  let h='<div class="topbar" style="margin:var(--s4) 0 var(--s3)"><h2 style="font-size:18px">Other data</h2><span class="crumb">council · clv · live mispricing</span></div>';
+  h+='<div class="grid cols2" style="margin-bottom:var(--s3)">';
+  h+='<div class="card reveal"><h3>'+svgIcon2('council')+'Council — '+label+' specialist</h3>'+councilCard(x.council)+'</div>';
+  h+='<div class="card reveal"><h3>Closing-line value <span class="r">bps vs close</span></h3>'+clvCard(x.clv)+'</div>';
+  h+='</div>';
+  if(hasEj)h+='<div class="card reveal" style="margin-bottom:var(--s3);border-color:var(--amber)"><h3 style="color:var(--amber)">'+svgIcon2('alert')+'Ejection / injury events</h3>'+ejectionList(x.ejections)+'</div>';
+  h+='<div class="card pad0 reveal"><h3 style="padding:var(--s3) var(--s3) var(--s2)">Live mispricing tape <span class="r">model vs book vs market</span></h3>'+mispTable(x.mispricing)+'</div>';
+  return h;
+}
+function svgIcon2(k){
+  const p={council:'<path d="M12 3l7 4v5c0 4-3 7-7 8-4-1-7-4-7-8V7z"/><path d="M9 12l2 2 4-4"/>',
+           alert:'<path d="M12 3l9 16H3z"/><path d="M12 9v5M12 17v.5"/>'};
+  return '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" style="vertical-align:-2px;margin-right:2px">'+(p[k]||'')+'</svg>';
+}
+function councilCard(c){
+  if(!c)return '<div class="empty">no council row for this scope</div>';
+  const row=(k,v,cls)=>'<div class="rowbar" style="grid-template-columns:150px 1fr"><span class="nm" style="color:var(--muted)">'+k+'</span><span class="mv '+(cls||'')+'" style="text-align:left">'+v+'</span></div>';
+  let h='<div class="rank">';
+  h+=row('Status',(c.status||'—')+(c.in_season?' · in season':(c.in_season===false?' · off season':'')),c.in_season?'pos':'');
+  h+=row('Contested Brier',c.contested_brier==null?'—':num(c.contested_brier)+' <span style="color:var(--faint)">('+(c.contested_n||0)+')</span>');
+  h+=row('CLV',c.clv_bps==null?'—':(c.clv_bps>0?'+':'')+num(c.clv_bps,0)+' bps',c.clv_bps>0?'pos':(c.clv_bps<0?'neg':''));
+  h+=row('Open opportunities',(c.open_opportunities||0),(c.open_opportunities>0?'amb':''));
+  h+=row('Graded',(c.settled_n||0)+' settled');
+  if(c.games_seen!=null)h+=row('Games seen',c.games_seen);
+  if(c.where_we_bleed)h+=row('Where we bleed','<span style="color:var(--red)">'+c.where_we_bleed+'</span>');
+  return h+'</div>';
+}
+function clvCard(clv){
+  if(!clv||!clv.length)return '<div class="empty">no CLV entries for this scope yet</div>';
+  let h='<div class="rank">';
+  clv.forEach(c=>{
+    const m=c.clv_bps_mean;
+    h+='<div class="rowbar" style="grid-template-columns:1fr auto auto;gap:10px"><span class="nm">'+(c.market_type||'—')+'</span>'
+      +'<span class="mv '+(m>0?'pos':(m<0?'neg':''))+'">'+(m==null?'—':(m>0?'+':'')+num(m,0)+' bps')+'</span>'
+      +'<span class="mv" style="color:var(--faint);min-width:48px">'+(c.n_entries||0)+'n</span></div>';
+  });
+  return h+'</div>';
+}
+function ejectionList(ev){
+  return '<div>'+ev.map(e=>'<span class="chip" style="border-color:var(--amber)">'+(typeof e==='string'?e:(e.player||e.team||e.detail||JSON.stringify(e).slice(0,40)))+'</span>').join('')+'</div>';
+}
+function mispTable(rows){
+  if(!rows||!rows.length)return '<div class="empty">no live mispricing on this scope right now</div>';
+  let h='<div style="max-height:340px;overflow:auto"><table><thead><tr><th>Market</th><th>Side</th><th>Edge</th><th>Model</th><th>Book</th><th>Mkt</th><th>Conf</th></tr></thead><tbody>';
+  rows.forEach(r=>{
+    const e=r.edge==null?null:(r.edge*100);
+    h+='<tr><td title="'+(r.ticker||'')+' — '+(r.rationale||'').replace(/"/g,"&quot;")+'">'+(r.ticker||'')+'</td>'
+      +'<td><span class="pill '+((r.side||'').toUpperCase().includes('NO')?'no':'yes')+'">'+(r.side||'')+'</span></td>'
+      +'<td class="'+(e>=0?'pos':'neg')+'">'+(e==null?'—':(e>0?'+':'')+e.toFixed(1)+'%')+'</td>'
+      +'<td>'+(r.model_prob==null?'—':num(r.model_prob,2))+'</td>'
+      +'<td>'+(r.book_prob==null?'—':num(r.book_prob,2))+'</td>'
+      +'<td>'+(r.market_prob==null?'—':num(r.market_prob,2))+'</td>'
+      +'<td style="color:var(--muted)">'+(r.confidence||'—')+'</td></tr>';
+  });
+  return h+'</tbody></table></div>';
 }
 function accuracyBars(s){
   if(s.market_brier==null)return '<div class="empty">no contested (market-priced) markets in window</div>';

@@ -192,3 +192,71 @@ def test_dashboard_index_serves_redesigned_page():
     body = TestClient(dash.build_app()).get("/").text
     assert "totalizator" in body            # the redesigned shell
     assert "/api/overview" in body and "/api/scopes" in body
+
+
+# ---- Wave-52: scope "other data" fold-in -----------------------------------
+
+def _write(p, obj):
+    import json
+    p.write_text(json.dumps(obj), encoding="utf-8")
+
+
+def test_scope_extras_folds_council_clv_mispricing_ejections(tmp_path):
+    from autonomy.scope_analytics import build_scope_extras
+
+    _write(tmp_path / "clv_report.json", {"scopes": {
+        "crypto|ladder": {"specialist": "crypto", "market_type": "ladder",
+                          "clv_bps_mean": 2000.0, "n_entries": 50,
+                          "clv_bps_ci95_lower": 100, "clv_bps_ci95_upper": 3900},
+        "mlb|winner": {"specialist": "mlb", "market_type": "winner",
+                       "clv_bps_mean": 300.0, "n_entries": 10},
+    }})
+    _write(tmp_path / "mispricing_monitor_latest.json", {"shortlist": [
+        {"ticker": "KXBTCD-A", "side": "YES", "edge": 0.2, "model_prob": 0.8,
+         "book_prob": 0.7, "market_prob": 0.6, "confidence": "high", "ejection_events": []},
+        {"ticker": "KXMLBTOTAL-x", "side": "NO", "edge": 0.1,
+         "ejection_events": [{"player": "Star OF ejected"}]},
+    ]})
+    council = [
+        {"name": "crypto", "status": "ok", "clv_bps": 2000, "contested_brier": 0.06, "in_season": True},
+        {"name": "mlb", "status": "ok", "clv_bps": 300, "where_we_bleed": "mlb|total edge -0.02"},
+    ]
+    ex = build_scope_extras(tmp_path, [("CRYPTO", "BTC"), ("SPORTS", "MLB")], council_rows=council)
+
+    btc, mlb = ex["CRYPTO"]["BTC"], ex["SPORTS"]["MLB"]
+    assert btc["council"]["name"] == "crypto"                       # crypto specialist shared across coins
+    assert any(c["market_type"] == "ladder" for c in btc["clv"])
+    assert [m["ticker"] for m in btc["mispricing"]] == ["KXBTCD-A"]  # grouped by ticker scope
+    assert mlb["council"]["name"] == "mlb"
+    assert [m["ticker"] for m in mlb["mispricing"]] == ["KXMLBTOTAL-x"]
+    assert len(mlb["ejections"]) == 1                                # ejection folded into its scope
+    assert any(c["market_type"] == "winner" for c in mlb["clv"])
+
+
+def test_scope_extras_missing_artifacts_safe(tmp_path):
+    from autonomy.scope_analytics import build_scope_extras
+
+    ex = build_scope_extras(tmp_path, [("CRYPTO", "BTC")], council_rows=None)
+    assert ex["CRYPTO"]["BTC"] == {"council": None, "clv": [], "mispricing": [], "ejections": []}
+
+
+def test_scopes_endpoint_merges_extras(tmp_path, monkeypatch):
+    import json
+
+    from starlette.testclient import TestClient
+
+    import autonomy.dashboard as dash
+
+    (tmp_path / "latest_dashboard_snapshot.json").write_text(json.dumps({
+        "generated_at": "2026-07-19T18:00:00+00:00",
+        "scopes": {"verticals": {"CRYPTO": {"scopes": {"BTC": {"summary": {"n": 3}}}}}},
+        "backtest": {},
+    }), encoding="utf-8")
+    (tmp_path / "mispricing_monitor_latest.json").write_text(json.dumps({
+        "shortlist": [{"ticker": "KXBTCD-Z", "side": "YES", "edge": 0.15}],
+    }), encoding="utf-8")
+    monkeypatch.setattr(dash, "RUNTIME_DIR", tmp_path)
+
+    sc = TestClient(dash.build_app()).get("/api/scopes").json()
+    extras = sc["verticals"]["CRYPTO"]["scopes"]["BTC"]["extras"]
+    assert [m["ticker"] for m in extras["mispricing"]] == ["KXBTCD-Z"]

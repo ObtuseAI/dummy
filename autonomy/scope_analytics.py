@@ -18,7 +18,9 @@ never opens the ledger (the Wave-42 contention rule).
 """
 from __future__ import annotations
 
+import json
 import sqlite3
+from pathlib import Path
 from typing import Any
 
 from autonomy.ontology import Vertical
@@ -335,3 +337,86 @@ def build_overview(conn: sqlite3.Connection, report: dict[str, Any] | None) -> d
         "close_to_promotion": close[:8],
         "active_sources": active_sources[:12],
     }
+
+
+def _load_artifact(runtime_dir: Path, name: str) -> Any:
+    try:
+        return json.loads((runtime_dir / name).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+
+
+def _specialist_for(vertical: str, label: str) -> str:
+    # Crypto is one specialist shared across coins; sports is one per league.
+    return "crypto" if vertical == CRYPTO else label.lower()
+
+
+_MISPRICING_FIELDS = ("ticker", "side", "edge", "model_prob", "book_prob",
+                      "market_prob", "confidence", "agreement", "rationale")
+
+
+def build_scope_extras(
+    runtime_dir: Path,
+    scope_keys: list[tuple[str, str]],
+    council_rows: list[dict[str, Any]] | None = None,
+) -> dict[str, Any]:
+    """The legacy per-scope surfaces folded into 'other data', for the scopes the
+    snapshot already knows about. Read fresh from the runtime artifacts (no
+    ledger), so the live mispricing tape / council / ejections stay current
+    between snapshots.
+
+    Per scope: its specialist's council row (status, in-season, contested Brier,
+    CLV, where-we-bleed), CLV-per-market-type, the live mispricing opportunities
+    on that coin/league, and any ejection/injury events riding those markets.
+
+    ``council_rows`` are the rich rows the caller already computes with the
+    dashboard's ``_council_panel`` (kept there to avoid a circular import); when
+    absent we fall back to the raw council snapshot's thinner per-specialist row.
+    """
+    if council_rows is not None:
+        council_by_specialist = {
+            str(r.get("name")): r for r in council_rows if r.get("name")
+        }
+    else:
+        council_by_specialist = {
+            str(s.get("name")): s
+            for s in (_load_artifact(runtime_dir, "council_snapshot.json").get("specialists") or [])
+            if isinstance(s, dict) and s.get("name")
+        }
+
+    clv_by_specialist: dict[str, list[dict[str, Any]]] = {}
+    for key, scope in (_load_artifact(runtime_dir, "clv_report.json").get("scopes") or {}).items():
+        if not isinstance(scope, dict):
+            continue
+        spec = str(scope.get("specialist") or str(key).split("|", 1)[0])
+        clv_by_specialist.setdefault(spec, []).append({
+            "market_type": scope.get("market_type") or str(key).split("|", 1)[-1],
+            "clv_bps_mean": scope.get("clv_bps_mean"),
+            "ci95_lower": scope.get("clv_bps_ci95_lower"),
+            "ci95_upper": scope.get("clv_bps_ci95_upper"),
+            "n_entries": scope.get("n_entries"),
+        })
+
+    misp_by_scope: dict[tuple[str, str], list[dict[str, Any]]] = {}
+    ejections_by_scope: dict[tuple[str, str], list[Any]] = {}
+    for row in (_load_artifact(runtime_dir, "mispricing_monitor_latest.json").get("shortlist") or []):
+        if not isinstance(row, dict) or not row.get("ticker"):
+            continue
+        key = scope_key(str(row["ticker"]))
+        misp_by_scope.setdefault(key, []).append({f: row.get(f) for f in _MISPRICING_FIELDS})
+        for ev in (row.get("ejection_events") or []):
+            ejections_by_scope.setdefault(key, []).append(ev)
+    for rows in misp_by_scope.values():
+        rows.sort(key=lambda r: abs(r.get("edge") or 0), reverse=True)
+
+    out: dict[str, Any] = {}
+    for vertical, label in scope_keys:
+        spec = _specialist_for(vertical, label)
+        rows = misp_by_scope.get((vertical, label), [])
+        out.setdefault(vertical, {})[label] = {
+            "council": council_by_specialist.get(spec),
+            "clv": clv_by_specialist.get(spec, []),
+            "mispricing": rows[:10],
+            "ejections": ejections_by_scope.get((vertical, label), [])[:10],
+        }
+    return out
