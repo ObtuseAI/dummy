@@ -9,6 +9,7 @@ from __future__ import annotations
 import json
 import hashlib
 import math
+import os
 import sqlite3
 import time
 from datetime import datetime, timedelta, timezone
@@ -27,7 +28,20 @@ from autonomy.retention import install_signal_history
 # locked") — the observed CYCLE_ERROR:OperationalError. The fix is to let
 # writers WAIT for the lock (busy_timeout) and to retry a bounded number of
 # times on the residual race, rather than switch journalling modes.
-LEDGER_BUSY_TIMEOUT_S = 30.0
+#
+# Wave-37: raised 30 -> 60s (env-tunable) after CYCLE_ERROR:OperationalError
+# recurred live -- a recalibration read can hold the whole-DB lock past 30s, so
+# the writer now waits up to a minute (succeeding slowly beats failing the
+# cycle) before the bounded retry.
+def _ledger_busy_timeout_s() -> float:
+    try:
+        value = float(os.environ.get("DUMMY_LEDGER_BUSY_TIMEOUT_S", "60"))
+        return value if value > 0 else 60.0
+    except (TypeError, ValueError):
+        return 60.0
+
+
+LEDGER_BUSY_TIMEOUT_S = _ledger_busy_timeout_s()
 LEDGER_LOCK_RETRIES = 5
 LEDGER_LOCK_BACKOFF_S = 0.1
 # A ledger past this size is flagged for operator maintenance (checkpoint /

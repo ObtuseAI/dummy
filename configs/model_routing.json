@@ -84,7 +84,7 @@
     },
     "codex_cli": {
       "api_base": "", "api_key_env": "",
-      "model_name": "gpt-5-codex",
+      "model_name": "",
       "model_aliases": ["codex", "gpt-codex", "codex-cli"],
       "rpm": 10, "tpm": 100000, "timeout_seconds": 90.0
     }
