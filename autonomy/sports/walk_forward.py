@@ -16,6 +16,7 @@ from typing import Any
 
 from autonomy.sports.glicko import LakeGlickoRatings
 from autonomy.sports.history_store import SportsHistoryStore
+from autonomy.sports.pythagorean import LakePythagorean
 
 _BASELINE_BRIER = 0.25          # always-predict-0.5
 
@@ -72,4 +73,30 @@ def walk_forward_glicko(
     report = _grade(preds)
     report["league"] = league
     report["periods"] = len(periods)
+    return report
+
+
+def walk_forward_pythagorean(
+    store: SportsHistoryStore, league: str, *,
+    home_advantage_prob: float = 0.03, min_games: int = 3,
+) -> dict[str, Any]:
+    """Grade Pythagenpat point-in-time. Predict each game only once both teams
+    have ``min_games`` of prior scoring history (cold strengths are ~0.5)."""
+    games = store.games(league=league)
+    games = [g for g in games if g.get("home_score") is not None and g.get("away_score") is not None]
+    games.sort(key=lambda g: g["start_time"])
+
+    model = LakePythagorean(store, league=league)
+    preds: list[tuple[float, int]] = []
+    for game in games:
+        home, away = game.get("home"), game.get("away")
+        hs, as_ = game.get("home_score"), game.get("away_score")
+        if home and away and hs != as_ and model.games_seen(home) >= min_games and model.games_seen(away) >= min_games:
+            p_home = model.matchup_prob(home, away, home_advantage_prob=home_advantage_prob)
+            preds.append((p_home, 1 if hs > as_ else 0))
+        model.apply_game(game)
+
+    report = _grade(preds)
+    report["league"] = league
+    report["model"] = "pythagenpat"
     return report
