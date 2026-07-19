@@ -188,9 +188,23 @@ class CodexCliProvider(_CliProvider):
 
 
 def _codex_event_text(event: Any) -> str:
-    """Pull assistant text out of a codex JSON event, tolerant of shape."""
+    """Pull the assistant's message text out of a codex JSON event.
+
+    codex 0.144.x wraps it as {"type":"item.completed","item":{"type":
+    "agent_message","text":"..."}} -- so ONLY agent_message items count; error/
+    warning items (same envelope, type "error") are ignored so a startup
+    warning is never mistaken for the answer. A couple of older/flatter shapes
+    are tolerated as a fallback.
+    """
     if not isinstance(event, dict):
         return ""
+    item = event.get("item")
+    if isinstance(item, dict):
+        if item.get("type") == "agent_message":
+            text = item.get("text")
+            return text.strip() if isinstance(text, str) and text.strip() else ""
+        return ""   # error / reasoning / other items are not the answer
+    # Fallback for flatter shapes.
     for key in ("message", "text", "content", "delta"):
         val = event.get(key)
         if isinstance(val, str) and val.strip():
