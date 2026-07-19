@@ -16,9 +16,29 @@ class FakeEspn:
         return self.by_league.get(league, [])
 
 
-def _g(gid, league, home, away, status, hs=None, as_=None, date="2025-11-01T00:00Z", won=None):
+def _g(gid, league, home, away, status, hs=None, as_=None, date="2025-11-01T00:00Z", won=None,
+       home_ml=None, away_ml=None, home_ml_open=None, away_ml_open=None):
     return Game(game_id=gid, league=league, home=home, away=away, status=status,
-                home_won=won, date=date, home_score=hs, away_score=as_)
+                home_won=won, date=date, home_score=hs, away_score=as_,
+                home_ml=home_ml, away_ml=away_ml, home_ml_open=home_ml_open,
+                away_ml_open=away_ml_open, odds_provider="ESPN BET")
+
+
+def test_moneylines_become_closing_line_history(tmp_path):
+    from autonomy.ingest.espn_lake import espn_games_to_lines
+    from autonomy.sports.history_store import SportsHistoryStore
+
+    game = _g("m1", "nba", "BOS", "NYK", "post", 110, 104, won=True,
+              home_ml=-150, away_ml=130, home_ml_open=-135, away_ml_open=115)
+    lines = espn_games_to_lines([game])
+    # home+away, open+close => 4 rows
+    assert len(lines) == 4
+    st = SportsHistoryStore(tmp_path / "h.db")
+    st.record_lines(lines)
+    got = {ln["ticker"]: ln for ln in st.lines_for("m1")}
+    assert got["espnml:m1:home:close"]["price"] == -150 and got["espnml:m1:home:close"]["is_close"] == 1
+    assert got["espnml:m1:home:open"]["price"] == -135 and got["espnml:m1:home:open"]["is_close"] == 0
+    st.close()
 
 
 def test_status_and_season_mapping():

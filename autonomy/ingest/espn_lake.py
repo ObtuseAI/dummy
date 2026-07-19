@@ -50,10 +50,32 @@ def espn_games_to_rows(games: Iterable[Any], *, source: str = "espn") -> list[di
     return rows
 
 
+def espn_games_to_lines(games: Iterable[Any]) -> list[dict[str, Any]]:
+    """Moneyline open+close snapshots from the scoreboard's odds block -> lines
+    rows (closing-line history that grounds CLV / market-pressure)."""
+    lines: list[dict[str, Any]] = []
+    for g in games:
+        gid, ts = getattr(g, "game_id", None), getattr(g, "date", None)
+        if not gid or not ts:
+            continue
+        book = getattr(g, "odds_provider", None) or "espn"
+        for side in ("home", "away"):
+            for phase, attr in (("close", f"{side}_ml"), ("open", f"{side}_ml_open")):
+                price = getattr(g, attr, None)
+                if price is None:
+                    continue
+                lines.append({
+                    "ticker": f"espnml:{gid}:{side}:{phase}", "book": book, "ts": ts,
+                    "market_type": "moneyline", "price": float(price),
+                    "is_close": phase == "close", "game_id": gid, "source": "espn",
+                })
+    return lines
+
+
 def ingest_espn_league(
     store: SportsHistoryStore, client: Any, league: str, *, dates: str | None = None,
 ) -> dict[str, Any]:
-    """Fetch one league's scoreboard and upsert its games into the lake."""
+    """Fetch one league's scoreboard and upsert its games + odds lines."""
     try:
         games = client.games(league, dates)
     except Exception as exc:  # noqa: BLE001 -- a down feed must not raise
@@ -62,7 +84,9 @@ def ingest_espn_league(
         return {"rows": 0, "ok": False, "error": str(exc)[:120]}
     rows = espn_games_to_rows(games)
     store.upsert_games(rows)
+    lines = espn_games_to_lines(games)
+    store.record_lines(lines)
     finals = sum(1 for r in rows if r["status"] == "post")
     store.record_ingest("espn", league, dates or "recent", status="ok",
-                        rows=len(rows), http={"finals": finals})
-    return {"rows": len(rows), "finals": finals, "ok": True}
+                        rows=len(rows), http={"finals": finals, "lines": len(lines)})
+    return {"rows": len(rows), "finals": finals, "lines": len(lines), "ok": True}

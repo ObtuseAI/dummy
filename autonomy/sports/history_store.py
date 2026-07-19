@@ -118,6 +118,36 @@ class SportsHistoryStore:
         self.conn.commit()
         return len(rows)
 
+    def record_lines(self, lines: Iterable[dict[str, Any]]) -> int:
+        """Upsert odds lines (open/close snapshots) keyed by (ticker, book, ts)."""
+        rows = [
+            (
+                ln["ticker"], ln.get("book", "unknown"), ln["ts"], ln.get("market_type"),
+                ln.get("price"), ln.get("point"), 1 if ln.get("is_close") else 0,
+                ln.get("game_id"), ln.get("source"),
+            )
+            for ln in lines
+        ]
+        if not rows:
+            return 0
+        self.conn.executemany(
+            """INSERT INTO lines(ticker,book,ts,market_type,price,point,is_close,game_id,source)
+               VALUES(?,?,?,?,?,?,?,?,?)
+               ON CONFLICT(ticker,book,ts) DO UPDATE SET
+                   market_type=excluded.market_type, price=excluded.price,
+                   point=excluded.point, is_close=excluded.is_close,
+                   game_id=excluded.game_id, source=excluded.source""",
+            rows,
+        )
+        self.conn.commit()
+        return len(rows)
+
+    def lines_for(self, game_id: str) -> list[dict[str, Any]]:
+        rows = self.conn.execute(
+            "SELECT * FROM lines WHERE game_id = ? ORDER BY ticker, ts", (game_id,)
+        ).fetchall()
+        return [dict(r) for r in rows]
+
     def record_ingest(
         self, source: str, league: str | None, date_range: str | None, *,
         status: str, rows: int, http: dict[str, Any] | None = None,
