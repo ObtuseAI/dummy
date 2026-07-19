@@ -1,22 +1,24 @@
-"""Synthesis: turn movement + steam + dispersion + public-lean into one
-sharp/public read per game side.
+"""Synthesis: turn movement + steam + dispersion + public-lean (+ scraped
+splits) into one sharp/public read per game side.
 
-The core inference is reverse line movement (RLM). The public piles onto the
-predictable side (favorite / brand / over); its ticket volume alone would push
-the line toward it. So when the line instead moves TOWARD the side the public
-is off, ticket money is being overridden by heavier, sharper money -- that is
-the sharp side. From there:
+Two independent tells, fused:
 
-  * sharp_side  -- the side the smart money backed (the non-public side a
-                   confirmed move ran to);
-  * trap        -- a heavy public lean the line refuses to confirm (flat, or
-                   moving against the public) is books shading the public: fade
-                   the public side;
-  * dog value   -- when the sharp side is the underdog, that is the profitable
-                   contrarian dog the operator is hunting.
+  * reverse line movement -- the public piles onto the predictable side, so a
+    CONFIRMED line move to the OTHER side is heavier money overriding ticket
+    volume (Wave-30, line-only);
+  * money vs tickets -- when the share of MONEY on a side runs ahead of its
+    share of BETS, fewer-but-bigger sharp bets are there (Wave-32, from
+    scraped splits).
 
-Pure function; the signal (autonomy/signals/market_pressure.py) feeds it and
-turns ``prob_adjustment`` into a capped, challenger-only nudge.
+When both are present and agree, conviction rises; when they conflict, it is
+penalised and the money channel (handle is the sharper signal) is preferred.
+Scraped tickets also make the trap real: a heavy MEASURED public side the line
+will not confirm -- flat OR against -- is books shading the public, the
+flat-line trap the line-only tier could not safely call. Dog value: whenever
+the sharp side is the underdog.
+
+Pure function; the signal feeds it and turns ``prob_adjustment`` into a
+capped, challenger-only nudge.
 """
 from __future__ import annotations
 
@@ -24,12 +26,15 @@ from dataclasses import dataclass
 
 from autonomy.market_pressure.dispersion import DispersionRead
 from autonomy.market_pressure.public_lean import PublicLeanRead
+from autonomy.market_pressure.splits.model import FusedSplits
 from autonomy.market_pressure.steam import SteamRead
 
-# A public-lean gap this wide is a genuine public side (else it's a coin-flip
-# crowd and "fade the public" is meaningless).
+# A public gap this wide is a genuine public side (else the crowd is split and
+# "fade the public" is meaningless).
 TRAP_PUBLIC_GAP = 0.20
-# Hard cap on the probability nudge -- this is a challenger hint, not a model.
+# Money% must lead ticket% by this much on a side to call it sharp.
+MONEY_DIVERGENCE_THRESHOLD = 0.07
+# Hard cap on the probability nudge -- a challenger hint, not a model.
 ADJ_CAP = 0.04
 
 
@@ -50,6 +55,12 @@ class MarketPressureRead:
     prob_adjustment: float            # signed nudge to apply to P(subject)
     confidence: float
     rationale: str
+    # Wave-32 splits channel (None when splits are absent).
+    public_is_measured: bool = False
+    subject_ticket_pct: float | None = None
+    money_sharp_side: str | None = None
+    signals_agree: bool | None = None
+    splits_sources: tuple[str, ...] = ()
 
     def as_dict(self) -> dict:
         return {
@@ -67,6 +78,12 @@ class MarketPressureRead:
             "dog_value_flag": self.dog_value_flag,
             "prob_adjustment": round(self.prob_adjustment, 4),
             "confidence": round(self.confidence, 3),
+            "public_is_measured": self.public_is_measured,
+            "subject_ticket_pct": (round(self.subject_ticket_pct, 4)
+                                   if self.subject_ticket_pct is not None else None),
+            "money_sharp_side": self.money_sharp_side,
+            "signals_agree": self.signals_agree,
+            "splits_sources": list(self.splits_sources),
         }
 
 
@@ -79,6 +96,30 @@ def _no_read(subject_side: str) -> MarketPressureRead:
         rationale="no market-pressure read")
 
 
+def _public_from_splits(
+    splits: FusedSplits, subject_side: str, opponent_side: str, subject_is_home: bool,
+) -> tuple[str | None, float, float, str | None, float | None]:
+    """(public_side, public_gap, subject_ticket, money_sharp_side, subject_money_gap)
+    from MEASURED tickets/money, subject-perspective."""
+    subj_ticket = (splits.home_ticket_pct if subject_is_home else splits.away_ticket_pct)
+    if subj_ticket is None:
+        return None, 0.0, None, None, None  # type: ignore[return-value]
+    opp_ticket = 1.0 - subj_ticket
+    public_gap = abs(subj_ticket - opp_ticket)
+    public_side = subject_side if subj_ticket >= opp_ticket else opponent_side
+
+    subj_money_gap = None
+    money_sharp = None
+    if splits.home_money_ticket_gap is not None:
+        subj_money_gap = (splits.home_money_ticket_gap if subject_is_home
+                          else -splits.home_money_ticket_gap)
+        if subj_money_gap >= MONEY_DIVERGENCE_THRESHOLD:
+            money_sharp = subject_side
+        elif subj_money_gap <= -MONEY_DIVERGENCE_THRESHOLD:
+            money_sharp = opponent_side
+    return public_side, public_gap, subj_ticket, money_sharp, subj_money_gap
+
+
 def synthesize_pressure(
     *,
     subject_side: str,
@@ -88,66 +129,94 @@ def synthesize_pressure(
     opponent_lean: PublicLeanRead,
     steam: SteamRead,
     dispersion: DispersionRead,
+    splits: FusedSplits | None = None,
+    subject_is_home: bool = True,
 ) -> MarketPressureRead:
-    """Combine the reads for ONE game (from the subject's perspective).
+    """Combine the reads for ONE game (subject's perspective).
 
-    ``steam`` is the subject side's cross-book steam: ``direction`` +1 means
-    the subject's number moved up (money toward the subject), -1 toward the
-    opponent. Fail-closed: with neither a steam signal nor a public side there
-    is nothing to say."""
-    public_gap = abs(subject_lean.lean - opponent_lean.lean)
-    public_side = (subject_side if subject_lean.lean >= opponent_lean.lean
-                   else opponent_side) if public_gap > 1e-6 else None
+    ``steam.direction`` +1 means the subject's number moved up (money toward
+    the subject), -1 toward the opponent. ``splits`` supersedes the estimated
+    public lean when present. Fail-closed: with no steam, no public side, and
+    no money signal there is nothing to say."""
+    measured = bool(splits and splits.has_read and splits.home_ticket_pct is not None)
+    subject_ticket = money_sharp = subject_money_gap = None
+    splits_sources: tuple[str, ...] = ()
 
-    # Which side did a CONFIRMED move run to?
+    if measured:
+        (public_side, public_gap, subject_ticket, money_sharp,
+         subject_money_gap) = _public_from_splits(
+            splits, subject_side, opponent_side, subject_is_home)
+        splits_sources = splits.sources
+    else:
+        public_gap = abs(subject_lean.lean - opponent_lean.lean)
+        public_side = (subject_side if subject_lean.lean >= opponent_lean.lean
+                       else opponent_side) if public_gap > 1e-6 else None
+
+    # Which side did a CONFIRMED line move run to?
     line_toward: str | None = None
     if steam.is_steam and steam.direction != 0:
         line_toward = subject_side if steam.direction > 0 else opponent_side
 
-    if line_toward is None and public_side is None:
+    if line_toward is None and public_side is None and money_sharp is None:
         return _no_read(subject_side)
 
-    # Reverse line movement: a confirmed move to the NON-public side.
     rlm = bool(line_toward and public_side and line_toward != public_side
                and public_gap >= TRAP_PUBLIC_GAP)
 
-    sharp_side: str | None = None
+    line_sharp: str | None = None
     if rlm:
-        sharp_side = line_toward
+        line_sharp = line_toward
     elif line_toward and (public_side is None or line_toward != public_side):
-        # A move to a non-public (or no-strong-public) side is still sharp-ish.
-        sharp_side = line_toward
+        line_sharp = line_toward
 
-    # Trap: a strong public side the line moved AGAINST -- i.e. confirmed
-    # reverse line movement. A merely flat line on a public favorite is the
-    # normal state, not a trap; distinguishing "flat = sharp resistance" from
-    # "flat = quiet" needs ticket volume, which arrives with Wave-31's scraped
-    # splits. Until then the only evidence-backed trap is a reverse move.
-    trap_flag = rlm
+    # Fuse the two sharp tells.
+    signals_agree: bool | None = None
+    if money_sharp and line_sharp:
+        signals_agree = money_sharp == line_sharp
+        sharp_side = money_sharp                       # handle is the sharper channel
+    elif money_sharp:
+        sharp_side = money_sharp
+    else:
+        sharp_side = line_sharp
 
-    # Dog value: the sharp side is the underdog.
+    # Trap. With MEASURED tickets a heavy public side the line will not confirm
+    # (flat OR against) is a real trap; line-only, only a confirmed reverse move.
+    if measured:
+        trap_flag = bool(public_side is not None and public_gap >= TRAP_PUBLIC_GAP
+                         and line_toward != public_side)
+    else:
+        trap_flag = rlm
+
     dog_value_flag = bool(
         sharp_side is not None and subject_devig is not None and (
             (sharp_side == subject_side and subject_devig < 0.5)
-            or (sharp_side == opponent_side and subject_devig >= 0.5)
-        )
-    )
+            or (sharp_side == opponent_side and subject_devig >= 0.5)))
 
-    # Capped nudge toward the sharp side, scaled by move size and public gap.
     adjustment = 0.0
     confidence = 0.0
     if sharp_side is not None:
         strength = min(1.0, abs(steam.magnitude) / 0.03) if steam.is_steam else 0.4
-        gap_weight = min(1.0, public_gap / 0.4) if rlm else 0.5
-        confidence = round(0.5 * strength + 0.5 * gap_weight, 3)
+        gap_weight = min(1.0, public_gap / 0.4) if rlm or measured else 0.5
+        money_weight = (min(1.0, abs(subject_money_gap) / 0.15)
+                        if subject_money_gap is not None else 0.0)
+        confidence = 0.4 * strength + 0.3 * gap_weight + 0.3 * money_weight
+        if signals_agree:
+            confidence = min(1.0, confidence * 1.3)    # both tells agree
+        elif signals_agree is False:
+            confidence *= 0.6                          # tells conflict
+        confidence = round(confidence, 3)
         magnitude = min(ADJ_CAP, ADJ_CAP * confidence)
         adjustment = magnitude if sharp_side == subject_side else -magnitude
 
     bits = []
     if public_side:
-        bits.append(f"public on {public_side} (gap {public_gap:.2f})")
+        tag = "public" if measured else "est. public"
+        bits.append(f"{tag} on {public_side} ({'ticket ' if measured else ''}gap {public_gap:.2f})")
+    if money_sharp:
+        bits.append(f"money on {money_sharp}")
     if sharp_side:
-        bits.append(f"sharp on {sharp_side}" + (" [RLM]" if rlm else ""))
+        agree = " [confirmed]" if signals_agree else (" [conflict]" if signals_agree is False else "")
+        bits.append(f"sharp on {sharp_side}" + (" [RLM]" if rlm else "") + agree)
     if trap_flag:
         bits.append(f"trap: fade {public_side}")
     if dog_value_flag:
@@ -157,19 +226,14 @@ def synthesize_pressure(
     rationale = "; ".join(bits) or "no actionable pressure"
 
     return MarketPressureRead(
-        has_read=True,
-        subject_side=subject_side,
-        public_side=public_side,
-        sharp_side=sharp_side,
-        reverse_line_movement=rlm,
+        has_read=True, subject_side=subject_side, public_side=public_side,
+        sharp_side=sharp_side, reverse_line_movement=rlm,
         steam_direction=steam.direction if steam.is_steam else 0,
         steam_originator=steam.originator if steam.is_steam else None,
         soft_book=dispersion.outlier_book if dispersion.is_soft_outlier else None,
         soft_offset=dispersion.outlier_offset if dispersion.is_soft_outlier else None,
-        public_gap=public_gap,
-        trap_flag=trap_flag,
-        dog_value_flag=dog_value_flag,
-        prob_adjustment=adjustment,
-        confidence=confidence,
-        rationale=rationale,
-    )
+        public_gap=public_gap, trap_flag=trap_flag, dog_value_flag=dog_value_flag,
+        prob_adjustment=adjustment, confidence=confidence, rationale=rationale,
+        public_is_measured=measured, subject_ticket_pct=subject_ticket,
+        money_sharp_side=money_sharp, signals_agree=signals_agree,
+        splits_sources=splits_sources)

@@ -26,6 +26,7 @@ from autonomy.market_pressure import (
 )
 from autonomy.market_pressure.pressure import synthesize_pressure
 from autonomy.market_pressure.public_lean import estimate_public_lean
+from autonomy.market_pressure.splits.service import SplitsService
 from autonomy.ontology import MarketView, Signal, Vertical
 from autonomy.signals.licensed_consensus import LEAGUE_TO_ODDS_SPORT
 from autonomy.signals.sports_elo import parse_game_ticker
@@ -43,9 +44,17 @@ def _clamp(value: float, low: float = 0.02, high: float = 0.98) -> float:
 class MarketPressureSignal:
     name = "market_pressure"
 
-    def __init__(self, espn: EspnClient | None = None, archive_dir: str | None = None):
+    def __init__(
+        self,
+        espn: EspnClient | None = None,
+        archive_dir: str | None = None,
+        splits: SplitsService | None = None,
+    ):
         self.espn = espn or EspnClient()
         self.archive_dir = archive_dir
+        # Scraped splits (Wave-32). Inert unless DUMMY_SPLITS_ENABLED=1; when
+        # absent the synthesis falls back to the estimated public lean.
+        self.splits = splits if splits is not None else SplitsService()
         self._series: dict[tuple[str, str, str, str], Any] = {}
         self._latest_by_sport: dict[str, list[dict[str, Any]]] = {}
         self._now: float = 0.0
@@ -53,6 +62,10 @@ class MarketPressureSignal:
     def on_cycle_start(self) -> None:
         self.espn.clear_cache()
         self._now = datetime.now(timezone.utc).timestamp()
+        try:
+            self.splits.refresh(list(LEAGUE_TO_ODDS_SPORT.keys()))
+        except Exception:
+            pass   # fail-open: a scrape hiccup never breaks the cycle
         snapshots = read_archive_window(
             self.archive_dir,
             sport_keys=set(LEAGUE_TO_ODDS_SPORT.values()),
@@ -137,11 +150,15 @@ class MarketPressureSignal:
         opponent_lean = estimate_public_lean(
             league=parsed["league"], devig_prob=1.0 - baseline,
             is_home=not subject_home, team_name=opponent_name)
+        # Scraped splits (oriented to the game's home side); empty & harmless
+        # when the tier is unarmed, in which case the estimated lean stands.
+        splits = self.splits.splits_for(home_name, away_name)
 
         read = synthesize_pressure(
             subject_side=subject_name, opponent_side=opponent_name,
             subject_devig=baseline, subject_lean=subject_lean,
-            opponent_lean=opponent_lean, steam=steam, dispersion=dispersion)
+            opponent_lean=opponent_lean, steam=steam, dispersion=dispersion,
+            splits=splits, subject_is_home=subject_home)
 
         # Only speak when there is an actionable nudge -- otherwise this just
         # restates the consensus another source already carries.
