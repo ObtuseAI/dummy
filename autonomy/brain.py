@@ -50,6 +50,13 @@ def _debate_cli_top_k() -> int:
     return _env_int("DUMMY_DEBATE_CLI_TOP_K", 1)
 
 
+# The debate is the dominant per-cycle cost (10 markets x 2 rounds, formerly
+# sequential). This many markets' panels run concurrently -- bounded so parallel
+# HTTP panels don't blow the provider rate limits. Cuts the debate ~N-fold.
+def _debate_concurrency() -> int:
+    return max(1, _env_int("DUMMY_DEBATE_CONCURRENCY", 3))
+
+
 DEBATE_TOP_K = 5   # module default retained for back-compat/imports
 
 
@@ -289,8 +296,11 @@ class PredatorBrain:
         from autonomy.debate import run_debate
 
         cli_top_k = _debate_cli_top_k()
-        for idx in range(min(_debate_top_k(), len(scored))):
-            market, forecast, signals = scored[idx]
+        k = min(_debate_top_k(), len(scored))
+        sem = asyncio.Semaphore(_debate_concurrency())
+
+        async def _debate_one(idx: int):
+            market, forecast, _signals = scored[idx]
             allow_cli = idx < cli_top_k
             # Read the tape for the panel: recent momentum/volume/spread from
             # 1-minute candlesticks. Absent tape never blocks the debate.
@@ -302,13 +312,22 @@ class PredatorBrain:
                 tape_line = describe_tape(tape_features(series, market.ticker)) or None
             except Exception:
                 tape_line = None
-            try:
-                result = await run_debate(self.router, market, base_prob=forecast.probability_yes,
-                                          context=tape_line, allow_cli=allow_cli)
-            except Exception:
-                result = None
+            async with sem:  # bound concurrent panels so we don't blow rate limits
+                try:
+                    return await run_debate(
+                        self.router, market, base_prob=forecast.probability_yes,
+                        context=tape_line, allow_cli=allow_cli)
+                except Exception:
+                    return None
+
+        # Run the panels concurrently (I/O-bound LLM calls); the CLI cap keeps
+        # local-subscription voices on the top-K_cli markets only.
+        results = await asyncio.gather(*[_debate_one(idx) for idx in range(k)])
+        # Record + re-fuse sequentially: these mutate shared ledger/scored state.
+        for idx, result in enumerate(results):
             if result is None:
                 continue
+            market, forecast, signals = scored[idx]
             debate_signal = result.to_signal(market.ticker)
             if not self.ledger.record_signal(debate_signal):
                 report.signals_rejected += 1
