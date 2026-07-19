@@ -301,6 +301,19 @@ td.hc .td{font-size:11px;margin-left:3px}
 .bt-tab .c{color:var(--faint);font-size:10px;margin-left:2px}
 .bt-panel{display:none} .bt-panel.on{display:block}
 .res-ok{color:var(--green)} .res-no{color:var(--red)}
+/* day's games, click to expand */
+.games{display:flex;flex-direction:column;gap:8px;max-height:440px;overflow:auto}
+.game{border:1px solid var(--line);border-radius:10px;overflow:hidden;transition:border-color .15s}
+.game:hover{border-color:var(--line-2)}
+.ghead{display:grid;grid-template-columns:22px 1fr auto auto;gap:10px;align-items:center;padding:10px 12px;cursor:pointer;
+  font-family:var(--mono);font-size:12.5px;background:var(--panel-2)}
+.ghead:hover{background:var(--panel-3)}
+.ghead .gx{color:var(--faint);transition:transform .2s}
+.game.open .ghead .gx{transform:rotate(90deg);color:var(--acc)}
+.ghead .gc{color:var(--faint);font-size:11px} .ghead .ge{color:var(--acc);font-size:11.5px}
+.gbody{display:none;padding:2px 8px 8px}
+.game.open .gbody{display:block}
+.game.open .ghead{border-bottom:1px solid var(--line)}
 
 /* charts */
 .cwrap{position:relative}
@@ -394,7 +407,7 @@ const esc=(s)=>String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;
 const flip=(text)=>'<span class="flip">'+String(text).split('').map((c,i)=>'<span class="flap" style="animation-delay:'+(i*32)+'ms">'+(c===' '?'&nbsp;':esc(c))+'</span>').join('')+'</span>';
 const REDUCE=matchMedia('(prefers-reduced-motion:reduce)').matches;
 
-let STATE={overview:null,scopes:null,status:null,walk:null};
+let STATE={overview:null,scopes:null,status:null,walk:null,board:null};
 let ROUTE=location.hash||'#/overview';
 let lastSig='';
 // every sport league the board lists, in season or not (backend enriches each
@@ -698,11 +711,57 @@ function settledTodayCard(scope){
 }
 // delegated bet-type tab switch (survives re-renders)
 document.addEventListener('click',e=>{
-  const tab=e.target.closest&&e.target.closest('.bt-tab');if(!tab)return;
-  const card=tab.closest('.card'),bt=tab.getAttribute('data-bt');
-  card.querySelectorAll('.bt-tab').forEach(t=>t.classList.toggle('on',t===tab));
-  card.querySelectorAll('.bt-panel').forEach(p=>p.classList.toggle('on',p.getAttribute('data-bt')===bt));
+  const tab=e.target.closest&&e.target.closest('.bt-tab');
+  if(tab){const card=tab.closest('.card'),bt=tab.getAttribute('data-bt');
+    card.querySelectorAll('.bt-tab').forEach(t=>t.classList.toggle('on',t===tab));
+    card.querySelectorAll('.bt-panel').forEach(p=>p.classList.toggle('on',p.getAttribute('data-bt')===bt));return;}
+  const gh=e.target.closest&&e.target.closest('.ghead');
+  if(gh){gh.parentElement.classList.toggle('open');}
 });
+// ---- day's games (from the bet board, grouped by matchup) ----
+function boardFor(label){return STATE.board&&STATE.board[String(label).toLowerCase()];}
+function boardRows(rows){
+  return '<div style="max-height:320px;overflow:auto"><table><thead><tr><th>Market</th><th>Matchup</th><th>Pick</th><th>Model</th><th>Mkt</th><th>Edge</th></tr></thead><tbody>'
+    +rows.map(r=>'<tr><td title="'+esc(r.ticker)+'">'+esc((r.ticker||'').slice(0,22))+'</td><td>'+esc((r.matchup||'').slice(0,16))+'</td>'
+      +'<td>'+(r.pick?'<span class="pill '+(String(r.pick).toLowerCase()==='no'?'no':'yes')+'">'+esc(r.pick)+'</span>':'—')+'</td>'
+      +'<td>'+num(r.probability,2)+'</td><td>'+(r.market_probability==null?'—':num(r.market_probability,2))+'</td>'
+      +'<td class="'+((r.edge||0)>=0?'pos':'neg')+'">'+signed(r.edge||0,1)+'</td></tr>').join('')
+    +'</tbody></table></div>';
+}
+function betRankCard(label){
+  const grp=boardFor(label);
+  const types=grp?Object.keys(grp).filter(t=>grp[t]&&grp[t].length):[];
+  if(!types.length)return '';
+  let h='<div class="card reveal" style="margin-top:var(--s3)"><h3>Bet-type rankings <span class="r">every priced market · choose a bet</span></h3>';
+  h+='<div class="bt-tabs">'+types.map((t,i)=>'<button class="bt-tab'+(i===0?' on':'')+'" data-bt="'+esc(t)+'">'+esc(t)+'<span class="c">'+grp[t].length+'</span></button>').join('')+'</div>';
+  h+='<div class="bt-panels">'+types.map((t,i)=>{const rows=[...grp[t]].sort((a,b)=>(b.edge||0)-(a.edge||0));
+    return '<div class="bt-panel'+(i===0?' on':'')+'" data-bt="'+esc(t)+'">'+boardRows(rows)+'</div>';}).join('')+'</div>';
+  return h+'</div>';
+}
+function gameBreakdown(rows){
+  rows=[...rows].sort((a,b)=>Math.abs(b.edge||0)-Math.abs(a.edge||0));
+  return '<table><thead><tr><th>Bet</th><th>Market</th><th>Pick</th><th>Model</th><th>Mkt</th><th>Edge</th></tr></thead><tbody>'
+    +rows.map(r=>'<tr><td>'+esc(r.bet_type)+'</td><td title="'+esc(r.ticker)+'">'+esc((r.ticker||'').slice(0,24))+'</td>'
+      +'<td>'+(r.pick?'<span class="pill '+(String(r.pick).toLowerCase()==='no'?'no':'yes')+'">'+esc(r.pick)+'</span>':'—')+'</td>'
+      +'<td>'+num(r.probability,2)+'</td><td>'+(r.market_probability==null?'—':num(r.market_probability,2))+'</td>'
+      +'<td class="'+((r.edge||0)>=0?'pos':'neg')+'">'+signed(r.edge||0,1)+'</td></tr>').join('')
+    +'</tbody></table>';
+}
+function gamesCard(vert,label){
+  if(vert!=='SPORTS')return '';
+  const grp=boardFor(label);
+  if(!grp)return '';
+  const byGame={};
+  Object.values(grp).forEach(rows=>rows.forEach(r=>{const m=r.matchup||'?';(byGame[m]=byGame[m]||[]).push(r);}));
+  const games=Object.keys(byGame);
+  if(!games.length)return '';
+  games.sort((a,b)=>Math.max(...byGame[b].map(r=>Math.abs(r.edge||0)))-Math.max(...byGame[a].map(r=>Math.abs(r.edge||0))));
+  let h='<div class="card reveal" style="margin-top:var(--s3)"><h3>Today\'s games — full breakdown <span class="r">'+games.length+' matchups · click one</span></h3><div class="games">';
+  games.forEach(m=>{const rows=byGame[m];const be=Math.max(...rows.map(r=>Math.abs(r.edge||0)));
+    h+='<div class="game"><div class="ghead"><span class="gx">▸</span><span class="gm">'+esc(m)+'</span><span class="gc">'+rows.length+' markets</span><span class="ge">'+signed(be,1)+' best edge</span></div>'
+      +'<div class="gbody">'+gameBreakdown(rows)+'</div></div>';});
+  return h+'</div></div>';
+}
 function walkCard(vert,label){
   if(vert!=='SPORTS')return '';
   const w=STATE.walk&&STATE.walk[String(label).toLowerCase()];
@@ -782,7 +841,8 @@ function scopeView(vert,label){
   h+='<div class="card pad0 reveal"><h3 style="padding:var(--s3) var(--s3) var(--s2)">Current picks <span class="r">by edge</span></h3>'+picksTable(sc.picks)+'</div>';
   h+='</div>';
   h+=betTypeCard(sc.bet_types);
-  h+='<div class="grid cols2">'+pickBoardCard(sc)+settledTodayCard(sc)+'</div>';
+  h+=gamesCard(vert,label);
+  h+='<div class="grid cols2">'+betRankCard(label)+settledTodayCard(sc)+'</div>';
   h+=walkCard(vert,label);
   h+=extrasSection(sc.extras||{},label);
   return h;
@@ -963,14 +1023,15 @@ function shock(){if(REDUCE)return;const s=document.getElementById('shock');s.cla
 // ---------- data ----------
 async function poll(){
   try{
-    const [ov,sc,st,wf]=await Promise.all([
+    const [ov,sc,st,wf,bb]=await Promise.all([
       fetch('/api/overview').then(r=>r.json()).catch(()=>null),
       fetch('/api/scopes').then(r=>r.json()).catch(()=>null),
       fetch('/api/status').then(r=>r.json()).catch(()=>null),
       fetch('/api/walk_forward').then(r=>r.json()).catch(()=>null),
+      fetch('/api/bet_board').then(r=>r.json()).catch(()=>null),
     ]);
     if(ov)STATE.overview=ov;if(sc)STATE.scopes=sc;if(st)STATE.status=st;
-    if(wf)STATE.walk=wf.leagues||{};
+    if(wf)STATE.walk=wf.leagues||{};if(bb)STATE.board=bb.groups||{};
     const live=document.getElementById('live'),fs=document.getElementById('footstat');
     const fresh=ov&&ov.generated_at&&(Date.now()-Date.parse(ov.generated_at))<30*60*1000;
     live.className='dot'+(fresh?' live':'');
