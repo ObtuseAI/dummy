@@ -28,6 +28,11 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
+# Windows: a console child spawned from a windowless (pythonw) task otherwise
+# gets its own new console window. CREATE_NO_WINDOW keeps every step silent
+# regardless of whether this runs under python.exe or pythonw.exe.
+_NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+
 ROOT = Path(__file__).resolve().parent.parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
@@ -45,7 +50,7 @@ def main() -> int:
         try:
             completed = subprocess.run(
                 [sys.executable, *argv], cwd=ROOT, timeout=timeout,
-                capture_output=True, text=True,
+                capture_output=True, text=True, creationflags=_NO_WINDOW,
             )
             tail = (completed.stdout or "").strip().splitlines()
             outcomes[name] = {
