@@ -762,8 +762,38 @@ def build_app():
 
     @app.get("/api/scopes")
     def api_scopes() -> JSONResponse:
+        # Wave-52: the graded scopes from the snapshot, each enriched with its
+        # "other data" -- council/LLM row, CLV, live mispricing opportunities,
+        # ejection/injury events -- read fresh from the runtime artifacts (no
+        # ledger) so the live tape stays current between snapshots.
         try:
-            return JSONResponse(_snapshot_block("scopes"))
+            block = _snapshot_block("scopes")
+            verticals = block.get("verticals") or {}
+            scope_keys = [
+                (vertical, label)
+                for vertical, vblock in verticals.items()
+                for label in (vblock.get("scopes") or {})
+            ]
+            if scope_keys:
+                from autonomy.dashboard_snapshot import read_dashboard_snapshot
+                from autonomy.scope_analytics import build_scope_extras
+
+                snap = read_dashboard_snapshot(RUNTIME_DIR / "latest_dashboard_snapshot.json") or {}
+                try:
+                    council_rows = _council_panel(
+                        _load_json(RUNTIME_DIR / "council_snapshot.json") or {},
+                        _load_json(RUNTIME_DIR / "season_state.json") or {},
+                        snap.get("backtest") or {},
+                        _load_json(RUNTIME_DIR / "clv_report.json") or {},
+                        _load_json(RUNTIME_DIR / "loss_attribution.json") or {},
+                    )
+                except Exception:  # noqa: BLE001
+                    council_rows = []
+                extras = build_scope_extras(RUNTIME_DIR, scope_keys, council_rows=council_rows)
+                for vertical, vblock in verticals.items():
+                    for label, scope in (vblock.get("scopes") or {}).items():
+                        scope["extras"] = extras.get(vertical, {}).get(label, {})
+            return JSONResponse(block)
         except Exception as exc:  # noqa: BLE001
             return JSONResponse({"error": f"{type(exc).__name__}: {exc}"[:200], "verticals": {}})
 
