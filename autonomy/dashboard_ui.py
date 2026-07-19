@@ -202,6 +202,11 @@ a{color:inherit;text-decoration:none}
 .badge{display:inline-flex;align-items:center;gap:5px;font-size:9px;letter-spacing:.18em;
   text-transform:uppercase;padding:3px 8px;border-radius:20px;border:1px solid var(--amber-deep);color:var(--amber)}
 .badge .d{width:5px;height:5px;border-radius:50%;background:var(--amber);box-shadow:0 0 6px var(--amber)}
+.badge.off{border-color:var(--red);color:var(--red)}
+.badge.off .d{background:var(--red);box-shadow:0 0 6px var(--red)}
+.item.off{opacity:.5}
+.item.off:hover{opacity:.85}
+.item.off .tag{color:var(--faint)}
 
 /* hero band */
 .acct{display:flex;flex-direction:column;justify-content:space-between;gap:var(--s2)}
@@ -361,6 +366,10 @@ const REDUCE=matchMedia('(prefers-reduced-motion:reduce)').matches;
 let STATE={overview:null,scopes:null,status:null};
 let ROUTE=location.hash||'#/overview';
 let lastSig='';
+// every sport league the board lists, in season or not (backend enriches each
+// with season + last-season grades; this keeps the slate whole even before the
+// next snapshot lands).
+const SPORTS_ROSTER=['MLB','WNBA','NBA','NFL','NHL','NCAAF','NCAAMB'];
 
 function svgIcon(k){return '<svg viewBox="0 0 24 24">'+(ICON[k]||ICON.overview)+'</svg>';}
 
@@ -456,13 +465,35 @@ function buildNav(){
   [['CRYPTO','coin'],['SPORTS','ball']].forEach(([key,cicon])=>{
     const block=v[key];
     nav.appendChild($('<div class="grp"><span>'+key+'</span><span>'+(block?pct(block.summary.hit_rate,0):'')+'</span></div>'));
-    if(!block){nav.appendChild($('<div class="item child" style="color:var(--faint)"><span>no data</span></div>'));return;}
-    Object.keys(block.scopes).sort((a,b)=>(block.scopes[b].summary.n||0)-(block.scopes[a].summary.n||0)).forEach(lab=>{
-      const it=navItem(cicon,lab,'#/scope/'+key+'/'+lab,pct(block.scopes[lab].summary.hit_rate,0));
-      it.classList.add('child');nav.appendChild(it);
+    const labels=scopeLabels(key,block);
+    if(!labels.length){nav.appendChild($('<div class="item child" style="color:var(--faint)"><span>no data</span></div>'));return;}
+    labels.forEach(lab=>{
+      const sc=block&&block.scopes&&block.scopes[lab];
+      const off=sc?sc.in_season===false:false;
+      const tag=sc&&sc.summary&&sc.summary.hit_rate!=null?pct(sc.summary.hit_rate,0):(off?'off':'·');
+      const it=navItem(cicon,lab,'#/scope/'+key+'/'+lab,tag);
+      it.classList.add('child');if(off)it.classList.add('off');
+      nav.appendChild(it);
     });
   });
   requestAnimationFrame(()=>moveGlide());
+}
+// SPORTS always shows the whole roster (union with whatever the snapshot has);
+// crypto lists exactly what settled. Order: graded volume first, then in-season
+// before off-season, then alphabetical.
+function scopeLabels(key,block){
+  if(key==='SPORTS'){
+    const have=block&&block.scopes?Object.keys(block.scopes):[];
+    return [...new Set([...have,...SPORTS_ROSTER])].sort((a,b)=>{
+      const sa=block&&block.scopes&&block.scopes[a],sb=block&&block.scopes&&block.scopes[b];
+      const ia=sa?sa.in_season!==false:true,ib=sb?sb.in_season!==false:true;
+      if(ia!==ib)return ia?-1:1;                 // live leagues lead
+      const na=(sa&&sa.summary&&sa.summary.n)||0,nb=(sb&&sb.summary&&sb.summary.n)||0;
+      if(nb!==na)return nb-na;                    // then graded volume
+      return a<b?-1:1;
+    });
+  }
+  return block&&block.scopes?Object.keys(block.scopes).sort((a,b)=>((block.scopes[b].summary.n)||0)-((block.scopes[a].summary.n)||0)):[];
 }
 function navItem(icon,label,href,tag){
   const a=$('<a class="item" href="'+href+'" tabindex="0">'+svgIcon(icon)+'<span>'+label+'</span>'+(tag?'<span class="tag">'+tag+'</span>':'')+'</a>');
@@ -572,9 +603,14 @@ function closeList(arr){
 function scopeView(vert,label){
   const block=STATE.scopes&&STATE.scopes.verticals&&STATE.scopes.verticals[vert];
   const sc=block&&block.scopes&&block.scopes[label];
-  if(!sc)return topbar(label,vert.toLowerCase())+'<div class="card"><div class="empty">no data for '+esc(label)+' yet</div></div>';
+  if(!sc)return topbar(label,vert.toLowerCase())+'<div class="card"><div class="empty">'+esc(label)+' — no snapshot data yet.<br><span style="color:var(--faint)">the board refreshes every 20 min; leagues populate as their markets settle</span></div></div>';
   const s=sc.summary;
-  let h=topbar(label,vert.toLowerCase()+' · graded forecast quality');
+  const inSeason=sc.in_season!==false, basis=sc.basis||'';
+  const gradedN=(s&&s.n)||0;
+  const seasonBadge=!inSeason
+    ? '<span class="badge off"><span class="d"></span>out of season'+(basis==='last-season'?' · last season':'')+'</span>'
+    : (gradedN===0?'<span class="badge"><span class="d"></span>in season · awaiting grades</span>':'');
+  let h=topbar(label,vert.toLowerCase()+' · graded forecast quality',seasonBadge);
   // scope hero: edge gauge + key figures
   h+='<div class="grid hero">';
   h+='<div class="card gaugecard reveal">'+gauge(s.brier_edge,{span:0.15,label:'Edge vs market',fmt:(x)=>signed(x,2)})+'</div>';
@@ -586,9 +622,9 @@ function scopeView(vert,label){
     +'</div></div>';
   h+='<div class="card reveal"><div class="mini">'
     +miniRow('Open picks',commaN(sc.picks?sc.picks.length:0),'amb')
+    +miniRow('Season',inSeason?'in season':'out of season',inSeason?'pos':'neg')
+    +miniRow('Data basis',basis==='current'?'current window':(basis==='last-season'?'last season':(inSeason?'awaiting':'no history')),basis==='last-season'?'amb':'')
     +miniRow('Market Brier',num(s.market_brier),'')
-    +miniRow('Model Brier',num(s.brier),s.market_brier!=null&&s.brier<s.market_brier?'pos':'')
-    +miniRow('Season',esc((sc.extras&&sc.extras.council&&(sc.extras.council.in_season?'in season':(sc.extras.council.in_season===false?'off season':'—')))||'—'),'')
     +'</div></div>';
   h+='</div>';
   const prog=sc.progression||[];
@@ -674,9 +710,10 @@ function mispTable(rows){
       +'<td>'+(r.market_prob==null?'—':num(r.market_prob,2))+'</td><td style="color:var(--muted)">'+esc(r.confidence||'—')+'</td></tr>';});
   return h+'</tbody></table></div>';
 }
-function topbar(title,crumb){
+function topbar(title,crumb,badge){
   const stamp=STATE.overview&&STATE.overview.generated_at;
-  return '<div class="topbar"><h2>'+esc(title)+'</h2><span class="crumb">'+esc(crumb)+'</span><span class="spacer"></span>'
+  return '<div class="topbar"><h2>'+esc(title)+'</h2><span class="crumb">'+esc(crumb)+'</span>'
+    +(badge?' '+badge:'')+'<span class="spacer"></span>'
     +'<span class="stamp"><span class="beat"></span>updated '+ago(stamp)+'</span></div>';
 }
 

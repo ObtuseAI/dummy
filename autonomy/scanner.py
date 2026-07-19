@@ -23,10 +23,12 @@ _VERTICAL_PREFIXES: list[tuple[str, Vertical]] = [
     ("BTC", Vertical.CRYPTO),
     ("ETHD", Vertical.CRYPTO),
     ("ETH", Vertical.CRYPTO),
-    ("KXNBA", Vertical.SPORTS),
-    ("KXNFL", Vertical.SPORTS),
-    ("KXMLB", Vertical.SPORTS),
-    ("KXNHL", Vertical.SPORTS),
+    ("KXWNBA", Vertical.SPORTS),   # before KXNBA is moot (distinct KXW-), but
+    ("KXNBA", Vertical.SPORTS),    # WNBA needs its own prefix: KXWNBA* never
+    ("KXNFL", Vertical.SPORTS),    # matched KXNBA, so it fell through to OTHER
+    ("KXMLB", Vertical.SPORTS),    # and was silently excluded from trading +
+    ("KXNHL", Vertical.SPORTS),    # the board. Same for NCAA (KXNCAAF/KXNCAAMB).
+    ("KXNCAA", Vertical.SPORTS),
     ("KXWTA", Vertical.SPORTS),
     ("KXATP", Vertical.SPORTS),
     ("KXMVESPORTS", Vertical.SPORTS),
