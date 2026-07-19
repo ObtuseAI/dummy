@@ -1,0 +1,20 @@
+{
+  "_comment": "Operator control switches. Source of truth for on/off across the system; env vars (DUMMY_MAIN_ENABLED, DUMMY_CRYPTO_ENABLED, DUMMY_SPORTS_ENABLED, DUMMY_SPORTS_<LEAGUE>_ENABLED, DUMMY_LLM_<BACKEND>_ENABLED = 0/1) override per key. Edit via scripts/dummy_switches.py. Fail-safe: a missing/broken file reads as all-on (except the CLI LLM backends, which default off). main=false idles the whole brain.",
+  "main": true,
+  "crypto": true,
+  "sports": true,
+  "leagues": {
+    "mlb": true,
+    "nfl": true,
+    "nba": true,
+    "nhl": true,
+    "ncaaf": true,
+    "ncaamb": true,
+    "wnba": true
+  },
+  "llm": {
+    "openrouter": true,
+    "claude": false,
+    "codex": false
+  }
+}

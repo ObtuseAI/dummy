@@ -278,6 +278,15 @@ class PredatorBrain:
             report.status = "HALTED_KILL_SWITCH"
             return report
 
+        # Operator MAIN switch: off idles the whole cycle (no scan/forecast/
+        # execute), read fresh so a toggle takes effect on the next fire.
+        from autonomy.switches import Switches
+
+        switches = Switches.load()
+        if not switches.main_enabled():
+            report.status = "IDLE_MAIN_SWITCH_OFF"
+            return report
+
         state = self.risk_brain.apply_drawdown_policy(state)
         if state.hard_stopped:
             self.risk_brain.save_state(state)
@@ -335,6 +344,12 @@ class PredatorBrain:
             report.status = f"CYCLE_DEGRADED_SCAN_FAILED:{type(exc).__name__}"
             self.risk_brain.save_state(state)
             return report
+        # Vertical / per-league switches: crypto off, sports off, or a league
+        # off drops those markets from the cycle (the rest keeps trading).
+        scanned = len(markets)
+        markets = [m for m in markets if switches.market_allowed(m)]
+        if len(markets) != scanned:
+            report.notes.append(f"switches_filtered={scanned - len(markets)}")
         report.markets_scanned = len(markets)
 
         if self.mode is SessionMode.SHADOW:

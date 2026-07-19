@@ -496,7 +496,18 @@ def assemble_dashboard_state(runtime_dir: Path | None = None) -> dict[str, Any]:
         "use_sidecar": _use_sidecar_summary(rd),
         # Wave-26: the vNext sovereign-forecasting shadow runtime.
         "vnext_shadow": _load_json(rd / "vnext_shadow_status.json") or {},
+        # Wave-35: operator control switches (main/crypto/sports-by-league/llm).
+        "switches": _switches_summary(),
     }
+
+
+def _switches_summary() -> dict[str, Any]:
+    try:
+        from autonomy.switches import Switches
+
+        return Switches.load().summary()
+    except Exception:
+        return {}
 
 
 def _use_sidecar_summary(rd: Path) -> dict[str, Any]:
@@ -580,6 +591,7 @@ def assemble_status_snapshot(runtime_dir: Path | None = None) -> dict[str, Any]:
         # these the vNext and USE cards would render blank on that fallback.
         "vnext_shadow": _load_json(rd / "vnext_shadow_status.json") or {},
         "use_sidecar": _use_sidecar_summary(rd),
+        "switches": _switches_summary(),
     }
 
 
@@ -750,6 +762,7 @@ _HTML = """<!doctype html>
  <div class="card"><h2>Self-improvement plan</h2><div id="selfImprovement" class="table-wrap"></div></div>
  <div class="card"><h2>Universal Sports Engine sidecar</h2><div id="useSidecar"></div></div>
  <div class="card"><h2>vNext shadow organisms</h2><div id="vnextShadow"></div></div>
+ <div class="card"><h2>Control switches</h2><div id="switches"></div></div>
  <div class="card"><h2>Live canary gate</h2><div id="canary"></div></div>
  <div class="card"><h2>Risk</h2><div id="risk"></div></div>
  <div class="card"><h2>Forecast validation</h2><div id="validation"></div></div>
@@ -938,6 +951,18 @@ function staleNote(ages){
  const stale=Object.entries(ages).filter(([k,v])=>v&&v.stale).map(([k,v])=>`${k} (${v.age_seconds==null?'no timestamp':Math.round(v.age_seconds)+'s'})`);
  return stale.length?` · STALE DATA: ${stale.join(', ')}`:'';
 }
+function renderSwitches(sw){
+ const el=document.getElementById('switches'); if(!el)return;
+ if(!sw||Object.keys(sw).length===0){el.innerHTML='<div class="sub">switches unavailable</div>';return;}
+ const onoff=(b)=>`<span class="pill ${b?'live':'dead'}">${b?'ON':'OFF'}</span>`;
+ const leagues=sw.leagues||{}, llm=sw.llm||{};
+ const leagueLine=Object.keys(leagues).map(k=>`${k}:${leagues[k]?'on':'off'}`).join(' ');
+ const llmLine=Object.keys(llm).map(k=>`${k}:${llm[k]?'on':'off'}`).join(' ');
+ el.innerHTML=kv('MAIN', onoff(sw.main), sw.main?'ok':'bad')
+   +kv('crypto', onoff(sw.crypto))+kv('sports', onoff(sw.sports))
+   +kv('leagues', esc(leagueLine))+kv('llm', esc(llmLine))
+   +'<div class="truth">Flip with scripts/dummy_switches.py (or DUMMY_*_ENABLED env). MAIN off idles the whole brain; changes apply on the next cycle.</div>';
+}
 function renderVnext(vx){
  document.getElementById('vnextShadow').innerHTML=
    kv('episodes on ledger', vx.episodes_on_ledger??0, (vx.episodes_on_ledger||0)>0?'ok':'')
@@ -969,7 +994,7 @@ async function tick(){
    const hb=s.heartbeat||{};
    document.getElementById('live').innerHTML=kv('status',`<span class="pill ${hb.alive?'live':'dead'}">${hb.alive?'ALIVE':'STALE'}</span>`)+kv('last cycle',hb.last_cycle_at||'—')+kv('last status',hb.last_status||'—')+kv('mode',hb.mode||'—');
    document.getElementById('alerts').innerHTML=(s.alerts||[]).slice().reverse().map(a=>`<div class="kv"><span class="${a.severity=='critical'?'bad':a.severity=='warning'?'warn':'ok'}">${a.kind}</span><span>${a.message}</span><b>${(a.at||'').slice(11,19)}</b></div>`).join('')||'<div class="sub">no alerts</div>';
-   try{renderVnext(s.vnext_shadow||{});renderUseSidecar(s.use_sidecar||{});}catch(e){}
+   try{renderVnext(s.vnext_shadow||{});renderUseSidecar(s.use_sidecar||{});renderSwitches(s.switches||{});}catch(e){}
    document.getElementById('ts').textContent='full report computing · showing fast snapshot '+new Date().toLocaleTimeString()+staleNote(s.data_ages);
   }catch(e){document.getElementById('ts').textContent='full report computing…';}
   return;
@@ -988,7 +1013,7 @@ async function tick(){
    kv('status', `<span class="pill ${hb.alive?'live':'dead'}">${hb.alive?'ALIVE':'STALE'}</span>`)
    +kv('last cycle', hb.last_cycle_at||'—')+kv('last status', hb.last_status||'—')
    +kv('mode', hb.mode||'—')+kv('orders', hb.last_orders_placed??'—')+kv('signals', hb.last_signals??'—');
- try{renderVnext(d.vnext_shadow||{});renderUseSidecar(d.use_sidecar||{});}catch(e){}
+ try{renderVnext(d.vnext_shadow||{});renderUseSidecar(d.use_sidecar||{});renderSwitches(d.switches||{});}catch(e){}
  const si=d.self_improvement||{};
  document.getElementById('selfImprovement').innerHTML=(si.items&&si.items.length)
   ?('<table><tr><th>#</th><th>kind</th><th>target</th><th>owner</th><th>next</th></tr>'
