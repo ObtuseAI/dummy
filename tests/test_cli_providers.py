@@ -59,6 +59,23 @@ def test_codex_argv_and_jsonl_extract():
     assert json.loads(out)["dummy_probability"] == 0.4
 
 
+def test_codex_extract_reads_real_agent_message_shape():
+    # codex 0.144.x: the answer is item.text under an "item.completed" event;
+    # the startup warning is an error item and must be ignored.
+    import json as _json
+    stream = "\n".join([
+        _json.dumps({"type": "thread.started", "thread_id": "t"}),
+        _json.dumps({"type": "item.completed", "item": {"type": "error", "message": "Under-development warning"}}),
+        _json.dumps({"type": "turn.started"}),
+        _json.dumps({"type": "item.completed", "item": {"type": "agent_message",
+                     "text": '{"dummy_probability": 0.4, "confidence_score": 0.6, "reasoning": "y"}'}}),
+        _json.dumps({"type": "turn.completed", "usage": {"output_tokens": 24}}),
+    ])
+    provider = CodexCliProvider(_cfg(""))
+    out = provider._extract(stream)
+    assert json.loads(out)["dummy_probability"] == 0.4     # the agent_message, not the warning
+
+
 def test_available_is_gated_by_env_and_executable(tmp_path, monkeypatch):
     import model_router.cli_providers as cli
     monkeypatch.setattr(cli.shutil, "which", lambda name: None)  # nothing on PATH
