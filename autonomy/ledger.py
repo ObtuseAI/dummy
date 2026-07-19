@@ -920,24 +920,27 @@ class AutonomyLedger:
         return [r[0] for r in rows]
 
     def evidence_split(self) -> dict[str, int]:
-        """Settled-market counts by evidence provenance (live shadow vs retro)."""
-        live = self._conn.execute(
+        """Settled-market counts by evidence provenance (live shadow vs retro).
+
+        One JOIN+GROUP pass over signal_history instead of correlated EXISTS
+        subqueries evaluated once per settlement (~180k x 2 lookups over the
+        12M-row union view -- part of the recalibration's residual cost).
+        """
+        row = self._conn.execute(
             """
-            SELECT COUNT(DISTINCT st.market_ticker) FROM settlements st
-            WHERE EXISTS (SELECT 1 FROM signal_history s
-                          WHERE s.market_ticker = st.market_ticker AND s.mode = 'live')
+            SELECT
+              COALESCE(SUM(has_live), 0),
+              COALESCE(SUM(CASE WHEN has_live = 0 AND has_retro = 1 THEN 1 ELSE 0 END), 0)
+            FROM (
+              SELECT MAX(CASE WHEN s.mode = 'live' THEN 1 ELSE 0 END) AS has_live,
+                     MAX(CASE WHEN s.mode = 'retro' THEN 1 ELSE 0 END) AS has_retro
+              FROM settlements st
+              JOIN signal_history s ON s.market_ticker = st.market_ticker
+              GROUP BY st.market_ticker
+            )
             """
         ).fetchone()
-        retro_only = self._conn.execute(
-            """
-            SELECT COUNT(DISTINCT st.market_ticker) FROM settlements st
-            WHERE NOT EXISTS (SELECT 1 FROM signal_history s
-                              WHERE s.market_ticker = st.market_ticker AND s.mode = 'live')
-              AND EXISTS (SELECT 1 FROM signal_history s
-                          WHERE s.market_ticker = st.market_ticker AND s.mode = 'retro')
-            """
-        ).fetchone()
-        return {"live_settled": int(live[0]), "retro_settled": int(retro_only[0])}
+        return {"live_settled": int(row[0]), "retro_settled": int(row[1])}
 
     def signal_quality_summary(self) -> dict[str, Any]:
         """Compact, decision-oriented profile of the statistical intake ledger."""
