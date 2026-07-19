@@ -16,6 +16,7 @@ import os
 from typing import Any
 
 from autonomy.odds_api_budget import (
+    LINE_CLASS,
     ODDS_CALL_COST,
     SPORTS_LIST_TTL_SECONDS,
     OddsApiBudget,
@@ -104,7 +105,8 @@ class OddsApiClient:
             )
 
         payload, source = self.budget.budgeted_fetch(
-            f"odds|{sport_key}|{CONSENSUS_MARKETS}|us", _fetch, cost=ODDS_CALL_COST)
+            f"odds|{sport_key}|{CONSENSUS_MARKETS}|us", _fetch,
+            cost=ODDS_CALL_COST, reserve_class=LINE_CLASS)
         events = payload if isinstance(payload, list) else []
         return events, source
 

@@ -45,10 +45,40 @@ ARCHIVE_DIR = RUNTIME_DIR / "odds_api_archive"
 # box). The archive is append-only telemetry, safe to relocate at any time.
 ARCHIVE_DIR_ENV = "DUMMY_ODDS_ARCHIVE_DIR"
 
-DEFAULT_DAILY_CREDITS = 500          # ≈ 15k/month; buffer under a 20k plan
+# Wave-31 rebalance. The 20k/month plan is ~645 credits/day; the old 500 cap
+# left the plan under-used AND, worse, was consumed early each day by per-event
+# player-prop fetches -- starving the game-line feed the line-movement pipeline
+# depends on. Two fixes: raise the daily cap into the plan, and RESERVE a slice
+# of it for the game-line ("line") class so prop fetches can never exhaust the
+# feed. A monthly cap guards the plan so raising the daily number can't overrun
+# it. All three are env-tunable on the live box.
+DEFAULT_DAILY_CREDITS = 640          # ≈ 19.8k/month, just under the 20k plan
+# Default reserve is a FRACTION of the resolved daily cap so it scales if the
+# cap is retuned; an absolute override via LINE_RESERVE_ENV wins.
+DEFAULT_LINE_RESERVE_FRACTION = 0.4  # 40% of the day reserved for game lines
+DEFAULT_MONTHLY_CREDITS = 20000      # the plan ceiling; never overrun it
+DAILY_CREDITS_ENV = "DUMMY_ODDS_DAILY_CREDITS"
+LINE_RESERVE_ENV = "DUMMY_ODDS_LINE_RESERVE"
+MONTHLY_CREDITS_ENV = "DUMMY_ODDS_MONTHLY_CREDITS"
+# Fetch classes for the reservation. "line" = the game-line slate (the movement
+# feed); everything else (props) yields the reserved slice to it.
+LINE_CLASS = "line"
+
 DEFAULT_TTL_SECONDS = 1200           # 20 min: a sport is pulled at most 3x/hr
 ODDS_CALL_COST = 3                   # markets(h2h,totals,spreads) x regions(us)
 SPORTS_LIST_TTL_SECONDS = 6 * 3600   # in-season set changes slowly; cache 6h
+
+
+def _env_int(name: str, default: int) -> int:
+    """Positive-int env override, else the default (fail-safe on garbage)."""
+    raw = os.environ.get(name)
+    if raw is None:
+        return default
+    try:
+        value = int(raw)
+        return value if value >= 0 else default
+    except (TypeError, ValueError):
+        return default
 
 
 @dataclass
@@ -71,13 +101,28 @@ class OddsApiBudget:
     def __init__(
         self,
         *,
-        daily_credits: int = DEFAULT_DAILY_CREDITS,
+        daily_credits: int | None = None,
+        line_reserve: int | None = None,
+        monthly_credits: int | None = None,
         budget_path: Path | None = None,
         cache_dir: Path | None = None,
         archive_dir: Path | None = None,
         now_fn: Callable[[], float] | None = None,
     ) -> None:
-        self.daily_credits = int(daily_credits)
+        # Explicit args win (tests); otherwise the env override, else the
+        # default. The reserve is clamped below the cap so props always keep a
+        # positive ceiling.
+        self.daily_credits = int(
+            daily_credits if daily_credits is not None
+            else _env_int(DAILY_CREDITS_ENV, DEFAULT_DAILY_CREDITS))
+        self.monthly_credits = int(
+            monthly_credits if monthly_credits is not None
+            else _env_int(MONTHLY_CREDITS_ENV, DEFAULT_MONTHLY_CREDITS))
+        proportional = int(DEFAULT_LINE_RESERVE_FRACTION * self.daily_credits)
+        reserve = int(
+            line_reserve if line_reserve is not None
+            else _env_int(LINE_RESERVE_ENV, proportional))
+        self.line_reserve = max(0, min(reserve, self.daily_credits))
         self.budget_path = Path(budget_path or BUDGET_PATH)
         self.cache_dir = Path(cache_dir or CACHE_DIR)
         env_archive = os.environ.get(ARCHIVE_DIR_ENV)
@@ -123,17 +168,31 @@ class OddsApiBudget:
         self.budget_path.write_text(
             json.dumps(state.to_dict(), indent=2, sort_keys=True), encoding="utf-8")
 
+    def _daily_ceiling(self, reserve_class: str) -> int:
+        """The game-line class may spend the whole day; every other class
+        stops at the cap minus the reserved line slice."""
+        if reserve_class == LINE_CLASS:
+            return self.daily_credits
+        return self.daily_credits - self.line_reserve
+
     def status(self) -> dict[str, Any]:
         state = self._load()
         return {
             **state.to_dict(),
             "daily_credits": self.daily_credits,
             "daily_remaining": max(0, self.daily_credits - state.spent_today),
+            "line_reserve": self.line_reserve,
+            "prop_remaining": max(
+                0, self._daily_ceiling("prop") - state.spent_today),
+            "monthly_credits": self.monthly_credits,
+            "monthly_remaining": max(0, self.monthly_credits - state.spent_month),
         }
 
-    def can_spend(self, cost: int) -> bool:
+    def can_spend(self, cost: int, reserve_class: str = "other") -> bool:
         state = self._load()
-        if state.spent_today + cost > self.daily_credits:
+        if state.spent_today + cost > self._daily_ceiling(reserve_class):
+            return False
+        if state.spent_month + cost > self.monthly_credits:
             return False
         if state.remaining_reported is not None and state.remaining_reported < cost:
             return False
@@ -206,17 +265,21 @@ class OddsApiBudget:
         *,
         cost: int = ODDS_CALL_COST,
         ttl: float = DEFAULT_TTL_SECONDS,
+        reserve_class: str = "other",
     ) -> tuple[Any, str]:
         """Return (payload, source) where source is one of
         ``cache`` | ``live`` | ``stale`` | ``budget_exhausted`` | ``error``.
 
         ``fetch_fn`` returns ``(payload, remaining_header_or_None)``; it is
         called ONLY when a fresh cache miss coincides with available budget.
+        ``reserve_class`` gates against the class ceiling: the game-line class
+        (``LINE_CLASS``) may spend the full daily cap, props stop at the cap
+        minus the reserved line slice so the movement feed never starves.
         """
         cached = self.cache_get(cache_key, ttl)
         if cached is not None and cached[1]:
             return cached[0], "cache"
-        if self.can_spend(cost):
+        if self.can_spend(cost, reserve_class):
             try:
                 payload, remaining = fetch_fn()
             except Exception:
