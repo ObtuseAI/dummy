@@ -320,6 +320,11 @@ def build_brain(mode: SessionMode):
     from autonomy.signals.sports_glicko import SportsGlickoSignal
 
     registry.register(SportsGlickoSignal(seasons=seasons))
+    # Pythagenpat challenger: scoring-margin team strength (diversifies Glicko's
+    # W/L-only view). Same lake, fail-closed, contested-Brier gated.
+    from autonomy.signals.sports_pythagorean import SportsPythagoreanSignal
+
+    registry.register(SportsPythagoreanSignal(seasons=seasons))
     # De-vigged sportsbook moneyline + open->close steam: the sharpest public
     # game forecast, and the trap detector when Elo fights the book.
     registry.register(SportsbookConsensusSignal())
