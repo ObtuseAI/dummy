@@ -251,8 +251,12 @@ def test_to_market_view_default_has_unknown_freshness():
     assert view.fetched_at is None
 
 
-def test_brain_passes_snapshot_ts_to_executor(tmp_path):
+def test_brain_passes_snapshot_ts_to_executor(tmp_path, monkeypatch):
     """The cycle wires MarketView.fetched_at into the executor's stale gate."""
+    # Isolate from any cwd-relative runtime/no_edge_map.json: the fusion floor is
+    # tested on its own; here a strong signal must reach the executor regardless
+    # of whatever scopes live evidence has floored.
+    monkeypatch.setattr("autonomy.no_edge_map.load_negative_scopes", lambda *a, **k: frozenset())
     from autonomy.brain import PredatorBrain
     from autonomy.learner import Learner
     from autonomy.ledger import AutonomyLedger
