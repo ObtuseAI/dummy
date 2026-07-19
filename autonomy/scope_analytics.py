@@ -90,6 +90,27 @@ def scope_key(ticker: str) -> tuple[str, str]:
     return vertical.name, vertical.name
 
 
+def bet_type_of(ticker: str) -> str:
+    """The wager family a market belongs to, for per-bet-type accuracy slicing.
+
+    Sports resolve to the registry's ``market_type`` (winner / spread / total /
+    team_total / yrfi / prop / …); crypto to its contract family (ladder /
+    between / 15m_direction / …); anything else to ``"other"``.
+    """
+    vertical = classify_vertical(ticker)
+    if vertical is Vertical.CRYPTO:
+        from autonomy.signals.crypto_spot import parse_crypto_ticker
+
+        parsed = parse_crypto_ticker(ticker) or {}
+        return str(parsed.get("contract_family") or "other")
+    if vertical is Vertical.SPORTS:
+        from autonomy.picks import _scope_of
+
+        _league, market_type = _scope_of(ticker)
+        return str(market_type or "other")
+    return "other"
+
+
 def _brier(prob: float, result: int) -> float:
     return (prob - result) ** 2
 
@@ -131,6 +152,7 @@ def _settled_records(conn: sqlite3.Connection, window_days: float) -> list[dict[
             "ticker": str(ticker),
             "vertical": vertical,
             "label": label,
+            "bet_type": bet_type_of(str(ticker)),
             "action": str(action),
             "prob": prob_f,
             "market": float(market) if market is not None else None,
@@ -199,6 +221,55 @@ def _progression(records: list[dict[str, Any]], buckets: int = 24) -> list[dict[
             "brier_edge": s["brier_edge"],
         })
     return out
+
+
+_IMPROVE_MIN_HALF = 4          # min records per half before a trend is honest
+_IMPROVE_BRIER_EPS = 0.005     # Brier move smaller than this reads as flat
+
+
+def _improvement(records: list[dict[str, Any]]) -> dict[str, Any]:
+    """Is this bundle getting SHARPER? Split oldest->newest in half and compare.
+
+    ``delta_brier = prior_brier - recent_brier`` (positive => Brier fell =>
+    sharper). Below a per-half floor the sample is too thin to call, so the
+    trend is reported as ``"thin"`` rather than a spurious direction.
+    """
+    ordered = sorted(records, key=lambda r: r["settled_at"])
+    n = len(ordered)
+    if n < 2 * _IMPROVE_MIN_HALF:
+        return {"trend": "thin", "n": n, "delta_brier": None,
+                "delta_hit": None, "delta_edge": None}
+    half = n // 2
+    prior, recent = _summarize(ordered[:half]), _summarize(ordered[half:])
+
+    def _delta(a: Any, b: Any) -> float | None:
+        return None if a is None or b is None else round(b - a, 4)
+
+    delta_brier = _delta(recent["brier"], prior["brier"])   # prior - recent
+    delta_hit = _delta(prior["hit_rate"], recent["hit_rate"])
+    delta_edge = _delta(prior["brier_edge"], recent["brier_edge"])
+    trend = "flat"
+    if delta_brier is not None:
+        if delta_brier > _IMPROVE_BRIER_EPS:
+            trend = "improving"
+        elif delta_brier < -_IMPROVE_BRIER_EPS:
+            trend = "declining"
+    return {
+        "trend": trend, "n": n, "recent_n": n - half, "prior_n": half,
+        "delta_brier": delta_brier, "delta_hit": delta_hit, "delta_edge": delta_edge,
+        "recent_brier": recent["brier"], "prior_brier": prior["brier"],
+    }
+
+
+def _bet_type_breakdown(records: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
+    """Per-bet-type accuracy + improvement for one scope's settled records."""
+    groups: dict[str, list[dict[str, Any]]] = {}
+    for rec in records:
+        groups.setdefault(rec.get("bet_type", "other"), []).append(rec)
+    return {
+        bt: {"summary": _summarize(recs), "improvement": _improvement(recs)}
+        for bt, recs in sorted(groups.items(), key=lambda kv: -len(kv[1]))
+    }
 
 
 def _rankings(conn: sqlite3.Connection, limit: int = 12) -> dict[tuple[str, str], list[dict[str, Any]]]:
@@ -285,6 +356,8 @@ def build_scope_analytics(
             "summary": _summarize(recs),
             "progression": _progression(recs),
             "picks": rankings.get((vertical, label), []),
+            "bet_types": _bet_type_breakdown(recs),
+            "improvement": _improvement(recs),
         }
 
     # Always surface the whole SPORTS roster -- in or out of season.
@@ -305,6 +378,8 @@ def build_scope_analytics(
                 "summary": _summarize(ls),
                 "progression": _progression(ls),
                 "picks": rankings.get((SPORTS, league), []),
+                "bet_types": _bet_type_breakdown(ls),
+                "improvement": _improvement(ls),
                 "basis": "last-season" if ls else "none",
             }
             sports["scopes"][league] = scope
@@ -322,6 +397,36 @@ def build_scope_analytics(
         "window_days": window_days,
         "last_season_window_days": last_season_window_days,
         "verticals": verticals,
+        "telemetry": _telemetry(records, verticals),
+    }
+
+
+def _telemetry(
+    records: list[dict[str, Any]], verticals: dict[str, dict[str, Any]]
+) -> dict[str, Any]:
+    """Overall accuracy + improvement, and a scope x bet-type matrix.
+
+    The overview reads ``overall`` for the headline + improvement arrow and
+    ``matrix`` for the heatmap (one row per non-empty scope/bet-type cell).
+    """
+    matrix: list[dict[str, Any]] = []
+    for vertical, block in verticals.items():
+        for label, scope in (block.get("scopes") or {}).items():
+            for bet_type, cell in (scope.get("bet_types") or {}).items():
+                s = cell.get("summary") or {}
+                if not s.get("n"):
+                    continue
+                imp = cell.get("improvement") or {}
+                matrix.append({
+                    "vertical": vertical, "scope": label, "bet_type": bet_type,
+                    "n": s.get("n"), "brier": s.get("brier"), "hit_rate": s.get("hit_rate"),
+                    "brier_edge": s.get("brier_edge"), "contested_n": s.get("contested_n"),
+                    "trend": imp.get("trend"), "delta_brier": imp.get("delta_brier"),
+                })
+    matrix.sort(key=lambda c: (c["vertical"], c["scope"], -(c["n"] or 0)))
+    return {
+        "overall": {"summary": _summarize(records), "improvement": _improvement(records)},
+        "matrix": matrix,
     }
 
 

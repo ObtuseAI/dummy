@@ -271,6 +271,28 @@ tbody tr:hover{background:var(--panel-2);box-shadow:inset 2px 0 0 var(--acc)}
 .chip:hover{border-color:var(--line-2);color:var(--txt)}
 .chip b{color:var(--phos);font-weight:600}
 
+/* accuracy & improvement telemetry */
+.acc-hero{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:var(--s3);margin-bottom:var(--s3)}
+.acc-stat .lab{font-size:9.5px;letter-spacing:.2em;text-transform:uppercase;color:var(--faint)}
+.acc-stat .val{font-family:var(--mono);font-size:24px;font-weight:600;margin-top:4px;line-height:1.1;min-height:27px}
+.acc-stat .sub{font-family:var(--mono);font-size:11px;color:var(--faint);margin-top:2px}
+.trend{font-family:var(--mono);font-size:15px;font-weight:600;display:inline-flex;align-items:baseline;gap:7px}
+.trend .dd{font-size:11px;font-weight:400;color:var(--muted)}
+.trend.up,.td.up{color:var(--green)} .trend.dn,.td.dn{color:var(--red)}
+.trend.flat,.td.flat{color:var(--muted)} .trend.thin,.td.thin{color:var(--faint)}
+.heatwrap{overflow-x:auto;margin:0 calc(-1*var(--s3)) calc(-1*var(--s3));padding:0 var(--s3) var(--s3)}
+table.heat{border-collapse:separate;border-spacing:4px;font-family:var(--mono);font-size:11.5px;width:100%}
+table.heat th{position:static;background:transparent;text-align:center;color:var(--faint);font-family:var(--body);
+  font-size:9px;letter-spacing:.12em;text-transform:uppercase;padding:3px 6px;border:0}
+table.heat th:first-child,table.heat td.hs{text-align:left}
+td.hs{color:var(--txt);white-space:nowrap;font-size:12px;padding-right:10px}
+td.hc{border:1px solid var(--line);border-radius:7px;padding:6px 8px;text-align:center;min-width:66px;
+  background:var(--panel-2);transition:transform .12s,border-color .12s;cursor:default}
+td.hc:hover{transform:translateY(-1px);border-color:var(--line-2)}
+td.hc.empty2{background:transparent;border-style:dashed;opacity:.4}
+td.hc .he{font-weight:600}
+td.hc .td{font-size:11px;margin-left:3px}
+
 /* charts */
 .cwrap{position:relative}
 .chart{width:100%;display:block}
@@ -567,6 +589,7 @@ function overviewView(){
   h+='<div class="card reveal" style="margin-bottom:var(--s3)"><h3>Balance curve <span class="r">'+curveRaw.length+' pts · paper $</span></h3>'
     +areaChart(curve,{h:176,color:o.account_roi>=0?'var(--green)':'var(--red)'})
     +'<div class="legend"><span><i style="background:var(--green)"></i>paper bankroll</span><span style="color:var(--faint)">hover for value · date</span></div></div>';
+  h+=accuracyPanel();
   h+='<div class="grid kpis" style="margin-bottom:var(--s3)">';
   h+=kpi('Win rate',pct(rts.win_rate),'','settled trades',true);
   h+=kpi('ROI on cost',signed(rts.roi_on_entry_cost),sgn(rts.roi_on_entry_cost),'',true);
@@ -582,6 +605,59 @@ function overviewView(){
   return h;
 }
 function miniRow(k,v,cls){return '<div class="row"><span class="k">'+k+'</span><span class="vv '+(cls||'')+'">'+flip(v)+'</span></div>';}
+// ---------- accuracy & improvement telemetry ----------
+function trendMeta(t){return t==='improving'?['up','▲']:t==='declining'?['dn','▼']:t==='flat'?['flat','▬']:['thin','·'];}
+function improvBig(imp){
+  if(!imp||imp.trend==null||imp.trend==='thin')return '<span class="trend thin">· building sample</span>';
+  const[cls,ar]=trendMeta(imp.trend);const db=imp.delta_brier;
+  const d=db==null?'':'<span class="dd">Δ '+(db>0?'−':'+')+Math.abs(db).toFixed(3)+' Brier</span>';
+  return '<span class="trend '+cls+'">'+ar+' '+esc(imp.trend)+' '+d+'</span>';
+}
+function improvArrow(imp){
+  if(!imp||imp.trend==null||imp.trend==='thin')return '<span class="td thin">·</span>';
+  const[cls,ar]=trendMeta(imp.trend);const db=imp.delta_brier;
+  return '<span class="td '+cls+'">'+ar+(db==null?'':' '+(db>0?'−':'+')+Math.abs(db).toFixed(3))+'</span>';
+}
+function improvDot(t){const[cls,ar]=trendMeta(t);return '<span class="td '+cls+'">'+ar+'</span>';}
+function heatColor(e){if(e==null)return '';const a=Math.max(-.06,Math.min(.06,e))/.06;
+  return a>=0?'background:rgba(47,227,143,'+(0.05+a*0.22).toFixed(3)+')':'background:rgba(255,107,122,'+(0.05+(-a)*0.22).toFixed(3)+')';}
+function heatmap(matrix){
+  if(!matrix||!matrix.length)return '';
+  const scopes=[],cols=[],by={};
+  matrix.forEach(c=>{const sk=c.scope;if(!scopes.includes(sk))scopes.push(sk);if(!cols.includes(c.bet_type))cols.push(c.bet_type);by[sk+'|'+c.bet_type]=c;});
+  let h='<div class="heatwrap"><table class="heat"><thead><tr><th>scope</th>'+cols.map(c=>'<th>'+esc(c)+'</th>').join('')+'</tr></thead><tbody>';
+  scopes.forEach(sk=>{h+='<tr><td class="hs">'+esc(sk)+'</td>'+cols.map(c=>{const cell=by[sk+'|'+c];
+    if(!cell)return '<td class="hc empty2"></td>';
+    return '<td class="hc" style="'+heatColor(cell.brier_edge)+'" title="'+esc(c)+' · n='+cell.n+' · hit '+pct(cell.hit_rate)+' · Brier '+num(cell.brier)+' · '+esc(cell.trend||'')+'">'
+      +'<span class="he">'+(cell.brier_edge==null?'—':signed(cell.brier_edge,2))+'</span>'+improvDot(cell.trend)+'</td>';}).join('')+'</tr>';});
+  return h+'</tbody></table></div>';
+}
+function accuracyPanel(){
+  const tel=STATE.scopes&&STATE.scopes.telemetry;
+  if(!tel||!tel.overall)return '';
+  const s=tel.overall.summary||{},imp=tel.overall.improvement||{};
+  if(!s.n)return '';
+  let h='<div class="card reveal" style="margin-bottom:var(--s3)"><h3>Accuracy &amp; improvement <span class="r">'+commaN(s.n)+' graded · recent vs prior window</span></h3>';
+  h+='<div class="acc-hero">'
+    +'<div class="acc-stat"><div class="lab">Brier</div><div class="val">'+flip(num(s.brier))+'</div><div class="sub">lower = sharper</div></div>'
+    +'<div class="acc-stat"><div class="lab">Hit rate</div><div class="val '+(s.hit_rate>=.5?'pos':'')+'">'+flip(pct(s.hit_rate))+'</div><div class="sub">directional</div></div>'
+    +'<div class="acc-stat"><div class="lab">Edge vs market</div><div class="val '+sgn(s.brier_edge)+'">'+flip(signed(s.brier_edge,2))+'</div><div class="sub">'+commaN(s.contested_n||0)+' contested</div></div>'
+    +'<div class="acc-stat"><div class="lab">Improvement</div><div class="val">'+improvBig(imp)+'</div><div class="sub">Brier fell = sharper</div></div>'
+    +'</div>';
+  h+='<div class="sub" style="font-family:var(--mono);color:var(--faint);margin:2px 0 10px">edge by scope × bet type — green beats the line, arrow = trend</div>';
+  h+=heatmap(tel.matrix||[]);
+  return h+'</div>';
+}
+function betTypeCard(bt){
+  const keys=bt?Object.keys(bt):[];
+  if(!keys.length)return '';
+  let h='<div class="card pad0 reveal" style="margin-top:var(--s3)"><h3 style="padding:var(--s3) var(--s3) var(--s2)">Accuracy by bet type <span class="r">recent vs prior</span></h3>';
+  h+='<div style="max-height:340px;overflow:auto"><table><thead><tr><th>Bet type</th><th>n</th><th>Hit</th><th>Brier</th><th>Mkt</th><th>Edge</th><th>Trend</th></tr></thead><tbody>';
+  keys.forEach(k=>{const c=bt[k],s=c.summary||{},imp=c.improvement||{};
+    h+='<tr><td>'+esc(k)+'</td><td>'+commaN(s.n)+'</td><td>'+pct(s.hit_rate)+'</td><td>'+num(s.brier)+'</td>'
+      +'<td>'+num(s.market_brier)+'</td><td class="'+sgn(s.brier_edge)+'">'+signed(s.brier_edge,2)+'</td><td>'+improvArrow(imp)+'</td></tr>';});
+  return h+'</tbody></table></div></div>';
+}
 function skeleton(){
   return '<div class="grid hero" style="margin-bottom:var(--s3)">'+Array(3).fill('<div class="card reveal" style="height:150px"><div class="empty">warming up…</div></div>').join('')
     +'</div><div class="card reveal" style="height:200px"><div class="empty">the snapshot refreshes every 20 min</div></div>';
@@ -637,6 +713,7 @@ function scopeView(vert,label){
   h+='<div class="card reveal"><h3>Model vs market <span class="r">Brier, lower better</span></h3>'+accuracyBars(s)+'</div>';
   h+='<div class="card pad0 reveal"><h3 style="padding:var(--s3) var(--s3) var(--s2)">Current picks <span class="r">by edge</span></h3>'+picksTable(sc.picks)+'</div>';
   h+='</div>';
+  h+=betTypeCard(sc.bet_types);
   h+=extrasSection(sc.extras||{},label);
   return h;
 }
