@@ -30,6 +30,7 @@ $vbs = @{
     "DummyBacktestReport"   = "$repo\scripts\tasks\launch_backtest_report.vbs"
     "DummyLedgerPrune"      = "$repo\scripts\tasks\launch_signal_prune.vbs"
     "DummyLedgerVacuum"     = "$repo\scripts\tasks\launch_ledger_vacuum.vbs"
+    "DummyLogRotation"      = "$repo\scripts\tasks\launch_log_rotation.vbs"
 }
 
 foreach ($task in Get-ScheduledTask -TaskName "Dummy*") {
