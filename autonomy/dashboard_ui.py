@@ -385,7 +385,7 @@ const esc=(s)=>String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;
 const flip=(text)=>'<span class="flip">'+String(text).split('').map((c,i)=>'<span class="flap" style="animation-delay:'+(i*32)+'ms">'+(c===' '?'&nbsp;':esc(c))+'</span>').join('')+'</span>';
 const REDUCE=matchMedia('(prefers-reduced-motion:reduce)').matches;
 
-let STATE={overview:null,scopes:null,status:null};
+let STATE={overview:null,scopes:null,status:null,walk:null};
 let ROUTE=location.hash||'#/overview';
 let lastSig='';
 // every sport league the board lists, in season or not (backend enriches each
@@ -656,6 +656,19 @@ function accuracyPanel(){
   h+=heatmap(tel.matrix||[]);
   return h+'</div>';
 }
+function walkCard(vert,label){
+  if(vert!=='SPORTS')return '';
+  const w=STATE.walk&&STATE.walk[String(label).toLowerCase()];
+  if(!w||!w.n)return '';
+  const edge=w.edge_vs_baseline;
+  return '<div class="card reveal" style="margin-top:var(--s3)"><h3>Model backtest <span class="r">Glicko-2 · point-in-time lake · '+commaN(w.n)+' games</span></h3>'
+    +'<div class="acc-hero">'
+    +'<div class="acc-stat"><div class="lab">Hit rate</div><div class="val '+(w.hit_rate>=.5?'pos':'')+'">'+flip(pct(w.hit_rate))+'</div><div class="sub">straight-up winner</div></div>'
+    +'<div class="acc-stat"><div class="lab">Brier</div><div class="val">'+flip(num(w.brier))+'</div><div class="sub">vs coin '+num(w.baseline_brier)+'</div></div>'
+    +'<div class="acc-stat"><div class="lab">Edge vs coin</div><div class="val '+(edge>=0?'pos':'neg')+'">'+flip(signed(edge,2))+'</div><div class="sub">Brier improvement</div></div>'
+    +'<div class="acc-stat"><div class="lab">Log-loss</div><div class="val">'+flip(num(w.log_loss))+'</div><div class="sub">cross-entropy</div></div>'
+    +'</div><div class="sub" style="font-family:var(--mono);color:var(--faint);margin-top:4px">walk-forward, no look-ahead — the analytic\'s standalone edge from the history lake</div></div>';
+}
 function betTypeCard(bt){
   const keys=bt?Object.keys(bt):[];
   if(!keys.length)return '';
@@ -722,6 +735,7 @@ function scopeView(vert,label){
   h+='<div class="card pad0 reveal"><h3 style="padding:var(--s3) var(--s3) var(--s2)">Current picks <span class="r">by edge</span></h3>'+picksTable(sc.picks)+'</div>';
   h+='</div>';
   h+=betTypeCard(sc.bet_types);
+  h+=walkCard(vert,label);
   h+=extrasSection(sc.extras||{},label);
   return h;
 }
@@ -901,12 +915,14 @@ function shock(){if(REDUCE)return;const s=document.getElementById('shock');s.cla
 // ---------- data ----------
 async function poll(){
   try{
-    const [ov,sc,st]=await Promise.all([
+    const [ov,sc,st,wf]=await Promise.all([
       fetch('/api/overview').then(r=>r.json()).catch(()=>null),
       fetch('/api/scopes').then(r=>r.json()).catch(()=>null),
       fetch('/api/status').then(r=>r.json()).catch(()=>null),
+      fetch('/api/walk_forward').then(r=>r.json()).catch(()=>null),
     ]);
     if(ov)STATE.overview=ov;if(sc)STATE.scopes=sc;if(st)STATE.status=st;
+    if(wf)STATE.walk=wf.leagues||{};
     const live=document.getElementById('live'),fs=document.getElementById('footstat');
     const fresh=ov&&ov.generated_at&&(Date.now()-Date.parse(ov.generated_at))<30*60*1000;
     live.className='dot'+(fresh?' live':'');

@@ -23,6 +23,7 @@ from autonomy.sports.history_store import SportsHistoryStore  # noqa: E402
 from autonomy.sports.walk_forward import walk_forward_glicko  # noqa: E402
 
 LEAGUES = ("mlb", "wnba", "nba", "nfl", "nhl", "ncaaf", "ncaamb")
+ARTIFACT = Path("runtime/autonomy/sports_walk_forward.json")
 
 
 def main() -> int:
@@ -32,9 +33,11 @@ def main() -> int:
 
     store = SportsHistoryStore()
     leagues = [args.league] if args.league else list(LEAGUES)
+    results: dict[str, dict] = {}
     try:
         for league in leagues:
             r = walk_forward_glicko(store, league=league)
+            results[league] = r
             if r["n"] == 0:
                 print(f"[{league}] no completed games in the lake yet")
                 continue
@@ -42,6 +45,25 @@ def main() -> int:
                   f"logloss={r['log_loss']} edge_vs_coin={r['edge_vs_baseline']}")
     finally:
         store.close()
+
+    # Merge into the artifact the dashboard reads (keep leagues not re-run).
+    import json
+    from datetime import datetime, timezone
+
+    prior = {}
+    try:
+        prior = json.loads(ARTIFACT.read_text(encoding="utf-8")).get("leagues", {})
+    except Exception:  # noqa: BLE001
+        prior = {}
+    prior.update(results)
+    ARTIFACT.parent.mkdir(parents=True, exist_ok=True)
+    tmp = ARTIFACT.with_suffix(".json.tmp")
+    tmp.write_text(json.dumps({
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "model": "glicko2", "leagues": prior,
+    }), encoding="utf-8")
+    tmp.replace(ARTIFACT)
+    print(f"wrote {ARTIFACT}")
     return 0
 
 

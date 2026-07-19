@@ -727,6 +727,12 @@ def build_app():
         # ledger.db. Always responsive, even while /api/autonomy recomputes.
         return JSONResponse(assemble_status_snapshot())
 
+    @app.get("/api/walk_forward")
+    def api_walk_forward() -> JSONResponse:
+        # Point-in-time Glicko-2 backtest per league from the history lake
+        # (written by the walk-forward task). Static artifact; never the ledger.
+        return JSONResponse(_load_json(RUNTIME_DIR / "sports_walk_forward.json") or {})
+
     @app.get("/api/bet_board")
     def api_bet_board() -> JSONResponse:
         # Wave-15: every market the brain currently prices, ranked. A bounded
