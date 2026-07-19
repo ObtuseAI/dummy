@@ -313,6 +313,13 @@ def build_brain(mode: SessionMode):
 
     seasons = SeasonMonitor()
     registry.register(SportsEloSignal(seasons=seasons))
+    # Glicko-2 challenger: same tickers as Elo, but priced off the persistent
+    # history lake with per-team rating deviation (honest uncertainty on
+    # lightly-observed teams). Fail-closed: abstains until the lake has games;
+    # earns weight only through the contested-Brier promotion gate.
+    from autonomy.signals.sports_glicko import SportsGlickoSignal
+
+    registry.register(SportsGlickoSignal(seasons=seasons))
     # De-vigged sportsbook moneyline + open->close steam: the sharpest public
     # game forecast, and the trap detector when Elo fights the book.
     registry.register(SportsbookConsensusSignal())
