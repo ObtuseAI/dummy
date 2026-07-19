@@ -50,6 +50,9 @@ class Snapshot:
     session: dict[str, Any] = field(default_factory=dict)
     risk: dict[str, Any] = field(default_factory=dict)
     budget: dict[str, Any] = field(default_factory=dict)
+    clv: dict[str, Any] = field(default_factory=dict)
+    promotion: dict[str, Any] = field(default_factory=dict)
+    readiness: dict[str, Any] = field(default_factory=dict)
     ages: dict[str, dict[str, Any]] = field(default_factory=dict)
 
     # -- derived KPIs the header/overview read -------------------------------
@@ -150,7 +153,9 @@ class RepoData:
             heal=heal, watchdog=self._rt("watchdog_status.json"), vnext=vnext,
             crypto=crypto, mispricing=mispricing, plan=self._rt("self_improvement_plan.json"),
             session=self._rt("session.json"), risk=self._rt("risk_state.json"),
-            budget=self._rt("odds_api_budget.json"), ages=self._ages_out)
+            budget=self._rt("odds_api_budget.json"), clv=self._rt("clv_report.json"),
+            promotion=self._rt("auto_promotion_state.json"),
+            readiness=self._rt("readiness_report.json"), ages=self._ages_out)
 
     # -- switch control (the app writes the same file dummy_switches.py does) --
 

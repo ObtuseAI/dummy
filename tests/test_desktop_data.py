@@ -28,6 +28,9 @@ def test_snapshot_reads_and_derives(tmp_path):
               {"rank": 2, "matchup": "C@D", "league": "nfl", "pick": "no",
                "probability": 0.41, "edge": -0.05}]},
           heal_status={"connectivity_ok": True, "reachable": ["a", "b"], "unreachable": []},
+          clv_report={"scopes": {"crypto|15m": {"n_entries": 5, "clv_bps_mean": 3.1}}},
+          auto_promotion_state={"status": "OK", "eligible_scopes": 4},
+          readiness_report={"promotion_candidates": ["x|sol"], "scopes": [{"scope": "x"}]},
           switches={"main": True, "crypto": False, "llm": {"claude": True}})
     snap = RepoData(tmp_path).snapshot()
     assert snap.alive() and snap.mode() == "shadow"
@@ -36,6 +39,9 @@ def test_snapshot_reads_and_derives(tmp_path):
     assert snap.connectivity_ok() is True
     assert snap.llm_state()["claude"] is True and snap.llm_state()["codex"] is False
     assert "heartbeat.json" not in snap.stale()   # fresh
+    assert snap.clv["scopes"]["crypto|15m"]["clv_bps_mean"] == 3.1
+    assert snap.promotion["status"] == "OK"
+    assert snap.readiness["promotion_candidates"] == ["x|sol"]
 
 
 def test_missing_files_are_fail_soft(tmp_path):

@@ -28,6 +28,10 @@ if sys.stdout is None or sys.stderr is None:
 
 STATUS_PATH = ROOT / "runtime" / "autonomy" / "heal_status.json"
 _PS = ["powershell", "-NoProfile", "-NonInteractive", "-Command"]
+# The healer fires every 5 min under a windowless (wscript) launcher, but its
+# child powershell.exe would POP A CONSOLE each time without this flag -- the
+# terminal-popup regression. CREATE_NO_WINDOW keeps the subprocess invisible.
+_NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 
 
 def _query_states() -> dict[str, str]:
@@ -35,7 +39,7 @@ def _query_states() -> dict[str, str]:
     out = subprocess.run(
         _PS + ["Get-ScheduledTask -TaskName 'Dummy*' | "
                "Select-Object TaskName,State | ConvertTo-Json -Compress"],
-        capture_output=True, text=True, timeout=60)
+        capture_output=True, text=True, timeout=60, creationflags=_NO_WINDOW)
     data = json.loads(out.stdout or "[]")
     if isinstance(data, dict):
         data = [data]
@@ -57,7 +61,7 @@ _STATE_NAMES = {3: "Ready", 4: "Running", 1: "Disabled", 2: "Queued",
 def _restart(name: str) -> bool:
     result = subprocess.run(
         _PS + [f"Start-ScheduledTask -TaskName '{name}'"],
-        capture_output=True, text=True, timeout=60)
+        capture_output=True, text=True, timeout=60, creationflags=_NO_WINDOW)
     return result.returncode == 0
 
 
