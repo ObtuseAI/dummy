@@ -22,8 +22,31 @@ from autonomy.signals.base import SourceRegistry
 SHADOW_BANKROLL_CENTS = 10_000
 MAX_CANDIDATES_EVALUATED = 100
 MAX_ORDERS_PER_CYCLE = 10
-# Only the top-K markets by |edge| get the expensive LLM panel each cycle.
-DEBATE_TOP_K = 5
+
+
+def _env_int(name: str, default: int) -> int:
+    import os
+
+    try:
+        value = int(os.environ.get(name, ""))
+        return value if value >= 0 else default
+    except (TypeError, ValueError):
+        return default
+
+
+# Only the top-K markets by |edge| get the expensive LLM panel each cycle;
+# env-tunable so the operator can widen LLM utilization on demand.
+def _debate_top_k() -> int:
+    return _env_int("DUMMY_DEBATE_TOP_K", 5)
+
+
+# The local-CLI voices (claude/codex) bill personal subscriptions, so they join
+# only the top-K_cli markets' panels -- a quota cap independent of DEBATE_TOP_K.
+def _debate_cli_top_k() -> int:
+    return _env_int("DUMMY_DEBATE_CLI_TOP_K", 1)
+
+
+DEBATE_TOP_K = 5   # module default retained for back-compat/imports
 
 
 def edge_velocity(market: MarketView, forecast: Any) -> float:
@@ -236,11 +259,17 @@ class PredatorBrain:
     # ------------------------------------------------------------------
 
     async def _adjudicate_top_k(self, forecaster, scored: list, report: CycleReport) -> None:
-        """Run the LLM debate on the top-K edge markets and re-fuse in place."""
+        """Run the LLM debate on the top-K edge markets and re-fuse in place.
+
+        The local-CLI voices (claude/codex) join only the top-K_cli markets'
+        panels, so plugging Claude in costs a few personal-subscription calls a
+        cycle, not one per market."""
         from autonomy.debate import run_debate
 
-        for idx in range(min(DEBATE_TOP_K, len(scored))):
+        cli_top_k = _debate_cli_top_k()
+        for idx in range(min(_debate_top_k(), len(scored))):
             market, forecast, signals = scored[idx]
+            allow_cli = idx < cli_top_k
             # Read the tape for the panel: recent momentum/volume/spread from
             # 1-minute candlesticks. Absent tape never blocks the debate.
             tape_line = None
@@ -253,7 +282,7 @@ class PredatorBrain:
                 tape_line = None
             try:
                 result = await run_debate(self.router, market, base_prob=forecast.probability_yes,
-                                          context=tape_line)
+                                          context=tape_line, allow_cli=allow_cli)
             except Exception:
                 result = None
             if result is None:
