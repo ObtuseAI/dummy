@@ -82,13 +82,27 @@ def plan_prune(ledger: AutonomyLedger, settled_before_days: float = 7.0) -> dict
     }
 
 
-def apply_prune(ledger: AutonomyLedger, prunable_ids: list[int], batch: int = 50_000) -> int:
-    """Delete the given signal ids in bounded batches. Returns rows deleted."""
+def apply_prune(ledger: AutonomyLedger, prunable_ids: list[int], batch: int = 100_000) -> int:
+    """Delete the given signal ids. Returns rows deleted.
+
+    Stages the ids into a temp table (temp_store=MEMORY) and issues ONE
+    DELETE ... WHERE id IN (temp) under a single commit -- one lock acquisition
+    that the busy-timeout rides out, instead of dozens of per-batch commits each
+    racing the live cycle's writes (which is what made the batched version fail
+    with 'database is locked' under contention).
+    """
     conn = ledger._conn
-    deleted = 0
+    if not prunable_ids:
+        return 0
+    conn.execute("CREATE TEMP TABLE IF NOT EXISTS _prune_ids(id INTEGER PRIMARY KEY)")
+    conn.execute("DELETE FROM _prune_ids")
     for i in range(0, len(prunable_ids), batch):
-        chunk = prunable_ids[i:i + batch]
-        conn.executemany("DELETE FROM signals WHERE id=?", [(x,) for x in chunk])
-        ledger._retry_on_locked(conn.commit)  # noqa: SLF001 - trusted ledger consumer
-        deleted += len(chunk)
+        conn.executemany(
+            "INSERT OR IGNORE INTO _prune_ids(id) VALUES (?)",
+            [(x,) for x in prunable_ids[i:i + batch]],
+        )
+    cur = conn.execute("DELETE FROM signals WHERE id IN (SELECT id FROM _prune_ids)")
+    deleted = int(cur.rowcount)
+    ledger._retry_on_locked(conn.commit)  # noqa: SLF001 - trusted ledger consumer
+    conn.execute("DROP TABLE IF EXISTS _prune_ids")
     return deleted
