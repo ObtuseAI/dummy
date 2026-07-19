@@ -49,14 +49,27 @@ class DebateResult:
         )
 
 
-def _panel_configs(router: Any) -> list[tuple[str, str, float]]:
+def _is_cli(provider: str) -> bool:
+    return provider.endswith("_cli")
+
+
+def _panel_configs(router: Any, allow_cli: bool = True) -> list[tuple[str, str, float]]:
     """(label, provider_override, temperature) — up to MAX_PANELISTS voices.
 
     Distinct models first: give each real provider one voice (cycling
     temperatures) before ever reusing a provider, so model diversity — the
     thing that actually makes a debate informative — is maximized.
+
+    ``allow_cli`` controls the local-CLI voices (claude/codex, which bill
+    personal subscriptions): when True they move to the FRONT so an armed CLI
+    voice is guaranteed a panel slot (otherwise, 7th/8th in provider order, it
+    would never make the top-5); when False they are excluded, so a caller can
+    keep the frontier voices to a small quota-capped slice of markets.
     """
     reals = router.available_real_providers()
+    cli = [p for p in reals if _is_cli(p)]
+    http = [p for p in reals if not _is_cli(p)]
+    reals = (cli + http) if allow_cli else http
     if not reals:
         return []
     temps = [0.2, 0.5, 0.8]
@@ -131,12 +144,13 @@ async def _ask(router: Any, task: Any, prompt: str, provider: str, temp: float) 
 
 
 async def run_debate(router: Any, market: MarketView, base_prob: float | None = None,
-                     revise: bool = True, context: str | None = None) -> DebateResult | None:
+                     revise: bool = True, context: str | None = None,
+                     allow_cli: bool = True) -> DebateResult | None:
     import asyncio
 
     from model_router.tasks import ModelTask
 
-    configs = _panel_configs(router)
+    configs = _panel_configs(router, allow_cli=allow_cli)
     if not configs:
         return None
 
