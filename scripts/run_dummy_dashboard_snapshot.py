@@ -45,6 +45,21 @@ def main() -> None:
         )
     finally:
         ledger.close()
+
+    # Long-horizon accuracy history: record this snapshot's overall accuracy,
+    # then embed the whole series so the dashboard can chart improvement over
+    # weeks (across retunes) -- done here, in the sole production writer, so the
+    # sidecar is never touched by tests that only build/write to tmp paths.
+    from autonomy.scope_analytics import append_accuracy_history, read_accuracy_series
+
+    telemetry = (snapshot.get("scopes") or {}).get("telemetry") or {}
+    sources = (snapshot.get("overview") or {}).get("active_sources") or []
+    weights = ",".join(sorted(s.get("source", "") for s in sources)) or None
+    append_accuracy_history(telemetry, snapshot.get("generated_at", ""), weights_hash=weights)
+    if telemetry:
+        telemetry["series"] = read_accuracy_series()
+        snapshot.setdefault("scopes", {})["telemetry"] = telemetry
+
     path = write_dashboard_snapshot(snapshot)
     print(f"wrote {path} (backtest_refreshed={not args.light})")
 

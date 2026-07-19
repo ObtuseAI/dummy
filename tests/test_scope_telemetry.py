@@ -11,8 +11,10 @@ import sqlite3
 
 from autonomy.scope_analytics import (
     _improvement,
+    append_accuracy_history,
     bet_type_of,
     build_scope_analytics,
+    read_accuracy_series,
 )
 
 
@@ -92,3 +94,17 @@ def test_scope_payload_carries_bet_types_and_telemetry():
     # matrix has a row per (scope, bet_type) with data
     cells = {(c["scope"], c["bet_type"]) for c in tel["matrix"]}
     assert ("MLB", "winner") in cells and ("BTC", "ladder") in cells
+
+
+def test_accuracy_history_appends_and_bounds(tmp_path):
+    p = tmp_path / "acc.jsonl"
+    a = append_accuracy_history({"overall": {"summary": {"n": 100, "brier": 0.20, "hit_rate": 0.70, "brier_edge": 0.01}}}, "2026-07-19T00:00:00", path=p)
+    b = append_accuracy_history({"overall": {"summary": {"n": 110, "brier": 0.19, "hit_rate": 0.72, "brier_edge": 0.02}}}, "2026-07-19T00:20:00", path=p)
+    assert a and b
+    series = read_accuracy_series(path=p)
+    assert [s["brier"] for s in series] == [0.20, 0.19]     # oldest -> newest
+    # nothing graded -> skipped, never an empty row
+    assert append_accuracy_history({"overall": {"summary": {"n": 0}}}, "t", path=p) is None
+    assert len(read_accuracy_series(path=p)) == 2
+    # missing file reads empty, never raises
+    assert read_accuracy_series(path=tmp_path / "nope.jsonl") == []

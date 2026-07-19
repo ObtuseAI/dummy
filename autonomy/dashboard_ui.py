@@ -644,6 +644,14 @@ function accuracyPanel(){
     +'<div class="acc-stat"><div class="lab">Edge vs market</div><div class="val '+sgn(s.brier_edge)+'">'+flip(signed(s.brier_edge,2))+'</div><div class="sub">'+commaN(s.contested_n||0)+' contested</div></div>'
     +'<div class="acc-stat"><div class="lab">Improvement</div><div class="val">'+improvBig(imp)+'</div><div class="sub">Brier fell = sharper</div></div>'
     +'</div>';
+  const series=tel.series||[];
+  if(series.length>1){
+    const key=series.some(p=>p.brier_edge!=null)?'brier_edge':(series.some(p=>p.hit_rate!=null)?'hit_rate':'brier');
+    const pts=series.map(p=>p[key]).filter(x=>x!=null);
+    const lab=key==='brier_edge'?'edge vs market over time':(key==='hit_rate'?'hit rate over time':'Brier over time (lower = sharper)');
+    if(pts.length>1)h+='<div style="margin:2px 0 12px"><div class="sub" style="font-family:var(--mono);color:var(--faint);margin-bottom:4px">'+lab+' · '+series.length+' snapshots</div>'
+      +spark(pts,{w:640,h:46,color:key==='brier'?'var(--amber)':'var(--acc)'})+'</div>';
+  }
   h+='<div class="sub" style="font-family:var(--mono);color:var(--faint);margin:2px 0 10px">edge by scope × bet type — green beats the line, arrow = trend</div>';
   h+=heatmap(tel.matrix||[]);
   return h+'</div>';

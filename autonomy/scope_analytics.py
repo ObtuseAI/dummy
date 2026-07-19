@@ -430,6 +430,67 @@ def _telemetry(
     }
 
 
+# ---- long-horizon accuracy history (improvement across model versions) ------
+# The windowed improvement above lives inside the current settled window; this
+# sidecar records the organism's overall accuracy at each snapshot so the
+# dashboard can chart "are we getting sharper" over weeks -- across retunes and
+# even after old settlements age out of the ledger's retention.
+ACCURACY_HISTORY_PATH = Path("runtime/autonomy/accuracy_history.jsonl")
+_ACCURACY_HISTORY_MAX = 5000
+
+
+def _bound_jsonl(path: Path, max_lines: int) -> None:
+    """Tail-preserve a jsonl file at ``max_lines`` (atomic tmp+replace)."""
+    try:
+        lines = path.read_text(encoding="utf-8").splitlines()
+    except Exception:  # noqa: BLE001
+        return
+    if len(lines) <= max_lines:
+        return
+    tmp = path.with_name(path.name + ".tmp")
+    tmp.write_text("\n".join(lines[-max_lines:]) + "\n", encoding="utf-8")
+    tmp.replace(path)
+
+
+def append_accuracy_history(
+    telemetry: dict[str, Any], ts: str, *, path: Path | None = None,
+    weights_hash: str | None = None,
+) -> dict[str, Any] | None:
+    """Append one overall-accuracy point. No-op (returns None) when nothing is
+    graded yet, so the series never carries empty rows. Self-bounding."""
+    target = Path(path) if path else ACCURACY_HISTORY_PATH
+    overall = ((telemetry or {}).get("overall") or {}).get("summary") or {}
+    if not overall.get("n"):
+        return None
+    row = {
+        "ts": str(ts), "n": overall.get("n"), "brier": overall.get("brier"),
+        "hit_rate": overall.get("hit_rate"), "brier_edge": overall.get("brier_edge"),
+    }
+    if weights_hash:
+        row["weights"] = str(weights_hash)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    with target.open("a", encoding="utf-8") as fh:
+        fh.write(json.dumps(row) + "\n")
+    _bound_jsonl(target, _ACCURACY_HISTORY_MAX)
+    return row
+
+
+def read_accuracy_series(path: Path | None = None, limit: int = 180) -> list[dict[str, Any]]:
+    """The last ``limit`` accuracy points, oldest->newest; [] on any miss."""
+    target = Path(path) if path else ACCURACY_HISTORY_PATH
+    try:
+        lines = target.read_text(encoding="utf-8").splitlines()
+    except Exception:  # noqa: BLE001
+        return []
+    out: list[dict[str, Any]] = []
+    for line in lines[-limit:]:
+        try:
+            out.append(json.loads(line))
+        except Exception:  # noqa: BLE001
+            continue
+    return out
+
+
 def _downsample(rows: list[Any], target: int = 140) -> list[Any]:
     """Even-stride downsample that always keeps the final point."""
     n = len(rows)
