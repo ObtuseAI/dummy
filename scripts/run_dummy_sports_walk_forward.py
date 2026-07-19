@@ -31,12 +31,15 @@ def main() -> int:
     ap.add_argument("--league", choices=LEAGUES, default=None)
     args = ap.parse_args()
 
+    from autonomy.signals.sports_glicko import _HOME_ADVANTAGE
+
     store = SportsHistoryStore()
     leagues = [args.league] if args.league else list(LEAGUES)
     results: dict[str, dict] = {}
     try:
         for league in leagues:
-            r = walk_forward_glicko(store, league=league)
+            r = walk_forward_glicko(store, league=league,
+                                    home_advantage=_HOME_ADVANTAGE.get(league, 35.0))
             results[league] = r
             if r["n"] == 0:
                 print(f"[{league}] no completed games in the lake yet")
