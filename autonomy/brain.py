@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import math
+import time
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any
@@ -79,6 +80,10 @@ class CycleReport:
     trading_halted: bool = False
     weight_updates: dict[str, float] = field(default_factory=dict)
     notes: list[str] = field(default_factory=list)
+    # Wall-time (seconds) spent in each major cycle phase, so the live cycle
+    # self-reports where its time goes -- the observability that turns "cycles
+    # are slow" into "phase X is slow" without a profiler on the box.
+    phase_seconds: dict[str, float] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
         return dict(self.__dict__)
@@ -298,6 +303,7 @@ class PredatorBrain:
                 report.notes.append(f"debate:{market.ticker}:{result.probability_yes:.2f}")
 
     async def run_cycle(self) -> CycleReport:
+        cycle_t0 = time.perf_counter()
         bankroll = self._bankroll_cents()
         state = self.risk_brain.load_state(bankroll)
         report = CycleReport(status="CYCLE_OK", mode=self.mode.value, stage=int(state.stage),
@@ -361,18 +367,22 @@ class PredatorBrain:
         self._close_settled_positions(state)
 
         # Per-cycle source hooks (ESPN cache reset + incremental Elo retrain).
+        _t = time.perf_counter()
         self.registry.on_cycle_start()
+        report.phase_seconds["on_cycle_start"] = round(time.perf_counter() - _t, 2)
         if self.performance_guard is not None:
             reload_guard = getattr(self.performance_guard, "reload", None)
             if callable(reload_guard):
                 reload_guard()
 
+        _t = time.perf_counter()
         try:
             markets = self.scanner.scan()
         except Exception as exc:
             report.status = f"CYCLE_DEGRADED_SCAN_FAILED:{type(exc).__name__}"
             self.risk_brain.save_state(state)
             return report
+        report.phase_seconds["scan"] = round(time.perf_counter() - _t, 2)
         # Vertical / per-league switches: crypto off, sports off, or a league
         # off drops those markets from the cycle (the rest keeps trading).
         scanned = len(markets)
@@ -401,6 +411,7 @@ class PredatorBrain:
 
         forecaster = EnsembleForecaster(self.ledger)
         scored: list[tuple[MarketView, Any, list[Any]]] = []
+        _t = time.perf_counter()
         for market in markets:
             signals = list(self.registry.signals_for(market))
             if not signals:
@@ -417,6 +428,7 @@ class PredatorBrain:
             if forecast is None:
                 continue
             scored.append((market, forecast, accepted_signals))
+        report.phase_seconds["signal_gen"] = round(time.perf_counter() - _t, 2)
 
         # Capital velocity: rank by edge per unit of settlement time, not raw
         # edge. A 3c edge that settles in an hour compounds faster than a 5c
@@ -424,9 +436,11 @@ class PredatorBrain:
         scored.sort(key=lambda t: edge_velocity(t[0], t[1]), reverse=True)
 
         # LLM panel adjudicates only the top-K edge markets, then re-fuse.
+        _t = time.perf_counter()
         if self.router is not None and scored:
             await self._adjudicate_top_k(forecaster, scored, report)
             scored.sort(key=lambda t: edge_velocity(t[0], t[1]), reverse=True)
+        report.phase_seconds["debate"] = round(time.perf_counter() - _t, 2)
 
         # Wave-14 (picks-first directive): persist the FINAL post-debate fused
         # probability for every scored market as its own ledger row, so pick
@@ -447,6 +461,7 @@ class PredatorBrain:
             fused_maps = load_fused_maps()
         except Exception:
             fused_maps = {}
+        _t = time.perf_counter()
         for market, forecast, _signals in scored:
             try:
                 # Ledger mode is an evidence-provenance axis accepting only
@@ -461,6 +476,7 @@ class PredatorBrain:
                     self.ledger.record_signal(calibrated)
             except Exception:
                 pass
+        report.phase_seconds["picks_record"] = round(time.perf_counter() - _t, 2)
         # Wave-15: publish the bet board straight from this cycle's in-memory
         # scores (titles included, ledger untouched -- the dashboard reads the
         # artifact, never contends with this process's write lock).
@@ -481,6 +497,7 @@ class PredatorBrain:
         cycle_group_cents: dict[str, int] = {}
         cycle_group_count: dict[str, int] = {}
         decision_slice = scored[:MAX_CANDIDATES_EVALUATED] if trading_active else []
+        _t = time.perf_counter()
         for market, forecast, _signals in decision_slice:
             if report.orders_placed >= MAX_ORDERS_PER_CYCLE:
                 break
@@ -513,9 +530,11 @@ class PredatorBrain:
                 cycle_group_cents[gkey] = cycle_group_cents.get(gkey, 0) + decision.notional_cents
                 cycle_group_count[gkey] = cycle_group_count.get(gkey, 0) + 1
 
+        report.phase_seconds["decide"] = round(time.perf_counter() - _t, 2)
         state.equity_peak_cents = max(state.equity_peak_cents, bankroll)
         self.risk_brain.save_state(state)
         self.ledger.record_bankroll(bankroll, state.open_exposure_cents, int(state.stage))
+        report.phase_seconds["total"] = round(time.perf_counter() - cycle_t0, 2)
         return report
 
 
