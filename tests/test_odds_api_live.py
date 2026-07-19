@@ -16,9 +16,12 @@ class _Clock:
         return self.t
 
 
-def _budget(tmp_path, daily=500, clock=None):
+def _budget(tmp_path, daily=500, clock=None, line_reserve=0):
+    # line_reserve defaults to 0 here so these Wave-9 cap/cache tests exercise
+    # the raw daily cap; the Wave-31 reservation has its own test module.
     return OddsApiBudget(
         daily_credits=daily,
+        line_reserve=line_reserve,
         budget_path=tmp_path / "budget.json",
         cache_dir=tmp_path / "cache",
         now_fn=clock or _Clock(),
