@@ -7,6 +7,7 @@ weights, risk settings, or capital authority.
 from __future__ import annotations
 
 import json
+import os
 import time
 from datetime import datetime, timezone
 from pathlib import Path
@@ -374,23 +375,38 @@ def assemble_dashboard_state(runtime_dir: Path | None = None) -> dict[str, Any]:
     statistics_intake: dict[str, Any] = {}
     canary: dict[str, Any] = {}
     backtest: dict[str, Any] = {}
-    try:
-        from autonomy.backtest import run_backtest
-        from autonomy.canary import evaluate_canary_readiness
-        from autonomy.ledger import AutonomyLedger
-
-        ledger = AutonomyLedger(db_path=rd / "ledger.db")
+    if os.environ.get("DUMMY_DASHBOARD_LIVE_LEDGER", "0") == "1":
+        # Opt-in only. The full backtest holds a SHARED lock over ~10M rows for
+        # minutes, which blocks the shadow brain's commit ("database is locked").
+        # Default reads the persisted snapshot instead — see dashboard_snapshot.py.
         try:
-            ledger_summary = ledger.performance_summary()
-            statistics_intake = ledger.external_observation_summary()
-            backtest = run_backtest(ledger, bootstrap_weights=False)
-            canary = evaluate_canary_readiness(
-                ledger, backtest_report=backtest,
-            ).to_dict()
-        finally:
-            ledger.close()
-    except Exception as exc:
-        ledger_summary = {"error": f"{type(exc).__name__}"}
+            from autonomy.backtest import run_backtest
+            from autonomy.canary import evaluate_canary_readiness
+            from autonomy.ledger import AutonomyLedger
+
+            ledger = AutonomyLedger(db_path=rd / "ledger.db")
+            try:
+                ledger_summary = ledger.performance_summary()
+                statistics_intake = ledger.external_observation_summary()
+                backtest = run_backtest(ledger, bootstrap_weights=False)
+                canary = evaluate_canary_readiness(
+                    ledger, backtest_report=backtest,
+                ).to_dict()
+            finally:
+                ledger.close()
+        except Exception as exc:
+            ledger_summary = {"error": f"{type(exc).__name__}"}
+    else:
+        from autonomy.dashboard_snapshot import read_dashboard_snapshot
+
+        snap = read_dashboard_snapshot(rd / "latest_dashboard_snapshot.json")
+        if snap:
+            ledger_summary = snap.get("ledger_summary") or {}
+            statistics_intake = snap.get("statistics_intake") or {}
+            backtest = snap.get("backtest") or {}
+            canary = snap.get("canary") or {}
+        else:
+            ledger_summary = {"note": "dashboard snapshot pending (written by daemon recalibration)"}
 
     # Compress the backtest to a per-source scoreboard for the UI.
     scoreboard = []

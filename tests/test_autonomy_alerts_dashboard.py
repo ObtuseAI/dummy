@@ -120,16 +120,20 @@ def test_dashboard_state_assembles_from_artifacts(tmp_path):
         json.dumps({"forecast_status": "HOLD", "execution_authority": False}),
         encoding="utf-8",
     )
-    # A real ledger so the backtest/canary branch runs.
-    from autonomy.ledger import AutonomyLedger
-
-    led = AutonomyLedger(db_path=tmp_path / "ledger.db")
-    led.close()
+    # The dashboard snapshot artifact supplies the ledger-derived panels now:
+    # the dashboard no longer opens the ledger by default (Wave-42).
+    (tmp_path / "latest_dashboard_snapshot.json").write_text(json.dumps({
+        "ledger_summary": {"settled": 3},
+        "statistics_intake": {},
+        "backtest": {"settled_markets": 3, "sources": {}},
+        "canary": {"ready": False, "blockers": ["insufficient settlements"]},
+    }), encoding="utf-8")
 
     state = assemble_dashboard_state(runtime_dir=tmp_path)
     assert state["heartbeat"]["alive"] is True
     assert len(state["bankroll_curve"]) == 1
     assert "ready" in state["canary"]
+    assert state["settled_markets"] == 3
     assert state["simulation_training"]["forecast_status"] == "HOLD"
 
 

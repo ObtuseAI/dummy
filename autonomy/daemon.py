@@ -69,6 +69,24 @@ def _maybe_recalibrate(now_iso: str) -> dict[str, Any] | None:
             )
 
             guard, improvement = write_self_improvement_artifacts(report)
+            # Persist the dashboard snapshot while we still hold the ledger, so
+            # the web dashboard reads this artifact instead of running its own
+            # minutes-long backtest against the live ledger (Wave-42). Best
+            # effort: a snapshot failure must never wedge recalibration.
+            try:
+                from autonomy.dashboard_snapshot import (
+                    build_dashboard_snapshot,
+                    write_dashboard_snapshot,
+                )
+
+                write_dashboard_snapshot(
+                    build_dashboard_snapshot(
+                        ledger, report=report,
+                        now=datetime.fromisoformat(now_iso),
+                    )
+                )
+            except Exception:
+                pass
         finally:
             ledger.close()
         summary = {
