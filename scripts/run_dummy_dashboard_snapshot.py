@@ -34,8 +34,13 @@ def main() -> None:
     ap = argparse.ArgumentParser(description="Refresh the dashboard snapshot artifact.")
     ap.add_argument("--light", action="store_true",
                     help="reuse the last backtest+canary; refresh only the summaries")
-    ap.add_argument("--backtest-max-age-hours", type=float, default=6.0,
-                    help="a light run still runs a full backtest if the prior one is older")
+    # Safety-net only: in steady state the daemon's 6-hourly recalibration
+    # refreshes the backtest in-process (no cross-process lock contention), so a
+    # light run always sees a <6h backtest and stays cheap. This out-of-process
+    # full backtest fires only when the daemon has NOT refreshed for 12h -- i.e.
+    # it is down -- rather than racing the recal every 6h.
+    ap.add_argument("--backtest-max-age-hours", type=float, default=12.0,
+                    help="a light run runs a full backtest only if the prior one is older (daemon-down safety net)")
     args = ap.parse_args()
 
     prior = read_dashboard_snapshot()
