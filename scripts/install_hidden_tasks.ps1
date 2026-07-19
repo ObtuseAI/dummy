@@ -25,6 +25,7 @@ $vbs = @{
     "DummySimulationTrainer" = "$repo\scripts\tasks\launch_simulation_trainer.vbs"
     "DummyVnextShadow"      = "$repo\scripts\tasks\launch_vnext_shadow.vbs"
     "DummyHealer"           = "$repo\scripts\tasks\launch_healer.vbs"
+    "DummyLedgerRetention"  = "$repo\scripts\tasks\launch_ledger_retention.vbs"
 }
 
 foreach ($task in Get-ScheduledTask -TaskName "Dummy*") {

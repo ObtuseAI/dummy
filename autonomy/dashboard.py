@@ -1259,6 +1259,12 @@ def build_app():
     pending: dict[str, Future | None] = {"future": None}
     worker = ThreadPoolExecutor(max_workers=1, thread_name_prefix="dashboard-state")
     deadline_seconds = float(os.environ.get("DUMMY_DASHBOARD_STATE_DEADLINE_SECONDS", "20"))
+    # The heavy /api/autonomy report runs a backtest that holds the (large,
+    # non-WAL) ledger; each assembly is a lock window the brain's write can
+    # collide with. A longer cache TTL means fewer such reads. Env-tunable;
+    # raised 30 -> 120s to cut ledger contention (the report is evidence, not
+    # a hot control surface, so a couple minutes of staleness is fine).
+    state_ttl_seconds = float(os.environ.get("DUMMY_DASHBOARD_STATE_TTL_SECONDS", "120"))
 
     def _store(epoch_at_submit: int, assembled: dict[str, Any]) -> None:
         # A control action can invalidate the cache while this expensive report
@@ -1287,7 +1293,7 @@ def build_app():
     @app.get("/api/autonomy")
     def api_state() -> JSONResponse:
         now = _monotonic()
-        if state_cache["value"] is not None and now - float(state_cache["at"]) < 30.0:
+        if state_cache["value"] is not None and now - float(state_cache["at"]) < state_ttl_seconds:
             return JSONResponse(state_cache["value"])
         fut, epoch_at_submit = _ensure_compute()
         try:
