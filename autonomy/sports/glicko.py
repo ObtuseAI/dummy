@@ -128,8 +128,33 @@ class LakeGlickoRatings:
         """Replay all completed games before ``as_of`` in chronological rating
         periods (default: one period per calendar day)."""
         games = self.store.games_before(as_of, league=self.league)
-        games.sort(key=lambda g: g["start_time"])          # oldest -> newest
+        for period in self.group_periods(games, period_key):
+            self.apply_period(period)
+        return self
 
+    def apply_period(self, period: list[dict[str, Any]]) -> None:
+        """Update every team that played this rating period, using each team's
+        opponents' ratings *frozen at the start of the period* (so intra-period
+        games don't leak into one another)."""
+        pending: dict[str, list[tuple[float, float, float]]] = {}
+        for game in period:
+            home, away = game.get("home"), game.get("away")
+            hs, as_ = game.get("home_score"), game.get("away_score")
+            if not home or not away or hs is None or as_ is None:
+                continue
+            home_score = 1.0 if hs > as_ else 0.0 if hs < as_ else 0.5
+            r_h, rd_h, _ = self._state(home)
+            r_a, rd_a, _ = self._state(away)
+            pending.setdefault(home, []).append((r_a, rd_a, home_score))
+            pending.setdefault(away, []).append((r_h, rd_h, 1.0 - home_score))
+        for team, opps in pending.items():
+            r, rd, vol = self._state(team)
+            self._r[team], self._rd[team], self._vol[team] = self.engine.update(r, rd, vol, opps)
+
+    @staticmethod
+    def group_periods(games: list[dict[str, Any]], period_key: str = "day") -> list[list[dict[str, Any]]]:
+        """Chronological rating periods (default one per calendar day)."""
+        games = sorted(games, key=lambda g: g["start_time"])
         periods: list[list[dict[str, Any]]] = []
         current_key = None
         for game in games:
@@ -138,24 +163,7 @@ class LakeGlickoRatings:
                 periods.append([])
                 current_key = key
             periods[-1].append(game)
-
-        for period in periods:
-            # collect each team's opponents this period from the frozen pre-period state
-            pending: dict[str, list[tuple[float, float, float]]] = {}
-            for game in period:
-                home, away = game.get("home"), game.get("away")
-                hs, as_ = game.get("home_score"), game.get("away_score")
-                if not home or not away or hs is None or as_ is None:
-                    continue
-                home_score = 1.0 if hs > as_ else 0.0 if hs < as_ else 0.5
-                r_h, rd_h, _ = self._state(home)
-                r_a, rd_a, _ = self._state(away)
-                pending.setdefault(home, []).append((r_a, rd_a, home_score))
-                pending.setdefault(away, []).append((r_h, rd_h, 1.0 - home_score))
-            for team, opps in pending.items():
-                r, rd, vol = self._state(team)
-                self._r[team], self._rd[team], self._vol[team] = self.engine.update(r, rd, vol, opps)
-        return self
+        return periods
 
     def rating(self, team: str) -> float:
         return self._r.get(team, _BASE_R)
