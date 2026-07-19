@@ -96,6 +96,28 @@ def test_scope_payload_carries_bet_types_and_telemetry():
     assert ("MLB", "winner") in cells and ("BTC", "ladder") in cells
 
 
+def test_pick_board_and_settled_today():
+    conn = _conn()
+    # settled within the day: model right, then model wrong (winner bet type)
+    for tick, prob, res, hrs in [("KXMLBGAME-A-NYYBOS", 0.72, 1, 5), ("KXMLBGAME-B-LADSF", 0.68, 0, 8)]:
+        conn.execute("INSERT INTO decisions VALUES(?,?,?,?,?,?,?, datetime('now','-1 days'))",
+                     (tick, "BUY_YES", "YES", prob, 0.5, 3.0, 55))
+        conn.execute("INSERT INTO settlements VALUES(?,?, datetime('now', ?))", (tick, res, f"-{hrs} hours"))
+    # an OPEN pick (unsettled) on a total -> shows in the pick board
+    conn.execute("INSERT INTO decisions VALUES('KXMLBTOTAL-C-NYYBOS','BUY_YES','YES',0.61,0.53,4.2,49, datetime('now'))")
+    conn.commit()
+
+    mlb = build_scope_analytics(conn, season_active={"mlb": True})["verticals"]["SPORTS"]["scopes"]["MLB"]
+    # req 4: settled-today with correct/incorrect
+    st = {r["ticker"]: r for r in mlb["settled_today"]}
+    assert st["KXMLBGAME-A-NYYBOS"]["correct"] is True
+    assert st["KXMLBGAME-B-LADSF"]["correct"] is False
+    assert all(r["bet_type"] == "winner" for r in mlb["settled_today"])
+    # req 3: open picks grouped by bet type
+    assert "total" in mlb["pick_board"]
+    assert mlb["pick_board"]["total"][0]["ticker"] == "KXMLBTOTAL-C-NYYBOS"
+
+
 def test_accuracy_history_appends_and_bounds(tmp_path):
     p = tmp_path / "acc.jsonl"
     a = append_accuracy_history({"overall": {"summary": {"n": 100, "brier": 0.20, "hit_rate": 0.70, "brier_edge": 0.01}}}, "2026-07-19T00:00:00", path=p)

@@ -272,6 +272,34 @@ def _bet_type_breakdown(records: list[dict[str, Any]]) -> dict[str, dict[str, An
     }
 
 
+def _pick_board(picks: list[dict[str, Any]]) -> dict[str, list[dict[str, Any]]]:
+    """Open picks grouped by bet type, each list ranked by edge (picks arrive
+    edge-sorted per scope) -- the per-bet-type rankings the operator drills into."""
+    board: dict[str, list[dict[str, Any]]] = {}
+    for pick in picks:
+        board.setdefault(pick.get("bet_type", "other"), []).append(pick)
+    return board
+
+
+def _settled_today(records: list[dict[str, Any]], cutoff: str) -> list[dict[str, Any]]:
+    """Markets settled since ``cutoff`` (recent day), each with whether the
+    model's directional call was correct -- the day's scoreboard."""
+    out: list[dict[str, Any]] = []
+    for rec in records:
+        if rec.get("settled_at", "") < cutoff:
+            continue
+        prob, result = rec["prob"], rec["result"]
+        out.append({
+            "ticker": rec["ticker"], "bet_type": rec.get("bet_type", "other"),
+            "prob": round(prob, 3), "market": (round(rec["market"], 3) if rec["market"] is not None else None),
+            "result": result, "correct": (prob >= 0.5) == (result == 1),
+            "lean": "YES" if prob >= 0.5 else "NO",
+            "traded": rec["action"] in ("BUY_YES", "BUY_NO"),
+            "settled_at": rec["settled_at"],
+        })
+    return sorted(out, key=lambda x: x["settled_at"], reverse=True)
+
+
 def _rankings(conn: sqlite3.Connection, limit: int = 12) -> dict[tuple[str, str], list[dict[str, Any]]]:
     """Current best actionable picks per scope: the latest decision on each
     still-unsettled market where the model took a side, ranked by edge (EV)."""
@@ -296,6 +324,7 @@ def _rankings(conn: sqlite3.Connection, limit: int = 12) -> dict[tuple[str, str]
         by_scope.setdefault(key, []).append({
             "ticker": str(ticker),
             "side": str(side),
+            "bet_type": bet_type_of(str(ticker)),
             "prob": round(float(prob), 3) if prob is not None else None,
             "market": round(float(market), 3) if market is not None else None,
             "edge_cents": round(float(ev_cents), 1) if ev_cents is not None else 0.0,
@@ -337,6 +366,7 @@ def build_scope_analytics(
     cutoff = conn.execute(
         "SELECT datetime('now', ?)", (f"-{float(window_days)} days",)
     ).fetchone()[0]
+    today_cutoff = conn.execute("SELECT datetime('now', '-30 hours')").fetchone()[0]
     records = [r for r in wide if r["settled_at"] >= cutoff]
     rankings = _rankings(conn)
 
@@ -351,13 +381,16 @@ def build_scope_analytics(
     for vertical, label in sorted(all_keys):
         recs = by_key.get((vertical, label), [])
         block = verticals.setdefault(vertical, {"scopes": {}, "summary": {}})
+        scope_picks = rankings.get((vertical, label), [])
         block["scopes"][label] = {
             "label": label,
             "summary": _summarize(recs),
             "progression": _progression(recs),
-            "picks": rankings.get((vertical, label), []),
+            "picks": scope_picks,
             "bet_types": _bet_type_breakdown(recs),
             "improvement": _improvement(recs),
+            "pick_board": _pick_board(scope_picks),
+            "settled_today": _settled_today(recs, today_cutoff),
         }
 
     # Always surface the whole SPORTS roster -- in or out of season.
@@ -373,13 +406,16 @@ def build_scope_analytics(
         if scope is None:
             # No current-window grade -> fall back to last season's slate.
             ls = last_season.get(league, [])
+            league_picks = rankings.get((SPORTS, league), [])
             scope = {
                 "label": league,
                 "summary": _summarize(ls),
                 "progression": _progression(ls),
-                "picks": rankings.get((SPORTS, league), []),
+                "picks": league_picks,
                 "bet_types": _bet_type_breakdown(ls),
                 "improvement": _improvement(ls),
+                "pick_board": _pick_board(league_picks),
+                "settled_today": _settled_today(ls, today_cutoff),
                 "basis": "last-season" if ls else "none",
             }
             sports["scopes"][league] = scope

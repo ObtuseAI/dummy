@@ -292,6 +292,15 @@ td.hc:hover{transform:translateY(-1px);border-color:var(--line-2)}
 td.hc.empty2{background:transparent;border-style:dashed;opacity:.4}
 td.hc .he{font-weight:600}
 td.hc .td{font-size:11px;margin-left:3px}
+/* bet-type rankings tabs */
+.bt-tabs{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:var(--s2)}
+.bt-tab{font-family:var(--mono);font-size:11.5px;padding:5px 11px;border-radius:8px;cursor:pointer;
+  background:var(--panel-2);border:1px solid var(--line);color:var(--muted);transition:.15s;text-transform:capitalize}
+.bt-tab:hover{border-color:var(--line-2);color:var(--txt)}
+.bt-tab.on{background:rgba(var(--acc-rgb),.14);border-color:var(--line-3);color:var(--acc)}
+.bt-tab .c{color:var(--faint);font-size:10px;margin-left:2px}
+.bt-panel{display:none} .bt-panel.on{display:block}
+.res-ok{color:var(--green)} .res-no{color:var(--red)}
 
 /* charts */
 .cwrap{position:relative}
@@ -656,6 +665,44 @@ function accuracyPanel(){
   h+=heatmap(tel.matrix||[]);
   return h+'</div>';
 }
+function pickRows(picks){
+  return '<div style="max-height:300px;overflow:auto"><table><thead><tr><th>Market</th><th>Side</th><th>Model</th><th>Mkt</th><th>Edge¢</th></tr></thead><tbody>'
+    +picks.map(p=>'<tr><td title="'+esc(p.ticker)+'">'+esc(p.ticker)+'</td>'
+      +'<td><span class="pill '+((p.side||'').toUpperCase().includes('NO')?'no':'yes')+'">'+esc(p.side||'')+'</span></td>'
+      +'<td>'+num(p.prob,2)+'</td><td>'+(p.market==null?'—':num(p.market,2))+'</td>'
+      +'<td class="'+(p.edge_cents>=0?'pos':'neg')+'">'+(p.edge_cents>0?'+':'')+num(p.edge_cents,1)+'</td></tr>').join('')
+    +'</tbody></table></div>';
+}
+function pickBoardCard(scope){
+  const board=scope.pick_board||{};
+  const types=Object.keys(board).filter(t=>board[t]&&board[t].length);
+  if(!types.length)return '';
+  let h='<div class="card reveal" style="margin-top:var(--s3)"><h3>Bet-type rankings <span class="r">open edge · choose a bet</span></h3>';
+  h+='<div class="bt-tabs">'+types.map((t,i)=>'<button class="bt-tab'+(i===0?' on':'')+'" data-bt="'+esc(t)+'">'+esc(t)+'<span class="c">'+board[t].length+'</span></button>').join('')+'</div>';
+  h+='<div class="bt-panels">'+types.map((t,i)=>'<div class="bt-panel'+(i===0?' on':'')+'" data-bt="'+esc(t)+'">'+pickRows(board[t])+'</div>').join('')+'</div>';
+  return h+'</div>';
+}
+function settledTodayCard(scope){
+  const rows=scope.settled_today||[];
+  if(!rows.length)return '';
+  const correct=rows.filter(r=>r.correct).length;
+  const pctc=Math.round(correct/rows.length*100);
+  let h='<div class="card pad0 reveal" style="margin-top:var(--s3)"><h3 style="padding:var(--s3) var(--s3) var(--s2)">Settled today '
+    +'<span class="r"><b class="'+(pctc>=50?'res-ok':'res-no')+'">'+correct+'/'+rows.length+'</b> correct · '+pctc+'%</span></h3>';
+  h+='<div style="max-height:300px;overflow:auto"><table><thead><tr><th>Market</th><th>Bet</th><th>Lean</th><th>Model</th><th>Result</th><th>Call</th></tr></thead><tbody>';
+  rows.forEach(r=>{h+='<tr><td title="'+esc(r.ticker)+'">'+esc(r.ticker)+'</td><td>'+esc(r.bet_type)+'</td>'
+    +'<td>'+esc(r.lean)+(r.traded?' <span style="color:var(--amber);font-size:10px">·traded</span>':'')+'</td>'
+    +'<td>'+num(r.prob,2)+'</td><td>'+(r.result?'YES':'NO')+'</td>'
+    +'<td>'+(r.correct?'<span class="res-ok">✓</span>':'<span class="res-no">✗</span>')+'</td></tr>';});
+  return h+'</tbody></table></div></div>';
+}
+// delegated bet-type tab switch (survives re-renders)
+document.addEventListener('click',e=>{
+  const tab=e.target.closest&&e.target.closest('.bt-tab');if(!tab)return;
+  const card=tab.closest('.card'),bt=tab.getAttribute('data-bt');
+  card.querySelectorAll('.bt-tab').forEach(t=>t.classList.toggle('on',t===tab));
+  card.querySelectorAll('.bt-panel').forEach(p=>p.classList.toggle('on',p.getAttribute('data-bt')===bt));
+});
 function walkCard(vert,label){
   if(vert!=='SPORTS')return '';
   const w=STATE.walk&&STATE.walk[String(label).toLowerCase()];
@@ -735,6 +782,7 @@ function scopeView(vert,label){
   h+='<div class="card pad0 reveal"><h3 style="padding:var(--s3) var(--s3) var(--s2)">Current picks <span class="r">by edge</span></h3>'+picksTable(sc.picks)+'</div>';
   h+='</div>';
   h+=betTypeCard(sc.bet_types);
+  h+='<div class="grid cols2">'+pickBoardCard(sc)+settledTodayCard(sc)+'</div>';
   h+=walkCard(vert,label);
   h+=extrasSection(sc.extras||{},label);
   return h;
