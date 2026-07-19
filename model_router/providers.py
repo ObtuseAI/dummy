@@ -79,12 +79,18 @@ class BaseModelProvider(ABC):
     """
 
     name: str = "base"
+    # Which LLM backend switch gates this provider (None = ungated, e.g. mock).
+    _backend: str | None = None
 
     def __init__(self, config: ProviderConfig):
         self.config = config
 
     @property
     def available(self) -> bool:
+        from model_router.llm_switches import llm_backend_enabled
+
+        if self._backend is not None and not llm_backend_enabled(self._backend):
+            return False
         return bool(ProviderCredentialSourceResolver().resolve(self.config.api_key_env).present)
 
     @property
@@ -235,6 +241,7 @@ class _OpenAICompatibleProvider(BaseModelProvider):
     """Mixin for providers that speak the OpenAI-compatible chat completions API."""
 
     _timeout_seconds: float | None = None
+    _backend = "openrouter"   # gated by the openrouter LLM switch
 
     async def _call_api(
         self, prompt: str, task: ModelTask, max_tokens: int, temperature: float

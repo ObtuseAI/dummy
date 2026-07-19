@@ -81,9 +81,13 @@ class _CliProvider(BaseModelProvider):
 
     @property
     def available(self) -> bool:
-        # Gated: present executable AND the operator has armed CLI providers.
-        return (os.environ.get(CLI_GATE_ENV) == "1"
-                and self._exe_path() is not None)
+        # Gated: present executable AND the per-backend LLM switch is on (the
+        # legacy DUMMY_CLI_PROVIDERS master still arms both, for back-compat).
+        from model_router.llm_switches import llm_backend_enabled
+
+        armed = (llm_backend_enabled(self._backend or "")
+                 or os.environ.get(CLI_GATE_ENV) == "1")
+        return armed and self._exe_path() is not None
 
     def _argv(self, prompt: str, exe: str) -> tuple[list[str], str | None]:
         raise NotImplementedError
@@ -127,6 +131,7 @@ class ClaudeCliProvider(_CliProvider):
     name = "claude_cli"
     exe_name = "claude"
     exe_env = "DUMMY_CLAUDE_CLI_PATH"
+    _backend = "claude"
 
     def _argv(self, prompt: str, exe: str) -> tuple[list[str], str | None]:
         argv = [exe, "-p", "--output-format", "json"]
@@ -156,6 +161,7 @@ class CodexCliProvider(_CliProvider):
     name = "codex_cli"
     exe_name = "codex"
     exe_env = "DUMMY_CODEX_CLI_PATH"
+    _backend = "codex"
 
     def _argv(self, prompt: str, exe: str) -> tuple[list[str], str | None]:
         argv = [exe, "exec", "--json"]
