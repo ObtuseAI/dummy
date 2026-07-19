@@ -408,9 +408,16 @@ def _telemetry(
 
     The overview reads ``overall`` for the headline + improvement arrow and
     ``matrix`` for the heatmap (one row per non-empty scope/bet-type cell).
+
+    Scoped to what the organism still trades (crypto + sports); retired
+    verticals' historical grades stay out of the "current organism" headline.
     """
+    active = {CRYPTO, SPORTS}
+    scoped = [r for r in records if r.get("vertical") in active]
     matrix: list[dict[str, Any]] = []
     for vertical, block in verticals.items():
+        if vertical not in active:
+            continue
         for label, scope in (block.get("scopes") or {}).items():
             for bet_type, cell in (scope.get("bet_types") or {}).items():
                 s = cell.get("summary") or {}
@@ -425,7 +432,7 @@ def _telemetry(
                 })
     matrix.sort(key=lambda c: (c["vertical"], c["scope"], -(c["n"] or 0)))
     return {
-        "overall": {"summary": _summarize(records), "improvement": _improvement(records)},
+        "overall": {"summary": _summarize(scoped), "improvement": _improvement(scoped)},
         "matrix": matrix,
     }
 
