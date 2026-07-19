@@ -32,20 +32,24 @@ def main() -> int:
     args = ap.parse_args()
 
     from autonomy.signals.sports_glicko import _HOME_ADVANTAGE
+    from autonomy.signals.sports_pythagorean import _HOME_ADVANTAGE_PROB
+    from autonomy.sports.walk_forward import walk_forward_pythagorean
 
     store = SportsHistoryStore()
     leagues = [args.league] if args.league else list(LEAGUES)
     results: dict[str, dict] = {}
     try:
         for league in leagues:
-            r = walk_forward_glicko(store, league=league,
-                                    home_advantage=_HOME_ADVANTAGE.get(league, 35.0))
-            results[league] = r
-            if r["n"] == 0:
+            glicko = walk_forward_glicko(store, league=league,
+                                         home_advantage=_HOME_ADVANTAGE.get(league, 35.0))
+            pyth = walk_forward_pythagorean(store, league=league,
+                                            home_advantage_prob=_HOME_ADVANTAGE_PROB.get(league, 0.05))
+            results[league] = {"glicko": glicko, "pythagenpat": pyth}
+            if glicko["n"] == 0:
                 print(f"[{league}] no completed games in the lake yet")
                 continue
-            print(f"[{league}] n={r['n']} brier={r['brier']} hit={r['hit_rate']} "
-                  f"logloss={r['log_loss']} edge_vs_coin={r['edge_vs_baseline']}")
+            print(f"[{league}] glicko: n={glicko['n']} hit={glicko['hit_rate']} edge={glicko['edge_vs_baseline']}"
+                  f"  |  pythagenpat: n={pyth['n']} hit={pyth['hit_rate']} edge={pyth['edge_vs_baseline']}")
     finally:
         store.close()
 
@@ -63,7 +67,7 @@ def main() -> int:
     tmp = ARTIFACT.with_suffix(".json.tmp")
     tmp.write_text(json.dumps({
         "generated_at": datetime.now(timezone.utc).isoformat(),
-        "model": "glicko2", "leagues": prior,
+        "models": ["glicko", "pythagenpat"], "leagues": prior,
     }), encoding="utf-8")
     tmp.replace(ARTIFACT)
     print(f"wrote {ARTIFACT}")

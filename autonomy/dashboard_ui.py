@@ -765,15 +765,19 @@ function gamesCard(vert,label){
 function walkCard(vert,label){
   if(vert!=='SPORTS')return '';
   const w=STATE.walk&&STATE.walk[String(label).toLowerCase()];
-  if(!w||!w.n)return '';
-  const edge=w.edge_vs_baseline;
-  return '<div class="card reveal" style="margin-top:var(--s3)"><h3>Model backtest <span class="r">Glicko-2 · point-in-time lake · '+commaN(w.n)+' games</span></h3>'
-    +'<div class="acc-hero">'
-    +'<div class="acc-stat"><div class="lab">Hit rate</div><div class="val '+(w.hit_rate>=.5?'pos':'')+'">'+flip(pct(w.hit_rate))+'</div><div class="sub">straight-up winner</div></div>'
-    +'<div class="acc-stat"><div class="lab">Brier</div><div class="val">'+flip(num(w.brier))+'</div><div class="sub">vs coin '+num(w.baseline_brier)+'</div></div>'
-    +'<div class="acc-stat"><div class="lab">Edge vs coin</div><div class="val '+(edge>=0?'pos':'neg')+'">'+flip(signed(edge,2))+'</div><div class="sub">Brier improvement</div></div>'
-    +'<div class="acc-stat"><div class="lab">Log-loss</div><div class="val">'+flip(num(w.log_loss))+'</div><div class="sub">cross-entropy</div></div>'
-    +'</div><div class="sub" style="font-family:var(--mono);color:var(--faint);margin-top:4px">walk-forward, no look-ahead — the analytic\'s standalone edge from the history lake</div></div>';
+  if(!w)return '';
+  // backward + forward compatible: nested {glicko,pythagenpat} or a flat glicko report
+  const models=(w.glicko||w.pythagenpat)
+    ? [['Glicko-2',w.glicko],['Pythagenpat',w.pythagenpat]].filter(m=>m[1]&&m[1].n)
+    : (w.n?[['Glicko-2',w]]:[]);
+  if(!models.length)return '';
+  let h='<div class="card reveal" style="margin-top:var(--s3)"><h3>Model backtest <span class="r">point-in-time lake · walk-forward, no look-ahead</span></h3>';
+  h+='<div style="overflow-x:auto"><table><thead><tr><th>Analytic</th><th>Games</th><th>Hit</th><th>Brier</th><th>vs coin</th><th>Edge</th><th>Log-loss</th></tr></thead><tbody>';
+  models.forEach(([nm,m])=>{const e=m.edge_vs_baseline;
+    h+='<tr><td>'+nm+'</td><td>'+commaN(m.n)+'</td><td class="'+(m.hit_rate>=.5?'pos':'')+'">'+pct(m.hit_rate)+'</td>'
+      +'<td>'+num(m.brier)+'</td><td>'+num(m.baseline_brier)+'</td>'
+      +'<td class="'+(e>=0?'pos':'neg')+'">'+signed(e,2)+'</td><td>'+num(m.log_loss)+'</td></tr>';});
+  return h+'</tbody></table></div><div class="sub" style="font-family:var(--mono);color:var(--faint);margin-top:6px">two independent analytics graded on the lake — the ensemble weights each by its contested-Brier edge</div></div>';
 }
 function betTypeCard(bt){
   const keys=bt?Object.keys(bt):[];
