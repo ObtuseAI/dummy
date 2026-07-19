@@ -48,47 +48,20 @@ def _maybe_recalibrate(now_iso: str) -> dict[str, Any] | None:
     except Exception:
         pass  # unreadable stamp -> recalibrate now
     try:
-        from autonomy.backtest import (
-            run_backtest,
-            summarize_backtest,
-            write_latest_backtest_summary,
-        )
+        from autonomy.backtest import run_backtest
         from autonomy.ledger import AutonomyLedger
         from autonomy.signals.market_debias import fit_curve, ledger_samples, write_curve
 
         ledger = AutonomyLedger()
         try:
             _t0 = time.perf_counter()
-            report = run_backtest(ledger, bootstrap_weights=True)
-            # Keep the authoritative summary artifact fresh: recalibration is
-            # the 6-hourly cadence of backtest evidence, so the fail-closed
-            # 24h freshness bound downstream stays green in steady state.
-            write_latest_backtest_summary(summarize_backtest(report))
+            # Weights-only core (Wave-44): skip the ~11 full-ledger-scan
+            # diagnostic sub-reports so the 6-hourly weight refresh stays fast and
+            # does not block the next cycle. The diagnostics + summary + dashboard
+            # snapshot are produced by the lower-frequency DummyBacktestReport
+            # task (scripts/run_dummy_backtest_report.py).
+            report = run_backtest(ledger, bootstrap_weights=True, include_diagnostics=False)
             write_curve(fit_curve(ledger_samples(ledger)))
-            from autonomy.self_improvement import (
-                DEFAULT_REPORT_PATH,
-                write_self_improvement_artifacts,
-            )
-
-            guard, improvement = write_self_improvement_artifacts(report)
-            # Persist the dashboard snapshot while we still hold the ledger, so
-            # the web dashboard reads this artifact instead of running its own
-            # minutes-long backtest against the live ledger (Wave-42). Best
-            # effort: a snapshot failure must never wedge recalibration.
-            try:
-                from autonomy.dashboard_snapshot import (
-                    build_dashboard_snapshot,
-                    write_dashboard_snapshot,
-                )
-
-                write_dashboard_snapshot(
-                    build_dashboard_snapshot(
-                        ledger, report=report,
-                        now=datetime.fromisoformat(now_iso),
-                    )
-                )
-            except Exception:
-                pass
         finally:
             ledger.close()
         summary = {
@@ -97,9 +70,6 @@ def _maybe_recalibrate(now_iso: str) -> dict[str, Any] | None:
             "settled_markets": report.get("settled_markets"),
             "derived_weights": report.get("derived_weights"),
             "exact_scope_weights": len(report.get("sources_by_scope") or {}),
-            "performance_quarantines": len(guard.get("quarantines") or []),
-            "self_improvement_report": str(DEFAULT_REPORT_PATH)
-            if improvement else None,
         }
         RUNTIME_DIR.mkdir(parents=True, exist_ok=True)
         RECAL_STAMP_PATH.write_text(json.dumps(summary, indent=2, sort_keys=True), encoding="utf-8")

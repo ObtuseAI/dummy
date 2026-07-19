@@ -1240,7 +1240,8 @@ def _execution_tournament_report(conn) -> dict[str, Any]:
     return tournament_report(conn)
 
 
-def run_backtest(ledger: AutonomyLedger, bootstrap_weights: bool = False) -> dict[str, Any]:
+def run_backtest(ledger: AutonomyLedger, bootstrap_weights: bool = False,
+                 include_diagnostics: bool = True) -> dict[str, Any]:
     """Score all sources against settled markets; optionally persist weights."""
     conn = ledger._conn  # noqa: SLF001 - backtester is a trusted ledger consumer
     settlements = {row[0]: int(row[1]) for row in conn.execute("SELECT market_ticker, result_yes FROM settlements")}
@@ -1368,6 +1369,33 @@ def run_backtest(ledger: AutonomyLedger, bootstrap_weights: bool = False) -> dic
                              "contested_mean_brier_edge_ci95",
                              "expected_calibration_error")}
                         for s, t in scope_trackers.items()}
+    # Diagnostics are ~11 full-ledger-scan sub-reports (signal_data_quality
+    # alone is ~10 scans of the 12M-row union view). They are observability, not
+    # inputs to the weights or the canary, so the 6-hourly recalibration skips
+    # them (fast weight refresh) and a separate lower-frequency task produces
+    # them for the dashboard/summary (Wave-44 split).
+    diagnostics: dict[str, Any] = {}
+    if include_diagnostics:
+        diagnostics = {
+            "execution_quality": ledger.execution_summary(),
+            "execution_quality_by_book": {
+                "shadow": ledger.execution_summary("shadow"),
+                "live": ledger.execution_summary("live"),
+            },
+            "execution_drift_by_book": {
+                "shadow": _execution_drift_report(conn, "shadow"),
+                "live": _execution_drift_report(conn, "live"),
+            },
+            "signal_data_quality": ledger.signal_quality_summary(),
+            "realized_trade_statistics": _realized_trade_report(conn),
+            "fill_conditioned_decision_policy": _fill_conditioned_policy_report(conn),
+            "shadow_ttl_sensitivity": _shadow_ttl_sensitivity_report(conn),
+            "crypto_diagnostics": _crypto_fill_diagnostics(conn),
+            "crypto_challenger_gates": _crypto_challenger_gates(conn, source_summaries),
+            "execution_adverse_selection": _adverse_selection_report(conn),
+            "execution_tournament": _execution_tournament_report(conn),
+            "decision_policy": _decision_policy_report(conn),
+        }
     return {
         "report_name": "AUTONOMY_BACKTEST",
         "settled_markets": len(settlements),
@@ -1391,34 +1419,12 @@ def run_backtest(ledger: AutonomyLedger, bootstrap_weights: bool = False) -> dic
         "realized_decision_pnl_cents": realized_pnl,
         "graded_decisions": graded,
         "unverified_settlement_outcomes": unverified,
-        "execution_quality": ledger.execution_summary(),
-        "execution_quality_by_book": {
-            "shadow": ledger.execution_summary("shadow"),
-            "live": ledger.execution_summary("live"),
-        },
-        "execution_drift_by_book": {
-            "shadow": _execution_drift_report(conn, "shadow"),
-            "live": _execution_drift_report(conn, "live"),
-        },
-        "signal_data_quality": ledger.signal_quality_summary(),
-        "realized_trade_statistics": _realized_trade_report(conn),
-        "fill_conditioned_decision_policy": _fill_conditioned_policy_report(conn),
-        "shadow_ttl_sensitivity": _shadow_ttl_sensitivity_report(conn),
-        "crypto_diagnostics": _crypto_fill_diagnostics(conn),
-        "crypto_challenger_gates": _crypto_challenger_gates(conn, source_summaries),
-        # WS-A1: adverse selection as a first-class measured quantity. The full
-        # sub-report is also emitted to its own runtime/autonomy/adverse_selection.json
-        # artifact wherever the backtest summary is produced (see
-        # scripts/run_dummy_backtest.py).
-        "execution_adverse_selection": _adverse_selection_report(conn),
-        # WS-A2/F2: execution-policy tournament. Per-cohort (C0-C4)
-        # fill-conditioned P&L / Brier-edge / fill-rate / slippage with
-        # cluster-robust CIs vs the incumbent control, plus the C2 walk-forward
-        # threshold selection. Also emitted to its own
-        # runtime/autonomy/execution_tournament.json artifact wherever the
-        # backtest summary is produced (scripts/run_dummy_backtest.py).
-        "execution_tournament": _execution_tournament_report(conn),
-        "decision_policy": _decision_policy_report(conn),
+        # ~11 full-ledger-scan diagnostic sub-reports (empty when
+        # include_diagnostics=False -- the 6h weight recal skips them; the
+        # adverse_selection + execution_tournament sub-reports are also emitted
+        # to their own runtime/autonomy/*.json artifacts by the report task).
+        **diagnostics,
+        "diagnostics_included": include_diagnostics,
         "created_at": datetime.now(timezone.utc).isoformat(),
     }
 
