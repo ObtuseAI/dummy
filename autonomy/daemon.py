@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import time
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -57,6 +58,7 @@ def _maybe_recalibrate(now_iso: str) -> dict[str, Any] | None:
 
         ledger = AutonomyLedger()
         try:
+            _t0 = time.perf_counter()
             report = run_backtest(ledger, bootstrap_weights=True)
             # Keep the authoritative summary artifact fresh: recalibration is
             # the 6-hourly cadence of backtest evidence, so the fail-closed
@@ -91,6 +93,7 @@ def _maybe_recalibrate(now_iso: str) -> dict[str, Any] | None:
             ledger.close()
         summary = {
             "at": now_iso,
+            "duration_seconds": round(time.perf_counter() - _t0, 1),
             "settled_markets": report.get("settled_markets"),
             "derived_weights": report.get("derived_weights"),
             "exact_scope_weights": len(report.get("sources_by_scope") or {}),

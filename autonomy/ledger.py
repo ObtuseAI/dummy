@@ -12,6 +12,7 @@ import math
 import os
 import sqlite3
 import time
+from collections.abc import Iterable
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Callable
@@ -827,6 +828,66 @@ class AutonomyLedger:
              "created_at": row[3], "features": _loads_features(row[4])}
             for row in chosen.values()
         ]
+
+    def calibration_signals_for_settled(
+        self, tickers: Iterable[str]
+    ) -> dict[str, list[dict[str, Any]]]:
+        """Batched :meth:`calibration_signals_for_market` for many markets.
+
+        The backtester called the per-market version once per settled market:
+        with ~177k settlements that is ~354k round-trips (a decision-time probe
+        plus a signal_history scan each) against the 12M-row union view -- the
+        6-hourly recalibration's dominant cost. This returns the identical
+        selection (per source: the latest opinion at/before the market's earliest
+        decision if it was traded, else the earliest phantom opinion) for every
+        ticker in ONE decisions group-by and ONE signal_history scan, grouped in
+        Python. Ordering by ``id`` in the per-market SQL is reproduced by keeping
+        the max id (traded window) or min id (phantom) per source.
+        """
+        want = set(tickers)
+        if not want:
+            return {}
+        decision_times: dict[str, str] = {}
+        for mt, dt in self._conn.execute(
+            "SELECT market_ticker, MIN(created_at) FROM decisions GROUP BY market_ticker"
+        ):
+            if dt is not None and mt in want:
+                decision_times[str(mt)] = str(dt)
+        # ticker -> source -> (id, row-tuple); traded keeps max id in-window,
+        # phantom keeps min id -- matching the per-market ORDER BY id semantics.
+        acc: dict[str, dict[str, tuple[int, tuple[Any, ...]]]] = {}
+        for mt, rid, source, prob, unc, ca, feat in self._conn.execute(
+            """
+            SELECT sh.market_ticker, sh.id, sh.source, sh.probability_yes,
+                   sh.uncertainty, sh.created_at, sh.features
+            FROM signal_history sh
+            JOIN main.settlements s ON s.market_ticker = sh.market_ticker
+            """
+        ):
+            mt = str(mt)
+            if mt not in want:
+                continue
+            src = str(source)
+            row = (source, prob, unc, ca, feat)
+            bucket = acc.setdefault(mt, {})
+            prev = bucket.get(src)
+            dt = decision_times.get(mt)
+            if dt is not None:
+                # latest opinion at/before the decision point (max id, ca <= dt)
+                if ca is not None and str(ca) <= dt and (prev is None or rid > prev[0]):
+                    bucket[src] = (rid, row)
+            else:
+                # earliest phantom opinion (min id)
+                if prev is None or rid < prev[0]:
+                    bucket[src] = (rid, row)
+        return {
+            mt: [
+                {"source": r[0], "probability_yes": r[1], "uncertainty": r[2],
+                 "created_at": r[3], "features": _loads_features(r[4])}
+                for _rid, r in bucket.values()
+            ]
+            for mt, bucket in acc.items()
+        }
 
     def unsettled_traded_markets(self) -> list[str]:
         rows = self._conn.execute(

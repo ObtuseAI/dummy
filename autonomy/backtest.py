@@ -1260,8 +1260,11 @@ def run_backtest(ledger: AutonomyLedger, bootstrap_weights: bool = False) -> dic
     # scope keys are NOT written to the weights table (the live forecaster
     # looks up bare source names); they feed the WS-14 readiness report.
     scope_trackers: dict[str, SourceScoreTracker] = {}
+    # One batched fetch instead of ~354k per-market round-trips (the recal's
+    # dominant cost); identical per-source selection, grouped in Python.
+    signals_by_ticker = ledger.calibration_signals_for_settled(settlements.keys())
     for ticker, result in settlements.items():
-        rows = ledger.calibration_signals_for_market(ticker)
+        rows = signals_by_ticker.get(ticker, [])
         latest = {str(row["source"]): float(row["probability_yes"]) for row in rows}
         features = {str(row["source"]): (row.get("features") or {}) for row in rows}
         stamps = {str(row["source"]): row.get("created_at") for row in rows}
