@@ -1,0 +1,266 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Dummy Tote — evidence-gated prediction intelligence</title>
+<meta name="description" content="An autonomous, evidence-gated prediction-market organism for crypto and sports. Fail-closed, paper-first, human-gated to capital.">
+<style>
+  :root{
+    --board:#111c16; --felt:#17251c; --felt-2:#1d3025; --deep:#0d160f;
+    --chalk:#e9e2ce; --muted:#93a394; --brass:#7d7150; --brass-2:#5c5540;
+    --amber:#f2b63c; --amber-dim:#c9962f; --turf:#7ea979; --clay:#c96a5c;
+    --line:#2c3d31;
+    --display:"Bahnschrift","DIN Alternate","Oswald","Arial Narrow",system-ui,sans-serif;
+    --mono:"Cascadia Mono","Consolas",ui-monospace,monospace;
+    --body:"Segoe UI",system-ui,-apple-system,sans-serif;
+  }
+  *{box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  body{
+    margin:0;background:var(--board);color:var(--chalk);font-family:var(--body);
+    line-height:1.55;-webkit-font-smoothing:antialiased;
+    background-image:
+      repeating-linear-gradient(0deg,transparent 0 38px,rgba(0,0,0,.10) 38px 39px);
+  }
+  a{color:var(--amber);text-decoration:none}
+  a:hover{text-decoration:underline}
+  .wrap{max-width:1120px;margin:0 auto;padding:0 24px}
+  .eyebrow{font-family:var(--display);letter-spacing:.32em;text-transform:uppercase;
+    font-size:12px;color:var(--brass);font-weight:600}
+  h2{font-family:var(--display);font-weight:700;letter-spacing:.02em;font-size:30px;
+    margin:0 0 6px}
+  h3{font-family:var(--display);font-weight:600;letter-spacing:.04em;font-size:17px;
+    text-transform:uppercase;margin:0 0 8px;color:var(--chalk)}
+  p{color:#cdd6cb}
+  section{padding:64px 0;border-top:1px solid var(--line)}
+
+  /* Masthead */
+  header.top{border-top:none;padding:20px 0;border-bottom:1px solid var(--line);
+    position:sticky;top:0;background:linear-gradient(var(--board),rgba(17,28,22,.86));
+    backdrop-filter:blur(4px);z-index:20}
+  .top .wrap{display:flex;align-items:center;gap:16px}
+  .brand{font-family:var(--display);font-weight:700;letter-spacing:.14em;font-size:20px}
+  .brand small{display:block;font-size:10px;letter-spacing:.4em;color:var(--brass);font-weight:600}
+  .top nav{margin-left:auto;display:flex;gap:22px;font-family:var(--display);
+    text-transform:uppercase;letter-spacing:.14em;font-size:12px}
+  .top nav a{color:var(--muted)}
+  .top nav a:hover{color:var(--chalk);text-decoration:none}
+  .lamp{margin-left:6px;font-family:var(--display);font-size:12px;letter-spacing:.18em;
+    background:var(--amber);color:#20180a;padding:5px 10px;font-weight:700;border-radius:2px;
+    box-shadow:0 0 18px rgba(242,182,60,.5)}
+
+  /* Hero */
+  .hero{padding:70px 0 34px;text-align:center}
+  .hero h1{font-family:var(--display);font-weight:700;font-size:clamp(46px,9vw,104px);
+    line-height:.92;margin:14px 0 12px;letter-spacing:.01em}
+  .hero h1 .tote{color:var(--amber)}
+  .lede{max-width:720px;margin:0 auto 26px;font-size:19px;color:#d7ddd3}
+  .cta{display:inline-flex;gap:12px;flex-wrap:wrap;justify-content:center}
+  .btn{font-family:var(--display);text-transform:uppercase;letter-spacing:.16em;font-size:13px;
+    padding:12px 22px;border:1px solid var(--brass);color:var(--chalk);border-radius:2px}
+  .btn.primary{background:var(--amber);color:#20180a;border-color:var(--amber);font-weight:700}
+  .btn:hover{text-decoration:none;border-color:var(--amber)}
+
+  .board-frame{margin:44px auto 0;max-width:1000px;border:1px solid var(--brass-2);
+    background:var(--deep);padding:12px;border-radius:4px;
+    box-shadow:0 30px 80px rgba(0,0,0,.55),inset 0 0 0 1px rgba(125,113,80,.25)}
+  .board-frame img{width:100%;display:block;border-radius:2px}
+  .cap{color:var(--muted);font-size:13px;margin-top:12px;font-style:italic}
+
+  /* Lamps / stat strip */
+  .lamps{display:grid;grid-template-columns:repeat(5,1fr);gap:1px;background:var(--line);
+    border:1px solid var(--line);border-radius:4px;overflow:hidden;margin-top:8px}
+  .lamps .cell{background:var(--felt);padding:22px 16px;text-align:center}
+  .lamps .n{font-family:var(--display);font-weight:700;font-size:34px;color:var(--amber);line-height:1}
+  .lamps .l{font-family:var(--display);text-transform:uppercase;letter-spacing:.16em;
+    font-size:11px;color:var(--muted);margin-top:8px}
+
+  /* Grid cards */
+  .grid{display:grid;grid-template-columns:repeat(2,1fr);gap:18px;margin-top:26px}
+  .card{background:var(--felt);border:1px solid var(--line);border-radius:4px;padding:24px;
+    border-top:2px solid var(--brass-2)}
+  .card h3{color:var(--amber)}
+  .card ul{margin:10px 0 0;padding-left:18px;color:#c4ccc2}
+  .card li{margin:5px 0}
+  .card .tag{font-family:var(--mono);font-size:12px;color:var(--muted)}
+
+  /* Loop */
+  .loop{display:flex;flex-wrap:wrap;gap:10px;margin-top:24px;font-family:var(--display);
+    text-transform:uppercase;letter-spacing:.1em;font-size:13px}
+  .loop span{background:var(--felt-2);border:1px solid var(--line);border-left:3px solid var(--amber);
+    padding:12px 16px;color:var(--chalk);flex:1;min-width:120px;text-align:center}
+  .loop b{color:var(--brass);margin:0 2px}
+
+  /* Gallery */
+  .gal{display:grid;grid-template-columns:repeat(2,1fr);gap:18px;margin-top:26px}
+  .shot{border:1px solid var(--brass-2);background:var(--deep);padding:8px;border-radius:4px}
+  .shot img{width:100%;display:block;border-radius:2px}
+  .shot .c{font-size:13px;color:var(--muted);padding:10px 6px 4px}
+  .shot .c b{color:var(--chalk);font-family:var(--display);letter-spacing:.04em;text-transform:uppercase;font-size:12px}
+
+  /* Safety */
+  .safety{background:var(--felt);border:1px solid var(--line);border-left:4px solid var(--clay);
+    border-radius:4px;padding:26px 28px;margin-top:22px}
+  .safety ul{columns:2;column-gap:38px;margin:14px 0 0;padding-left:18px;color:#c4ccc2}
+  .safety li{margin:6px 0;break-inside:avoid}
+
+  footer{border-top:1px solid var(--line);padding:38px 0;color:var(--muted);text-align:center;font-size:14px}
+  .disc{max-width:760px;margin:14px auto 0;font-size:12.5px;color:var(--brass)}
+
+  @media(max-width:760px){
+    .grid,.gal{grid-template-columns:1fr}
+    .lamps{grid-template-columns:repeat(2,1fr)}
+    .top nav{display:none}
+    .safety ul{columns:1}
+  }
+  @media(prefers-reduced-motion:reduce){html{scroll-behavior:auto}}
+</style>
+</head>
+<body>
+
+<header class="top">
+  <div class="wrap">
+    <div class="brand">DUMMY&nbsp;TOTE<small>EVIDENCE BOARD</small></div>
+    <nav>
+      <a href="#arsenal">Arsenal</a>
+      <a href="#loop">The loop</a>
+      <a href="#board">Board</a>
+      <a href="#safety">Safety</a>
+      <a href="https://github.com/ObtuseAI/dummy">Repo</a>
+    </nav>
+    <span class="lamp">LIVE · SHADOW</span>
+  </div>
+</header>
+
+<div class="hero wrap">
+  <div class="eyebrow">Autonomous prediction-market intelligence</div>
+  <h1>DUMMY <span class="tote">TOTE</span></h1>
+  <p class="lede">
+    An evidence-gated organism for crypto &amp; sports prediction markets. It
+    gathers point-in-time public evidence, calibrates competing forecasts, earns
+    every source its trust from settled outcomes, and explains and records each
+    paper decision in an auditable ledger.
+  </p>
+  <div class="cta">
+    <a class="btn primary" href="https://github.com/ObtuseAI/dummy">View the repository</a>
+    <a class="btn" href="#board">See the board</a>
+  </div>
+  <div class="board-frame">
+    <img src="assets/tote-overview.png" alt="The Dummy Tote evidence board — system state, top edges, ranked picks">
+  </div>
+  <div class="cap">The Dummy Tote — a native command board read straight from the live paper runtime.</div>
+</div>
+
+<section id="stats" style="border-top:none;padding-top:8px">
+  <div class="wrap">
+    <div class="lamps">
+      <div class="cell"><div class="n">3,663</div><div class="l">markets priced</div></div>
+      <div class="cell"><div class="n">7</div><div class="l">verticals</div></div>
+      <div class="cell"><div class="n">5,906</div><div class="l">tests green</div></div>
+      <div class="cell"><div class="n">11+</div><div class="l">self-improve loops</div></div>
+      <div class="cell"><div class="n">0</div><div class="l">auto capital</div></div>
+    </div>
+  </div>
+</section>
+
+<section id="arsenal">
+  <div class="wrap">
+    <div class="eyebrow">What it prices</div>
+    <h2>The arsenal</h2>
+    <p>Every market is priced by a purpose-built model, cross-checked by challengers, and gated on settled evidence before it can earn trust.</p>
+    <div class="grid">
+      <div class="card">
+        <h3>Crypto</h3>
+        <span class="tag">BTC · ETH · SOL — 15m / hourly / daily / weekly</span>
+        <ul>
+          <li>Realized &amp; implied volatility, market and macro risk regime (S&amp;P / DXY / VIX / 10y / gold / oil)</li>
+          <li>Momentum, technical, order-book and cross-venue evidence</li>
+          <li>Multi-timeframe structure, candlestick &amp; divergence chartist, patience/confirmation entries</li>
+        </ul>
+      </div>
+      <div class="card">
+        <h3>Sports</h3>
+        <span class="tag">MLB · NFL · NBA · NHL · WNBA · NCAAF · NCAAMB</span>
+        <ul>
+          <li>Winners, totals, spreads, team totals, YRFI/NRFI, first-five, halves, quarters, periods</li>
+          <li>Platoon splits, bullpen quality, rivalry awareness, plate-appearance simulation</li>
+          <li>Power-ratings ensemble (FPI/BPI, Elo, Massey, tie-aware Colley) + licensed multi-book de-vig</li>
+          <li>Player props via metered licensed consensus; correlation-aware parlay pricing</li>
+        </ul>
+      </div>
+      <div class="card">
+        <h3>Autonomous improvement</h3>
+        <span class="tag">the machine tunes itself</span>
+        <ul>
+          <li>Two-stage promotion ladder — challengers earn their place from settled evidence</li>
+          <li>Counterfactual execution-policy tournament, pre-game CLV capture</li>
+          <li>Nightly loss deconstruction, negative-control battery, walk-forward tuner</li>
+          <li>FDR-controlled autoresearch; market-pressure (sharp/sheep) intelligence</li>
+        </ul>
+      </div>
+      <div class="card">
+        <h3>Council &amp; debate</h3>
+        <span class="tag">specialists + LLM voices</span>
+        <ul>
+          <li>Per-vertical specialist subagents with coherence and trust surfaces</li>
+          <li>Live LLM debate on the top pick — Claude &amp; OpenRouter voices, quota-capped</li>
+          <li>vNext sovereign-forecasting organisms: competing futures, self-critique, abstention</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="loop">
+  <div class="wrap">
+    <div class="eyebrow">How it runs</div>
+    <h2>The loop</h2>
+    <p>Public evidence flows one direction. Competing forecasts are fused by earned trust, sized by risk gates, and only a hardened firewall reaches the market. Reconciled outcomes feed the calibration that closes the loop.</p>
+    <div class="loop">
+      <span>Scan</span><b>→</b><span>Signal</span><b>→</b><span>Fuse</span><b>→</b><span>Allocate</span><b>→</b><span>Risk</span><b>→</b><span>Execute</span><b>→</b><span>Reconcile</span><b>→</b><span>Learn</span>
+    </div>
+  </div>
+</section>
+
+<section id="board">
+  <div class="wrap">
+    <div class="eyebrow">The command board</div>
+    <h2>A totalizator over the live runtime</h2>
+    <p>The <strong>Dummy Tote</strong> is a true native desktop app (PySide6) that reads only the runtime artifacts the scheduled loops already write — it never touches the trading path. Pitch-green felt, brass rules, and amber lamps that flip on every re-price.</p>
+    <div class="gal">
+      <div class="shot"><img src="assets/tote-betboard.png" alt="Bet board"><div class="c"><b>Bet board</b> — every priced market ranked by edge, with A/B/C conviction tiers</div></div>
+      <div class="shot"><img src="assets/tote-mispricing.png" alt="Mispricing"><div class="c"><b>Mispricing</b> — model vs de-vigged book vs price; challenger evidence, never auto-staked</div></div>
+      <div class="shot"><img src="assets/tote-crypto.png" alt="Crypto paper twin"><div class="c"><b>Crypto twin</b> — throughput funnel: paper trades vs the discipline of policy rejection</div></div>
+      <div class="shot"><img src="assets/tote-readiness.png" alt="Promotion readiness"><div class="c"><b>Readiness</b> — every challenger scope, closest to promotion first</div></div>
+    </div>
+  </div>
+</section>
+
+<section id="safety">
+  <div class="wrap">
+    <div class="eyebrow">Non-negotiable</div>
+    <h2>Safety invariants</h2>
+    <div class="safety">
+      <ul>
+        <li>Paper / shadow by default — no real capital at risk</li>
+        <li>Promotion to capital is <strong>human-only</strong>, never autonomous</li>
+        <li>Execution is fail-closed and LIMIT-only behind a hardened firewall</li>
+        <li>Challengers are evidence-gated on settled, contested outcomes</li>
+        <li>Research may evolve; truth rules, promotion standards &amp; the firewall may not</li>
+        <li>Every paper decision is explained and recorded in an auditable ledger</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">
+    <div class="brand" style="font-size:16px">DUMMY&nbsp;TOTE</div>
+    <p><a href="https://github.com/ObtuseAI/dummy">github.com/ObtuseAI/dummy</a></p>
+    <p class="disc">Private research system. Not investment advice. Nothing here executes trades or moves capital without explicit operator authorization. Dashboards are read-only observers of a paper runtime.</p>
+  </div>
+</footer>
+
+</body>
+</html>
