@@ -325,6 +325,11 @@ def build_brain(mode: SessionMode):
     from autonomy.signals.sports_pythagorean import SportsPythagoreanSignal
 
     registry.register(SportsPythagoreanSignal(seasons=seasons))
+    # MOV-Elo challenger: recency-weighted margin-of-victory ratings -- the
+    # sharpest of the three lake rating analytics in walk-forward. Gated.
+    from autonomy.signals.sports_mov_elo import SportsMovEloSignal
+
+    registry.register(SportsMovEloSignal(seasons=seasons))
     # De-vigged sportsbook moneyline + open->close steam: the sharpest public
     # game forecast, and the trap detector when Elo fights the book.
     registry.register(SportsbookConsensusSignal())

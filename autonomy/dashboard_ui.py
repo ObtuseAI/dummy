@@ -766,11 +766,12 @@ function walkCard(vert,label){
   if(vert!=='SPORTS')return '';
   const w=STATE.walk&&STATE.walk[String(label).toLowerCase()];
   if(!w)return '';
-  // backward + forward compatible: nested {glicko,pythagenpat} or a flat glicko report
-  const models=(w.glicko||w.pythagenpat)
-    ? [['Glicko-2',w.glicko],['Pythagenpat',w.pythagenpat]].filter(m=>m[1]&&m[1].n)
-    : (w.n?[['Glicko-2',w]]:[]);
+  const LABELS={glicko:'Glicko-2',pythagenpat:'Pythagenpat',mov_elo:'MOV-Elo'};
+  // generic over whatever models the artifact carries; back-compat with a flat report
+  let models=Object.keys(w).filter(k=>w[k]&&typeof w[k]==='object'&&w[k].n).map(k=>[LABELS[k]||k,w[k]]);
+  if(!models.length&&w.n)models=[['Glicko-2',w]];
   if(!models.length)return '';
+  models.sort((a,b)=>(b[1].edge_vs_baseline||0)-(a[1].edge_vs_baseline||0));
   let h='<div class="card reveal" style="margin-top:var(--s3)"><h3>Model backtest <span class="r">point-in-time lake · walk-forward, no look-ahead</span></h3>';
   h+='<div style="overflow-x:auto"><table><thead><tr><th>Analytic</th><th>Games</th><th>Hit</th><th>Brier</th><th>vs coin</th><th>Edge</th><th>Log-loss</th></tr></thead><tbody>';
   models.forEach(([nm,m])=>{const e=m.edge_vs_baseline;

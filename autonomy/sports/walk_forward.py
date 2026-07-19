@@ -16,6 +16,7 @@ from typing import Any
 
 from autonomy.sports.glicko import LakeGlickoRatings
 from autonomy.sports.history_store import SportsHistoryStore
+from autonomy.sports.mov_elo import LakeMovElo
 from autonomy.sports.pythagorean import LakePythagorean
 
 _BASELINE_BRIER = 0.25          # always-predict-0.5
@@ -99,4 +100,28 @@ def walk_forward_pythagorean(
     report = _grade(preds)
     report["league"] = league
     report["model"] = "pythagenpat"
+    return report
+
+
+def walk_forward_mov_elo(
+    store: SportsHistoryStore, league: str, *,
+    home_advantage: float = 40.0, k: float = 20.0, warmup_games: int = 30,
+) -> dict[str, Any]:
+    """Grade MOV-Elo point-in-time (predict each game before applying it)."""
+    games = store.games(league=league)
+    games = [g for g in games if g.get("home_score") is not None and g.get("away_score") is not None]
+    games.sort(key=lambda g: g["start_time"])
+
+    model = LakeMovElo(store, league=league, k=k, home_advantage=home_advantage)
+    preds: list[tuple[float, int]] = []
+    for i, game in enumerate(games):
+        home, away = game.get("home"), game.get("away")
+        hs, as_ = game.get("home_score"), game.get("away_score")
+        if i >= warmup_games and home and away and hs != as_:
+            preds.append((model.matchup_prob(home, away), 1 if hs > as_ else 0))
+        model.apply_game(game)
+
+    report = _grade(preds)
+    report["league"] = league
+    report["model"] = "mov_elo"
     return report
