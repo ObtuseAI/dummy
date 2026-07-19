@@ -17,13 +17,29 @@ ROOT = Path(__file__).resolve().parent.parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+from autonomy.ingest.espn_lake import ingest_espn_league  # noqa: E402
 from autonomy.ingest.fetcher import PoliteFetcher  # noqa: E402
 from autonomy.ingest.nflverse import ingest_nflverse_games  # noqa: E402
 from autonomy.sports.history_store import SportsHistoryStore  # noqa: E402
 
+# Every league Dummy trades (ESPN scoreboard keys, lowercase).
+ESPN_LEAGUES = ("mlb", "wnba", "nba", "nfl", "nhl", "ncaaf", "ncaamb")
+
+
+def _ingest_espn(store, fetcher, seasons):  # noqa: ARG001 -- ESPN client, not the fetcher
+    from autonomy.sports.espn import EspnClient
+
+    client = EspnClient()
+    out = {}
+    for league in ESPN_LEAGUES:
+        out[league] = ingest_espn_league(store, client, league)
+    return out
+
+
 # source name -> ingest callable(store, fetcher, seasons)
 SOURCES = {
     "nflverse": lambda store, fetcher, seasons: ingest_nflverse_games(store, fetcher, seasons=seasons),
+    "espn": _ingest_espn,
 }
 
 
