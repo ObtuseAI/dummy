@@ -14,6 +14,19 @@ PAPER_TASK_NAME = "DummyCryptoPaperTwin"
 PAPER_CONTROL_HEADER = "paper-twin-scheduler-v1"
 CommandRunner = Callable[..., subprocess.CompletedProcess[str]]
 
+# The dashboard runs headless under pythonw.exe, which has no console. A child
+# console process (powershell.exe here) spawned without CREATE_NO_WINDOW forces
+# Windows to allocate a NEW console window for it -- so every scheduler-status
+# poll flashed a terminal. CREATE_NO_WINDOW suppresses it (0 elsewhere).
+_CREATE_NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+
+
+def _hidden_run(*args: Any, **kwargs: Any) -> subprocess.CompletedProcess[str]:
+    """subprocess.run that never pops a console window on Windows."""
+    if _CREATE_NO_WINDOW:
+        kwargs.setdefault("creationflags", _CREATE_NO_WINDOW)
+    return subprocess.run(*args, **kwargs)
+
 
 def _read_json(path: Path) -> dict[str, Any]:
     try:
@@ -63,7 +76,7 @@ def _task_script(task_name: str) -> str:
 def scheduled_task_status(
     task_name: str = PAPER_TASK_NAME,
     *,
-    runner: CommandRunner = subprocess.run,
+    runner: CommandRunner = _hidden_run,
 ) -> dict[str, Any]:
     """Read the fixed Windows paper scheduler without exposing a command surface."""
     if os.name != "nt":
@@ -127,7 +140,7 @@ def control_paper_scheduler(
     action: str,
     task_name: str = PAPER_TASK_NAME,
     *,
-    runner: CommandRunner = subprocess.run,
+    runner: CommandRunner = _hidden_run,
 ) -> dict[str, Any]:
     """Enable/start or pause future paper cycles; never touch live execution."""
     normalized = str(action).strip().lower()

@@ -245,3 +245,48 @@ def test_control_invalidates_an_inflight_stale_dashboard_refresh(monkeypatch):
 
     assert client.get("/api/autonomy").json()["version"] == 2
     assert calls == 2
+
+
+def test_hidden_run_injects_create_no_window(monkeypatch):
+    """Scheduler-status spawns must never pop a console under pythonw: _hidden_run
+    forces CREATE_NO_WINDOW on the child (the terminal-popup regression)."""
+    from autonomy import paper_dashboard as pd
+
+    captured: dict = {}
+
+    def fake_run(*args, **kwargs):
+        captured.update(kwargs)
+        return subprocess.CompletedProcess(args, 0, stdout="{}", stderr="")
+
+    monkeypatch.setattr(pd.subprocess, "run", fake_run)
+    monkeypatch.setattr(pd, "_CREATE_NO_WINDOW", 0x08000000)  # the real Windows flag
+
+    pd._hidden_run(["powershell.exe", "-Command", "$x=1"], capture_output=True, text=True)
+
+    assert captured.get("creationflags") == 0x08000000
+
+
+def test_hidden_run_preserves_caller_creationflags(monkeypatch):
+    from autonomy import paper_dashboard as pd
+
+    captured: dict = {}
+
+    def fake_run(*args, **kwargs):
+        captured.update(kwargs)
+        return subprocess.CompletedProcess(args, 0, stdout="{}", stderr="")
+
+    monkeypatch.setattr(pd.subprocess, "run", fake_run)
+    monkeypatch.setattr(pd, "_CREATE_NO_WINDOW", 0x08000000)
+
+    pd._hidden_run(["x"], creationflags=0x1)
+
+    assert captured.get("creationflags") == 0x1  # setdefault preserves an explicit flag
+
+
+def test_scheduler_functions_default_to_hidden_runner():
+    import inspect
+
+    from autonomy import paper_dashboard as pd
+
+    assert inspect.signature(pd.scheduled_task_status).parameters["runner"].default is pd._hidden_run
+    assert inspect.signature(pd.control_paper_scheduler).parameters["runner"].default is pd._hidden_run
