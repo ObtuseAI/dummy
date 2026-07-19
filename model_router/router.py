@@ -4,6 +4,7 @@ from typing import Any
 from model_router.config import ModelRoutingConfig, load_model_routing_config
 from model_router.envelope import ModelResponseEnvelope, ModelRouteDecision
 from model_router.providers import DeepSeekV4FlashProvider, MinimaxM3Provider, MockProvider, OpenRouterProvider
+from model_router.cli_providers import ClaudeCliProvider, CodexCliProvider
 from model_router.prompt_firewall import PromptFirewall
 from model_router.tasks import ModelTask
 from model_router.cost_tracker import CostTracker
@@ -11,6 +12,10 @@ from model_router.cost_tracker import CostTracker
 _PROVIDER_CLASSES = {
     "deepseek_v4_flash": DeepSeekV4FlashProvider,
     "minimax_m3": MinimaxM3Provider,
+    # Wave-34: local-CLI panelists (own auth, no OpenRouter key). Gated OFF by
+    # default (DUMMY_CLI_PROVIDERS=1) since they bill personal subscriptions.
+    "claude_cli": ClaudeCliProvider,
+    "codex_cli": CodexCliProvider,
     "mock": MockProvider,
 }
 
