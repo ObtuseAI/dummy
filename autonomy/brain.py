@@ -23,6 +23,9 @@ from autonomy.signals.base import SourceRegistry
 SHADOW_BANKROLL_CENTS = 10_000
 MAX_CANDIDATES_EVALUATED = 100
 MAX_ORDERS_PER_CYCLE = 10
+# Above this many settlements in one cycle, batch the calibration fetch instead
+# of one query per market (a full-scan batch only pays off past ~150 markets).
+_PHANTOM_BATCH_THRESHOLD = 200
 
 
 def _env_int(name: str, default: int) -> int:
@@ -257,9 +260,23 @@ class PredatorBrain:
             phantom = self.reconciler.reconcile_forecast_settlements(list(self.scanner.watchlist))
         except Exception:
             return
+        # Backlog resilience: after an outage many markets settle at once, and
+        # grading them one calibration query at a time (apply_settlement ->
+        # calibration_signals_for_market) is another N+1. Above a threshold,
+        # share ONE batched fetch (the same validated per-source selection).
+        prefetch: dict[str, list] = {}
+        if len(phantom) >= _PHANTOM_BATCH_THRESHOLD:
+            batch = getattr(self.ledger, "calibration_signals_for_settled", None)
+            if callable(batch):
+                try:
+                    prefetch = batch([t for t, _ in phantom])
+                except Exception:
+                    prefetch = {}
         for ticker, result_yes in phantom:
             report.phantom_settlements += 1
-            report.weight_updates.update(self.learner.apply_settlement(ticker, result_yes))
+            report.weight_updates.update(
+                self.learner.apply_settlement(ticker, result_yes, signals=prefetch.get(ticker))
+            )
 
     # ------------------------------------------------------------------
 

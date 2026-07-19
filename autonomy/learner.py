@@ -215,16 +215,23 @@ class Learner:
     # Loop 1: calibration -> trust weights
     # ------------------------------------------------------------------
 
-    def apply_settlement(self, market_ticker: str, result_yes: bool) -> dict[str, float]:
+    def apply_settlement(
+        self, market_ticker: str, result_yes: bool,
+        signals: list[dict[str, Any]] | None = None,
+    ) -> dict[str, float]:
         """Score every source that opined on this market; update weights.
 
         Reference point is the market-prior signal's own Brier: a source is
         rewarded for beating the market, not merely for being right when the
-        market was righter.
+        market was righter. ``signals`` lets a caller pass the pre-fetched
+        calibration opinions (identical to ``calibration_signals_for_market``)
+        so a backlog of settlements can share one batched fetch instead of one
+        query per market.
         """
-        calibration_signals = getattr(self.ledger, "calibration_signals_for_market", None)
-        signals = (calibration_signals(market_ticker) if callable(calibration_signals)
-                   else self.ledger.signals_for_market(market_ticker))
+        if signals is None:
+            calibration_signals = getattr(self.ledger, "calibration_signals_for_market", None)
+            signals = (calibration_signals(market_ticker) if callable(calibration_signals)
+                       else self.ledger.signals_for_market(market_ticker))
         if not signals:
             return {}
         from autonomy.scanner import classify_vertical
