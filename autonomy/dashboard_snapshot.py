@@ -70,6 +70,21 @@ def build_dashboard_snapshot(
         canary = evaluate_canary_readiness(ledger, backtest_report=report).to_dict()
         backtest_stamp = report.get("created_at") or stamp
 
+    # Wave-51: per-scope (coin/league) analytics + the overview account block for
+    # the redesigned dashboard. Computed here (the writer already holds the
+    # ledger) so the dashboard never opens it. Fail-soft: a bug in the new
+    # analytics must never break the snapshot the rest of the dashboard needs.
+    overview: dict[str, Any] = {}
+    scopes: dict[str, Any] = {}
+    try:
+        from autonomy.scope_analytics import build_overview, build_scope_analytics
+
+        overview = build_overview(ledger._conn, report)
+        scopes = build_scope_analytics(ledger._conn)
+    except Exception:  # noqa: BLE001 -- never let analytics sink the snapshot
+        overview = (prior or {}).get("overview") or {}
+        scopes = (prior or {}).get("scopes") or {}
+
     return {
         "generated_at": stamp,
         "backtest_generated_at": backtest_stamp,
@@ -77,6 +92,8 @@ def build_dashboard_snapshot(
         "statistics_intake": statistics_intake,
         "backtest": report,
         "canary": canary,
+        "overview": overview,
+        "scopes": scopes,
     }
 
 
