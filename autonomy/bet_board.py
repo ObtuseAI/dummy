@@ -76,9 +76,10 @@ def _group_of(ticker: str) -> tuple[str, str]:
 
 
 def _matchup(ticker: str) -> str:
-    """Human-readable middle token: date + teams (best effort, ticker-only)."""
-    parts = str(ticker).split("-")
-    return parts[1] if len(parts) >= 2 else str(ticker)
+    """Human-readable matchup (``SD vs ATL``), ticker-only, fail-soft to raw."""
+    from autonomy.market_labels import humanize_ticker
+
+    return humanize_ticker(ticker)["matchup"]
 
 
 def _finish_board(board_rows: list[dict[str, Any]], **extra: Any) -> dict[str, Any]:
@@ -117,15 +118,20 @@ def write_board_artifact(
     touched, atomic replace so the dashboard never reads a torn file."""
     from datetime import datetime, timezone
 
+    from autonomy.market_labels import humanize_ticker
+
     board_rows: list[dict[str, Any]] = []
     for market, forecast in scored:
         probability = float(forecast.probability_yes)
         market_prob = forecast.market_implied_yes
         league, bet_type = _group_of(market.ticker)
+        hl = humanize_ticker(market.ticker)
         board_rows.append({
             "ticker": market.ticker,
-            "title": getattr(market, "title", None) or _matchup(market.ticker),
-            "matchup": _matchup(market.ticker),
+            "title": getattr(market, "title", None) or hl["label"],
+            "matchup": hl["matchup"],
+            "market": hl["market"],
+            "label": hl["label"],
             "league": league,
             "bet_type": bet_type,
             "probability": round(probability, 4),
@@ -229,6 +235,8 @@ def assemble_bet_board(
             features = {}
         latest[ticker] = (str(created_at), float(probability), float(uncertainty), features)
 
+    from autonomy.market_labels import humanize_ticker
+
     board_rows: list[dict[str, Any]] = []
     for ticker, (created_at, probability, uncertainty, features) in latest.items():
         market_prob = features.get("market_implied_yes")
@@ -236,9 +244,12 @@ def assemble_bet_board(
         if isinstance(market_prob, (int, float)):
             edge = probability - float(market_prob)
         league, bet_type = _group_of(ticker)
+        hl = humanize_ticker(ticker)
         board_rows.append({
             "ticker": ticker,
-            "matchup": _matchup(ticker),
+            "matchup": hl["matchup"],
+            "market": hl["market"],
+            "label": hl["label"],
             "league": league,
             "bet_type": bet_type,
             "probability": round(probability, 4),
