@@ -40,7 +40,10 @@ def _ingest_espn(store, fetcher, seasons, only_league=None):  # noqa: ARG001
 
 
 def _ingest_sdv(store, fetcher, seasons, only_league=None):
-    leagues = (only_league,) if only_league in SDV_SOURCES else tuple(SDV_SOURCES)
+    if only_league is not None:                       # per-league task
+        leagues = (only_league,) if only_league in SDV_SOURCES else ()
+    else:
+        leagues = tuple(SDV_SOURCES)
     return {lg: ingest_sdv_schedule(store, fetcher, lg, seasons or range(2008, 2027)) for lg in leagues}
 
 

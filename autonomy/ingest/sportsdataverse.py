@@ -16,12 +16,16 @@ from typing import Any, Iterable
 from autonomy.ingest.fetcher import PoliteFetcher
 from autonomy.sports.history_store import SportsHistoryStore
 
-# league -> (repo, path prefix, file prefix)
+# league -> (repo, path prefix, file prefix). ESPN-schema repos ONLY: the rows
+# carry ESPN game ids + team abbreviations, so they dedup with the ESPN-sourced
+# games and resolve against the live signals. (fastRhockey's NHL feed is keyed
+# on NHL-API team ids/names, NOT ESPN abbreviations -- it would NOT dedup or
+# match live, so NHL is deliberately excluded here; its deep history comes from
+# the ESPN date-range backfill nearer its October season, when it lights up.)
 SDV_SOURCES: dict[str, tuple[str, str, str]] = {
     "wnba": ("wehoop-data", "wnba", "wnba"),
     "nba": ("hoopR-data", "nba", "nba"),
     "ncaamb": ("hoopR-data", "mbb", "mbb"),
-    "nhl": ("fastRhockey-data", "nhl", "nhl"),
 }
 _URL = ("https://raw.githubusercontent.com/sportsdataverse/{repo}/main/"
         "{path}/schedules/csv/{prefix}_schedule_{season}.csv")
@@ -36,16 +40,29 @@ def _int(value: Any) -> int | None:
         return None
 
 
+def _first(row: dict[str, Any], *keys: str) -> str | None:
+    """First non-empty value among ``keys`` (schema tolerance across repos)."""
+    for k in keys:
+        v = row.get(k)
+        if v is not None and str(v).strip() not in ("", "NA"):
+            return str(v).strip()
+    return None
+
+
 def parse_sdv_schedule(text: str, league: str, season: int, *, url: str = "") -> list[dict[str, Any]]:
     out: list[dict[str, Any]] = []
     for row in csv.DictReader(io.StringIO(text)):
-        gid = (row.get("id") or "").strip()
-        home, away = row.get("home_abbreviation"), row.get("away_abbreviation")
-        date = (row.get("date") or row.get("start_date") or "").strip()
+        gid = _first(row, "id", "game_id")
+        # ESPN-schema repos carry abbreviations; tolerate name-keyed repos too.
+        home = _first(row, "home_abbreviation", "home_team_abbreviation", "home_team_name")
+        away = _first(row, "away_abbreviation", "away_team_abbreviation", "away_team_name")
+        date = _first(row, "date", "start_date", "game_date")
         if not gid or not home or not away or not date:
             continue
         hs, as_ = _int(row.get("home_score")), _int(row.get("away_score"))
-        completed = str(row.get("status_type_completed")).strip().lower() in ("true", "1")
+        completed = (str(row.get("status_type_completed")).strip().lower() in ("true", "1")
+                     or (_first(row, "status_detailed_state", "status_abstract_game_state")
+                         or "").lower() == "final")
         status = "final" if completed and hs is not None and as_ is not None else "scheduled"
         out.append({
             "game_id": gid, "league": league, "season": season, "start_time": date,
