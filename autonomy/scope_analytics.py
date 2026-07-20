@@ -116,47 +116,69 @@ def _brier(prob: float, result: int) -> float:
 
 
 def _settled_records(conn: sqlite3.Connection, window_days: float) -> list[dict[str, Any]]:
-    """Last decision per settled market inside the window, with its graded result.
+    """Graded forecast-of-record per settled market inside the window.
 
-    One row per market (the pick of record), so a market re-priced every cycle
-    counts once -- honest accuracy, not inflated by re-emissions.
+    The record is our FUSED forecast (the ``fused_forecast`` signal), which is
+    emitted for EVERY market we price -- traded or not. Grading that (phantom
+    grading) is the honest per-scope accuracy: a league we forecast but never
+    take an actionable side on (e.g. WNBA, priced but below the trade bar) still
+    gets counted, instead of vanishing because it produced no BUY decision. The
+    final fused emission per market is the pick of record (so a market re-priced
+    every cycle counts once); a LEFT JOIN to the last decision marks which were
+    actually traded, and ``market_implied_yes`` rides in the fused features JSON.
     """
     rows = conn.execute(
         """
-        SELECT d.market_ticker  AS ticker,
-               d.action         AS action,
-               d.probability_yes AS prob,
-               d.market_implied_yes AS market,
-               d.ev_cents       AS ev_cents,
-               s.result_yes     AS result,
-               s.settled_at     AS settled_at
-        FROM decisions d
-        JOIN settlements s ON s.market_ticker = d.market_ticker
+        SELECT sig.market_ticker   AS ticker,
+               sig.probability_yes AS prob,
+               sig.features        AS features,
+               s.result_yes        AS result,
+               s.settled_at        AS settled_at,
+               d.action            AS action
+        FROM signals sig
+        JOIN settlements s ON s.market_ticker = sig.market_ticker
         JOIN (
             SELECT market_ticker, MAX(created_at) AS mx
-            FROM decisions GROUP BY market_ticker
-        ) last ON last.market_ticker = d.market_ticker AND last.mx = d.created_at
-        WHERE s.settled_at >= datetime('now', ?)
+            FROM signals WHERE source = 'fused_forecast'
+            GROUP BY market_ticker
+        ) last ON last.market_ticker = sig.market_ticker AND last.mx = sig.created_at
+        LEFT JOIN (
+            SELECT d1.market_ticker AS market_ticker, d1.action AS action
+            FROM decisions d1
+            JOIN (
+                SELECT market_ticker, MAX(created_at) AS mx
+                FROM decisions GROUP BY market_ticker
+            ) dl ON dl.market_ticker = d1.market_ticker AND dl.mx = d1.created_at
+        ) d ON d.market_ticker = sig.market_ticker
+        WHERE sig.source = 'fused_forecast'
+          AND s.settled_at >= datetime('now', ?)
         """,
         (f"-{float(window_days)} days",),
     ).fetchall()
     out: list[dict[str, Any]] = []
-    for ticker, action, prob, market, ev_cents, result, settled_at in rows:
+    for ticker, prob, features, result, settled_at, action in rows:
         try:
             prob_f = float(prob)
             result_i = 1 if int(result) else 0
         except (TypeError, ValueError):
             continue
+        market = None
+        if features:
+            try:
+                mv = json.loads(features).get("market_implied_yes")
+                market = float(mv) if mv is not None else None
+            except (ValueError, TypeError, AttributeError):
+                market = None
         vertical, label = scope_key(str(ticker))
         out.append({
             "ticker": str(ticker),
             "vertical": vertical,
             "label": label,
             "bet_type": bet_type_of(str(ticker)),
-            "action": str(action),
+            "action": str(action) if action is not None else "",
             "prob": prob_f,
-            "market": float(market) if market is not None else None,
-            "ev_cents": float(ev_cents) if ev_cents is not None else 0.0,
+            "market": market,
+            "ev_cents": 0.0,
             "result": result_i,
             "settled_at": str(settled_at),
         })
@@ -422,6 +444,18 @@ def build_scope_analytics(
         else:
             scope["basis"] = "current"
         scope["in_season"] = in_season
+        # Three-state, so the badge never says "in season, awaiting grades":
+        #   off      -> the season monitor sees no games in its window
+        #   in       -> active AND we're grading current games (basis=current)
+        #   upcoming -> active but no current grades yet (preseason on the
+        #               scoreboard, or the slate hasn't tipped off) -- e.g. NFL
+        #               in July, awake for its exhibition game but not "in season"
+        if not in_season:
+            scope["season_status"] = "off"
+        elif scope.get("basis") == "current":
+            scope["season_status"] = "in"
+        else:
+            scope["season_status"] = "upcoming"
 
     # Vertical-level rollup across its scopes (current window only).
     for vertical, block in verticals.items():
