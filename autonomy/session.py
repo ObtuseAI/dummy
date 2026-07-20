@@ -336,6 +336,12 @@ def build_brain(mode: SessionMode):
     from autonomy.signals.sports_four_factors import SportsFourFactorsSignal
 
     registry.register(SportsFourFactorsSignal(seasons=seasons))
+    # Scoring model challenger: prices SPREAD + TOTAL markets from expected
+    # margin/total (what the rating analytics don't). Self-scopes to spread/
+    # total; gated.
+    from autonomy.signals.sports_scoring import SportsScoringSignal
+
+    registry.register(SportsScoringSignal(seasons=seasons))
     # De-vigged sportsbook moneyline + open->close steam: the sharpest public
     # game forecast, and the trap detector when Elo fights the book.
     registry.register(SportsbookConsensusSignal())

@@ -58,6 +58,9 @@ SOURCE_TAXONOMY: dict[str, str] = {
     "sports_mov_elo": "sports_elo",
     # Wave-56: Four Factors challenger (basketball boxscore efficiency), same home.
     "sports_four_factors": "sports_elo",
+    # Wave-56: scoring-model challenger prices SPREAD + TOTAL (expected margin/
+    # total from lake scoring rates); same lake-sports home, its own scope.
+    "sports_scoring": "sports_elo",
     "sportsbook_consensus": "sportsbook",
     # Wave-9: licensed multi-book (The Odds API) de-vig consensus. Same
     # specialist home as the single-book ESPN consensus; graded head-to-head
