@@ -148,6 +148,68 @@ class SportsHistoryStore:
         ).fetchall()
         return [dict(r) for r in rows]
 
+    def record_team_boxscores(self, rows: Iterable[dict[str, Any]]) -> int:
+        """Upsert team-level boxscores. Each row: {game_id, team, stats:{k:v}}."""
+        tuples = [
+            (r["game_id"], r["team"], "", stat, float(val),
+             r.get("as_of"), r.get("source", "espn"))
+            for r in rows
+            for stat, val in (r.get("stats") or {}).items()
+        ]
+        if not tuples:
+            return 0
+        self.conn.executemany(
+            """INSERT INTO boxscores(game_id,team,player,stat,value,as_of,source)
+               VALUES(?,?,?,?,?,?,?)
+               ON CONFLICT(game_id,team,player,stat) DO UPDATE SET
+                   value=excluded.value, as_of=excluded.as_of, source=excluded.source""",
+            tuples,
+        )
+        self.conn.commit()
+        return len(tuples)
+
+    def game_ids_missing_boxscores(self, league: str, limit: int | None = None) -> list[str]:
+        """Completed game_ids in ``league`` that have no boxscore rows yet
+        (newest first) -- the resumable work-list for the boxscore backfill."""
+        finals = ",".join("?" * len(_FINAL_STATUSES))
+        sql = (
+            f"SELECT g.game_id FROM games g LEFT JOIN boxscores b ON b.game_id = g.game_id "
+            f"WHERE g.league = ? AND g.status IN ({finals}) AND b.game_id IS NULL "
+            f"GROUP BY g.game_id ORDER BY g.start_time DESC"
+        )
+        params: list[Any] = [league, *_FINAL_STATUSES]
+        if limit:
+            sql += " LIMIT ?"
+            params.append(int(limit))
+        return [r[0] for r in self.conn.execute(sql, params).fetchall()]
+
+    def four_factor_sums_before(
+        self, team: str, as_of: str, league: str,
+    ) -> dict[str, Any] | None:
+        """Point-in-time stat sums for a team's OFFENSE (own) and DEFENSE
+        (opponents' stats in the same games), over completed games before
+        ``as_of``. The seed for four-factors. None if no boxscores yet."""
+        finals = ",".join("?" * len(_FINAL_STATUSES))
+        gids = [
+            r[0] for r in self.conn.execute(
+                f"""SELECT DISTINCT g.game_id FROM games g
+                    JOIN boxscores b ON b.game_id = g.game_id
+                    WHERE b.team = ? AND b.player = '' AND g.league = ?
+                      AND g.start_time < ? AND g.status IN ({finals})""",
+                (team, league, as_of, *_FINAL_STATUSES),
+            ).fetchall()
+        ]
+        if not gids:
+            return None
+        ph = ",".join("?" * len(gids))
+        own = {s: v for s, v in self.conn.execute(
+            f"SELECT stat, SUM(value) FROM boxscores WHERE game_id IN ({ph}) AND team = ? "
+            f"AND player = '' GROUP BY stat", (*gids, team)).fetchall()}
+        opp = {s: v for s, v in self.conn.execute(
+            f"SELECT stat, SUM(value) FROM boxscores WHERE game_id IN ({ph}) AND team != ? "
+            f"AND player = '' GROUP BY stat", (*gids, team)).fetchall()}
+        return {"off": own, "def": opp, "games": len(gids)}
+
     def record_ingest(
         self, source: str, league: str | None, date_range: str | None, *,
         status: str, rows: int, http: dict[str, Any] | None = None,

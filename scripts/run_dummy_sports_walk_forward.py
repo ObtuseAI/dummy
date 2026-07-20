@@ -33,7 +33,9 @@ def main() -> int:
 
     from autonomy.signals.sports_glicko import _HOME_ADVANTAGE
     from autonomy.signals.sports_pythagorean import _HOME_ADVANTAGE_PROB
-    from autonomy.sports.walk_forward import walk_forward_mov_elo, walk_forward_pythagorean
+    from autonomy.sports.walk_forward import (
+        walk_forward_four_factors, walk_forward_mov_elo, walk_forward_pythagorean,
+    )
 
     store = SportsHistoryStore()
     leagues = [args.league] if args.league else list(LEAGUES)
@@ -41,16 +43,20 @@ def main() -> int:
     try:
         for league in leagues:
             hadv = _HOME_ADVANTAGE.get(league, 35.0)
-            glicko = walk_forward_glicko(store, league=league, home_advantage=hadv)
-            pyth = walk_forward_pythagorean(store, league=league,
-                                            home_advantage_prob=_HOME_ADVANTAGE_PROB.get(league, 0.05))
-            mov = walk_forward_mov_elo(store, league=league, home_advantage=hadv)
-            results[league] = {"glicko": glicko, "pythagenpat": pyth, "mov_elo": mov}
-            if glicko["n"] == 0:
+            hadv_p = _HOME_ADVANTAGE_PROB.get(league, 0.05)
+            models = {
+                "glicko": walk_forward_glicko(store, league=league, home_advantage=hadv),
+                "pythagenpat": walk_forward_pythagorean(store, league=league, home_advantage_prob=hadv_p),
+                "mov_elo": walk_forward_mov_elo(store, league=league, home_advantage=hadv),
+                "four_factors": walk_forward_four_factors(store, league=league, home_advantage_prob=hadv_p),
+            }
+            results[league] = models
+            if models["glicko"]["n"] == 0:
                 print(f"[{league}] no completed games in the lake yet")
                 continue
-            for nm, r in (("glicko", glicko), ("pythagenpat", pyth), ("mov_elo", mov)):
-                print(f"[{league}] {nm}: n={r['n']} hit={r['hit_rate']} edge={r['edge_vs_baseline']}")
+            for nm, r in models.items():
+                if r["n"]:
+                    print(f"[{league}] {nm}: n={r['n']} hit={r['hit_rate']} edge={r['edge_vs_baseline']}")
     finally:
         store.close()
 
@@ -68,7 +74,7 @@ def main() -> int:
     tmp = ARTIFACT.with_suffix(".json.tmp")
     tmp.write_text(json.dumps({
         "generated_at": datetime.now(timezone.utc).isoformat(),
-        "models": ["glicko", "pythagenpat", "mov_elo"], "leagues": prior,
+        "models": ["glicko", "pythagenpat", "mov_elo", "four_factors"], "leagues": prior,
     }), encoding="utf-8")
     tmp.replace(ARTIFACT)
     print(f"wrote {ARTIFACT}")

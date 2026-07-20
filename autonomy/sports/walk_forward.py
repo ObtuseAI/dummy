@@ -14,6 +14,7 @@ from __future__ import annotations
 import math
 from typing import Any
 
+from autonomy.sports.four_factors import LakeFourFactors
 from autonomy.sports.glicko import LakeGlickoRatings
 from autonomy.sports.history_store import SportsHistoryStore
 from autonomy.sports.mov_elo import LakeMovElo
@@ -124,4 +125,62 @@ def walk_forward_mov_elo(
     report = _grade(preds)
     report["league"] = league
     report["model"] = "mov_elo"
+    return report
+
+
+def walk_forward_four_factors(
+    store: SportsHistoryStore, league: str, *,
+    home_advantage_prob: float = 0.03, min_games: int = 5,
+) -> dict[str, Any]:
+    """Grade Four Factors point-in-time. Predicts a game only once both teams
+    have ``min_games`` of prior boxscores (the store enforces the as-of cut)."""
+    games = store.games(league=league)
+    games = [g for g in games if g.get("home_score") is not None and g.get("away_score") is not None]
+    games.sort(key=lambda g: g["start_time"])
+
+    model = LakeFourFactors(store, league=league)
+    preds: list[tuple[float, int]] = []
+    for game in games:
+        home, away, t = game.get("home"), game.get("away"), game["start_time"]
+        hs, as_ = game.get("home_score"), game.get("away_score")
+        if not home or not away or hs == as_:
+            continue
+        if model.games_seen(home, t) < min_games or model.games_seen(away, t) < min_games:
+            continue
+        p = model.matchup_prob(home, away, t, home_advantage_prob=home_advantage_prob)
+        if p is not None:
+            preds.append((p, 1 if hs > as_ else 0))
+
+    report = _grade(preds)
+    report["league"] = league
+    report["model"] = "four_factors"
+    return report
+
+
+def walk_forward_four_factors(
+    store: SportsHistoryStore, league: str, *,
+    home_advantage_prob: float = 0.03, min_games: int = 5,
+) -> dict[str, Any]:
+    """Grade Four Factors point-in-time. Predicts a game only once both teams
+    have ``min_games`` of prior boxscores (the store enforces the as-of cut)."""
+    games = store.games(league=league)
+    games = [g for g in games if g.get("home_score") is not None and g.get("away_score") is not None]
+    games.sort(key=lambda g: g["start_time"])
+
+    model = LakeFourFactors(store, league=league)
+    preds: list[tuple[float, int]] = []
+    for game in games:
+        home, away, t = game.get("home"), game.get("away"), game["start_time"]
+        hs, as_ = game.get("home_score"), game.get("away_score")
+        if not home or not away or hs == as_:
+            continue
+        if model.games_seen(home, t) < min_games or model.games_seen(away, t) < min_games:
+            continue
+        p = model.matchup_prob(home, away, t, home_advantage_prob=home_advantage_prob)
+        if p is not None:
+            preds.append((p, 1 if hs > as_ else 0))
+
+    report = _grade(preds)
+    report["league"] = league
+    report["model"] = "four_factors"
     return report

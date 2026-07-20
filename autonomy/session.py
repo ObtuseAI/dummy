@@ -330,6 +330,12 @@ def build_brain(mode: SessionMode):
     from autonomy.signals.sports_mov_elo import SportsMovEloSignal
 
     registry.register(SportsMovEloSignal(seasons=seasons))
+    # Four Factors challenger (basketball): shooting/turnovers/rebounding/free
+    # throws from persisted boxscores -- self-scopes to NBA/WNBA/NCAAMB (abstains
+    # where there are no boxscore inputs). Gated.
+    from autonomy.signals.sports_four_factors import SportsFourFactorsSignal
+
+    registry.register(SportsFourFactorsSignal(seasons=seasons))
     # De-vigged sportsbook moneyline + open->close steam: the sharpest public
     # game forecast, and the trap detector when Elo fights the book.
     registry.register(SportsbookConsensusSignal())
