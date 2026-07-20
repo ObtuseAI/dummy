@@ -830,7 +830,7 @@ function walkCard(vert,label){
   if(vert!=='SPORTS')return '';
   const w=STATE.walk&&STATE.walk[String(label).toLowerCase()];
   if(!w)return '';
-  const LABELS={glicko:'Glicko-2',pythagenpat:'Pythagenpat',mov_elo:'MOV-Elo',four_factors:'Four Factors'};
+  const LABELS={glicko:'Glicko-2',pythagenpat:'Pythagenpat',mov_elo:'MOV-Elo',four_factors:'Four Factors',epa:'EPA'};
   // generic over whatever models the artifact carries; back-compat with a flat report
   let models=Object.keys(w).filter(k=>w[k]&&typeof w[k]==='object'&&w[k].n).map(k=>[LABELS[k]||k,w[k]]);
   if(!models.length&&w.n)models=[['Glicko-2',w]];

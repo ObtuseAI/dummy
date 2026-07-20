@@ -34,7 +34,8 @@ def main() -> int:
     from autonomy.signals.sports_glicko import _HOME_ADVANTAGE
     from autonomy.signals.sports_pythagorean import _HOME_ADVANTAGE_PROB
     from autonomy.sports.walk_forward import (
-        walk_forward_four_factors, walk_forward_mov_elo, walk_forward_pythagorean,
+        walk_forward_epa, walk_forward_four_factors, walk_forward_mov_elo,
+        walk_forward_pythagorean,
     )
 
     store = SportsHistoryStore()
@@ -49,6 +50,7 @@ def main() -> int:
                 "pythagenpat": walk_forward_pythagorean(store, league=league, home_advantage_prob=hadv_p),
                 "mov_elo": walk_forward_mov_elo(store, league=league, home_advantage=hadv),
                 "four_factors": walk_forward_four_factors(store, league=league, home_advantage_prob=hadv_p),
+                "epa": walk_forward_epa(store, league=league),
             }
             results[league] = models
             if models["glicko"]["n"] == 0:
@@ -74,7 +76,7 @@ def main() -> int:
     tmp = ARTIFACT.with_suffix(".json.tmp")
     tmp.write_text(json.dumps({
         "generated_at": datetime.now(timezone.utc).isoformat(),
-        "models": ["glicko", "pythagenpat", "mov_elo", "four_factors"], "leagues": prior,
+        "models": ["glicko", "pythagenpat", "mov_elo", "four_factors", "epa"], "leagues": prior,
     }), encoding="utf-8")
     tmp.replace(ARTIFACT)
     print(f"wrote {ARTIFACT}")
