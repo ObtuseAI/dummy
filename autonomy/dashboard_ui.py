@@ -647,10 +647,10 @@ function heatmap(matrix){
   if(!matrix||!matrix.length)return '';
   const scopes=[],cols=[],by={};
   matrix.forEach(c=>{const sk=c.scope;if(!scopes.includes(sk))scopes.push(sk);if(!cols.includes(c.bet_type))cols.push(c.bet_type);by[sk+'|'+c.bet_type]=c;});
-  let h='<div class="heatwrap"><table class="heat"><thead><tr><th>scope</th>'+cols.map(c=>'<th>'+esc(c)+'</th>').join('')+'</tr></thead><tbody>';
+  let h='<div class="heatwrap"><table class="heat"><thead><tr><th>scope</th>'+cols.map(c=>'<th>'+esc(prettyBet(c))+'</th>').join('')+'</tr></thead><tbody>';
   scopes.forEach(sk=>{h+='<tr><td class="hs">'+esc(sk)+'</td>'+cols.map(c=>{const cell=by[sk+'|'+c];
     if(!cell)return '<td class="hc empty2"></td>';
-    return '<td class="hc" style="'+heatColor(cell.brier_edge)+'" title="'+esc(c)+' · n='+cell.n+' · hit '+pct(cell.hit_rate)+' · Brier '+num(cell.brier)+' · '+esc(cell.trend||'')+'">'
+    return '<td class="hc" style="'+heatColor(cell.brier_edge)+'" title="'+esc(prettyBet(c))+' · n='+cell.n+' · hit '+pct(cell.hit_rate)+' · Brier '+num(cell.brier)+' · '+esc(cell.trend||'')+'">'
       +'<span class="he">'+(cell.brier_edge==null?'—':signed(cell.brier_edge,2))+'</span>'+improvDot(cell.trend)+'</td>';}).join('')+'</tr>';});
   return h+'</tbody></table></div>';
 }
@@ -703,7 +703,7 @@ function settledTodayCard(scope){
   let h='<div class="card pad0 reveal" style="margin-top:var(--s3)"><h3 style="padding:var(--s3) var(--s3) var(--s2)">Settled today '
     +'<span class="r"><b class="'+(pctc>=50?'res-ok':'res-no')+'">'+correct+'/'+rows.length+'</b> correct · '+pctc+'%</span></h3>';
   h+='<div style="max-height:300px;overflow:auto"><table><thead><tr><th>Market</th><th>Bet</th><th>Lean</th><th>Model</th><th>Result</th><th>Call</th></tr></thead><tbody>';
-  rows.forEach(r=>{h+='<tr><td title="'+esc(r.ticker)+'">'+esc(r.ticker)+'</td><td>'+esc(r.bet_type)+'</td>'
+  rows.forEach(r=>{h+='<tr><td title="'+esc(r.ticker)+'">'+esc((r.ticker||'').slice(0,26))+'</td><td>'+esc(prettyBet(r.bet_type))+'</td>'
     +'<td>'+esc(r.lean)+(r.traded?' <span style="color:var(--amber);font-size:10px">·traded</span>':'')+'</td>'
     +'<td>'+num(r.prob,2)+'</td><td>'+(r.result?'YES':'NO')+'</td>'
     +'<td>'+(r.correct?'<span class="res-ok">✓</span>':'<span class="res-no">✗</span>')+'</td></tr>';});
@@ -718,12 +718,45 @@ document.addEventListener('click',e=>{
   const gh=e.target.closest&&e.target.closest('.ghead');
   if(gh){gh.parentElement.classList.toggle('open');}
 });
-// ---- day's games (from the bet board, grouped by matchup) ----
+// ---- market-type readability ----
+function titleCase(s){return String(s).replace(/_/g,' ').replace(/\b\w/g,c=>c.toUpperCase());}
+const _BT_BASE={winner:'Moneyline',spread:'Spread',total:'Total (O/U)',team_total:'Team Total',
+  yrfi:'1st-Inning Run',market:'Price',ladder:'Price Ladder','15m_direction':'15-min Up/Down',
+  between:'Range',other:'Other'};
+const _BT_SEG={f5:'First 5',f3:'First 3',f7:'First 7',h1:'1st Half',h2:'2nd Half',
+  q1:'Q1',q2:'Q2',q3:'Q3',q4:'Q4',p1:'P1',p2:'P2',p3:'P3'};
+const _BT_MKT={winner:'Moneyline',spread:'Spread',total:'Total',team_total:'Team Total'};
+const _BT_PROP={home_runs:'Home Runs',hits:'Hits',strikeouts:'Strikeouts',rbis:'RBIs',outs:'Outs',
+  stolen_bases:'Stolen Bases',hits_runs_rbis:'H+R+RBI',total_bases:'Total Bases'};
+function prettyBet(bt){
+  if(!bt)return '—';
+  if(_BT_BASE[bt])return _BT_BASE[bt];
+  let m;
+  if((m=String(bt).match(/^prop_(.+)$/)))return 'Prop · '+(_BT_PROP[m[1]]||titleCase(m[1]));
+  if((m=String(bt).match(/^(f5|f3|f7|h1|h2|q1|q2|q3|q4|p1|p2|p3)_(winner|spread|total|team_total)$/)))
+    return _BT_SEG[m[1]]+' · '+_BT_MKT[m[2]];
+  return titleCase(bt);
+}
+const _MON=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+function prettyMatchup(m){
+  const mm=String(m||'').match(/^(\d{2})([A-Z]{3})(\d{2})(\d{4})?([A-Z0-9]+)$/);
+  if(!mm)return m||'?';
+  const mon={JAN:'Jan',FEB:'Feb',MAR:'Mar',APR:'Apr',MAY:'May',JUN:'Jun',JUL:'Jul',AUG:'Aug',SEP:'Sep',OCT:'Oct',NOV:'Nov',DEC:'Dec'}[mm[2]]||mm[2];
+  return mm[5]+' · '+mon+' '+parseInt(mm[3],10);
+}
+function prettyDay(d,today){
+  if(d===today)return 'Today';
+  const t=Date.parse(today+'T00:00:00Z'),dd=Date.parse(d+'T00:00:00Z');
+  if(!isNaN(t)&&!isNaN(dd)){const diff=Math.round((dd-t)/86400000);
+    if(diff===1)return 'Tomorrow';if(diff===-1)return 'Yesterday';}
+  const p=d.split('-');return (_MON[(+p[1]||1)-1]||'')+' '+(+p[2]||'');
+}
+// ---- day's games (from the bet board, grouped by day then matchup) ----
 function boardFor(label){return STATE.board&&STATE.board[String(label).toLowerCase()];}
 function boardRows(rows){
-  return '<div style="max-height:320px;overflow:auto"><table><thead><tr><th>Market</th><th>Matchup</th><th>Pick</th><th>Model</th><th>Mkt</th><th>Edge</th></tr></thead><tbody>'
-    +rows.map(r=>'<tr><td title="'+esc(r.ticker)+'">'+esc((r.ticker||'').slice(0,22))+'</td><td>'+esc((r.matchup||'').slice(0,16))+'</td>'
-      +'<td>'+(r.pick?'<span class="pill '+(String(r.pick).toLowerCase()==='no'?'no':'yes')+'">'+esc(r.pick)+'</span>':'—')+'</td>'
+  return '<div style="max-height:340px;overflow:auto"><table><thead><tr><th>Matchup</th><th>Market</th><th>Pick</th><th>Model</th><th>Mkt</th><th>Edge</th></tr></thead><tbody>'
+    +rows.map(r=>'<tr><td>'+esc(prettyMatchup(r.matchup))+'</td><td title="'+esc(r.ticker)+'">'+esc((r.ticker||'').slice(0,24))+'</td>'
+      +'<td>'+(r.pick?'<span class="pill '+(String(r.pick).toLowerCase()==='no'?'no':'yes')+'">'+esc(String(r.pick).toUpperCase())+'</span>':'—')+'</td>'
       +'<td>'+num(r.probability,2)+'</td><td>'+(r.market_probability==null?'—':num(r.market_probability,2))+'</td>'
       +'<td class="'+((r.edge||0)>=0?'pos':'neg')+'">'+signed(r.edge||0,1)+'</td></tr>').join('')
     +'</tbody></table></div>';
@@ -732,35 +765,46 @@ function betRankCard(label){
   const grp=boardFor(label);
   const types=grp?Object.keys(grp).filter(t=>grp[t]&&grp[t].length):[];
   if(!types.length)return '';
-  let h='<div class="card reveal" style="margin-top:var(--s3)"><h3>Bet-type rankings <span class="r">every priced market · choose a bet</span></h3>';
-  h+='<div class="bt-tabs">'+types.map((t,i)=>'<button class="bt-tab'+(i===0?' on':'')+'" data-bt="'+esc(t)+'">'+esc(t)+'<span class="c">'+grp[t].length+'</span></button>').join('')+'</div>';
+  types.sort((a,b)=>grp[b].length-grp[a].length);
+  const total=types.reduce((n,t)=>n+grp[t].length,0);
+  let h='<div class="card reveal" style="margin-top:var(--s3)"><h3>All markets by category <span class="r">'+total+' priced now · every market, not just traded</span></h3>';
+  h+='<div class="bt-tabs">'+types.map((t,i)=>'<button class="bt-tab'+(i===0?' on':'')+'" data-bt="'+esc(t)+'">'+esc(prettyBet(t))+'<span class="c">'+grp[t].length+'</span></button>').join('')+'</div>';
   h+='<div class="bt-panels">'+types.map((t,i)=>{const rows=[...grp[t]].sort((a,b)=>(b.edge||0)-(a.edge||0));
     return '<div class="bt-panel'+(i===0?' on':'')+'" data-bt="'+esc(t)+'">'+boardRows(rows)+'</div>';}).join('')+'</div>';
   return h+'</div>';
 }
 function gameBreakdown(rows){
   rows=[...rows].sort((a,b)=>Math.abs(b.edge||0)-Math.abs(a.edge||0));
-  return '<table><thead><tr><th>Bet</th><th>Market</th><th>Pick</th><th>Model</th><th>Mkt</th><th>Edge</th></tr></thead><tbody>'
-    +rows.map(r=>'<tr><td>'+esc(r.bet_type)+'</td><td title="'+esc(r.ticker)+'">'+esc((r.ticker||'').slice(0,24))+'</td>'
-      +'<td>'+(r.pick?'<span class="pill '+(String(r.pick).toLowerCase()==='no'?'no':'yes')+'">'+esc(r.pick)+'</span>':'—')+'</td>'
+  return '<table><thead><tr><th>Bet type</th><th>Market</th><th>Pick</th><th>Model</th><th>Mkt</th><th>Edge</th></tr></thead><tbody>'
+    +rows.map(r=>'<tr><td>'+esc(prettyBet(r.bet_type))+'</td><td title="'+esc(r.ticker)+'">'+esc((r.ticker||'').slice(0,26))+'</td>'
+      +'<td>'+(r.pick?'<span class="pill '+(String(r.pick).toLowerCase()==='no'?'no':'yes')+'">'+esc(String(r.pick).toUpperCase())+'</span>':'—')+'</td>'
       +'<td>'+num(r.probability,2)+'</td><td>'+(r.market_probability==null?'—':num(r.market_probability,2))+'</td>'
       +'<td class="'+((r.edge||0)>=0?'pos':'neg')+'">'+signed(r.edge||0,1)+'</td></tr>').join('')
     +'</tbody></table>';
+}
+function dayGames(rows){
+  const byGame={};rows.forEach(r=>{const m=r.matchup||'?';(byGame[m]=byGame[m]||[]).push(r);});
+  const games=Object.keys(byGame).sort((a,b)=>Math.max(...byGame[b].map(r=>Math.abs(r.edge||0)))-Math.max(...byGame[a].map(r=>Math.abs(r.edge||0))));
+  return '<div class="games">'+games.map(m=>{const rows2=byGame[m];const be=Math.max(...rows2.map(r=>Math.abs(r.edge||0)));
+    return '<div class="game"><div class="ghead"><span class="gx">▸</span><span class="gm">'+esc(prettyMatchup(m))+'</span><span class="gc">'+rows2.length+' markets</span><span class="ge">'+signed(be,1)+' best</span></div>'
+      +'<div class="gbody">'+gameBreakdown(rows2)+'</div></div>';}).join('')+'</div>';
 }
 function gamesCard(vert,label){
   if(vert!=='SPORTS')return '';
   const grp=boardFor(label);
   if(!grp)return '';
-  const byGame={};
-  Object.values(grp).forEach(rows=>rows.forEach(r=>{const m=r.matchup||'?';(byGame[m]=byGame[m]||[]).push(r);}));
-  const games=Object.keys(byGame);
-  if(!games.length)return '';
-  games.sort((a,b)=>Math.max(...byGame[b].map(r=>Math.abs(r.edge||0)))-Math.max(...byGame[a].map(r=>Math.abs(r.edge||0))));
-  let h='<div class="card reveal" style="margin-top:var(--s3)"><h3>Today\'s games — full breakdown <span class="r">'+games.length+' matchups · click one</span></h3><div class="games">';
-  games.forEach(m=>{const rows=byGame[m];const be=Math.max(...rows.map(r=>Math.abs(r.edge||0)));
-    h+='<div class="game"><div class="ghead"><span class="gx">▸</span><span class="gm">'+esc(m)+'</span><span class="gc">'+rows.length+' markets</span><span class="ge">'+signed(be,1)+' best edge</span></div>'
-      +'<div class="gbody">'+gameBreakdown(rows)+'</div></div>';});
-  return h+'</div></div>';
+  const all=[];Object.values(grp).forEach(rows=>rows.forEach(r=>all.push(r)));
+  if(!all.length)return '';
+  const byDay={};all.forEach(r=>{const d=(r.close_time||'').slice(0,10);if(d)(byDay[d]=byDay[d]||[]).push(r);});
+  const days=Object.keys(byDay).sort();
+  if(!days.length)return '';
+  const today=new Date().toISOString().slice(0,10);
+  let defIdx=days.findIndex(d=>d>=today);if(defIdx<0)defIdx=days.length-1;
+  const nGames=(rows)=>{const s=new Set();rows.forEach(r=>s.add(r.matchup||'?'));return s.size;};
+  let h='<div class="card reveal" style="margin-top:var(--s3)"><h3>Games — full breakdown <span class="r">pick a day, then a game</span></h3>';
+  h+='<div class="bt-tabs">'+days.map((d,i)=>'<button class="bt-tab'+(i===defIdx?' on':'')+'" data-bt="day-'+d+'">'+esc(prettyDay(d,today))+'<span class="c">'+nGames(byDay[d])+'</span></button>').join('')+'</div>';
+  h+='<div class="bt-panels">'+days.map((d,i)=>'<div class="bt-panel'+(i===defIdx?' on':'')+'" data-bt="day-'+d+'">'+dayGames(byDay[d])+'</div>').join('')+'</div>';
+  return h+'</div>';
 }
 function walkCard(vert,label){
   if(vert!=='SPORTS')return '';
@@ -783,10 +827,10 @@ function walkCard(vert,label){
 function betTypeCard(bt){
   const keys=bt?Object.keys(bt):[];
   if(!keys.length)return '';
-  let h='<div class="card pad0 reveal" style="margin-top:var(--s3)"><h3 style="padding:var(--s3) var(--s3) var(--s2)">Accuracy by bet type <span class="r">recent vs prior</span></h3>';
+  let h='<div class="card pad0 reveal" style="margin-top:var(--s3)"><h3 style="padding:var(--s3) var(--s3) var(--s2)">Accuracy by bet type <span class="r">settled · recent vs prior</span></h3>';
   h+='<div style="max-height:340px;overflow:auto"><table><thead><tr><th>Bet type</th><th>n</th><th>Hit</th><th>Brier</th><th>Mkt</th><th>Edge</th><th>Trend</th></tr></thead><tbody>';
   keys.forEach(k=>{const c=bt[k],s=c.summary||{},imp=c.improvement||{};
-    h+='<tr><td>'+esc(k)+'</td><td>'+commaN(s.n)+'</td><td>'+pct(s.hit_rate)+'</td><td>'+num(s.brier)+'</td>'
+    h+='<tr><td>'+esc(prettyBet(k))+'</td><td>'+commaN(s.n)+'</td><td>'+pct(s.hit_rate)+'</td><td>'+num(s.brier)+'</td>'
       +'<td>'+num(s.market_brier)+'</td><td class="'+sgn(s.brier_edge)+'">'+signed(s.brier_edge,2)+'</td><td>'+improvArrow(imp)+'</td></tr>';});
   return h+'</tbody></table></div></div>';
 }
