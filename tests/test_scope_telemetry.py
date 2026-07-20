@@ -56,15 +56,31 @@ def _conn():
             probability_yes REAL, market_implied_yes REAL,
             ev_cents REAL, price_cents INTEGER, created_at TEXT)"""
     )
+    # Graded quality reads the fused forecast of record (phantom grading), so a
+    # market we price counts even without a BUY decision. market_implied rides
+    # in the fused features JSON.
+    conn.execute(
+        """CREATE TABLE signals(source TEXT, market_ticker TEXT,
+            probability_yes REAL, created_at TEXT, features TEXT)"""
+    )
     conn.execute("CREATE TABLE settlements(market_ticker TEXT, result_yes INTEGER, settled_at TEXT)")
     return conn
 
 
-def _settle(conn, ticker, prob, result, days_ago):
+def _fused(conn, ticker, prob, days_ago, *, market=0.5):
     conn.execute(
-        "INSERT INTO decisions VALUES(?,?,?,?,?,?,?, datetime('now', ?))",
-        (ticker, "BUY_YES", "YES", prob, 0.5, 3.0, 55, f"-{days_ago + 1} days"),
+        "INSERT INTO signals VALUES('fused_forecast', ?, ?, datetime('now', ?), ?)",
+        (ticker, prob, f"-{days_ago + 1} days", f'{{"market_implied_yes": {market}}}'),
     )
+
+
+def _settle(conn, ticker, prob, result, days_ago, *, traded=True):
+    _fused(conn, ticker, prob, days_ago)
+    if traded:
+        conn.execute(
+            "INSERT INTO decisions VALUES(?,?,?,?,?,?,?, datetime('now', ?))",
+            (ticker, "BUY_YES", "YES", prob, 0.5, 3.0, 55, f"-{days_ago + 1} days"),
+        )
     conn.execute(
         "INSERT INTO settlements VALUES(?,?, datetime('now', ?))",
         (ticker, result, f"-{days_ago} days"),
@@ -100,6 +116,8 @@ def test_pick_board_and_settled_today():
     conn = _conn()
     # settled within the day: model right, then model wrong (winner bet type)
     for tick, prob, res, hrs in [("KXMLBGAME-A-NYYBOS", 0.72, 1, 5), ("KXMLBGAME-B-LADSF", 0.68, 0, 8)]:
+        conn.execute("INSERT INTO signals VALUES('fused_forecast', ?, ?, datetime('now','-1 days'), ?)",
+                     (tick, prob, '{"market_implied_yes": 0.5}'))
         conn.execute("INSERT INTO decisions VALUES(?,?,?,?,?,?,?, datetime('now','-1 days'))",
                      (tick, "BUY_YES", "YES", prob, 0.5, 3.0, 55))
         conn.execute("INSERT INTO settlements VALUES(?,?, datetime('now', ?))", (tick, res, f"-{hrs} hours"))

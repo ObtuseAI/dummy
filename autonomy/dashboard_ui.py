@@ -878,10 +878,13 @@ function scopeView(vert,label){
   if(!sc)return topbar(label,vert.toLowerCase())+'<div class="card"><div class="empty">'+esc(label)+' — no snapshot data yet.<br><span style="color:var(--faint)">the board refreshes every 20 min; leagues populate as their markets settle</span></div></div>';
   const s=sc.summary;
   const inSeason=sc.in_season!==false, basis=sc.basis||'';
-  const gradedN=(s&&s.n)||0;
-  const seasonBadge=!inSeason
+  // Three-state season, so an off-season league awake for preseason never reads
+  // "in season · awaiting grades". Backend sets season_status; fall back for old snapshots.
+  const status=sc.season_status||(!inSeason?'off':(basis==='current'?'in':'upcoming'));
+  const seasonBadge=status==='off'
     ? '<span class="badge off"><span class="d"></span>out of season'+(basis==='last-season'?' · last season':'')+'</span>'
-    : (gradedN===0?'<span class="badge"><span class="d"></span>in season · awaiting grades</span>':'');
+    : (status==='upcoming'?'<span class="badge"><span class="d"></span>preseason · not yet playing</span>':'');
+  const seasonWord=status==='in'?'in season':(status==='upcoming'?'preseason':'off season');
   let h=topbar(label,vert.toLowerCase()+' · graded forecast quality',seasonBadge);
   // scope hero: edge gauge + key figures
   h+='<div class="grid hero">';
@@ -894,8 +897,8 @@ function scopeView(vert,label){
     +'</div></div>';
   h+='<div class="card reveal"><div class="mini">'
     +miniRow('Open picks',commaN(sc.picks?sc.picks.length:0),'amb')
-    +miniRow('Season',inSeason?'in season':'out of season',inSeason?'pos':'neg')
-    +miniRow('Data basis',basis==='current'?'current window':(basis==='last-season'?'last season':(inSeason?'awaiting':'no history')),basis==='last-season'?'amb':'')
+    +miniRow('Season',seasonWord,status==='in'?'pos':(status==='upcoming'?'amb':'neg'))
+    +miniRow('Data basis',basis==='current'?'current window':(basis==='last-season'?'last season':(status==='upcoming'?'preseason — no games yet':'no history')),basis==='last-season'?'amb':'')
     +miniRow('Market Brier',num(s.market_brier),'')
     +'</div></div>';
   h+='</div>';

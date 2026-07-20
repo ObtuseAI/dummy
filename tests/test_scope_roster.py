@@ -21,16 +21,27 @@ def _mk_conn() -> sqlite3.Connection:
             ev_cents REAL, price_cents INTEGER, created_at TEXT)"""
     )
     conn.execute(
+        """CREATE TABLE signals(source TEXT, market_ticker TEXT,
+            probability_yes REAL, created_at TEXT, features TEXT)"""
+    )
+    conn.execute(
         "CREATE TABLE settlements(market_ticker TEXT, result_yes INTEGER, settled_at TEXT)"
     )
     return conn
 
 
-def _add_settled(conn, ticker, *, prob, result, days_ago):
+def _add_settled(conn, ticker, *, prob, result, days_ago, traded=True):
+    # Grading reads the fused forecast of record -> a league we price shows up
+    # even with no BUY decision (phantom grading).
     conn.execute(
-        "INSERT INTO decisions VALUES(?,?,?,?,?,?,?, datetime('now', ?))",
-        (ticker, "BUY_YES", "YES", prob, 0.5, 3.0, 55, f"-{days_ago + 1} days"),
+        "INSERT INTO signals VALUES('fused_forecast', ?, ?, datetime('now', ?), ?)",
+        (ticker, prob, f"-{days_ago + 1} days", '{"market_implied_yes": 0.5}'),
     )
+    if traded:
+        conn.execute(
+            "INSERT INTO decisions VALUES(?,?,?,?,?,?,?, datetime('now', ?))",
+            (ticker, "BUY_YES", "YES", prob, 0.5, 3.0, 55, f"-{days_ago + 1} days"),
+        )
     conn.execute(
         "INSERT INTO settlements VALUES(?,?, datetime('now', ?))",
         (ticker, result, f"-{days_ago} days"),
@@ -60,16 +71,70 @@ def test_full_roster_listed_with_season_and_last_season_fallback():
     assert sports["MLB"]["in_season"] is True
     assert sports["MLB"]["basis"] == "current"
     assert sports["MLB"]["summary"]["n"] == 1
+    assert sports["MLB"]["season_status"] == "in"          # active + grading now
 
-    # WNBA has no current-window grade, so it falls back to last season.
+    # WNBA has no current-window grade, so it falls back to last season and reads
+    # "upcoming" (active, but not yet playing this window) -- never "in season".
     assert sports["WNBA"]["in_season"] is True
     assert sports["WNBA"]["basis"] == "last-season"
     assert sports["WNBA"]["summary"]["n"] == 1
+    assert sports["WNBA"]["season_status"] == "upcoming"
 
     # NBA is out of season with no history at all -> listed, flagged, empty.
     assert sports["NBA"]["in_season"] is False
     assert sports["NBA"]["basis"] == "none"
     assert sports["NBA"]["summary"]["n"] == 0
+    assert sports["NBA"]["season_status"] == "off"
+
+    # Every roster league is wired to ITS OWN scope -- no basketball/football
+    # league is folded into another (WNBA != NBA, NFL != NCAAF, ...).
+    for lg in SPORTS_ROSTER:
+        assert sports[lg]["label"] == lg
+
+
+def test_every_league_wired_to_its_own_scope_no_coupling():
+    """Each league's Kalshi series classifies to ITS OWN league -- WNBA is never
+    folded into NBA/NCAAMB, NFL never into NCAAF. Guards against the sibling
+    coupling that silently drops or merges a league's markets."""
+    from autonomy.picks import _scope_of
+    from autonomy.scope_analytics import bet_type_of, scope_key
+    from autonomy.sports_markets import is_known_sports_market
+
+    canonical = {
+        "MLB": "KXMLBGAME-26JUL19NYYBOS-NYY",
+        "WNBA": "KXWNBAGAME-26JUL19NYLLV-NYL",
+        "NBA": "KXNBAGAME-26NOV02LALBOS-LAL",
+        "NFL": "KXNFLGAME-26SEP07KCBAL-KC",
+        "NHL": "KXNHLGAME-26OCT08BOSFLA-BOS",
+        "NCAAF": "KXNCAAFGAME-26AUG30ALAGA-ALA",
+        "NCAAMB": "KXNCAAMBGAME-26NOV04DUKEKU-DUKE",
+    }
+    for lg in SPORTS_ROSTER:
+        tk = canonical[lg]
+        assert is_known_sports_market(tk), f"{lg} series not in the registry"
+        assert _scope_of(tk)[0] == lg.lower(), f"{lg} misclassified by _scope_of"
+        assert scope_key(tk) == ("SPORTS", lg), f"{lg} misrouted by scope_key"
+        assert bet_type_of(tk) == "winner"
+    # Explicit sibling non-coupling.
+    assert scope_key(canonical["WNBA"]) != scope_key(canonical["NBA"])
+    assert scope_key(canonical["NFL"]) != scope_key(canonical["NCAAF"])
+
+
+def test_forecast_without_a_trade_still_grades_the_scope():
+    """A league we PRICE but never take a BUY side on (0 decisions) still shows
+    graded quality -- the WNBA-missing-everything bug: grading joined settlements
+    to decisions, so phantom-graded scopes vanished."""
+    conn = _mk_conn()
+    for i in range(6):
+        _add_settled(conn, f"KXWNBAGAME-26JUL{i:02d}NYLLV-NYL", prob=0.7, result=1,
+                     days_ago=2 + i, traded=False)   # forecast + settled, never traded
+    conn.commit()
+    wnba = build_scope_analytics(conn, season_active={"wnba": True})["verticals"]["SPORTS"]["scopes"]["WNBA"]
+    assert wnba["summary"]["n"] == 6            # graded despite zero decisions
+    assert wnba["summary"]["traded"] == 0       # honestly marked untraded
+    assert wnba["basis"] == "current"
+    assert wnba["season_status"] == "in"
+    assert "winner" in wnba["bet_types"]
 
 
 def test_unknown_season_defaults_in_season():
