@@ -112,7 +112,8 @@ class SportsGlickoSignal:
         ratings = self._ratings_for(league)
         if ratings is None:
             return None
-        hadv = _HOME_ADVANTAGE.get(league, 35.0)
+        from autonomy.sports.tuner import load_tuned
+        hadv = load_tuned(league, 'glicko', 'home_advantage', _HOME_ADVANTAGE.get(league, 35.0))
         if subject_home is True:
             p_yes = ratings.matchup_prob(subject, opponent, home_advantage=hadv)
         elif subject_home is False:

@@ -56,8 +56,9 @@ class SportsMovEloSignal:
         if store is None:
             return None
         try:
-            model = LakeMovElo(store, league=league,
-                               home_advantage=_HOME_ADVANTAGE.get(league, 35.0)).warm(self._now())
+            from autonomy.sports.tuner import load_tuned
+            hadv = load_tuned(league, 'mov_elo', 'home_advantage', _HOME_ADVANTAGE.get(league, 35.0))
+            model = LakeMovElo(store, league=league, home_advantage=hadv).warm(self._now())
         except Exception:  # noqa: BLE001
             return None
         self._models[league] = model

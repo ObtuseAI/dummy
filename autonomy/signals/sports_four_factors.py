@@ -74,7 +74,8 @@ class SportsFourFactorsSignal:
 
         model = LakeFourFactors(store, league=league)
         as_of = self._now()
-        hadv = _HOME_ADVANTAGE_PROB.get(league, 0.05)
+        from autonomy.sports.tuner import load_tuned
+        hadv = load_tuned(league, 'four_factors', 'home_advantage_prob', _HOME_ADVANTAGE_PROB.get(league, 0.05))
         try:
             if subject_home is True:
                 p = model.matchup_prob(subject, opponent, as_of, home_advantage_prob=hadv)

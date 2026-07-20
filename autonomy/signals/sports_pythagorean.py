@@ -91,7 +91,8 @@ class SportsPythagoreanSignal:
         model = self._model_for(league)
         if model is None:
             return None
-        hadv = _HOME_ADVANTAGE_PROB.get(league, 0.05)
+        from autonomy.sports.tuner import load_tuned
+        hadv = load_tuned(league, 'pythagenpat', 'home_advantage_prob', _HOME_ADVANTAGE_PROB.get(league, 0.05))
         if subject_home is True:
             p_yes = model.matchup_prob(subject, opponent, home_advantage_prob=hadv)
         elif subject_home is False:
