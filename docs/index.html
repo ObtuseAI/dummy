@@ -147,9 +147,9 @@
     <a class="btn" href="#board">See the board</a>
   </div>
   <div class="board-frame">
-    <img src="assets/tote-overview.png" alt="The Dummy Tote evidence board — system state, top edges, ranked picks">
+    <img src="assets/dummy-overview.png" alt="The Dummy Totalizator — account, ROI, and calibrated accuracy over time">
   </div>
-  <div class="cap">The Dummy Tote — a native command board read straight from the live paper runtime.</div>
+  <div class="cap">The Dummy Totalizator — a live command board read straight from the paper runtime.</div>
 </div>
 
 <section id="stats" style="border-top:none;padding-top:8px">
@@ -157,7 +157,7 @@
     <div class="lamps">
       <div class="cell"><div class="n">3,663</div><div class="l">markets priced</div></div>
       <div class="cell"><div class="n">7</div><div class="l">verticals</div></div>
-      <div class="cell"><div class="n">5,906</div><div class="l">tests green</div></div>
+      <div class="cell"><div class="n">6,486</div><div class="l">tests green</div></div>
       <div class="cell"><div class="n">11+</div><div class="l">self-improve loops</div></div>
       <div class="cell"><div class="n">0</div><div class="l">auto capital</div></div>
     </div>
@@ -186,6 +186,7 @@
           <li>Winners, totals, spreads, team totals, YRFI/NRFI, first-five, halves, quarters, periods</li>
           <li>Platoon splits, bullpen quality, rivalry awareness, plate-appearance simulation</li>
           <li>Power-ratings ensemble (FPI/BPI, Elo, Massey, tie-aware Colley) + licensed multi-book de-vig</li>
+          <li>95,810-game history lake → Glicko-2, MOV-Elo, Pythagenpat, Four Factors, EPA/play, walk-forward tuned</li>
           <li>Player props via metered licensed consensus; correlation-aware parlay pricing</li>
         </ul>
       </div>
@@ -227,12 +228,10 @@
   <div class="wrap">
     <div class="eyebrow">The command board</div>
     <h2>A totalizator over the live runtime</h2>
-    <p>The <strong>Dummy Tote</strong> is a true native desktop app (PySide6) that reads only the runtime artifacts the scheduled loops already write — it never touches the trading path. Pitch-green felt, brass rules, and amber lamps that flip on every re-price.</p>
+    <p>The <strong>Dummy Totalizator</strong> is a read-only web board at <code>127.0.0.1:8787</code> that reads only the runtime artifacts the scheduled loops already write — it never touches the trading path. Pitch-green phosphor, split-flap lamps that flip on every re-price, a live ticker tape, and a ⌘K palette to any coin or league.</p>
     <div class="gal">
-      <div class="shot"><img src="assets/tote-betboard.png" alt="Bet board"><div class="c"><b>Bet board</b> — every priced market ranked by edge, with A/B/C conviction tiers</div></div>
-      <div class="shot"><img src="assets/tote-mispricing.png" alt="Mispricing"><div class="c"><b>Mispricing</b> — model vs de-vigged book vs price; challenger evidence, never auto-staked</div></div>
-      <div class="shot"><img src="assets/tote-crypto.png" alt="Crypto paper twin"><div class="c"><b>Crypto twin</b> — throughput funnel: paper trades vs the discipline of policy rejection</div></div>
-      <div class="shot"><img src="assets/tote-readiness.png" alt="Promotion readiness"><div class="c"><b>Readiness</b> — every challenger scope, closest to promotion first</div></div>
+      <div class="shot"><img src="assets/dummy-sports-scope.png" alt="Sports scope"><div class="c"><b>Per-league scope</b> — graded forecast quality, model vs book, live picks by edge, accuracy by bet type, and a day-by-day games breakdown</div></div>
+      <div class="shot"><img src="assets/dummy-crypto-scope.png" alt="Crypto scope"><div class="c"><b>Per-coin scope</b> — the model beating the closing line, accuracy by bet type, every priced market by category, and today's settled calls</div></div>
     </div>
   </div>
 </section>

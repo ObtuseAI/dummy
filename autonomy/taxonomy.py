@@ -49,6 +49,20 @@ SOURCE_TAXONOMY: dict[str, str] = {
     # of the promotion ladder, and fusion never reads ledger rows back.
     "fused_forecast": "fused",
     "sports_elo": "sports_elo",
+    # Wave-56: Glicko-2 challenger priced off the history lake. Same game-winner
+    # home as Elo, graded head-to-head under its own scope (challenger-only).
+    "sports_glicko": "sports_elo",
+    # Wave-56: Pythagenpat challenger (scoring-margin strength), same home.
+    "sports_pythagorean": "sports_elo",
+    # Wave-56: MOV-Elo challenger (margin-of-victory ratings), same home.
+    "sports_mov_elo": "sports_elo",
+    # Wave-56: Four Factors challenger (basketball boxscore efficiency), same home.
+    "sports_four_factors": "sports_elo",
+    # Wave-56: scoring-model challenger prices SPREAD + TOTAL (expected margin/
+    # total from lake scoring rates); same lake-sports home, its own scope.
+    "sports_scoring": "sports_elo",
+    # Wave-56: EPA/play challenger (nflfastR), same lake-sports home.
+    "sports_epa": "sports_elo",
     "sportsbook_consensus": "sportsbook",
     # Wave-9: licensed multi-book (The Odds API) de-vig consensus. Same
     # specialist home as the single-book ESPN consensus; graded head-to-head

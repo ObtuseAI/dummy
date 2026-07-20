@@ -83,14 +83,21 @@ _STAT_KEYS: dict[str, tuple[str, ...]] = {
     # ESPN's basketball schema is shared across leagues, so ncaamb reuses the
     # NBA whitelist + split-key handling verbatim (see _parse_stat_row below).
     "ncaamb": ("offensiveRebounds", "turnovers"),
+    # WNBA shares ESPN's basketball schema (same composites + ORB/TO keys), so
+    # it reuses the NBA whitelist + split-key handling verbatim. Added Wave-56
+    # for the four-factors analytic (in-season league).
+    "wnba": ("offensiveRebounds", "turnovers"),
 }
 
-# NBA-only: ESPN reports made+attempted as one composite displayValue
-# ("61-99"). Split each into two float stats under the names the brief's
-# possessions formula (FGA - ORB + TO + 0.44*FTA) expects.
+# Basketball: ESPN reports made+attempted as one composite displayValue
+# ("61-99"). Split each into two float stats under the names the possessions
+# formula (FGA - ORB + TO + 0.44*FTA) and eFG% (needs 3PM) expect.
 _NBA_SPLIT_KEYS: dict[str, tuple[str, str]] = {
     "fieldGoalsMade-fieldGoalsAttempted": ("fieldGoalsMade", "fieldGoalsAttempted"),
     "freeThrowsMade-freeThrowsAttempted": ("freeThrowsMade", "freeThrowsAttempted"),
+    # Wave-56: 3-pointers, so eFG% = (FGM + 0.5*3PM)/FGA is exact.
+    "threePointFieldGoalsMade-threePointFieldGoalsAttempted":
+        ("threePointFieldGoalsMade", "threePointFieldGoalsAttempted"),
 }
 
 
@@ -132,7 +139,7 @@ def _parse_stat_row(league: str, name: str, display_value: Any, out: dict[str, f
         except (TypeError, ValueError):
             pass
         return
-    if league in ("nba", "ncaamb") and name in _NBA_SPLIT_KEYS:
+    if league in ("nba", "ncaamb", "wnba") and name in _NBA_SPLIT_KEYS:
         made_key, attempted_key = _NBA_SPLIT_KEYS[name]
         parts = str(display_value).split("-")
         if len(parts) == 2:

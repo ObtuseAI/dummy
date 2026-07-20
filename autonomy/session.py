@@ -313,6 +313,40 @@ def build_brain(mode: SessionMode):
 
     seasons = SeasonMonitor()
     registry.register(SportsEloSignal(seasons=seasons))
+    # Glicko-2 challenger: same tickers as Elo, but priced off the persistent
+    # history lake with per-team rating deviation (honest uncertainty on
+    # lightly-observed teams). Fail-closed: abstains until the lake has games;
+    # earns weight only through the contested-Brier promotion gate.
+    from autonomy.signals.sports_glicko import SportsGlickoSignal
+
+    registry.register(SportsGlickoSignal(seasons=seasons))
+    # Pythagenpat challenger: scoring-margin team strength (diversifies Glicko's
+    # W/L-only view). Same lake, fail-closed, contested-Brier gated.
+    from autonomy.signals.sports_pythagorean import SportsPythagoreanSignal
+
+    registry.register(SportsPythagoreanSignal(seasons=seasons))
+    # MOV-Elo challenger: recency-weighted margin-of-victory ratings -- the
+    # sharpest of the three lake rating analytics in walk-forward. Gated.
+    from autonomy.signals.sports_mov_elo import SportsMovEloSignal
+
+    registry.register(SportsMovEloSignal(seasons=seasons))
+    # Four Factors challenger (basketball): shooting/turnovers/rebounding/free
+    # throws from persisted boxscores -- self-scopes to NBA/WNBA/NCAAMB (abstains
+    # where there are no boxscore inputs). Gated.
+    from autonomy.signals.sports_four_factors import SportsFourFactorsSignal
+
+    registry.register(SportsFourFactorsSignal(seasons=seasons))
+    # Scoring model challenger: prices SPREAD + TOTAL markets from expected
+    # margin/total (what the rating analytics don't). Self-scopes to spread/
+    # total; gated.
+    from autonomy.signals.sports_scoring import SportsScoringSignal
+
+    registry.register(SportsScoringSignal(seasons=seasons))
+    # EPA/play challenger (NFL gold standard): net EPA from nflfastR PBP in the
+    # lake. Self-scopes to leagues with EPA data; gated.
+    from autonomy.signals.sports_epa import SportsEpaSignal
+
+    registry.register(SportsEpaSignal(seasons=seasons))
     # De-vigged sportsbook moneyline + open->close steam: the sharpest public
     # game forecast, and the trap detector when Elo fights the book.
     registry.register(SportsbookConsensusSignal())

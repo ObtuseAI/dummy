@@ -90,6 +90,27 @@ def scope_key(ticker: str) -> tuple[str, str]:
     return vertical.name, vertical.name
 
 
+def bet_type_of(ticker: str) -> str:
+    """The wager family a market belongs to, for per-bet-type accuracy slicing.
+
+    Sports resolve to the registry's ``market_type`` (winner / spread / total /
+    team_total / yrfi / prop / …); crypto to its contract family (ladder /
+    between / 15m_direction / …); anything else to ``"other"``.
+    """
+    vertical = classify_vertical(ticker)
+    if vertical is Vertical.CRYPTO:
+        from autonomy.signals.crypto_spot import parse_crypto_ticker
+
+        parsed = parse_crypto_ticker(ticker) or {}
+        return str(parsed.get("contract_family") or "other")
+    if vertical is Vertical.SPORTS:
+        from autonomy.picks import _scope_of
+
+        _league, market_type = _scope_of(ticker)
+        return str(market_type or "other")
+    return "other"
+
+
 def _brier(prob: float, result: int) -> float:
     return (prob - result) ** 2
 
@@ -131,6 +152,7 @@ def _settled_records(conn: sqlite3.Connection, window_days: float) -> list[dict[
             "ticker": str(ticker),
             "vertical": vertical,
             "label": label,
+            "bet_type": bet_type_of(str(ticker)),
             "action": str(action),
             "prob": prob_f,
             "market": float(market) if market is not None else None,
@@ -201,6 +223,83 @@ def _progression(records: list[dict[str, Any]], buckets: int = 24) -> list[dict[
     return out
 
 
+_IMPROVE_MIN_HALF = 4          # min records per half before a trend is honest
+_IMPROVE_BRIER_EPS = 0.005     # Brier move smaller than this reads as flat
+
+
+def _improvement(records: list[dict[str, Any]]) -> dict[str, Any]:
+    """Is this bundle getting SHARPER? Split oldest->newest in half and compare.
+
+    ``delta_brier = prior_brier - recent_brier`` (positive => Brier fell =>
+    sharper). Below a per-half floor the sample is too thin to call, so the
+    trend is reported as ``"thin"`` rather than a spurious direction.
+    """
+    ordered = sorted(records, key=lambda r: r["settled_at"])
+    n = len(ordered)
+    if n < 2 * _IMPROVE_MIN_HALF:
+        return {"trend": "thin", "n": n, "delta_brier": None,
+                "delta_hit": None, "delta_edge": None}
+    half = n // 2
+    prior, recent = _summarize(ordered[:half]), _summarize(ordered[half:])
+
+    def _delta(a: Any, b: Any) -> float | None:
+        return None if a is None or b is None else round(b - a, 4)
+
+    delta_brier = _delta(recent["brier"], prior["brier"])   # prior - recent
+    delta_hit = _delta(prior["hit_rate"], recent["hit_rate"])
+    delta_edge = _delta(prior["brier_edge"], recent["brier_edge"])
+    trend = "flat"
+    if delta_brier is not None:
+        if delta_brier > _IMPROVE_BRIER_EPS:
+            trend = "improving"
+        elif delta_brier < -_IMPROVE_BRIER_EPS:
+            trend = "declining"
+    return {
+        "trend": trend, "n": n, "recent_n": n - half, "prior_n": half,
+        "delta_brier": delta_brier, "delta_hit": delta_hit, "delta_edge": delta_edge,
+        "recent_brier": recent["brier"], "prior_brier": prior["brier"],
+    }
+
+
+def _bet_type_breakdown(records: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
+    """Per-bet-type accuracy + improvement for one scope's settled records."""
+    groups: dict[str, list[dict[str, Any]]] = {}
+    for rec in records:
+        groups.setdefault(rec.get("bet_type", "other"), []).append(rec)
+    return {
+        bt: {"summary": _summarize(recs), "improvement": _improvement(recs)}
+        for bt, recs in sorted(groups.items(), key=lambda kv: -len(kv[1]))
+    }
+
+
+def _pick_board(picks: list[dict[str, Any]]) -> dict[str, list[dict[str, Any]]]:
+    """Open picks grouped by bet type, each list ranked by edge (picks arrive
+    edge-sorted per scope) -- the per-bet-type rankings the operator drills into."""
+    board: dict[str, list[dict[str, Any]]] = {}
+    for pick in picks:
+        board.setdefault(pick.get("bet_type", "other"), []).append(pick)
+    return board
+
+
+def _settled_today(records: list[dict[str, Any]], cutoff: str) -> list[dict[str, Any]]:
+    """Markets settled since ``cutoff`` (recent day), each with whether the
+    model's directional call was correct -- the day's scoreboard."""
+    out: list[dict[str, Any]] = []
+    for rec in records:
+        if rec.get("settled_at", "") < cutoff:
+            continue
+        prob, result = rec["prob"], rec["result"]
+        out.append({
+            "ticker": rec["ticker"], "bet_type": rec.get("bet_type", "other"),
+            "prob": round(prob, 3), "market": (round(rec["market"], 3) if rec["market"] is not None else None),
+            "result": result, "correct": (prob >= 0.5) == (result == 1),
+            "lean": "YES" if prob >= 0.5 else "NO",
+            "traded": rec["action"] in ("BUY_YES", "BUY_NO"),
+            "settled_at": rec["settled_at"],
+        })
+    return sorted(out, key=lambda x: x["settled_at"], reverse=True)
+
+
 def _rankings(conn: sqlite3.Connection, limit: int = 12) -> dict[tuple[str, str], list[dict[str, Any]]]:
     """Current best actionable picks per scope: the latest decision on each
     still-unsettled market where the model took a side, ranked by edge (EV)."""
@@ -225,6 +324,7 @@ def _rankings(conn: sqlite3.Connection, limit: int = 12) -> dict[tuple[str, str]
         by_scope.setdefault(key, []).append({
             "ticker": str(ticker),
             "side": str(side),
+            "bet_type": bet_type_of(str(ticker)),
             "prob": round(float(prob), 3) if prob is not None else None,
             "market": round(float(market), 3) if market is not None else None,
             "edge_cents": round(float(ev_cents), 1) if ev_cents is not None else 0.0,
@@ -266,6 +366,7 @@ def build_scope_analytics(
     cutoff = conn.execute(
         "SELECT datetime('now', ?)", (f"-{float(window_days)} days",)
     ).fetchone()[0]
+    today_cutoff = conn.execute("SELECT datetime('now', '-30 hours')").fetchone()[0]
     records = [r for r in wide if r["settled_at"] >= cutoff]
     rankings = _rankings(conn)
 
@@ -280,11 +381,16 @@ def build_scope_analytics(
     for vertical, label in sorted(all_keys):
         recs = by_key.get((vertical, label), [])
         block = verticals.setdefault(vertical, {"scopes": {}, "summary": {}})
+        scope_picks = rankings.get((vertical, label), [])
         block["scopes"][label] = {
             "label": label,
             "summary": _summarize(recs),
             "progression": _progression(recs),
-            "picks": rankings.get((vertical, label), []),
+            "picks": scope_picks,
+            "bet_types": _bet_type_breakdown(recs),
+            "improvement": _improvement(recs),
+            "pick_board": _pick_board(scope_picks),
+            "settled_today": _settled_today(recs, today_cutoff),
         }
 
     # Always surface the whole SPORTS roster -- in or out of season.
@@ -300,11 +406,16 @@ def build_scope_analytics(
         if scope is None:
             # No current-window grade -> fall back to last season's slate.
             ls = last_season.get(league, [])
+            league_picks = rankings.get((SPORTS, league), [])
             scope = {
                 "label": league,
                 "summary": _summarize(ls),
                 "progression": _progression(ls),
-                "picks": rankings.get((SPORTS, league), []),
+                "picks": league_picks,
+                "bet_types": _bet_type_breakdown(ls),
+                "improvement": _improvement(ls),
+                "pick_board": _pick_board(league_picks),
+                "settled_today": _settled_today(ls, today_cutoff),
                 "basis": "last-season" if ls else "none",
             }
             sports["scopes"][league] = scope
@@ -322,7 +433,105 @@ def build_scope_analytics(
         "window_days": window_days,
         "last_season_window_days": last_season_window_days,
         "verticals": verticals,
+        "telemetry": _telemetry(records, verticals),
     }
+
+
+def _telemetry(
+    records: list[dict[str, Any]], verticals: dict[str, dict[str, Any]]
+) -> dict[str, Any]:
+    """Overall accuracy + improvement, and a scope x bet-type matrix.
+
+    The overview reads ``overall`` for the headline + improvement arrow and
+    ``matrix`` for the heatmap (one row per non-empty scope/bet-type cell).
+
+    Scoped to what the organism still trades (crypto + sports); retired
+    verticals' historical grades stay out of the "current organism" headline.
+    """
+    active = {CRYPTO, SPORTS}
+    scoped = [r for r in records if r.get("vertical") in active]
+    matrix: list[dict[str, Any]] = []
+    for vertical, block in verticals.items():
+        if vertical not in active:
+            continue
+        for label, scope in (block.get("scopes") or {}).items():
+            for bet_type, cell in (scope.get("bet_types") or {}).items():
+                s = cell.get("summary") or {}
+                if not s.get("n"):
+                    continue
+                imp = cell.get("improvement") or {}
+                matrix.append({
+                    "vertical": vertical, "scope": label, "bet_type": bet_type,
+                    "n": s.get("n"), "brier": s.get("brier"), "hit_rate": s.get("hit_rate"),
+                    "brier_edge": s.get("brier_edge"), "contested_n": s.get("contested_n"),
+                    "trend": imp.get("trend"), "delta_brier": imp.get("delta_brier"),
+                })
+    matrix.sort(key=lambda c: (c["vertical"], c["scope"], -(c["n"] or 0)))
+    return {
+        "overall": {"summary": _summarize(scoped), "improvement": _improvement(scoped)},
+        "matrix": matrix,
+    }
+
+
+# ---- long-horizon accuracy history (improvement across model versions) ------
+# The windowed improvement above lives inside the current settled window; this
+# sidecar records the organism's overall accuracy at each snapshot so the
+# dashboard can chart "are we getting sharper" over weeks -- across retunes and
+# even after old settlements age out of the ledger's retention.
+ACCURACY_HISTORY_PATH = Path("runtime/autonomy/accuracy_history.jsonl")
+_ACCURACY_HISTORY_MAX = 5000
+
+
+def _bound_jsonl(path: Path, max_lines: int) -> None:
+    """Tail-preserve a jsonl file at ``max_lines`` (atomic tmp+replace)."""
+    try:
+        lines = path.read_text(encoding="utf-8").splitlines()
+    except Exception:  # noqa: BLE001
+        return
+    if len(lines) <= max_lines:
+        return
+    tmp = path.with_name(path.name + ".tmp")
+    tmp.write_text("\n".join(lines[-max_lines:]) + "\n", encoding="utf-8")
+    tmp.replace(path)
+
+
+def append_accuracy_history(
+    telemetry: dict[str, Any], ts: str, *, path: Path | None = None,
+    weights_hash: str | None = None,
+) -> dict[str, Any] | None:
+    """Append one overall-accuracy point. No-op (returns None) when nothing is
+    graded yet, so the series never carries empty rows. Self-bounding."""
+    target = Path(path) if path else ACCURACY_HISTORY_PATH
+    overall = ((telemetry or {}).get("overall") or {}).get("summary") or {}
+    if not overall.get("n"):
+        return None
+    row = {
+        "ts": str(ts), "n": overall.get("n"), "brier": overall.get("brier"),
+        "hit_rate": overall.get("hit_rate"), "brier_edge": overall.get("brier_edge"),
+    }
+    if weights_hash:
+        row["weights"] = str(weights_hash)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    with target.open("a", encoding="utf-8") as fh:
+        fh.write(json.dumps(row) + "\n")
+    _bound_jsonl(target, _ACCURACY_HISTORY_MAX)
+    return row
+
+
+def read_accuracy_series(path: Path | None = None, limit: int = 180) -> list[dict[str, Any]]:
+    """The last ``limit`` accuracy points, oldest->newest; [] on any miss."""
+    target = Path(path) if path else ACCURACY_HISTORY_PATH
+    try:
+        lines = target.read_text(encoding="utf-8").splitlines()
+    except Exception:  # noqa: BLE001
+        return []
+    out: list[dict[str, Any]] = []
+    for line in lines[-limit:]:
+        try:
+            out.append(json.loads(line))
+        except Exception:  # noqa: BLE001
+            continue
+    return out
 
 
 def _downsample(rows: list[Any], target: int = 140) -> list[Any]:

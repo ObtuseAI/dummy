@@ -9,21 +9,33 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/python-3.14-4b8bbe" alt="Python 3.14">
-  <img src="https://img.shields.io/badge/tests-5906%20passing-2ea44f" alt="5906 tests passing">
+  <img src="https://img.shields.io/badge/tests-6486%20passing-2ea44f" alt="6486 tests passing">
   <img src="https://img.shields.io/badge/mode-SHADOW%20·%20paper-1f9d55" alt="Shadow paper mode">
   <img src="https://img.shields.io/badge/promotion%20to%20capital-human--gated-e0a100" alt="Human-gated">
   <img src="https://img.shields.io/badge/execution-fail--closed-c0392b" alt="Fail-closed">
 </p>
 
 <p align="center">
-  <img src="docs/assets/tote-overview.png" alt="The Dummy Tote — evidence board" width="900">
+  <img src="docs/assets/dummy-overview.png" alt="The Dummy Totalizator — live command board" width="900">
 </p>
 
 <p align="center">
-  <em>The <strong>Dummy Tote</strong> — a native command board over the live paper runtime:
-  system state, ranked edges, and the day's top picks, read straight from the
-  runtime artifacts.</em>
+  <em>The <strong>Dummy Totalizator</strong> — a live, read-only command board over the paper
+  runtime: paper account and ROI, a phosphor balance curve, and calibrated accuracy with
+  per-scope · per-bet-type improvement, all read straight from the runtime artifacts. Split-flap
+  counters flip on every re-price; a ⌘K palette jumps to any coin or league.</em>
 </p>
+
+<table align="center">
+  <tr>
+    <td align="center" width="50%"><a href="docs/assets/dummy-sports-scope.png"><img src="docs/assets/dummy-sports-scope.png" alt="Sports scope — MLB graded forecast quality"></a></td>
+    <td align="center" width="50%"><a href="docs/assets/dummy-crypto-scope.png"><img src="docs/assets/dummy-crypto-scope.png" alt="Crypto scope — BTC graded forecast quality"></a></td>
+  </tr>
+  <tr>
+    <td align="center"><em>Per-league view — edge-vs-market, model-vs-book Brier, ranked live picks, accuracy by bet type, and a day-by-day games breakdown.</em></td>
+    <td align="center"><em>Per-coin view — the model beating the closing line, accuracy by bet type, every priced market by category, and today's settled calls.</em></td>
+  </tr>
+</table>
 
 Dummy collects point-in-time public evidence, calibrates competing forecasts,
 simulates and stress-tests challengers, explains every paper decision, and
@@ -44,6 +56,19 @@ records the full lifecycle in an auditable ledger.
   and fail-closed without ESPN drive state, while NHL uses a
   positive-shared-component bivariate Poisson.
   (UFC and Formula One retired 2026-07-12.)
+- **Sports history lake &amp; rating superstore:** a point-in-time SQLite lake of
+  **95,810 real games** — NCAAMB, NCAAF, NBA, NFL, WNBA, and MLB — ingested from
+  open public schedule feeds (nflverse, cfbfastR, and the sportsdataverse data
+  repos) through a polite cached/rate-limited fetcher, never a paywall or key.
+  Six challenger analytics price the full game surface off it — Glicko-2, 538-style
+  MOV-Elo, Pythagenpat, Dean-Oliver Four Factors, EPA/play, and a scoring model for
+  spreads and totals — each graded by an event-purged walk-forward backtest that
+  predicts before it updates (no leakage). A daily self-tuner re-optimizes each
+  league's home-edge from the fresh lake, and every league runs on its own isolated
+  scheduler so one league can never stall another. Deep history sharpens the edge:
+  MOV-Elo hits 72.9% / +0.070 on NCAAF and Glicko-2 72.0% / +0.068 on 51.9k graded
+  NCAAMB games. Every analytic is challenger-only and reaches capital only through
+  the human-gated promotion ladder.
 - **Training arsenal:** point-in-time replay, Monte Carlo simulation,
   adversarial arenas, event-purged walk-forward validation, calibration and
   risk analytics, deterministic replay buffers, and bounded recursive
@@ -61,23 +86,33 @@ operator authorization.
 
 ## The command board
 
-The **Dummy Tote** is a true native desktop app (PySide6) that reads only the
-runtime artifacts the scheduled loops already write — it never touches the
-trading path. Its views turn the live paper runtime into a racetrack
-totalizator: pitch-green felt, brass rules, and amber lamps that flip on every
-re-price.
+The **Dummy Totalizator** is a read-only web command board served at
+`http://127.0.0.1:8787` (durable via the `DummyDashboard` scheduled task). It
+reads only the runtime artifacts the scheduled loops already write — it never
+touches the trading path — and turns the live paper runtime into a racetrack
+totalizator: pitch-green phosphor, split-flap lamps that flip on every re-price,
+a live ticker tape, a radial ROI gauge, and a ⌘K palette that jumps to any coin
+or league.
 
-| Bet board — the full per-game surface | Live mispricing |
-|:--:|:--:|
-| [![Bet board](docs/assets/tote-betboard.png)](docs/assets/tote-betboard.png) | [![Mispricing](docs/assets/tote-mispricing.png)](docs/assets/tote-mispricing.png) |
-| Every priced market ranked by edge, with A/B/C conviction tiers | Model vs de-vigged book vs price — challenger evidence, never auto-staked |
+- **Overview** — paper account and ROI, the balance curve, and an
+  Accuracy &amp; Improvement panel that grades Brier, hit rate, and edge-vs-market,
+  then tracks whether they are *improving over time* — sliced overall, then per
+  coin and league, then down to each **bet type** (winner, total, spread,
+  moneyline, prop, price-ladder, YRFI/NRFI, …).
+- **Per-coin / per-league scopes** — one view each for BTC/ETH/SOL and every
+  sports league: graded forecast quality, a hit-rate-and-Brier progression
+  chart, model-vs-de-vigged-book comparison, live picks ranked by edge, accuracy
+  by bet type, a day-by-day **games full-breakdown**, and today's settled calls
+  marked correct or incorrect. Out-of-season leagues stay listed with an
+  *out of season* badge and their last-season basis, never hidden.
+- **Promotion, health, and switches** — every challenger scope closest to
+  promotion first, scheduler health, and per-vertical enable/disable controls
+  that only pause paper loops — they cannot reach live execution, credentials,
+  risk, or capital.
 
-| Crypto paper twin | Promotion readiness |
-|:--:|:--:|
-| [![Crypto](docs/assets/tote-crypto.png)](docs/assets/tote-crypto.png) | [![Readiness](docs/assets/tote-readiness.png)](docs/assets/tote-readiness.png) |
-| Throughput funnel — paper trades vs the discipline of policy rejection | Every challenger scope, closest to promotion first |
-
-A read-only web command center is also served at `http://127.0.0.1:8787`.
+A companion native desktop board, the **Dummy Tote** (PySide6), renders the same
+runtime artifacts as a true native app with a taskbar tray and bet notifications;
+it launches at logon and also never touches the trading path.
 
 ## Architecture
 
@@ -315,8 +350,6 @@ evidence volume, CLV, open opportunities per specialist — read-only, fails
 closed to an empty panel when no snapshot has been written yet). Its Start
 and Stop controls only enable or pause the paper schedulers; they cannot reach
 live execution, credentials, risk settings, or capital.
-
-![Dummy paper trading command center](docs/assets/dummy-paper-dashboard.jpg)
 
 ## Council of specialists
 
