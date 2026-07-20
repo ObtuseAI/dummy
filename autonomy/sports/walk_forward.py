@@ -19,6 +19,7 @@ from autonomy.sports.glicko import LakeGlickoRatings
 from autonomy.sports.history_store import SportsHistoryStore
 from autonomy.sports.mov_elo import LakeMovElo
 from autonomy.sports.pythagorean import LakePythagorean
+from autonomy.sports.scoring_model import LakeScoringModel
 
 _BASELINE_BRIER = 0.25          # always-predict-0.5
 
@@ -157,30 +158,41 @@ def walk_forward_four_factors(
     return report
 
 
-def walk_forward_four_factors(
-    store: SportsHistoryStore, league: str, *,
-    home_advantage_prob: float = 0.03, min_games: int = 5,
+def walk_forward_scoring(
+    store: SportsHistoryStore, league: str, *, min_games: int = 5,
 ) -> dict[str, Any]:
-    """Grade Four Factors point-in-time. Predicts a game only once both teams
-    have ``min_games`` of prior boxscores (the store enforces the as-of cut)."""
+    """Grade the expected-margin/total model point-in-time: winner probability
+    from P(margin > 0), plus the mean absolute error of the predicted margin and
+    total (the numbers spreads/totals actually settle on)."""
     games = store.games(league=league)
     games = [g for g in games if g.get("home_score") is not None and g.get("away_score") is not None]
     games.sort(key=lambda g: g["start_time"])
 
-    model = LakeFourFactors(store, league=league)
+    model = LakeScoringModel(store, league=league)
     preds: list[tuple[float, int]] = []
+    margin_err: list[float] = []
+    total_err: list[float] = []
     for game in games:
         home, away, t = game.get("home"), game.get("away"), game["start_time"]
         hs, as_ = game.get("home_score"), game.get("away_score")
-        if not home or not away or hs == as_:
+        if not home or not away:
             continue
-        if model.games_seen(home, t) < min_games or model.games_seen(away, t) < min_games:
+        rh, ra = model._rates(home, t), model._rates(away, t)
+        if rh is None or ra is None or rh[2] < min_games or ra[2] < min_games:
             continue
-        p = model.matchup_prob(home, away, t, home_advantage_prob=home_advantage_prob)
-        if p is not None:
-            preds.append((p, 1 if hs > as_ else 0))
+        exp = model.expected_scores(home, away, t)
+        if exp is None:
+            continue
+        margin_err.append(abs((exp[0] - exp[1]) - (hs - as_)))
+        total_err.append(abs((exp[0] + exp[1]) - (hs + as_)))
+        if hs != as_:
+            p = model.p_home_covers(home, away, t, 0.0)
+            if p is not None:
+                preds.append((p, 1 if hs > as_ else 0))
 
     report = _grade(preds)
     report["league"] = league
-    report["model"] = "four_factors"
+    report["model"] = "scoring"
+    report["margin_mae"] = round(sum(margin_err) / len(margin_err), 3) if margin_err else None
+    report["total_mae"] = round(sum(total_err) / len(total_err), 3) if total_err else None
     return report
