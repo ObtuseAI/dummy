@@ -14,6 +14,7 @@ from __future__ import annotations
 import math
 from typing import Any
 
+from autonomy.sports.epa import LakeEpa
 from autonomy.sports.four_factors import LakeFourFactors
 from autonomy.sports.glicko import LakeGlickoRatings
 from autonomy.sports.history_store import SportsHistoryStore
@@ -195,4 +196,27 @@ def walk_forward_scoring(
     report["model"] = "scoring"
     report["margin_mae"] = round(sum(margin_err) / len(margin_err), 3) if margin_err else None
     report["total_mae"] = round(sum(total_err) / len(total_err), 3) if total_err else None
+    return report
+
+
+def walk_forward_epa(store: SportsHistoryStore, league: str = "nfl", *, min_games: int = 4) -> dict[str, Any]:
+    """Grade EPA/play point-in-time (predict each game before it is played)."""
+    games = store.games(league=league)
+    games = [g for g in games if g.get("home_score") is not None and g.get("away_score") is not None]
+    games.sort(key=lambda g: g["start_time"])
+    model = LakeEpa(store, league=league)
+    preds: list[tuple[float, int]] = []
+    for game in games:
+        home, away, t = game.get("home"), game.get("away"), game["start_time"]
+        hs, as_ = game.get("home_score"), game.get("away_score")
+        if not home or not away or hs == as_:
+            continue
+        if model.games_seen(home, t) < min_games or model.games_seen(away, t) < min_games:
+            continue
+        p = model.matchup_prob(home, away, t)
+        if p is not None:
+            preds.append((p, 1 if hs > as_ else 0))
+    report = _grade(preds)
+    report["league"] = league
+    report["model"] = "epa"
     return report

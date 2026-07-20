@@ -183,6 +183,30 @@ class SportsHistoryStore:
             params.append(int(limit))
         return [r[0] for r in self.conn.execute(sql, params).fetchall()]
 
+    def team_stat_sums_before(
+        self, team: str, as_of: str, league: str,
+    ) -> dict[str, Any] | None:
+        """Point-in-time SUM of a team's OWN boxscore stats over completed games
+        before ``as_of`` (any stat keys). ``{"sums": {...}, "games": n}`` or
+        None. Used where a team's row already encodes both sides (e.g. EPA)."""
+        finals = ",".join("?" * len(_FINAL_STATUSES))
+        gids = [
+            r[0] for r in self.conn.execute(
+                f"""SELECT DISTINCT g.game_id FROM games g
+                    JOIN boxscores b ON b.game_id = g.game_id
+                    WHERE b.team = ? AND b.player = '' AND g.league = ?
+                      AND g.start_time < ? AND g.status IN ({finals})""",
+                (team, league, as_of, *_FINAL_STATUSES),
+            ).fetchall()
+        ]
+        if not gids:
+            return None
+        ph = ",".join("?" * len(gids))
+        sums = {s: v for s, v in self.conn.execute(
+            f"SELECT stat, SUM(value) FROM boxscores WHERE game_id IN ({ph}) AND team = ? "
+            f"AND player = '' GROUP BY stat", (*gids, team)).fetchall()}
+        return {"sums": sums, "games": len(gids)}
+
     def four_factor_sums_before(
         self, team: str, as_of: str, league: str,
     ) -> dict[str, Any] | None:

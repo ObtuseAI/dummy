@@ -342,6 +342,11 @@ def build_brain(mode: SessionMode):
     from autonomy.signals.sports_scoring import SportsScoringSignal
 
     registry.register(SportsScoringSignal(seasons=seasons))
+    # EPA/play challenger (NFL gold standard): net EPA from nflfastR PBP in the
+    # lake. Self-scopes to leagues with EPA data; gated.
+    from autonomy.signals.sports_epa import SportsEpaSignal
+
+    registry.register(SportsEpaSignal(seasons=seasons))
     # De-vigged sportsbook moneyline + open->close steam: the sharpest public
     # game forecast, and the trap detector when Elo fights the book.
     registry.register(SportsbookConsensusSignal())
