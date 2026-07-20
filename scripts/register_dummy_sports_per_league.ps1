@@ -23,13 +23,16 @@ param(
 if (-not (Test-Path $Python)) { $Python = (Get-Command python).Source }
 
 $Leagues = @("mlb","wnba","nba","nfl","nhl","ncaaf","ncaamb")
+$Basketball = @("wnba","nba","ncaamb")   # get a boxscore task too (for Four Factors)
 $Backfill = Join-Path $Repo "scripts\run_dummy_sports_history_backfill.py"
 $WalkFwd  = Join-Path $Repo "scripts\run_dummy_sports_walk_forward.py"
+$BoxFill  = Join-Path $Repo "scripts\run_dummy_sports_boxscore_backfill.py"
 
 $i = 0
 foreach ($lg in $Leagues) {
-    # Stagger: lake refresh at 05:00 + 12*i min, walk-forward 6 min after it.
+    # Stagger: lake refresh at 05:00 + 12*i min; boxscores +3; walk-forward +6.
     $lakeAt = (Get-Date "05:00").AddMinutes(12 * $i).ToString("HH:mm")
+    $boxAt  = (Get-Date "05:00").AddMinutes(12 * $i + 3).ToString("HH:mm")
     $wfAt   = (Get-Date "05:00").AddMinutes(12 * $i + 6).ToString("HH:mm")
     $i++
 
@@ -39,6 +42,10 @@ foreach ($lg in $Leagues) {
         @{ Name = "DummyWF_$lg";   At = $wfAt;
            Args = "`"$WalkFwd`" --league $lg" }
     )
+    if ($Basketball -contains $lg) {
+        $jobs += @{ Name = "DummyBox_$lg"; At = $boxAt;
+                    Args = "`"$BoxFill`" --league $lg --min-interval 0.4" }
+    }
     foreach ($j in $jobs) {
         $action  = New-ScheduledTaskAction -Execute $Python -Argument $j.Args -WorkingDirectory $Repo
         $trigger = New-ScheduledTaskTrigger -Daily -At $j.At
@@ -53,4 +60,5 @@ foreach ($lg in $Leagues) {
         }
     }
 }
-Write-Host "Done. $($Leagues.Count) leagues x 2 tasks = $($Leagues.Count * 2) isolated schedulers."
+$total = $Leagues.Count * 2 + $Basketball.Count
+Write-Host "Done. $($Leagues.Count) leagues (+$($Basketball.Count) boxscore tasks) = $total isolated schedulers."
