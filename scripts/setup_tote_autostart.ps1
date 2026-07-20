@@ -14,6 +14,11 @@ $repo = "C:\src\engine\dummy"
 $name = "DummyToteApp"
 $pyw = "C:\Users\$env:USERNAME\.dummy-desktop\venv\Scripts\pythonw.exe"
 $entry = "$repo\desktop\run_dummy_tote.py"
+$icon = "$repo\desktop\assets\dummy.ico"
+
+# Drop any older-named Startup shortcut so exactly one autostart entry remains.
+$oldLnk = Join-Path ([Environment]::GetFolderPath('Startup')) 'Dummy Tote.lnk'
+if (Test-Path $oldLnk) { Remove-Item $oldLnk -Force; Write-Host "removed old Startup shortcut" }
 
 if (-not (Test-Path $pyw)) { throw "tote venv pythonw not found: $pyw (run scripts\setup_dummy_tote.ps1 first)" }
 if (-not (Test-Path $entry)) { throw "tote entrypoint not found: $entry" }
@@ -37,13 +42,14 @@ try {
 # Startup-folder shortcut: the always-works fallback (and harmless alongside the
 # task -- MultipleInstances=IgnoreNew keeps a single app instance).
 if (-not $taskOk) {
-    $lnkPath = Join-Path ([Environment]::GetFolderPath('Startup')) 'Dummy Tote.lnk'
+    $lnkPath = Join-Path ([Environment]::GetFolderPath('Startup')) 'Dummy.lnk'
     $w = New-Object -ComObject WScript.Shell
     $lnk = $w.CreateShortcut($lnkPath)
     $lnk.TargetPath = $pyw
     $lnk.Arguments = "`"$entry`""
     $lnk.WorkingDirectory = $repo
-    $lnk.Description = "Dummy Tote native desktop app (auto-launch at logon)"
+    $lnk.IconLocation = "$icon,0"
+    $lnk.Description = "Dummy - trading intelligence board (auto-launch at logon)"
     $lnk.Save()
     Write-Host "STARTUP SHORTCUT -> $lnkPath"
 }
