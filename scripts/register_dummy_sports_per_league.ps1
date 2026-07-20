@@ -29,6 +29,7 @@ $Backfill = Join-Path $Repo "scripts\run_dummy_sports_history_backfill.py"
 $WalkFwd  = Join-Path $Repo "scripts\run_dummy_sports_walk_forward.py"
 $BoxFill  = Join-Path $Repo "scripts\run_dummy_sports_boxscore_backfill.py"
 $EpaFill  = Join-Path $Repo "scripts\run_dummy_sports_epa_backfill.py"
+$Tune     = Join-Path $Repo "scripts\run_dummy_sports_tune.py"
 
 $i = 0
 foreach ($lg in $Leagues) {
@@ -66,5 +67,19 @@ foreach ($lg in $Leagues) {
         }
     }
 }
-$total = $Leagues.Count * 2 + $Basketball.Count + $EpaLeagues.Count
-Write-Host "Done. $($Leagues.Count) leagues (+$($Basketball.Count) boxscore, +$($EpaLeagues.Count) EPA tasks) = $total isolated schedulers."
+# One self-tuning task re-optimizes every analytic's priors from the fresh lake
+# (runs after the day's backfills). This is the recursive-improvement heartbeat.
+$tuneAction  = New-ScheduledTaskAction -Execute $Python -Argument "`"$Tune`"" -WorkingDirectory $Repo
+$tuneTrigger = New-ScheduledTaskTrigger -Daily -At "06:30"
+$tuneSet     = New-ScheduledTaskSettingsSet -StartWhenAvailable -MultipleInstances IgnoreNew `
+                 -ExecutionTimeLimit (New-TimeSpan -Minutes 30)
+if ($WhatIf) {
+    Write-Host "[dry-run] DummyTune @ 06:30: $Python `"$Tune`""
+} else {
+    Register-ScheduledTask -TaskName "DummyTune" -Action $tuneAction -Trigger $tuneTrigger `
+        -Settings $tuneSet -Force -User $env:USERNAME | Out-Null
+    Write-Host "registered DummyTune @ 06:30"
+}
+
+$total = $Leagues.Count * 2 + $Basketball.Count + $EpaLeagues.Count + 1
+Write-Host "Done. $($Leagues.Count) leagues (+$($Basketball.Count) boxscore, +$($EpaLeagues.Count) EPA, +1 tune) = $total isolated schedulers."
