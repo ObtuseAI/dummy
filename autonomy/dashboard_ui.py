@@ -700,7 +700,7 @@ function accuracyPanel(){
 }
 function pickRows(picks){
   return '<div style="max-height:300px;overflow:auto"><table><thead><tr><th>Market</th><th>Side</th><th>Model</th><th>Mkt</th><th>Edge¢</th></tr></thead><tbody>'
-    +picks.map(p=>'<tr><td title="'+esc(p.ticker)+'">'+esc(p.ticker)+'</td>'
+    +picks.map(p=>'<tr><td title="'+esc(p.ticker)+'">'+esc(p.label||p.ticker)+'</td>'
       +'<td><span class="pill '+((p.side||'').toUpperCase().includes('NO')?'no':'yes')+'">'+esc(p.side||'')+'</span></td>'
       +'<td>'+num(p.prob,2)+'</td><td>'+(p.market==null?'—':num(p.market,2))+'</td>'
       +'<td class="'+(p.edge_cents>=0?'pos':'neg')+'">'+(p.edge_cents>0?'+':'')+num(p.edge_cents,1)+'</td></tr>').join('')
@@ -723,7 +723,7 @@ function settledTodayCard(scope){
   let h='<div class="card pad0 reveal" style="margin-top:var(--s3)"><h3 style="padding:var(--s3) var(--s3) var(--s2)">Settled today '
     +'<span class="r"><b class="'+(pctc>=50?'res-ok':'res-no')+'">'+correct+'/'+rows.length+'</b> correct · '+pctc+'%</span></h3>';
   h+='<div style="max-height:300px;overflow:auto"><table><thead><tr><th>Market</th><th>Bet</th><th>Lean</th><th>Model</th><th>Result</th><th>Call</th></tr></thead><tbody>';
-  rows.forEach(r=>{h+='<tr><td title="'+esc(r.ticker)+'">'+esc((r.ticker||'').slice(0,26))+'</td><td>'+esc(prettyBet(r.bet_type))+'</td>'
+  rows.forEach(r=>{h+='<tr><td title="'+esc(r.ticker)+'">'+esc(r.matchup||(r.ticker||'').slice(0,26))+'</td><td>'+esc(prettyBet(r.bet_type))+'</td>'
     +'<td>'+esc(r.lean)+(r.traded?' <span style="color:var(--amber);font-size:10px">·traded</span>':'')+'</td>'
     +'<td>'+num(r.prob,2)+'</td><td>'+(r.result?'YES':'NO')+'</td>'
     +'<td>'+(r.correct?'<span class="res-ok">✓</span>':'<span class="res-no">✗</span>')+'</td></tr>';});
@@ -775,7 +775,7 @@ function prettyDay(d,today){
 function boardFor(label){return STATE.board&&STATE.board[String(label).toLowerCase()];}
 function boardRows(rows){
   return '<div style="max-height:340px;overflow:auto"><table><thead><tr><th>Matchup</th><th>Market</th><th>Pick</th><th>Model</th><th>Mkt</th><th>Edge</th></tr></thead><tbody>'
-    +rows.map(r=>'<tr><td>'+esc(prettyMatchup(r.matchup))+'</td><td title="'+esc(r.ticker)+'">'+esc((r.ticker||'').slice(0,24))+'</td>'
+    +rows.map(r=>'<tr><td>'+esc(r.matchup||prettyMatchup(r.matchup))+'</td><td title="'+esc(r.ticker)+'">'+esc(r.market||prettyBet(r.bet_type))+'</td>'
       +'<td>'+(r.pick?'<span class="pill '+(String(r.pick).toLowerCase()==='no'?'no':'yes')+'">'+esc(String(r.pick).toUpperCase())+'</span>':'—')+'</td>'
       +'<td>'+num(r.probability,2)+'</td><td>'+(r.market_probability==null?'—':num(r.market_probability,2))+'</td>'
       +'<td class="'+((r.edge||0)>=0?'pos':'neg')+'">'+signed(r.edge||0,1)+'</td></tr>').join('')
@@ -796,7 +796,7 @@ function betRankCard(label){
 function gameBreakdown(rows){
   rows=[...rows].sort((a,b)=>Math.abs(b.edge||0)-Math.abs(a.edge||0));
   return '<table><thead><tr><th>Bet type</th><th>Market</th><th>Pick</th><th>Model</th><th>Mkt</th><th>Edge</th></tr></thead><tbody>'
-    +rows.map(r=>'<tr><td>'+esc(prettyBet(r.bet_type))+'</td><td title="'+esc(r.ticker)+'">'+esc((r.ticker||'').slice(0,26))+'</td>'
+    +rows.map(r=>'<tr><td>'+esc(prettyBet(r.bet_type))+'</td><td title="'+esc(r.ticker)+'">'+esc(r.market||(r.ticker||'').slice(0,26))+'</td>'
       +'<td>'+(r.pick?'<span class="pill '+(String(r.pick).toLowerCase()==='no'?'no':'yes')+'">'+esc(String(r.pick).toUpperCase())+'</span>':'—')+'</td>'
       +'<td>'+num(r.probability,2)+'</td><td>'+(r.market_probability==null?'—':num(r.market_probability,2))+'</td>'
       +'<td class="'+((r.edge||0)>=0?'pos':'neg')+'">'+signed(r.edge||0,1)+'</td></tr>').join('')
@@ -940,7 +940,7 @@ function accuracyBars(s){
 function picksTable(picks){
   if(!picks||!picks.length)return '<div class="empty">no open picks in this scope right now</div>';
   let h='<div style="max-height:326px;overflow:auto"><table><thead><tr><th>Market</th><th>Side</th><th>Model</th><th>Mkt</th><th>Edge¢</th></tr></thead><tbody>';
-  picks.forEach(p=>{h+='<tr><td title="'+esc(p.ticker)+'">'+esc(p.ticker)+'</td>'
+  picks.forEach(p=>{h+='<tr><td title="'+esc(p.ticker)+'">'+esc(p.label||p.ticker)+'</td>'
     +'<td><span class="pill '+((p.side||'').toUpperCase().includes('NO')?'no':'yes')+'">'+esc(p.side||'')+'</span></td>'
     +'<td>'+num(p.prob,2)+'</td><td>'+(p.market==null?'—':num(p.market,2))+'</td>'
     +'<td class="'+(p.edge_cents>=0?'pos':'neg')+'">'+(p.edge_cents>0?'+':'')+num(p.edge_cents,1)+'</td></tr>';});
@@ -989,7 +989,7 @@ function mispTable(rows){
   if(!rows||!rows.length)return '<div class="empty">no live mispricing on this scope right now</div>';
   let h='<div style="max-height:344px;overflow:auto"><table><thead><tr><th>Market</th><th>Side</th><th>Edge</th><th>Model</th><th>Book</th><th>Mkt</th><th>Conf</th></tr></thead><tbody>';
   rows.forEach(r=>{const e=r.edge==null?null:(r.edge*100);
-    h+='<tr><td title="'+esc(r.ticker)+' — '+esc(r.rationale||'')+'">'+esc(r.ticker||'')+'</td>'
+    h+='<tr><td title="'+esc(r.ticker)+' — '+esc(r.rationale||'')+'">'+esc(r.label||r.ticker||'')+'</td>'
       +'<td><span class="pill '+((r.side||'').toUpperCase().includes('NO')?'no':'yes')+'">'+esc(r.side||'')+'</span></td>'
       +'<td class="'+(e>=0?'pos':'neg')+'">'+(e==null?'—':(e>0?'+':'')+e.toFixed(1)+'%')+'</td>'
       +'<td>'+(r.model_prob==null?'—':num(r.model_prob,2))+'</td><td>'+(r.book_prob==null?'—':num(r.book_prob,2))+'</td>'

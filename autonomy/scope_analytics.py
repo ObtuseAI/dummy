@@ -306,13 +306,17 @@ def _pick_board(picks: list[dict[str, Any]]) -> dict[str, list[dict[str, Any]]]:
 def _settled_today(records: list[dict[str, Any]], cutoff: str) -> list[dict[str, Any]]:
     """Markets settled since ``cutoff`` (recent day), each with whether the
     model's directional call was correct -- the day's scoreboard."""
+    from autonomy.market_labels import humanize_ticker
+
     out: list[dict[str, Any]] = []
     for rec in records:
         if rec.get("settled_at", "") < cutoff:
             continue
         prob, result = rec["prob"], rec["result"]
+        hl = humanize_ticker(rec["ticker"])
         out.append({
             "ticker": rec["ticker"], "bet_type": rec.get("bet_type", "other"),
+            "label": hl["label"], "matchup": hl["matchup"],
             "prob": round(prob, 3), "market": (round(rec["market"], 3) if rec["market"] is not None else None),
             "result": result, "correct": (prob >= 0.5) == (result == 1),
             "lean": "YES" if prob >= 0.5 else "NO",
@@ -340,11 +344,16 @@ def _rankings(conn: sqlite3.Connection, limit: int = 12) -> dict[tuple[str, str]
           AND d.action IN ('BUY_YES', 'BUY_NO')
         """
     ).fetchall()
+    from autonomy.market_labels import humanize_ticker
+
     by_scope: dict[tuple[str, str], list[dict[str, Any]]] = {}
     for ticker, action, side, prob, market, ev_cents, price_cents, created_at in rows:
         key = scope_key(str(ticker))
+        hl = humanize_ticker(str(ticker))
         by_scope.setdefault(key, []).append({
             "ticker": str(ticker),
+            "label": hl["label"],
+            "matchup": hl["matchup"],
             "side": str(side),
             "bet_type": bet_type_of(str(ticker)),
             "prob": round(float(prob), 3) if prob is not None else None,
@@ -714,13 +723,17 @@ def build_scope_extras(
             "n_entries": scope.get("n_entries"),
         })
 
+    from autonomy.market_labels import market_label
+
     misp_by_scope: dict[tuple[str, str], list[dict[str, Any]]] = {}
     ejections_by_scope: dict[tuple[str, str], list[Any]] = {}
     for row in (_load_artifact(runtime_dir, "mispricing_monitor_latest.json").get("shortlist") or []):
         if not isinstance(row, dict) or not row.get("ticker"):
             continue
         key = scope_key(str(row["ticker"]))
-        misp_by_scope.setdefault(key, []).append({f: row.get(f) for f in _MISPRICING_FIELDS})
+        enriched = {f: row.get(f) for f in _MISPRICING_FIELDS}
+        enriched["label"] = market_label(str(row["ticker"]))
+        misp_by_scope.setdefault(key, []).append(enriched)
         for ev in (row.get("ejection_events") or []):
             ejections_by_scope.setdefault(key, []).append(ev)
     for rows in misp_by_scope.values():
