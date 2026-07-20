@@ -19,6 +19,7 @@ if str(ROOT) not in sys.path:
 
 from autonomy.ingest.cfbfastr import ingest_cfbd_games  # noqa: E402
 from autonomy.ingest.espn_lake import ingest_espn_league  # noqa: E402
+from autonomy.ingest.wehoop import ingest_wehoop_wnba  # noqa: E402
 from autonomy.ingest.fetcher import PoliteFetcher  # noqa: E402
 from autonomy.ingest.nflverse import ingest_nflverse_games  # noqa: E402
 from autonomy.sports.history_store import SportsHistoryStore  # noqa: E402
@@ -42,6 +43,7 @@ def _ingest_espn(store, fetcher, seasons, only_league=None):  # noqa: ARG001
 SOURCES = {
     "nflverse": lambda store, fetcher, seasons: ingest_nflverse_games(store, fetcher, seasons=seasons),
     "cfbfastr": lambda store, fetcher, seasons: ingest_cfbd_games(store, fetcher, seasons=seasons),
+    "wehoop": lambda store, fetcher, seasons: ingest_wehoop_wnba(store, fetcher, seasons or range(2008, 2027)),
     "espn": _ingest_espn,
 }
 
