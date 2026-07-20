@@ -631,6 +631,26 @@ def _tournament_status_panel(report: dict[str, Any]) -> dict[str, Any]:
 
 
 _HTML = DASHBOARD_HTML
+_html_state: dict[str, Any] = {"mtime": None}
+
+
+def _current_html() -> str:
+    """Serve the dashboard HTML, hot-reloading ``dashboard_ui.py`` when it
+    changes on disk -- so a UI edit goes live on the next request without
+    restarting the uvicorn server (the HTML used to be frozen at import time,
+    which is why frontend changes appeared stale until a manual restart). Falls
+    back to the import-time copy on any reload error."""
+    import importlib
+
+    from autonomy import dashboard_ui as _mod
+    try:
+        mtime = os.path.getmtime(_mod.__file__)
+        if mtime != _html_state["mtime"]:
+            importlib.reload(_mod)
+            _html_state["mtime"] = mtime
+        return _mod.DASHBOARD_HTML
+    except Exception:  # noqa: BLE001
+        return _HTML
 
 
 def build_app():
@@ -841,6 +861,6 @@ def build_app():
 
     @app.get("/")
     def index() -> HTMLResponse:
-        return HTMLResponse(_HTML)
+        return HTMLResponse(_current_html())
 
     return app
