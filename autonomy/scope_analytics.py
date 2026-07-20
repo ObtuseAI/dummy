@@ -354,6 +354,7 @@ def _rankings(conn: sqlite3.Connection, limit: int = 12) -> dict[tuple[str, str]
             "ticker": str(ticker),
             "label": hl["label"],
             "matchup": hl["matchup"],
+            "game_date": hl["date"],
             "side": str(side),
             "bet_type": bet_type_of(str(ticker)),
             "prob": round(float(prob), 3) if prob is not None else None,
