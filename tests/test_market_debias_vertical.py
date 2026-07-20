@@ -36,7 +36,7 @@ def _mixed_samples():
 
 def test_fit_curve_partitions_by_vertical():
     curve = fit_curve(_mixed_samples())
-    assert curve["schema_version"] == 2
+    assert curve["schema_version"] == 3
     verticals = curve["verticals"]
     assert "SPORTS" in verticals and "CRYPTO" in verticals
     sports_bucket = verticals["SPORTS"]["buckets"][4]   # [0.40, 0.50)
@@ -54,13 +54,16 @@ def test_fit_curve_accepts_legacy_two_tuples():
     assert curve["verticals"] == {}                      # no tickers -> global only
 
 
-def test_signal_prefers_vertical_curve_and_discloses_scope(tmp_path):
+def test_signal_prefers_market_type_scope_then_vertical(tmp_path):
     path = write_curve(fit_curve(_mixed_samples()), tmp_path / "c.json")
     source = MarketDebiasSignal(curve_path=path)
     sports = source.generate(_market(_MLB, Vertical.SPORTS))
     crypto = source.generate(_market(_BTC, Vertical.CRYPTO))
     assert sports is not None and crypto is not None
-    assert sports.probability_yes == 0.7 and sports.features["curve_scope"] == "SPORTS"
+    # _MLB is a winner market -> its OWN market-type scope wins (not the pooled
+    # sports vertical), so a different market type can't contaminate it.
+    assert sports.probability_yes == 0.7 and sports.features["curve_scope"] == "SPORTS:winner"
+    # crypto has no sports market-type scope -> falls to its vertical curve.
     assert crypto.probability_yes == 0.3 and crypto.features["curve_scope"] == "CRYPTO"
 
 
@@ -74,15 +77,28 @@ def test_signal_falls_back_to_global_when_vertical_thin(tmp_path):
     assert weather.features["curve_scope"] == "global"
 
 
-def test_vertical_bucket_below_floor_falls_back(tmp_path):
-    # Sports has samples, but fewer than the vertical floor at this level.
-    samples = [(0.45, 1, _MLB)] * (MIN_VERTICAL_BUCKET_N - 1)
-    samples += [(0.45, 1 if i < 60 else 0, _BTC) for i in range(200)]
+def test_thin_market_type_scope_abstains_not_borrow_vertical(tmp_path):
+    # A sports market type with its OWN (thin) history must ABSTAIN rather than
+    # borrow the cross-type sports/global curve -- this is the YRFI fix: YRFI at
+    # 0.60 resolves ~coin, but the pooled sports curve at 0.60 is favorite-heavy,
+    # so borrowing it over-predicted YRFI by +0.15. Here a thin winner scope
+    # coexists with a dense pooled curve, and the signal declines to guess.
+    _YRFI = "KXMLBRFI-26JUL17NYYBOS"
+    samples = [(0.45, 1, _YRFI)] * (MIN_VERTICAL_BUCKET_N - 1)   # thin yrfi scope
+    samples += [(0.45, 1 if i < 160 else 0, _BTC) for i in range(2000)]  # dense global/crypto
     path = write_curve(fit_curve(samples), tmp_path / "c.json")
     source = MarketDebiasSignal(curve_path=path)
-    sports = source.generate(_market(_MLB, Vertical.SPORTS))
-    assert sports is not None
-    assert sports.features["curve_scope"] == "global"    # thin vertical -> pooled
+    assert source.generate(_market(_YRFI, Vertical.SPORTS)) is None   # abstains
+
+
+def test_unscoped_market_still_falls_back_to_global(tmp_path):
+    # A market with NO market-type scope (weather) keeps the vertical/global
+    # fallback -- the abstain rule only fires for types that HAVE their own scope.
+    samples = [(0.45, 1 if i < 60 else 0, _BTC) for i in range(2000)]
+    path = write_curve(fit_curve(samples), tmp_path / "c.json")
+    source = MarketDebiasSignal(curve_path=path)
+    weather = source.generate(_market("KXHIGHNY-26JUL17-B90", Vertical.WEATHER))
+    assert weather is not None and weather.features["curve_scope"] == "global"
 
 
 def test_emission_gated_on_honest_quote(tmp_path):

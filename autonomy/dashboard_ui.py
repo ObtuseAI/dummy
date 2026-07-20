@@ -555,42 +555,17 @@ function moveGlide(el){
   glide.style.opacity='1';glide.style.transform='translateY('+t.offsetTop+'px)';glide.style.height=t.offsetHeight+'px';
 }
 
-// ---------- live ticker tape (today's markets only, from the bet board) ----------
+// ---------- live ticker tape: DISABLED ----------
+// The scrolling marquee ran a continuous CSS transform that caused input lag in
+// the in-app browser, so the tape is turned off. Kept as a no-op (rather than
+// ripping out the element + every caller) so it's a one-line revert if wanted.
 function buildTape(){
-  const tape=document.getElementById('tape'),track=document.getElementById('tapetrack');
-  const board=STATE.board||{};
-  const today=new Date().toISOString().slice(0,10);
-  const items=[];
-  Object.entries(board).forEach(([scope,grp])=>{
-    if(!grp||typeof grp!=='object')return;
-    Object.values(grp).forEach(rows=>(rows||[]).forEach(r=>{
-      if((r.close_time||'').slice(0,10)!==today)return;      // current date only
-      items.push({scope:String(scope).toUpperCase(),matchup:r.matchup,bet:r.bet_type,
-                  side:r.pick,model:r.probability,edge:r.edge});
-    }));
-  });
-  if(!items.length){tape.classList.add('off');tape.setAttribute('aria-hidden','true');return;}
-  tape.classList.remove('off');tape.setAttribute('aria-hidden','false');
-  // cap per scope so one high-edge scope (usually crypto) can't crowd out the rest
-  const byScope={};items.forEach(it=>{(byScope[it.scope]=byScope[it.scope]||[]).push(it);});
-  let top=[];Object.values(byScope).forEach(list=>{list.sort((a,b)=>Math.abs(b.edge||0)-Math.abs(a.edge||0));top=top.concat(list.slice(0,6));});
-  top.sort((a,b)=>Math.abs(b.edge||0)-Math.abs(a.edge||0));
-  top=top.slice(0,40);
-  const CRYPTO={btc:1,eth:1,sol:1,doge:1,xrp:1};
-  const teamsOnly=(m)=>{const mm=String(m||'').match(/^\d{2}[A-Z]{3}\d{2}\d{0,4}([A-Z]+)$/);return mm?mm[1]:'';};
-  const cell=(it)=>{
-    const e=it.edge,cls=e==null?'':(e>=0?'up':'dn');
-    const es=e==null?'':' <span class="'+cls+'">'+signed(e,1)+'</span>';
-    const md=it.model==null?'':' <b>'+(+it.model).toFixed(2)+'</b>';
-    const side=it.side?' <span class="pill '+(String(it.side).toLowerCase()==='no'?'no':'yes')+'" style="font-size:9px;padding:1px 5px">'+esc(String(it.side).toUpperCase())+'</span>':'';
-    const teams=CRYPTO[String(it.scope).toLowerCase()]?'':teamsOnly(it.matchup);
-    const mk=teams?'<span class="mk">'+esc(teams)+'</span>':'';
-    return '<span class="ti"><span class="sc">'+esc(it.scope)+'</span>'+mk
-      +'<span class="bt2">'+esc(prettyBet(it.bet))+'</span>'+side+md+es+'</span>';
-  };
-  const html=top.map(cell).join('');
-  track.innerHTML=html+html;   // two copies for a seamless -50% loop
-  track.style.setProperty('--dur',Math.max(30,top.length*4.6)+'s');
+  const tape=document.getElementById('tape');
+  if(!tape)return;
+  tape.classList.add('off');
+  tape.setAttribute('aria-hidden','true');
+  const track=document.getElementById('tapetrack');
+  if(track)track.innerHTML='';
 }
 
 // ---------- views ----------

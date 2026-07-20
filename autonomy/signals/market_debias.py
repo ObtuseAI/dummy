@@ -80,17 +80,41 @@ def _bin_samples(
     return out
 
 
+def _scope_of(ticker: str) -> str | None:
+    """``"<vertical>:<market_type>"`` for a sports market, else None.
+
+    The price->outcome relationship is market-TYPE specific: a 0.60-priced
+    moneyline favorite resolves YES ~80%, but a 0.60-priced first-inning-run
+    (YRFI) resolves ~47% -- pooling them into one sports curve made YRFI inherit
+    the favorites' yes-rate (a measured +0.15 bias). Scoping by market type lets
+    each type read its OWN curve, or abstain when its own history is too thin.
+    """
+    try:
+        from autonomy.scanner import classify_vertical
+        from autonomy.sports_markets import spec_for
+
+        spec = spec_for(ticker)
+        if spec is None:
+            return None
+        return f"{classify_vertical(ticker).value}:{spec.market_type}"
+    except Exception:  # noqa: BLE001
+        return None
+
+
 def fit_curve(samples: list[tuple]) -> dict[str, Any]:
-    """Bin samples into the global curve plus per-vertical curves.
+    """Bin samples into the global curve, per-vertical curves, and per-(vertical,
+    market_type) scope curves.
 
     Accepts 2-tuples ``(mid_probability, result)`` (legacy retro candle
     samples — global curve only) and 3-tuples ``(mid_probability, result,
-    ticker)`` (partitioned into a per-vertical curve as well). The artifact
-    stays backward-compatible: the top-level ``buckets`` is the global curve
-    every existing reader understands; ``verticals`` is additive.
+    ticker)`` (also partitioned by vertical and by market-type scope). The
+    artifact stays backward-compatible: the top-level ``buckets`` is the global
+    curve every existing reader understands; ``verticals`` and ``scopes`` are
+    additive.
     """
     flat: list[tuple[float, int]] = []
     by_vertical: dict[str, list[tuple[float, int]]] = {}
+    by_scope: dict[str, list[tuple[float, int]]] = {}
     for sample in samples:
         mid_prob, result = float(sample[0]), int(sample[1])
         flat.append((mid_prob, result))
@@ -102,6 +126,9 @@ def fit_curve(samples: list[tuple]) -> dict[str, Any]:
             except Exception:
                 continue
             by_vertical.setdefault(vertical, []).append((mid_prob, result))
+            scope = _scope_of(str(sample[2]))
+            if scope:
+                by_scope.setdefault(scope, []).append((mid_prob, result))
     verticals = {
         vertical: {
             "n_total": len(rows),
@@ -111,13 +138,23 @@ def fit_curve(samples: list[tuple]) -> dict[str, Any]:
         }
         for vertical, rows in sorted(by_vertical.items())
     }
+    scopes = {
+        scope: {
+            "n_total": len(rows),
+            "n_buckets": N_VERTICAL_BUCKETS,
+            "min_bucket_n": MIN_VERTICAL_BUCKET_N,
+            "buckets": _bin_samples(rows, N_VERTICAL_BUCKETS),
+        }
+        for scope, rows in sorted(by_scope.items())
+    }
     return {
         "report_name": "MARKET_DEBIAS_CURVE",
-        "schema_version": 2,
+        "schema_version": 3,
         "n_total": len(flat),
         "min_bucket_n": MIN_BUCKET_N,
         "buckets": _bin_samples(flat, N_BUCKETS),
         "verticals": verticals,
+        "scopes": scopes,
         "created_at": datetime.now(timezone.utc).isoformat(),
     }
 
@@ -146,22 +183,45 @@ class MarketDebiasSignal:
     def __init__(self, curve: dict[str, Any] | None = None, curve_path: Path | None = None):
         self._curve = curve if curve is not None else load_curve(curve_path)
 
-    def _bucket_for(self, mid_prob: float, vertical: str | None = None) -> tuple[dict[str, Any], str] | None:
-        """(bucket, curve_scope) — the vertical's own curve when it is dense
-        enough at this price level, else the pooled global curve."""
+    @staticmethod
+    def _dense_bucket(curve: dict[str, Any], mid_prob: float,
+                      default_buckets: int, default_min: int) -> dict[str, Any] | None:
+        n_buckets = int(curve.get("n_buckets") or default_buckets)
+        min_n = int(curve.get("min_bucket_n") or default_min)
+        buckets = curve.get("buckets") or []
+        idx = min(n_buckets - 1, max(0, int(mid_prob * n_buckets)))
+        if idx >= len(buckets):
+            return None
+        bucket = buckets[idx]
+        if int(bucket.get("n") or 0) >= min_n and bucket.get("yes_rate") is not None:
+            return bucket
+        return None
+
+    def _bucket_for(self, mid_prob: float, vertical: str | None = None,
+                    scope: str | None = None) -> tuple[dict[str, Any], str] | None:
+        """(bucket, curve_scope), most specific dense curve wins.
+
+        Market-type scope first: if this market type has its OWN measured curve,
+        use it or ABSTAIN -- never borrow the mixed vertical curve, because the
+        price->outcome relationship is type-specific (YRFI at 0.60 != a moneyline
+        favorite at 0.60). Only market types with no scope curve of their own
+        (crypto / unclassified) fall through to the vertical, then global, curve.
+        """
         if self._curve is None:
             return None
+        if scope:
+            scoped = (self._curve.get("scopes") or {}).get(scope)
+            if isinstance(scoped, dict):
+                bucket = self._dense_bucket(scoped, mid_prob, N_VERTICAL_BUCKETS, MIN_VERTICAL_BUCKET_N)
+                # scoped curve exists -> its verdict is final (dense: opine; thin:
+                # abstain). Do NOT fall back to the cross-type vertical curve.
+                return (bucket, scope) if bucket is not None else None
         if vertical:
             vertical_curve = (self._curve.get("verticals") or {}).get(vertical)
             if isinstance(vertical_curve, dict):
-                n_buckets = int(vertical_curve.get("n_buckets") or N_VERTICAL_BUCKETS)
-                min_n = int(vertical_curve.get("min_bucket_n") or MIN_VERTICAL_BUCKET_N)
-                buckets = vertical_curve.get("buckets") or []
-                idx = min(n_buckets - 1, max(0, int(mid_prob * n_buckets)))
-                if idx < len(buckets):
-                    bucket = buckets[idx]
-                    if int(bucket.get("n") or 0) >= min_n and bucket.get("yes_rate") is not None:
-                        return bucket, vertical
+                bucket = self._dense_bucket(vertical_curve, mid_prob, N_VERTICAL_BUCKETS, MIN_VERTICAL_BUCKET_N)
+                if bucket is not None:
+                    return bucket, vertical
         idx = min(N_BUCKETS - 1, max(0, int(mid_prob * N_BUCKETS)))
         buckets = self._curve.get("buckets", [])
         if idx >= len(buckets):
@@ -188,7 +248,7 @@ class MarketDebiasSignal:
         if implied is None:
             return None
         mid_prob = min(0.995, max(0.005, implied))
-        found = self._bucket_for(mid_prob, market.vertical.value)
+        found = self._bucket_for(mid_prob, market.vertical.value, _scope_of(market.ticker))
         if found is None:
             return None
         bucket, curve_scope = found
