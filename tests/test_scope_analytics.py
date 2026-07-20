@@ -110,9 +110,19 @@ def test_current_picks_are_unsettled_and_ranked(tmp_path):
 
 
 def test_empty_ledger_is_safe(tmp_path):
+    from autonomy.scope_analytics import SPORTS_ROSTER
+
     led = _ledger(tmp_path)
     out = build_scope_analytics(led._conn)
-    assert out["verticals"] == {}
+    # Wave-55: the SPORTS roster is always listed, even with no data at all --
+    # every league present, empty summaries, in-season by default (fail-open).
+    assert set(out["verticals"]) == {"SPORTS"}      # no crypto data -> crypto absent
+    sports = out["verticals"]["SPORTS"]["scopes"]
+    assert set(sports) == set(SPORTS_ROSTER)
+    for lg in SPORTS_ROSTER:
+        assert sports[lg]["summary"]["n"] == 0
+        assert sports[lg]["basis"] == "none"
+        assert sports[lg]["in_season"] is True
     ov = build_overview(led._conn, {})
     assert ov["bankroll_cents"] == 10_000            # falls back to base
     assert ov["promoted"] == [] and ov["close_to_promotion"] == []

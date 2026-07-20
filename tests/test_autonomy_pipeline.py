@@ -55,6 +55,12 @@ def test_classify_verticals():
     assert classify_vertical("KXHIGHNY-26JUL10-T85") is Vertical.WEATHER
     assert classify_vertical("KXBTCD-26JUL08H17-T107999.99") is Vertical.CRYPTO
     assert classify_vertical("KXMVESPORTSMULTIGAMEEXTENDED-X-Y") is Vertical.SPORTS
+    # WNBA / NCAAF / NCAAMB must classify as SPORTS -- KXWNBA* never matched the
+    # KXNBA prefix and KXNCAA* matched nothing, so they used to fall to OTHER and
+    # were dropped by the scan-time {CRYPTO, SPORTS} gate (never traded/listed).
+    assert classify_vertical("KXWNBAGAME-26JUL19LVLA-LV") is Vertical.SPORTS
+    assert classify_vertical("KXNCAAFGAME-26SEP13TEXOU-TEX") is Vertical.SPORTS
+    assert classify_vertical("KXNCAAMBGAME-26NOV20DUKEUNC-DUKE") is Vertical.SPORTS
     assert classify_vertical("KXWHATEVER-1") is Vertical.OTHER
 
 

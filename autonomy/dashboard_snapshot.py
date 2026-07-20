@@ -77,10 +77,14 @@ def build_dashboard_snapshot(
     overview: dict[str, Any] = {}
     scopes: dict[str, Any] = {}
     try:
-        from autonomy.scope_analytics import build_overview, build_scope_analytics
+        from autonomy.scope_analytics import (
+            build_overview,
+            build_scope_analytics,
+            load_season_active,
+        )
 
         overview = build_overview(ledger._conn, report)
-        scopes = build_scope_analytics(ledger._conn)
+        scopes = build_scope_analytics(ledger._conn, season_active=load_season_active())
     except Exception:  # noqa: BLE001 -- never let analytics sink the snapshot
         overview = (prior or {}).get("overview") or {}
         scopes = (prior or {}).get("scopes") or {}

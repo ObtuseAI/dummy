@@ -37,6 +37,36 @@ _CRYPTO_COIN_PREFIXES: tuple[tuple[str, str], ...] = (
 CRYPTO = "CRYPTO"
 SPORTS = "SPORTS"
 
+# The full league roster the SPORTS board always lists, in season or not
+# (MLB + the team-sport specialist leagues; UFC/F1 retired). A league with no
+# graded markets in the current window still appears -- flagged in/out of
+# season, with last-season grades filled in from a widened lookback.
+SPORTS_ROSTER: tuple[str, ...] = ("MLB", "WNBA", "NBA", "NFL", "NHL", "NCAAF", "NCAAMB")
+# How far back "last season" reaches for an out-of-season / dormant league.
+# One scan at this window costs ~the same as the 120d one (the expensive
+# per-market de-dup over decisions is window-independent), so the wider read
+# is split in Python into a current slice + a last-season slice.
+LAST_SEASON_WINDOW_DAYS = 400.0
+_SEASON_STATE_PATH = Path("runtime/autonomy/season_state.json")
+
+
+def load_season_active(path: Path | None = None) -> dict[str, bool]:
+    """``{league_lower: active}`` from the SeasonMonitor state; {} on any miss.
+
+    Fail-soft: a missing/corrupt file yields no verdicts, and the builder then
+    treats every roster league as in-season (the monitor's own fail-open
+    default) rather than silently marking leagues dormant.
+    """
+    try:
+        raw = json.loads((path or _SEASON_STATE_PATH).read_text(encoding="utf-8"))
+    except Exception:  # noqa: BLE001 -- absent/partial state must never raise
+        return {}
+    out: dict[str, bool] = {}
+    for league, verdict in (raw or {}).items():
+        if isinstance(verdict, dict) and "active" in verdict:
+            out[str(league).lower()] = bool(verdict.get("active"))
+    return out
+
 
 def scope_key(ticker: str) -> tuple[str, str]:
     """(vertical, label) for a market ticker -- ('CRYPTO','BTC') / ('SPORTS','MLB').
@@ -211,18 +241,36 @@ def build_scope_analytics(
     conn: sqlite3.Connection,
     *,
     window_days: float = 120.0,
+    season_active: dict[str, bool] | None = None,
+    last_season_window_days: float = LAST_SEASON_WINDOW_DAYS,
 ) -> dict[str, Any]:
     """The full per-scope block for the dashboard snapshot:
 
         {"CRYPTO": {"scopes": {"BTC": {summary, progression, picks}, ...},
                     "summary": {...aggregate...}},
          "SPORTS": {...}}
+
+    ``season_active`` maps ``league_lower -> is_active`` (from
+    :func:`load_season_active`). Every league in :data:`SPORTS_ROSTER` is
+    listed regardless of activity: an out-of-season or as-yet-ungraded league
+    still gets a scope, flagged ``in_season`` and back-filled from last season
+    (a widened lookback) so the operator sees the whole slate, not just what
+    happens to have settled this window.
     """
-    records = _settled_records(conn, window_days)
+    season_active = {str(k).lower(): bool(v) for k, v in (season_active or {}).items()}
+
+    # One wide scan; the trailing ``window_days`` slice is the current season.
+    # (De-duping the pick-of-record per market scans all decisions either way,
+    # so a 400d read costs ~the same as 120d -- we just split it in Python.)
+    wide = _settled_records(conn, max(window_days, last_season_window_days))
+    cutoff = conn.execute(
+        "SELECT datetime('now', ?)", (f"-{float(window_days)} days",)
+    ).fetchone()[0]
+    records = [r for r in wide if r["settled_at"] >= cutoff]
     rankings = _rankings(conn)
 
     verticals: dict[str, dict[str, Any]] = {}
-    # Group settled records by (vertical, label).
+    # Group current-window settled records by (vertical, label).
     by_key: dict[tuple[str, str], list[dict[str, Any]]] = {}
     for rec in records:
         by_key.setdefault((rec["vertical"], rec["label"]), []).append(rec)
@@ -239,7 +287,32 @@ def build_scope_analytics(
             "picks": rankings.get((vertical, label), []),
         }
 
-    # Vertical-level rollup across its scopes.
+    # Always surface the whole SPORTS roster -- in or out of season.
+    sports = verticals.setdefault(SPORTS, {"scopes": {}, "summary": {}})
+    last_season: dict[str, list[dict[str, Any]]] = {}
+    for rec in wide:
+        if rec["vertical"] == SPORTS:
+            last_season.setdefault(rec["label"], []).append(rec)
+    for league in SPORTS_ROSTER:
+        active = season_active.get(league.lower())
+        in_season = True if active is None else active
+        scope = sports["scopes"].get(league)
+        if scope is None:
+            # No current-window grade -> fall back to last season's slate.
+            ls = last_season.get(league, [])
+            scope = {
+                "label": league,
+                "summary": _summarize(ls),
+                "progression": _progression(ls),
+                "picks": rankings.get((SPORTS, league), []),
+                "basis": "last-season" if ls else "none",
+            }
+            sports["scopes"][league] = scope
+        else:
+            scope["basis"] = "current"
+        scope["in_season"] = in_season
+
+    # Vertical-level rollup across its scopes (current window only).
     for vertical, block in verticals.items():
         recs = [r for r in records if r["vertical"] == vertical]
         block["summary"] = _summarize(recs)
@@ -247,6 +320,7 @@ def build_scope_analytics(
 
     return {
         "window_days": window_days,
+        "last_season_window_days": last_season_window_days,
         "verticals": verticals,
     }
 
