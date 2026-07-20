@@ -877,13 +877,17 @@ function scopeView(vert,label){
   const sc=block&&block.scopes&&block.scopes[label];
   if(!sc)return topbar(label,vert.toLowerCase())+'<div class="card"><div class="empty">'+esc(label)+' — no snapshot data yet.<br><span style="color:var(--faint)">the board refreshes every 20 min; leagues populate as their markets settle</span></div></div>';
   const s=sc.summary;
+  // Season is a SPORTS-only concept -- crypto trades 24/7 and has no season, so
+  // none of the season badge / status / basis applies to a coin scope.
+  const isSports=vert==='SPORTS';
   const inSeason=sc.in_season!==false, basis=sc.basis||'';
   // Three-state season, so an off-season league awake for preseason never reads
   // "in season · awaiting grades". Backend sets season_status; fall back for old snapshots.
   const status=sc.season_status||(!inSeason?'off':(basis==='current'?'in':'upcoming'));
-  const seasonBadge=status==='off'
-    ? '<span class="badge off"><span class="d"></span>out of season'+(basis==='last-season'?' · last season':'')+'</span>'
-    : (status==='upcoming'?'<span class="badge"><span class="d"></span>preseason · not yet playing</span>':'');
+  const seasonBadge=!isSports?''
+    :(status==='off'
+      ? '<span class="badge off"><span class="d"></span>out of season'+(basis==='last-season'?' · last season':'')+'</span>'
+      : (status==='upcoming'?'<span class="badge"><span class="d"></span>preseason · not yet playing</span>':''));
   const seasonWord=status==='in'?'in season':(status==='upcoming'?'preseason':'off season');
   let h=topbar(label,vert.toLowerCase()+' · graded forecast quality',seasonBadge);
   // scope hero: edge gauge + key figures
@@ -897,8 +901,11 @@ function scopeView(vert,label){
     +'</div></div>';
   h+='<div class="card reveal"><div class="mini">'
     +miniRow('Open picks',commaN(sc.picks?sc.picks.length:0),'amb')
-    +miniRow('Season',seasonWord,status==='in'?'pos':(status==='upcoming'?'amb':'neg'))
-    +miniRow('Data basis',basis==='current'?'current window':(basis==='last-season'?'last season':(status==='upcoming'?'preseason — no games yet':'no history')),basis==='last-season'?'amb':'')
+    +(isSports
+      ? miniRow('Season',seasonWord,status==='in'?'pos':(status==='upcoming'?'amb':'neg'))
+        +miniRow('Data basis',basis==='current'?'current window':(basis==='last-season'?'last season':(status==='upcoming'?'preseason — no games yet':'no history')),basis==='last-season'?'amb':'')
+      : miniRow('Traded',commaN(s.traded||0),'')
+        +miniRow('Coverage','24/7 live','pos'))
     +miniRow('Market Brier',num(s.market_brier),'')
     +'</div></div>';
   h+='</div>';
