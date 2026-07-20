@@ -133,21 +133,24 @@ a{color:inherit;text-decoration:none}
 /* pari-mutuel ticker tape */
 .tape{position:sticky;top:0;z-index:8;margin:0 calc(-1*var(--s4)) var(--s3);
   background:linear-gradient(180deg,rgba(6,20,14,.94),rgba(6,20,14,.82));
-  backdrop-filter:blur(8px);border-bottom:1px solid var(--line);overflow:hidden;height:34px;display:flex;align-items:center}
+  backdrop-filter:blur(8px);border-bottom:1px solid var(--line);overflow:hidden;height:44px;display:flex;align-items:stretch}
 .tape::before{content:"LIVE TAPE";position:absolute;left:0;top:0;bottom:0;z-index:2;display:flex;align-items:center;
-  padding:0 12px;font-family:var(--disp);font-size:10px;letter-spacing:.22em;color:var(--acc);
-  background:linear-gradient(90deg,var(--bg-1) 70%,transparent);text-shadow:0 0 10px var(--acc-glow)}
-.tape::after{content:"";position:absolute;right:0;top:0;bottom:0;width:56px;z-index:2;
+  padding:0 13px;font-family:var(--disp);font-size:10px;letter-spacing:.22em;color:var(--acc);
+  background:linear-gradient(90deg,var(--bg-1) 74%,transparent);text-shadow:0 0 10px var(--acc-glow)}
+.tape::after{content:"";position:absolute;right:0;top:0;bottom:0;width:48px;z-index:2;
   background:linear-gradient(270deg,var(--bg-1),transparent);pointer-events:none}
-.tape .track{display:flex;gap:0;white-space:nowrap;padding-left:96px;will-change:transform;
-  animation:marq var(--dur,60s) linear infinite}
-.tape:hover .track{animation-play-state:paused}
+/* NB: class is "ttrack" not "track" -- the progress-bar .track rule (height:8px;
+   overflow:hidden) was clipping the ticker to an unreadable sliver. */
+.tape .ttrack{display:flex;align-items:center;height:100%;gap:0;white-space:nowrap;padding-left:104px;
+  will-change:transform;animation:marq var(--dur,60s) linear infinite}
+.tape:hover .ttrack{animation-play-state:paused}
 @keyframes marq{to{transform:translateX(-50%)}}
-.tape .ti{display:inline-flex;align-items:center;gap:8px;padding:0 18px;font-family:var(--mono);font-size:12px;
+.tape .ti{display:inline-flex;align-items:center;gap:9px;padding:0 20px;font-family:var(--mono);font-size:13.5px;
   color:var(--muted);border-right:1px solid var(--line)}
-.tape .ti .sc{color:var(--faint);font-size:10px;letter-spacing:.12em;text-transform:uppercase}
+.tape .ti .sc{color:var(--faint);font-size:11px;letter-spacing:.12em;text-transform:uppercase}
 .tape .ti .mk{color:var(--txt)}
-.tape .ti b{color:var(--acc)}
+.tape .ti .bt2{color:var(--acc);font-size:12px}
+.tape .ti b{color:var(--phos)}
 .tape .ti .up{color:var(--green)} .tape .ti .dn{color:var(--red)}
 .tape.off{display:none}
 
@@ -359,7 +362,7 @@ td.hc .td{font-size:11px;margin-left:3px}
 
 @media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}
   .chart .draw{stroke-dashoffset:0}.fill{width:var(--w,60%)!important}
-  .gauge .val-arc{stroke-dashoffset:var(--off)!important}.tape .track{transform:none}}
+  .gauge .val-arc{stroke-dashoffset:var(--off)!important}.tape .ttrack{transform:none}}
 </style>
 </head><body>
 <canvas id="fx"></canvas>
@@ -378,7 +381,7 @@ td.hc .td{font-size:11px;margin-left:3px}
     </div>
   </aside>
   <main class="stage">
-    <div class="tape off" id="tape" aria-hidden="true"><div class="track" id="tapetrack"></div></div>
+    <div class="tape off" id="tape" aria-hidden="true"><div class="ttrack" id="tapetrack"></div></div>
     <div id="view"></div>
   </main>
 </div>
@@ -552,25 +555,42 @@ function moveGlide(el){
   glide.style.opacity='1';glide.style.transform='translateY('+t.offsetTop+'px)';glide.style.height=t.offsetHeight+'px';
 }
 
-// ---------- live ticker tape ----------
+// ---------- live ticker tape (today's markets only, from the bet board) ----------
 function buildTape(){
   const tape=document.getElementById('tape'),track=document.getElementById('tapetrack');
+  const board=STATE.board||{};
+  const today=new Date().toISOString().slice(0,10);
   const items=[];
-  const v=(STATE.scopes&&STATE.scopes.verticals)||{};
-  Object.entries(v).forEach(([vert,vb])=>Object.entries(vb.scopes||{}).forEach(([lab,sc])=>{
-    (sc.picks||[]).slice(0,4).forEach(p=>items.push({sc:lab,mk:p.ticker,side:p.side,model:p.prob,edge:p.edge_cents,unit:'¢'}));
-    ((sc.extras&&sc.extras.mispricing)||[]).slice(0,3).forEach(r=>items.push({sc:lab,mk:r.ticker,side:r.side,edge:r.edge==null?null:r.edge*100,unit:'%',model:r.model_prob}));
-  }));
+  Object.entries(board).forEach(([scope,grp])=>{
+    if(!grp||typeof grp!=='object')return;
+    Object.values(grp).forEach(rows=>(rows||[]).forEach(r=>{
+      if((r.close_time||'').slice(0,10)!==today)return;      // current date only
+      items.push({scope:String(scope).toUpperCase(),matchup:r.matchup,bet:r.bet_type,
+                  side:r.pick,model:r.probability,edge:r.edge});
+    }));
+  });
   if(!items.length){tape.classList.add('off');tape.setAttribute('aria-hidden','true');return;}
   tape.classList.remove('off');tape.setAttribute('aria-hidden','false');
-  const cell=(it)=>{const e=it.edge,cls=e==null?'':(e>=0?'up':'dn');
-    const es=e==null?'':' <span class="'+cls+'">'+(e>0?'+':'')+(+e).toFixed(1)+it.unit+'</span>';
+  // cap per scope so one high-edge scope (usually crypto) can't crowd out the rest
+  const byScope={};items.forEach(it=>{(byScope[it.scope]=byScope[it.scope]||[]).push(it);});
+  let top=[];Object.values(byScope).forEach(list=>{list.sort((a,b)=>Math.abs(b.edge||0)-Math.abs(a.edge||0));top=top.concat(list.slice(0,6));});
+  top.sort((a,b)=>Math.abs(b.edge||0)-Math.abs(a.edge||0));
+  top=top.slice(0,40);
+  const CRYPTO={btc:1,eth:1,sol:1,doge:1,xrp:1};
+  const teamsOnly=(m)=>{const mm=String(m||'').match(/^\d{2}[A-Z]{3}\d{2}\d{0,4}([A-Z]+)$/);return mm?mm[1]:'';};
+  const cell=(it)=>{
+    const e=it.edge,cls=e==null?'':(e>=0?'up':'dn');
+    const es=e==null?'':' <span class="'+cls+'">'+signed(e,1)+'</span>';
     const md=it.model==null?'':' <b>'+(+it.model).toFixed(2)+'</b>';
-    return '<span class="ti"><span class="sc">'+esc(it.sc)+'</span><span class="mk">'+esc((it.mk||'').slice(0,22))+'</span>'
-      +(it.side?' '+esc(it.side):'')+md+es+'</span>';};
-  const html=items.map(cell).join('');
+    const side=it.side?' <span class="pill '+(String(it.side).toLowerCase()==='no'?'no':'yes')+'" style="font-size:9px;padding:1px 5px">'+esc(String(it.side).toUpperCase())+'</span>':'';
+    const teams=CRYPTO[String(it.scope).toLowerCase()]?'':teamsOnly(it.matchup);
+    const mk=teams?'<span class="mk">'+esc(teams)+'</span>':'';
+    return '<span class="ti"><span class="sc">'+esc(it.scope)+'</span>'+mk
+      +'<span class="bt2">'+esc(prettyBet(it.bet))+'</span>'+side+md+es+'</span>';
+  };
+  const html=top.map(cell).join('');
   track.innerHTML=html+html;   // two copies for a seamless -50% loop
-  track.style.setProperty('--dur',Math.max(28,items.length*4.2)+'s');
+  track.style.setProperty('--dur',Math.max(30,top.length*4.6)+'s');
 }
 
 // ---------- views ----------
@@ -1080,7 +1100,8 @@ async function poll(){
       fetch('/api/bet_board').then(r=>r.json()).catch(()=>null),
     ]);
     if(ov)STATE.overview=ov;if(sc)STATE.scopes=sc;if(st)STATE.status=st;
-    if(wf)STATE.walk=wf.leagues||{};if(bb)STATE.board=bb.groups||{};
+    if(wf)STATE.walk=wf.leagues||{};
+    if(bb){STATE.board=bb.groups||{};buildTape();}   // tape tracks the board, independent of view re-render
     const live=document.getElementById('live'),fs=document.getElementById('footstat');
     const fresh=ov&&ov.generated_at&&(Date.now()-Date.parse(ov.generated_at))<30*60*1000;
     live.className='dot'+(fresh?' live':'');
