@@ -13,7 +13,6 @@ Sigmas are per-league seams the tuner can refine.
 from __future__ import annotations
 
 import math
-from typing import Any
 
 from autonomy.sports.history_store import SportsHistoryStore
 
@@ -49,9 +48,11 @@ class LakeScoringModel:
             if hs is None or as_ is None:
                 continue
             if g.get("home") == team:
-                scored += hs; allowed += as_
+                scored += hs
+                allowed += as_
             else:
-                scored += as_; allowed += hs
+                scored += as_
+                allowed += hs
             used += 1
         if used == 0:
             return None

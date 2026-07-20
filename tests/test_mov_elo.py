@@ -38,9 +38,12 @@ def test_walk_forward_beats_coin(tmp_path):
     st = SportsHistoryStore(tmp_path / "h.db")
     day = 1
     for wk in range(16):
-        st.upsert_game(_game(f"a{wk}", f"2025-09-{day:02d}T00:00:00Z", "AAA", "CCC", 35, 12)); day += 1
-        st.upsert_game(_game(f"b{wk}", f"2025-09-{day:02d}T00:00:00Z", "BBB", "CCC", 24, 20)); day += 1
-        st.upsert_game(_game(f"c{wk}", f"2025-09-{day:02d}T00:00:00Z", "AAA", "BBB", 30, 21)); day += 1
+        st.upsert_game(_game(f"a{wk}", f"2025-09-{day:02d}T00:00:00Z", "AAA", "CCC", 35, 12))
+        day += 1
+        st.upsert_game(_game(f"b{wk}", f"2025-09-{day:02d}T00:00:00Z", "BBB", "CCC", 24, 20))
+        day += 1
+        st.upsert_game(_game(f"c{wk}", f"2025-09-{day:02d}T00:00:00Z", "AAA", "BBB", 30, 21))
+        day += 1
     r = walk_forward_mov_elo(st, league="nfl", warmup_games=6)
     assert r["n"] > 10 and r["brier"] < 0.25 and r["hit_rate"] > 0.6
     st.close()

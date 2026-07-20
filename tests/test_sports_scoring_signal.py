@@ -37,10 +37,12 @@ def _store(tmp_path):
     for wk in range(12):
         st.upsert_game({"game_id": f"a{wk}", "league": "nba", "season": 2025,
                         "start_time": f"2025-01-{day:02d}T00:00:00Z", "home": "AAA", "away": "CCC",
-                        "home_score": 118, "away_score": 96, "status": "final", "source": "t"}); day += 1
+                        "home_score": 118, "away_score": 96, "status": "final", "source": "t"})
+        day += 1
         st.upsert_game({"game_id": f"c{wk}", "league": "nba", "season": 2025,
                         "start_time": f"2025-01-{day:02d}T00:00:00Z", "home": "AAA", "away": "BBB",
-                        "home_score": 110, "away_score": 100, "status": "final", "source": "t"}); day += 1
+                        "home_score": 110, "away_score": 100, "status": "final", "source": "t"})
+        day += 1
     return st
 
 

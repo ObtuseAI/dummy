@@ -53,7 +53,7 @@ def test_bad_summary_is_skipped(tmp_path):
     def boom(league, gid):
         raise RuntimeError("500")
 
-    res = ingest_boxscores(st, "wnba", fetch_summary=boom, parse=lambda l, s: [],
+    res = ingest_boxscores(st, "wnba", fetch_summary=boom, parse=lambda t, s: [],
                            min_interval=0, sleep=lambda s: None)
     assert res["errors"] == 3 and res["rows"] == 0
     st.close()

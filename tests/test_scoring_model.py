@@ -16,9 +16,12 @@ def _seed(tmp_path):
     st = SportsHistoryStore(tmp_path / "h.db")
     day = 1
     for wk in range(12):
-        st.upsert_game(_game(f"a{wk}", f"2025-01-{day:02d}T00:00:00Z", "AAA", "CCC", 118, 95)); day += 1
-        st.upsert_game(_game(f"b{wk}", f"2025-01-{day:02d}T00:00:00Z", "BBB", "CCC", 104, 99)); day += 1
-        st.upsert_game(_game(f"c{wk}", f"2025-01-{day:02d}T00:00:00Z", "AAA", "BBB", 110, 101)); day += 1
+        st.upsert_game(_game(f"a{wk}", f"2025-01-{day:02d}T00:00:00Z", "AAA", "CCC", 118, 95))
+        day += 1
+        st.upsert_game(_game(f"b{wk}", f"2025-01-{day:02d}T00:00:00Z", "BBB", "CCC", 104, 99))
+        day += 1
+        st.upsert_game(_game(f"c{wk}", f"2025-01-{day:02d}T00:00:00Z", "AAA", "BBB", 110, 101))
+        day += 1
     return st
 
 

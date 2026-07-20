@@ -37,9 +37,12 @@ def test_walk_forward_pythagorean_beats_coin_on_a_hierarchy(tmp_path):
     st = SportsHistoryStore(tmp_path / "h.db")
     day = 1
     for week in range(10):
-        st.upsert_game(_game(f"a{week}", f"2025-09-{day:02d}T00:00:00Z", "AAA", "CCC", 35, 10)); day += 1
-        st.upsert_game(_game(f"b{week}", f"2025-09-{day:02d}T00:00:00Z", "BBB", "CCC", 27, 20)); day += 1
-        st.upsert_game(_game(f"c{week}", f"2025-09-{day:02d}T00:00:00Z", "AAA", "BBB", 30, 24)); day += 1
+        st.upsert_game(_game(f"a{week}", f"2025-09-{day:02d}T00:00:00Z", "AAA", "CCC", 35, 10))
+        day += 1
+        st.upsert_game(_game(f"b{week}", f"2025-09-{day:02d}T00:00:00Z", "BBB", "CCC", 27, 20))
+        day += 1
+        st.upsert_game(_game(f"c{week}", f"2025-09-{day:02d}T00:00:00Z", "AAA", "BBB", 30, 24))
+        day += 1
     r = walk_forward_pythagorean(st, league="nfl")
     assert r["n"] > 10 and r["brier"] < 0.25 and r["hit_rate"] > 0.6
     st.close()

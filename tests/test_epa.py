@@ -1,7 +1,7 @@
 """Phase 2: EPA aggregation + engine + walk-forward + adapter (no network)."""
 from __future__ import annotations
 
-from autonomy.ingest.nflfastr import aggregate_epa, ingest_nflfastr_epa, parse_pbp_csv
+from autonomy.ingest.nflfastr import aggregate_epa, ingest_nflfastr_epa
 from autonomy.sports.epa import LakeEpa
 from autonomy.sports.history_store import SportsHistoryStore
 from autonomy.sports.walk_forward import walk_forward_epa

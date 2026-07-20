@@ -13,7 +13,6 @@ is scale-invariant, so the walk-forward validates direction before calibration).
 from __future__ import annotations
 
 import math
-from typing import Any
 
 from autonomy.sports.history_store import SportsHistoryStore
 

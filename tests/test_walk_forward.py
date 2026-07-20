@@ -21,9 +21,12 @@ def test_walk_forward_grades_a_predictable_league(tmp_path):
     # A strict hierarchy AAA > BBB > CCC, each pairing repeated across weeks.
     day = 1
     for week in range(8):
-        st.upsert_game(_game(f"a{week}", f"2025-09-{day:02d}T00:00:00Z", "AAA", "BBB", 30, 10)); day += 1
-        st.upsert_game(_game(f"b{week}", f"2025-09-{day:02d}T00:00:00Z", "BBB", "CCC", 24, 17)); day += 1
-        st.upsert_game(_game(f"c{week}", f"2025-09-{day:02d}T00:00:00Z", "AAA", "CCC", 35, 14)); day += 1
+        st.upsert_game(_game(f"a{week}", f"2025-09-{day:02d}T00:00:00Z", "AAA", "BBB", 30, 10))
+        day += 1
+        st.upsert_game(_game(f"b{week}", f"2025-09-{day:02d}T00:00:00Z", "BBB", "CCC", 24, 17))
+        day += 1
+        st.upsert_game(_game(f"c{week}", f"2025-09-{day:02d}T00:00:00Z", "AAA", "CCC", 35, 14))
+        day += 1
 
     report = walk_forward_glicko(st, league="nfl")
     assert report["n"] > 12

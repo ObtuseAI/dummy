@@ -13,7 +13,6 @@ logistic (scale + home-edge are tuner seams; hit-rate is scale-invariant).
 from __future__ import annotations
 
 import math
-from typing import Any
 
 from autonomy.sports.history_store import SportsHistoryStore
 
