@@ -19,9 +19,9 @@ if str(ROOT) not in sys.path:
 
 from autonomy.ingest.cfbfastr import ingest_cfbd_games  # noqa: E402
 from autonomy.ingest.espn_lake import ingest_espn_league  # noqa: E402
-from autonomy.ingest.wehoop import ingest_wehoop_wnba  # noqa: E402
 from autonomy.ingest.fetcher import PoliteFetcher  # noqa: E402
 from autonomy.ingest.nflverse import ingest_nflverse_games  # noqa: E402
+from autonomy.ingest.sportsdataverse import SDV_SOURCES, ingest_sdv_schedule  # noqa: E402
 from autonomy.sports.history_store import SportsHistoryStore  # noqa: E402
 
 # Every league Dummy trades (ESPN scoreboard keys, lowercase).
@@ -39,11 +39,16 @@ def _ingest_espn(store, fetcher, seasons, only_league=None):  # noqa: ARG001
     return out
 
 
+def _ingest_sdv(store, fetcher, seasons, only_league=None):
+    leagues = (only_league,) if only_league in SDV_SOURCES else tuple(SDV_SOURCES)
+    return {lg: ingest_sdv_schedule(store, fetcher, lg, seasons or range(2008, 2027)) for lg in leagues}
+
+
 # source name -> ingest callable(store, fetcher, seasons)
 SOURCES = {
     "nflverse": lambda store, fetcher, seasons: ingest_nflverse_games(store, fetcher, seasons=seasons),
     "cfbfastr": lambda store, fetcher, seasons: ingest_cfbd_games(store, fetcher, seasons=seasons),
-    "wehoop": lambda store, fetcher, seasons: ingest_wehoop_wnba(store, fetcher, seasons or range(2008, 2027)),
+    "sportsdataverse": None,  # handled in main (per-league schedule CSVs)
     "espn": _ingest_espn,
 }
 
@@ -70,12 +75,14 @@ def main() -> int:
     fetcher = PoliteFetcher(min_interval=args.min_interval)
     store = SportsHistoryStore()
     names = sorted(SOURCES) if args.source == "all" else [args.source]
-    if args.league:                       # a single-league task only wants espn for that league
-        names = [n for n in names if n == "espn"] or ["espn"]
+    if args.league:                       # a single-league task: espn + sdv for that league
+        names = [n for n in names if n in ("espn", "sportsdataverse")] or ["espn", "sportsdataverse"]
     try:
         for name in names:
             if name == "espn":
                 result = _ingest_espn(store, fetcher, seasons, only_league=args.league)
+            elif name == "sportsdataverse":
+                result = _ingest_sdv(store, fetcher, seasons, only_league=args.league)
             else:
                 result = SOURCES[name](store, fetcher, seasons)
             print(f"[{name}] {result}")
