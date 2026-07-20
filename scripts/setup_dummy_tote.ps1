@@ -1,11 +1,13 @@
-# Install/refresh the Dummy desktop app + its ONE all-in-one launcher.
+# Install/refresh the ONE all-in-one Dummy launcher.
 #
-# Creates an isolated venv (so the trading interpreter stays clean), installs
-# PySide6 + pyqtgraph (abi3 wheels -- work on Python 3.14), and drops a SINGLE
-# branded desktop shortcut ("Dummy") that launches the native window with
-# pythonw (no console). The app reads only the runtime artifacts, so it needs
-# none of dummy's own deps. Any older split shortcuts are removed so exactly one
-# launcher remains.
+# Drops a SINGLE branded desktop shortcut ("Dummy") that opens the elevated
+# Dummy Totalizator command board (the live web UI at http://127.0.0.1:8787) as
+# a chromeless desktop-app window -- launch_dummy.py ensures the board server is
+# up first, then opens it via Edge/Chrome --app (no browser chrome). It runs
+# windowless via the isolated .dummy-desktop venv's pythonw (stdlib only, so the
+# trading interpreter stays clean). PySide6/pyqtgraph are still installed so the
+# legacy native board (desktop/run_dummy_tote.py) remains runnable by hand. Any
+# older split shortcuts are removed so exactly one launcher remains.
 #
 # Rerunnable and idempotent.
 
@@ -14,7 +16,7 @@ $repo = "C:\src\engine\dummy"
 $venv = "C:\Users\$env:USERNAME\.dummy-desktop\venv"
 $py = "C:\Python314\python.exe"
 $pythonw = "$venv\Scripts\pythonw.exe"
-$entry = "$repo\desktop\run_dummy_tote.py"
+$entry = "$repo\desktop\launch_dummy.py"
 $icon = "$repo\desktop\assets\dummy.ico"
 
 if (-not (Test-Path "$venv\Scripts\python.exe")) {
@@ -41,5 +43,5 @@ $lnk.WorkingDirectory = $repo
 $lnk.IconLocation = "$icon,0"
 $lnk.Description = "Dummy - trading intelligence board"
 $lnk.Save()
-Write-Host "SHORTCUT  $desktop\Dummy.lnk -> native app (icon: dummy.ico)"
+Write-Host "SHORTCUT  $desktop\Dummy.lnk -> Dummy Totalizator board (icon: dummy.ico)"
 Write-Host "Launch now with:  & '$pythonw' '$entry'"
