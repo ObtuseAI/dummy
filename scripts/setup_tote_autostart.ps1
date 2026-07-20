@@ -1,11 +1,13 @@
-# Wave-54: make the native Dummy Tote desktop app (PySide6) launch at logon,
-# always. Runs in the dedicated .dummy-desktop venv via pythonw.exe (no console;
-# the Qt window is the UI).
+# Make Dummy open at logon: the all-in-one launcher (desktop/launch_dummy.py)
+# brings up the elevated Dummy Totalizator board as a chromeless app window.
+# Runs in the dedicated .dummy-desktop venv via pythonw.exe (no console).
 #
 # Prefers a scheduled task (fleet-integrated, relaunch-on-crash). Some boxes
 # deny programmatic task creation from a normal shell ("Access is denied");
 # there we fall back to a Startup-folder shortcut, which needs no elevation and
-# is the canonical "run at logon" mechanism. Either way the app starts at logon.
+# is the canonical "run at logon" mechanism. Either way Dummy opens at logon.
+# (Remove the Startup shortcut / DummyToteApp task if you don't want it to
+# auto-open a window every login -- the desktop launcher still works on demand.)
 #
 # Rerunnable/idempotent.
 
@@ -13,7 +15,7 @@ $ErrorActionPreference = "Stop"
 $repo = "C:\src\engine\dummy"
 $name = "DummyToteApp"
 $pyw = "C:\Users\$env:USERNAME\.dummy-desktop\venv\Scripts\pythonw.exe"
-$entry = "$repo\desktop\run_dummy_tote.py"
+$entry = "$repo\desktop\launch_dummy.py"
 $icon = "$repo\desktop\assets\dummy.ico"
 
 # Drop any older-named Startup shortcut so exactly one autostart entry remains.
@@ -25,7 +27,7 @@ if (-not (Test-Path $entry)) { throw "tote entrypoint not found: $entry" }
 
 $taskOk = $false
 try {
-    $action = New-ScheduledTaskAction -Execute $pyw -Argument "desktop\run_dummy_tote.py" -WorkingDirectory $repo
+    $action = New-ScheduledTaskAction -Execute $pyw -Argument "desktop\launch_dummy.py" -WorkingDirectory $repo
     $trigger = New-ScheduledTaskTrigger -AtLogOn
     $settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries `
         -DontStopIfGoingOnBatteries -StartWhenAvailable `
