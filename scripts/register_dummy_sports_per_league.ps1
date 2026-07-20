@@ -24,9 +24,11 @@ if (-not (Test-Path $Python)) { $Python = (Get-Command python).Source }
 
 $Leagues = @("mlb","wnba","nba","nfl","nhl","ncaaf","ncaamb")
 $Basketball = @("wnba","nba","ncaamb")   # get a boxscore task too (for Four Factors)
+$EpaLeagues = @("nfl")                     # nflfastR EPA (open, no key)
 $Backfill = Join-Path $Repo "scripts\run_dummy_sports_history_backfill.py"
 $WalkFwd  = Join-Path $Repo "scripts\run_dummy_sports_walk_forward.py"
 $BoxFill  = Join-Path $Repo "scripts\run_dummy_sports_boxscore_backfill.py"
+$EpaFill  = Join-Path $Repo "scripts\run_dummy_sports_epa_backfill.py"
 
 $i = 0
 foreach ($lg in $Leagues) {
@@ -46,6 +48,10 @@ foreach ($lg in $Leagues) {
         $jobs += @{ Name = "DummyBox_$lg"; At = $boxAt;
                     Args = "`"$BoxFill`" --league $lg --min-interval 0.4" }
     }
+    if ($EpaLeagues -contains $lg) {
+        $jobs += @{ Name = "DummyEpa_$lg"; At = $boxAt;
+                    Args = "`"$EpaFill`" --seasons 2016-2025" }
+    }
     foreach ($j in $jobs) {
         $action  = New-ScheduledTaskAction -Execute $Python -Argument $j.Args -WorkingDirectory $Repo
         $trigger = New-ScheduledTaskTrigger -Daily -At $j.At
@@ -60,5 +66,5 @@ foreach ($lg in $Leagues) {
         }
     }
 }
-$total = $Leagues.Count * 2 + $Basketball.Count
-Write-Host "Done. $($Leagues.Count) leagues (+$($Basketball.Count) boxscore tasks) = $total isolated schedulers."
+$total = $Leagues.Count * 2 + $Basketball.Count + $EpaLeagues.Count
+Write-Host "Done. $($Leagues.Count) leagues (+$($Basketball.Count) boxscore, +$($EpaLeagues.Count) EPA tasks) = $total isolated schedulers."
