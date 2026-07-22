@@ -41,7 +41,9 @@ def main() -> int:
     report = run_battery(powered)
     path = write_report(report)
     print(f"negative controls: {report['status']} "
-          f"({len(powered)} powered sources; report {path})")
+          f"({report['powered_source_count']} powered / "
+          f"{report['screened_source_count']} row-screened sources; "
+          f"report {path})")
     for source in report["flagged_sources"]:
         flags = report["sources"][source]["flags"]
         print(f"  FLAGGED {source}: {', '.join(flags)}")

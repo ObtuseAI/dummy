@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -20,6 +21,7 @@ from autonomy.staleness import (
     to_epoch_seconds,
 )
 from autonomy.watchdog import (
+    DEFAULT_LEDGER_MAX_GB,
     DEFAULT_TASKS,
     TaskSpec,
     evaluate_watchdog,
@@ -115,7 +117,9 @@ def _forecast(market, probability, uncertainty=0.08):
 def _decision(tmp_path, market=None):
     market = market or _market()
     brain = RiskBrain(state_path=tmp_path / "risk.json")
-    return Allocator(brain).decide(market, _forecast(market, 0.85), brain.load_state(100_000))
+    state = brain.load_state(100_000)
+    brain.save_state(state)
+    return Allocator(brain).decide(market, _forecast(market, 0.85), state)
 
 
 def test_executor_blocks_stale_snapshot_and_counts(tmp_path):
@@ -126,7 +130,13 @@ def test_executor_blocks_stale_snapshot_and_counts(tmp_path):
         staleness_policy=StalenessPolicy(),
         now_fn=lambda: NOW_EPOCH,
     )
-    outcome = asyncio.run(executor.execute(decision, snapshot_ts=_iso(500)))
+    outcome = asyncio.run(
+        executor.execute(
+            decision,
+            snapshot_ts=_iso(500),
+            market=_market(decision.market_ticker),
+        )
+    )
     assert outcome.kind is OutcomeKind.BLOCKED_LOCAL
     assert outcome.broker_contacted is False
     assert outcome.detail["reason"] == "stale_market_snapshot"
@@ -134,7 +144,13 @@ def test_executor_blocks_stale_snapshot_and_counts(tmp_path):
     assert outcome.detail["max_age_seconds"] == 180.0  # slow crypto budget
     assert executor.stale_block_count == 1
     # Refusals accumulate — never a silent skip.
-    asyncio.run(executor.execute(decision, snapshot_ts=None))
+    asyncio.run(
+        executor.execute(
+            decision,
+            snapshot_ts=None,
+            market=_market(decision.market_ticker),
+        )
+    )
     assert executor.stale_block_count == 2
 
 
@@ -146,7 +162,13 @@ def test_executor_fresh_snapshot_passes_gate(tmp_path):
         staleness_policy=StalenessPolicy(),
         now_fn=lambda: NOW_EPOCH,
     )
-    outcome = asyncio.run(executor.execute(decision, snapshot_ts=_iso(60)))
+    outcome = asyncio.run(
+        executor.execute(
+            decision,
+            snapshot_ts=_iso(60),
+            market=_market(decision.market_ticker),
+        )
+    )
     assert outcome.kind is OutcomeKind.SHADOW
     assert executor.stale_block_count == 0
 
@@ -159,7 +181,9 @@ def test_executor_gate_fail_closed_on_missing_timestamp(tmp_path):
         staleness_policy=StalenessPolicy(),
         now_fn=lambda: NOW_EPOCH,
     )
-    outcome = asyncio.run(executor.execute(decision))  # no snapshot_ts at all
+    outcome = asyncio.run(
+        executor.execute(decision, market=_market(decision.market_ticker))
+    )  # no snapshot_ts at all
     assert outcome.kind is OutcomeKind.BLOCKED_LOCAL
     assert outcome.detail["reason"] == "missing_snapshot_timestamp"
 
@@ -169,7 +193,9 @@ def test_executor_without_policy_keeps_legacy_behavior(tmp_path):
     executor = Executor(
         SessionMode.SHADOW, session_path=tmp_path / "s.json", kill_path=tmp_path / "KILL",
     )
-    outcome = asyncio.run(executor.execute(decision))  # gate inactive: no policy
+    outcome = asyncio.run(
+        executor.execute(decision, market=_market(decision.market_ticker))
+    )  # gate inactive: no policy
     assert outcome.kind is OutcomeKind.SHADOW
 
 
@@ -193,7 +219,9 @@ def test_live_submit_rechecks_exchange_halt_state(tmp_path):
         SessionMode.LIVE, session_path=session, kill_path=tmp_path / "KILL",
         exchange_status_fn=lambda: {"exchange_active": True, "trading_active": False},
     )
-    outcome = asyncio.run(halted.execute(decision))
+    outcome = asyncio.run(
+        halted.execute(decision, market=_market(decision.market_ticker))
+    )
     assert outcome.kind is OutcomeKind.BLOCKED_LOCAL
     assert outcome.detail["reason"] == "trading_halted_at_submit"
     assert outcome.broker_contacted is False
@@ -202,34 +230,46 @@ def test_live_submit_rechecks_exchange_halt_state(tmp_path):
         SessionMode.LIVE, session_path=session, kill_path=tmp_path / "KILL",
         exchange_status_fn=lambda: {"exchange_active": False},
     )
-    outcome2 = asyncio.run(maintenance.execute(decision))
+    outcome2 = asyncio.run(
+        maintenance.execute(decision, market=_market(decision.market_ticker))
+    )
     assert outcome2.detail["reason"] == "exchange_maintenance_at_submit"
 
 
-def test_live_submit_exchange_probe_failure_fails_open(tmp_path):
-    """Unknown venue state is NOT down: the check must never be a stall point."""
+def test_live_submit_exchange_probe_failure_blocks_before_firewall(tmp_path, monkeypatch):
+    """Unknown venue state is not authority for a real order."""
     session = tmp_path / "s.json"
     _write_live_session(session)
-    decision = _decision(tmp_path)
+    market = _market()
+    decision = _decision(tmp_path, market)
 
     def boom():
         raise RuntimeError("probe down")
 
-    class FakeAdapter:
-        async def submit_limit_order(self, request):
-            from predator_mesh.brokers.livebrokerfirewall_adapter import SubmitResult
+    class SubmitSpy:
+        calls = 0
 
-            return SubmitResult(submitted=True, order_id="ord-1", state="OPEN", raw={}, errors=[])
+        def live_authority_verdict(self):
+            from core.ontology import FirewallVerdict
 
-        async def close(self):
-            pass
+            return FirewallVerdict(allow=True, reason="test")
 
+        async def submit(self, request, orderbook, forecast):
+            self.calls += 1
+            raise AssertionError("central submit must not run")
+
+    spy = SubmitSpy()
     executor = Executor(
         SessionMode.LIVE, session_path=session, kill_path=tmp_path / "KILL",
-        exchange_status_fn=boom, adapter_factory=lambda d: FakeAdapter(),
+        risk_state_path=tmp_path / "risk.json",
+        exchange_status_fn=boom,
     )
-    outcome = asyncio.run(executor.execute(decision))
-    assert outcome.kind is OutcomeKind.ACCEPTED
+    monkeypatch.setattr(executor, "_make_firewall", lambda: spy)
+    outcome = asyncio.run(executor.execute(decision, market=market))
+    assert outcome.kind is OutcomeKind.BLOCKED_LOCAL
+    assert outcome.detail["reason"] == "exchange_status_unavailable_at_submit"
+    assert outcome.broker_contacted is False
+    assert spy.calls == 0
 
 
 def test_scanner_stamps_fetched_at():
@@ -286,10 +326,20 @@ def test_brain_passes_snapshot_ts_to_executor(tmp_path, monkeypatch):
     seen: list = []
 
     class SpyExecutor(Executor):
-        async def execute(self, decision, *, snapshot_ts=None, is_live_market=False):
+        async def execute(
+            self,
+            decision,
+            *,
+            snapshot_ts=None,
+            is_live_market=False,
+            market=None,
+        ):
             seen.append(snapshot_ts)
             return await super().execute(
-                decision, snapshot_ts=snapshot_ts, is_live_market=is_live_market,
+                decision,
+                snapshot_ts=snapshot_ts,
+                is_live_market=is_live_market,
+                market=market,
             )
 
     brain = PredatorBrain(
@@ -326,7 +376,14 @@ def _real_now_epoch() -> float:
     return datetime.now(timezone.utc).timestamp()
 
 
-def _runtime(tmp_path: Path, *, heartbeat_age=60.0, mispricing_age=30.0) -> Path:
+def _runtime(
+    tmp_path: Path,
+    *,
+    heartbeat_age=60.0,
+    mispricing_age=30.0,
+    sports_seed_age=30.0,
+    sports_board_age=30.0,
+) -> Path:
     rd = tmp_path / "runtime"
     rd.mkdir(parents=True, exist_ok=True)
     (rd / "heartbeat.json").write_text(json.dumps({
@@ -334,6 +391,29 @@ def _runtime(tmp_path: Path, *, heartbeat_age=60.0, mispricing_age=30.0) -> Path
     }), encoding="utf-8")
     (rd / "mispricing_monitor_latest.json").write_text(json.dumps({
         "generated_at": _real_iso(mispricing_age),
+    }), encoding="utf-8")
+    seed_generated_at = _real_iso(sports_seed_age)
+    seed = {
+        "source": "sports_model_seed_authoritative_v1",
+        "producer": "DummySportsModelSeed",
+        "producer_run_id": "test-seed-run",
+        "generated_at": seed_generated_at,
+        "execution_authority": False,
+    }
+    seed_bytes = json.dumps(seed, sort_keys=True).encode("utf-8")
+    (rd / "sports_model_seed_authoritative.json").write_bytes(seed_bytes)
+    (rd / "sports_model_seed_authoritative_status.json").write_text(json.dumps({
+        "status": "REFRESH_OK",
+        "last_success_at": seed_generated_at,
+        "last_success_run_id": "test-seed-run",
+        "last_success_seed_sha256": hashlib.sha256(seed_bytes).hexdigest(),
+        "artifact_source": "sports_model_seed_authoritative_v1",
+        "execution_authority": False,
+    }), encoding="utf-8")
+    (rd / "bet_board_display.json").write_text(json.dumps({
+        "generated_at": _real_iso(sports_board_age),
+        "source": "sports_board_refresh_v1",
+        "execution_authority": False,
     }), encoding="utf-8")
     return rd
 
@@ -343,33 +423,147 @@ def test_watchdog_fresh_artifacts_are_healthy_for_their_tasks(tmp_path):
     status = evaluate_watchdog(rd, now_epoch=_real_now_epoch())
     rows = {r["task_name"]: r for r in status["tasks"]}
     assert rows["DummyShadowPredator"]["stale"] is False
+    assert rows["DummyShadowPredator"]["authoritative"] is False
     assert 59.0 <= rows["DummyShadowPredator"]["age_seconds"] <= 120.0
     assert rows["DummyShadowPredator"]["threshold_seconds"] == 1200.0  # 2x 10min
     assert rows["DummyMispricingMonitor"]["stale"] is False
+    assert rows["DummyMispricingMonitor"]["authoritative"] is False
+    assert rows["DummySportsModelSeed"]["stale"] is False
+    assert rows["DummySportsModelSeed"]["integrity_status"] == "VALID"
+    assert rows["DummySportsBoardRefresh"]["stale"] is False
+    assert rows["DummySportsBoardRefresh"]["artifact"] == "bet_board_display.json"
     # Absent artifacts are fail-closed stale.
     assert rows["DummyCryptoPaperTwin"]["stale"] is True
+    assert rows["DummyCryptoPaperTwin"]["authoritative"] is False
     assert rows["DummyCryptoPaperTwin"]["timestamp_source"] == "missing"
-    assert "DummyCryptoPaperTwin" in status["stale_tasks"]
+    assert "DummyCryptoPaperTwin" not in status["stale_tasks"]
+    assert "DummyCryptoPaperTwin" in status["observational_stale_tasks"]
     assert status["healthy"] is False
 
 
 def test_watchdog_flags_stale_task_beyond_two_cadences(tmp_path):
-    rd = _runtime(tmp_path, mispricing_age=300.0)  # 2min cadence -> stale at 240s
-    status = evaluate_watchdog(rd, now_epoch=_real_now_epoch())
+    rd = _runtime(tmp_path, mispricing_age=700.0)  # 5min cadence -> stale at 600s
+    tasks = [
+        spec for spec in DEFAULT_TASKS
+        if spec.name in {"DummyShadowPredator", "DummyMispricingMonitor"}
+    ]
+    status = evaluate_watchdog(rd, now_epoch=_real_now_epoch(), tasks=tasks)
     rows = {r["task_name"]: r for r in status["tasks"]}
     assert rows["DummyMispricingMonitor"]["stale"] is True
-    assert "DummyMispricingMonitor" in status["stale_tasks"]
+    assert status["stale_tasks"] == []
+    assert status["observational_stale_tasks"] == ["DummyMispricingMonitor"]
+    assert status["healthy"] is True
+
+
+def test_watchdog_seed_hash_binding_failure_is_authoritative(tmp_path):
+    rd = _runtime(tmp_path)
+    status_path = rd / "sports_model_seed_authoritative_status.json"
+    producer_status = json.loads(status_path.read_text(encoding="utf-8"))
+    producer_status["last_success_seed_sha256"] = "0" * 64
+    status_path.write_text(json.dumps(producer_status), encoding="utf-8")
+    task = next(spec for spec in DEFAULT_TASKS if spec.name == "DummySportsModelSeed")
+
+    status = evaluate_watchdog(rd, now_epoch=_real_now_epoch(), tasks=[task])
+    row = status["tasks"][0]
+    assert row["stale"] is True
+    assert row["integrity_status"] == "INVALID"
+    assert row["integrity_error"]
+    assert status["stale_tasks"] == ["DummySportsModelSeed"]
+    assert status["healthy"] is False
+
+
+def test_watchdog_seed_run_binding_failure_is_authoritative(tmp_path):
+    rd = _runtime(tmp_path)
+    status_path = rd / "sports_model_seed_authoritative_status.json"
+    producer_status = json.loads(status_path.read_text(encoding="utf-8"))
+    producer_status["last_success_run_id"] = "different-run"
+    status_path.write_text(json.dumps(producer_status), encoding="utf-8")
+    task = next(spec for spec in DEFAULT_TASKS if spec.name == "DummySportsModelSeed")
+
+    status = evaluate_watchdog(rd, now_epoch=_real_now_epoch(), tasks=[task])
+    row = status["tasks"][0]
+    assert row["stale"] is True
+    assert row["integrity_status"] == "INVALID"
+    assert status["stale_tasks"] == ["DummySportsModelSeed"]
+
+
+def test_watchdog_board_uses_board_artifact_not_attempt_status(tmp_path):
+    rd = _runtime(tmp_path, sports_board_age=700.0)
+    (rd / "sports_board_refresh_status.json").write_text(json.dumps({
+        "at": _real_iso(1.0), "status": "REFRESH_OK",
+    }), encoding="utf-8")
+    task = next(spec for spec in DEFAULT_TASKS if spec.name == "DummySportsBoardRefresh")
+
+    status = evaluate_watchdog(rd, now_epoch=_real_now_epoch(), tasks=[task])
+    row = status["tasks"][0]
+    assert row["artifact"] == "bet_board_display.json"
+    assert row["timestamp_source"] == "generated_at"
+    assert row["stale"] is True
+    assert status["stale_tasks"] == ["DummySportsBoardRefresh"]
+
+
+def test_watchdog_observational_monitor_staleness_never_alerts(tmp_path):
+    rd = _runtime(tmp_path, mispricing_age=700.0)
+    task = next(spec for spec in DEFAULT_TASKS if spec.name == "DummyMispricingMonitor")
+    status = evaluate_watchdog(rd, now_epoch=_real_now_epoch(), tasks=[task])
+
+    fired = fire_watchdog_alerts(
+        status,
+        now_iso="t1",
+        state_path=rd / "watchdog_state.json",
+    )
+    assert fired == []
+    assert status["healthy"] is True
+    assert status["stale_tasks"] == []
+    assert status["observational_stale_tasks"] == ["DummyMispricingMonitor"]
+
+
+def test_retired_shadow_and_crypto_tasks_are_observational(tmp_path):
+    tasks = [
+        spec for spec in DEFAULT_TASKS
+        if spec.name in {"DummyShadowPredator", "DummyCryptoPaperTwin"}
+    ]
+    status = evaluate_watchdog(tmp_path, now_epoch=NOW_EPOCH, tasks=tasks)
+
+    assert status["healthy"] is True
+    assert status["stale_tasks"] == []
+    assert set(status["observational_stale_tasks"]) == {
+        "DummyShadowPredator",
+        "DummyCryptoPaperTwin",
+    }
+    assert all(row["authoritative"] is False for row in status["tasks"])
+
+
+def test_sports_research_simulation_is_observational(tmp_path):
+    task = next(
+        spec for spec in DEFAULT_TASKS
+        if spec.name == "DummySportsSimulation"
+    )
+    status = evaluate_watchdog(tmp_path, now_epoch=NOW_EPOCH, tasks=[task])
+
+    assert status["healthy"] is True
+    assert status["stale_tasks"] == []
+    assert status["observational_stale_tasks"] == ["DummySportsSimulation"]
+    assert status["tasks"][0]["authoritative"] is False
 
 
 def test_watchdog_covers_every_default_task(tmp_path):
     names = {spec.name for spec in DEFAULT_TASKS}
     assert names == {
-        "DummyShadowPredator", "DummyMispricingMonitor", "DummyCryptoPaperTwin",
+        "DummyShadowPredator", "DummySportsModelSeed", "DummyMispricingMonitor",
+        "DummySportsBoardRefresh",
+        "DummyCryptoPaperTwin",
         "DummySportsSimulation", "DummySimulationTrainer", "DummyStrategyMiner",
         "DummyReadinessReport",
     }
     status = evaluate_watchdog(tmp_path, now_epoch=NOW_EPOCH)
     assert {r["task_name"] for r in status["tasks"]} == names
+    specs = {spec.name: spec for spec in DEFAULT_TASKS}
+    assert specs["DummyShadowPredator"].authoritative is False
+    assert specs["DummyCryptoPaperTwin"].authoritative is False
+    assert specs["DummySportsSimulation"].role == (
+        "sports research simulation (non-authoritative)"
+    )
 
 
 def test_watchdog_cycle_error_streak_and_kill_file(tmp_path):
@@ -386,6 +580,7 @@ def test_watchdog_cycle_error_streak_and_kill_file(tmp_path):
 
 
 def test_watchdog_ledger_and_disk_thresholds(tmp_path):
+    assert DEFAULT_LEDGER_MAX_GB == 16.0
     rd = _runtime(tmp_path)
     (rd / "ledger.db").write_bytes(b"x" * 2_000_000)  # 0.002 GB
     over = evaluate_watchdog(rd, now_epoch=_real_now_epoch(), ledger_max_gb=0.001)
@@ -407,9 +602,12 @@ def test_watchdog_alerts_fire_on_rising_edge_only(tmp_path, monkeypatch):
     monkeypatch.setattr(alerts, "ALERTS_LATEST", alert_dir / "alerts_latest.json")
     monkeypatch.setattr(alerts, "ALERT_STATE", alert_dir / "alert_state.json")
 
-    rd = _runtime(tmp_path, mispricing_age=999.0)
+    rd = _runtime(tmp_path, sports_seed_age=999.0)
     (rd / "KILL").write_text("x", encoding="utf-8")
-    tasks = [DEFAULT_TASKS[0], DEFAULT_TASKS[1]]  # shadow (fresh) + mispricing (stale)
+    tasks = [
+        next(spec for spec in DEFAULT_TASKS if spec.name == "DummyShadowPredator"),
+        next(spec for spec in DEFAULT_TASKS if spec.name == "DummySportsModelSeed"),
+    ]
     status = evaluate_watchdog(rd, now_epoch=_real_now_epoch(), tasks=tasks)
 
     state_path = rd / "watchdog_state.json"
@@ -425,11 +623,13 @@ def test_watchdog_alerts_fire_on_rising_edge_only(tmp_path, monkeypatch):
     # Recovery clears the latch; the next episode fires again.
     (rd / "KILL").unlink()
     recovered = evaluate_watchdog(
-        _runtime(tmp_path, mispricing_age=10.0), now_epoch=_real_now_epoch(), tasks=tasks,
+        _runtime(tmp_path, sports_seed_age=10.0),
+        now_epoch=_real_now_epoch(), tasks=tasks,
     )
     fire_watchdog_alerts(recovered, now_iso="t3", state_path=state_path)
     relapse = evaluate_watchdog(
-        _runtime(tmp_path, mispricing_age=999.0), now_epoch=_real_now_epoch(), tasks=tasks,
+        _runtime(tmp_path, sports_seed_age=999.0),
+        now_epoch=_real_now_epoch(), tasks=tasks,
     )
     third = fire_watchdog_alerts(relapse, now_iso="t4", state_path=state_path)
     assert [a["kind"] for a in third] == ["WATCHDOG_TASK_STALE"]
@@ -482,7 +682,7 @@ def test_status_snapshot_data_ages_flag_stale_and_fresh(tmp_path):
     ages = snapshot["data_ages"]
     assert ages["heartbeat"]["stale"] is False
     assert ages["heartbeat"]["age_seconds"] is not None
-    assert ages["mispricing_monitor"]["stale"] is True  # 999s > 240s threshold
+    assert ages["mispricing_monitor"]["stale"] is True  # 999s > 600s threshold
     # Absent artifacts read as stale (fail-closed), never as fresh.
     assert ages["crypto_paper_twin"]["stale"] is True
     assert ages["crypto_paper_twin"]["age_seconds"] is None
@@ -493,9 +693,15 @@ def test_status_snapshot_includes_watchdog_status(tmp_path):
 
     rd = _runtime(tmp_path)
     (rd / "watchdog_status.json").write_text(json.dumps({
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "tasks": [
+            {"task_name": "DummySportsModelSeed"},
+            {"task_name": "DummySportsBoardRefresh"},
+        ],
         "healthy": False, "stale_tasks": ["DummyCryptoPaperTwin"],
     }), encoding="utf-8")
     snapshot = assemble_status_snapshot(runtime_dir=rd)
+    assert snapshot["watchdog"]["source"] == "persisted_watchdog_status"
     assert snapshot["watchdog"]["healthy"] is False
     assert snapshot["watchdog"]["stale_tasks"] == ["DummyCryptoPaperTwin"]
 

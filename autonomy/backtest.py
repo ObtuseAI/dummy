@@ -18,6 +18,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from autonomy.capability_matrix import build_live_source_capability_matrix
 from autonomy.fees import kalshi_taker_fee_cents
 from autonomy.ledger import AutonomyLedger
 from autonomy.stats import mean_ci95
@@ -33,6 +34,7 @@ CONTESTED_DISAGREEMENT = 0.05
 # nor qualify a source at the canary gate.
 MIN_CONTESTED_N = 20
 BOOTSTRAP_SAMPLES = 1000
+LIVE_SOURCE_EVIDENCE_MODE = "live_only_receipt_bounded_v1"
 
 
 def _percentile(values: list[float], q: float) -> float | None:
@@ -887,6 +889,57 @@ def _pearson(pairs: list[tuple[float, float]]) -> float | None:
     return round(numerator / denominator, 6) if denominator > 0 else None
 
 
+def _crypto_source_snapshots(conn) -> dict[str, dict[str, float]]:
+    """Latest receipt-bounded live probabilities at each crypto decision time.
+
+    This is intentionally one scan of the hot/archive ``signal_history`` union.
+    The old implementation issued the ticker/cutoff query once per decision;
+    the archive has no ticker-leading index, so each lookup could scan the full
+    cold archive. It also admitted retro and late-received rows into an
+    ostensibly point-in-time source score. ``CROSS JOIN`` pins signal history as
+    the outer loop; the window selects the latest durably available live row.
+    """
+    rows = conn.execute(
+        """
+        WITH filled_decisions AS MATERIALIZED (
+            SELECT DISTINCT d.decision_id,d.market_ticker,d.created_at
+            FROM decisions d
+            JOIN settlements st USING(market_ticker)
+            JOIN outcomes settled USING(decision_id)
+            WHERE (d.market_ticker GLOB 'KXBTC*'
+                   OR d.market_ticker GLOB 'KXETH*')
+              AND d.market_implied_yes IS NOT NULL
+              AND settled.kind IN ('SETTLED_WIN','SETTLED_LOSS')
+              AND EXISTS (
+                  SELECT 1 FROM outcomes fill
+                  WHERE fill.decision_id=d.decision_id
+                    AND fill.id<settled.id
+                    AND fill.kind IN ('FILLED','PARTIALLY_FILLED')
+                    AND fill.fill_count>0
+              )
+        ), ranked AS (
+            SELECT cutoff.decision_id,history.source,history.probability_yes,
+                   ROW_NUMBER() OVER (
+                       PARTITION BY cutoff.decision_id,history.source
+                       ORDER BY julianday(history.created_at) DESC,history.id DESC
+                   ) AS snapshot_rank
+            FROM signal_history history
+            CROSS JOIN filled_decisions cutoff
+            WHERE history.market_ticker=cutoff.market_ticker
+              AND history.mode='live'
+              AND julianday(history.created_at)<=julianday(cutoff.created_at)
+              AND julianday(history.ingested_at)<=julianday(cutoff.created_at)
+        )
+        SELECT decision_id,source,probability_yes
+        FROM ranked WHERE snapshot_rank=1
+        """
+    )
+    snapshots: dict[str, dict[str, float]] = {}
+    for decision_id, source, probability in rows:
+        snapshots.setdefault(str(decision_id), {})[str(source)] = float(probability)
+    return snapshots
+
+
 def _crypto_fill_diagnostics(conn) -> dict[str, Any]:
     """Expose the selection gap hidden by easy full-surface crypto tails."""
     from autonomy.correlation import group_key
@@ -906,6 +959,7 @@ def _crypto_fill_diagnostics(conn) -> dict[str, Any]:
         ORDER BY d.created_at,d.decision_id
         """
     ).fetchall()
+    source_snapshots = _crypto_source_snapshots(conn) if filled_rows else {}
     samples = []
     source_errors: dict[str, list[float]] = {}
     for (decision_id, ticker, forecast, market, ev, price, sources_used,
@@ -922,15 +976,7 @@ def _crypto_fill_diagnostics(conn) -> dict[str, Any]:
             "prior_share": float((json.loads(sources_used or "{}") or {}).get("market_prior", 0.0)),
         }
         samples.append(row)
-        latest: dict[str, float] = {}
-        signal_rows = conn.execute(
-            "SELECT source,probability_yes FROM signal_history WHERE market_ticker=?"
-            " AND created_at<=? ORDER BY created_at DESC,id DESC",
-            (ticker, created_at),
-        ).fetchall()
-        for source, probability in signal_rows:
-            latest.setdefault(str(source), float(probability))
-        for source, probability in latest.items():
+        for source, probability in source_snapshots.get(str(decision_id), {}).items():
             source_errors.setdefault(source, []).append(_brier(probability, int(result)))
 
     ensemble_errors = [_brier(row["forecast"], row["result"]) for row in samples]
@@ -1079,10 +1125,21 @@ def _crypto_fill_diagnostics(conn) -> dict[str, Any]:
 
 
 def _crypto_challenger_gates(
-    conn, source_summaries: dict[str, dict[str, Any]],
+    source_summaries: dict[str, dict[str, Any]],
+    live_signals_by_ticker: dict[str, list[dict[str, Any]]],
+    retro_signals_by_ticker: dict[str, list[dict[str, Any]]],
 ) -> dict[str, Any]:
-    """Promotion evidence for quarantined crypto sources; never auto-apply."""
+    """Promotion evidence from already receipt/cutoff-bounded source lanes."""
     from autonomy.correlation import group_key
+
+    def tickers_for(
+        source: str, signals_by_ticker: dict[str, list[dict[str, Any]]],
+    ) -> set[str]:
+        return {
+            str(ticker)
+            for ticker, rows in signals_by_ticker.items()
+            if any(str(row.get("source")) == source for row in rows)
+        }
 
     result: dict[str, Any] = {}
     for source in (
@@ -1090,16 +1147,8 @@ def _crypto_challenger_gates(
         "crypto_technical_composite",
         "crypto_dvol_implied",
     ):
-        rows = conn.execute(
-            """
-            SELECT s.market_ticker,s.mode FROM signal_history s
-            JOIN settlements st USING(market_ticker)
-            WHERE s.source=?
-            GROUP BY s.market_ticker,s.mode
-            """,
-            (source,),
-        ).fetchall()
-        live_tickers = {str(ticker) for ticker, mode in rows if str(mode) == "live"}
+        live_tickers = tickers_for(source, live_signals_by_ticker)
+        retro_tickers = tickers_for(source, retro_signals_by_ticker)
         live_clusters = {group_key(ticker) for ticker in live_tickers}
         summary = source_summaries.get(source) or {}
         interval = summary.get("contested_mean_brier_edge_ci95") or {}
@@ -1110,7 +1159,7 @@ def _crypto_challenger_gates(
             "contested_brier_advantage_lower95": interval.get("lower"),
             "live_settled_markets": len(live_tickers),
             "live_event_clusters": len(live_clusters),
-            "retro_settled_markets": len({str(ticker) for ticker, mode in rows if str(mode) == "retro"}),
+            "retro_settled_markets": len(retro_tickers),
         }
         blockers = []
         for label, current, required in (
@@ -1240,39 +1289,27 @@ def _execution_tournament_report(conn) -> dict[str, Any]:
     return tournament_report(conn)
 
 
-def run_backtest(ledger: AutonomyLedger, bootstrap_weights: bool = False,
-                 include_diagnostics: bool = True) -> dict[str, Any]:
-    """Score all sources against settled markets; optionally persist weights."""
-    conn = ledger._conn  # noqa: SLF001 - backtester is a trusted ledger consumer
-    settlements = {row[0]: int(row[1]) for row in conn.execute("SELECT market_ticker, result_yes FROM settlements")}
-    if not settlements:
-        return {"report_name": "AUTONOMY_BACKTEST", "settled_markets": 0,
-                "note": "no settlements to score", "created_at": datetime.now(timezone.utc).isoformat()}
-
+def _score_source_evidence(
+    signals_by_ticker: dict[str, list[dict[str, Any]]],
+    settlements: dict[str, int],
+) -> tuple[
+    dict[str, SourceScoreTracker],
+    dict[str, SourceScoreTracker],
+    dict[str, SourceScoreTracker],
+]:
+    """Score one already-isolated provenance lane without granting authority."""
     from autonomy.correlation import group_key
     from autonomy.scanner import classify_vertical
     from autonomy.taxonomy import grading_scope
 
     trackers: dict[str, SourceScoreTracker] = {}
     scoped_trackers: dict[str, SourceScoreTracker] = {}
-    # Per-scope trust: (source, subject, market_type, horizon|phase). A source's
-    # BTC record cannot average away ETH weakness, and winner/YRFI or pre/live
-    # sports records stay separate. Evidence only --
-    # scope keys are NOT written to the weights table (the live forecaster
-    # looks up bare source names); they feed the WS-14 readiness report.
     scope_trackers: dict[str, SourceScoreTracker] = {}
-    # One batched fetch instead of ~354k per-market round-trips (the recal's
-    # dominant cost); identical per-source selection, grouped in Python.
-    signals_by_ticker = ledger.calibration_signals_for_settled(settlements.keys())
     for ticker, result in settlements.items():
         rows = signals_by_ticker.get(ticker, [])
         latest = {str(row["source"]): float(row["probability_yes"]) for row in rows}
         features = {str(row["source"]): (row.get("features") or {}) for row in rows}
         stamps = {str(row["source"]): row.get("created_at") for row in rows}
-        # Honest-benchmark gate (Wave-5): a market with no genuine market_prior
-        # emission has no point-in-time benchmark — grading every source
-        # against a fabricated 0.5 there was the audit's largest evidence
-        # contamination. Such markets contribute NOTHING to source trust.
         market_p = latest.get("market_prior")
         if market_p is None:
             continue
@@ -1286,15 +1323,88 @@ def run_backtest(ledger: AutonomyLedger, bootstrap_weights: bool = False,
                 ticker=ticker, created_at=stamp,
             )
             scoped_key = f"{source}@{vertical}"
-            scoped_trackers.setdefault(scoped_key, SourceScoreTracker(scoped_key)).observe(
+            scoped_trackers.setdefault(
+                scoped_key, SourceScoreTracker(scoped_key)
+            ).observe(
                 prob, result, market_brier, market_p=market_p, cluster_key=cluster,
                 ticker=ticker, created_at=stamp,
             )
             scope_key = grading_scope(source, ticker, features.get(source) or {})
-            scope_trackers.setdefault(scope_key, SourceScoreTracker(scope_key)).observe(
+            scope_trackers.setdefault(
+                scope_key, SourceScoreTracker(scope_key)
+            ).observe(
                 prob, result, market_brier, market_p=market_p, cluster_key=cluster,
                 ticker=ticker, created_at=stamp,
             )
+    return trackers, scoped_trackers, scope_trackers
+
+
+def _live_capability_signal_inventory(
+    conn, settled_signals: dict[str, list[dict[str, Any]]], *, limit: int = 100_000,
+) -> dict[str, list[dict[str, Any]]]:
+    """Add bounded recent live emissions, including still-unsettled sources.
+
+    Settlement scoring alone cannot see a newly shipped default-fusing source.
+    The bounded hot-ledger tail catches sources that are currently emitting so
+    they cannot inherit neutral trust into a live canary before exact-scope
+    evidence exists. It does not suppress or mutate their shadow tape.
+    """
+    inventory = {ticker: list(rows) for ticker, rows in settled_signals.items()}
+    recent = conn.execute(
+        """
+        SELECT source,market_ticker,features FROM (
+            SELECT id,source,market_ticker,features
+            FROM main.signals WHERE mode='live'
+            ORDER BY id DESC LIMIT ?
+        ) ORDER BY id
+        """,
+        (max(1, int(limit)),),
+    ).fetchall()
+    for source, ticker, raw_features in recent:
+        try:
+            features = json.loads(raw_features or "{}")
+        except (TypeError, json.JSONDecodeError):
+            features = {}
+        inventory.setdefault(str(ticker), []).append({
+            "source": str(source), "features": features,
+        })
+    return inventory
+
+
+def run_backtest(ledger: AutonomyLedger, bootstrap_weights: bool = False,
+                 include_diagnostics: bool = True) -> dict[str, Any]:
+    """Score all sources against settled markets; optionally persist weights."""
+    conn = ledger._conn  # noqa: SLF001 - backtester is a trusted ledger consumer
+    settlements = {row[0]: int(row[1]) for row in conn.execute("SELECT market_ticker, result_yes FROM settlements")}
+    if not settlements:
+        return {"report_name": "AUTONOMY_BACKTEST", "settled_markets": 0,
+                "sources": {},
+                "tier_performance": {
+                    "schema_version": 1,
+                    "status": "COLLECTING_FORWARD_EVIDENCE",
+                    "legacy_backfill": False,
+                },
+                "source_evidence_mode": LIVE_SOURCE_EVIDENCE_MODE,
+                "retro_source_evidence": {
+                    "status": "not_scored_no_settlements", "mode": "retro",
+                    "authority": "report_only", "sources": {},
+                    "counts_toward_live_weights": False,
+                    "counts_toward_readiness": False,
+                },
+                "note": "no settlements to score",
+                "created_at": datetime.now(timezone.utc).isoformat()}
+
+    # Fetch every lane needed by this report in one pass over the hot/archive
+    # union. The lanes remain separate; retro evidence never contributes to
+    # weights or readiness.
+    evidence_modes = ("live", "retro") if include_diagnostics else ("live",)
+    signal_lanes = ledger.calibration_signals_for_settled_by_mode(
+        settlements.keys(), evidence_modes=evidence_modes,
+    )
+    signals_by_ticker = signal_lanes["live"]
+    trackers, scoped_trackers, scope_trackers = _score_source_evidence(
+        signals_by_ticker, settlements,
+    )
 
     # Realized decision P&L (settled decisions only).
     pnl_rows = conn.execute(
@@ -1326,6 +1436,33 @@ def run_backtest(ledger: AutonomyLedger, bootstrap_weights: bool = False,
     derived = {s: round(t.derived_weight(), 3) for s, t in trackers.items()}
     derived_scoped = {s: round(t.derived_weight(), 3) for s, t in scoped_trackers.items()}
 
+    retro_source_evidence: dict[str, Any] = {
+        "status": "skipped_fast_recalibration", "mode": "retro",
+        "authority": "report_only", "counts_toward_live_weights": False,
+        "counts_toward_readiness": False, "sources": {},
+    }
+    if include_diagnostics:
+        retro_rows = signal_lanes["retro"]
+        retro_trackers, retro_vertical_trackers, retro_scope_trackers = (
+            _score_source_evidence(retro_rows, settlements)
+        )
+        retro_source_evidence.update({
+            "status": "reported",
+            "source_snapshot_policy": (
+                "historical_model_time_cutoff_without_live_receipt_authority"
+            ),
+            "markets_with_eligible_signals": sum(
+                bool(rows) for rows in retro_rows.values()
+            ),
+            "sources": {s: t.summary() for s, t in retro_trackers.items()},
+            "sources_by_vertical": {
+                s: t.summary() for s, t in retro_vertical_trackers.items()
+            },
+            "sources_by_scope": {
+                s: t.summary() for s, t in retro_scope_trackers.items()
+            },
+        })
+
     # Sanity-screen the derived vector before it becomes live trust. Only the
     # uniformity pathologies apply here (all-equal / pinned-at-cap): a fresh
     # re-derivation may legitimately jump far from the online weights, so the
@@ -1335,7 +1472,9 @@ def run_backtest(ledger: AutonomyLedger, bootstrap_weights: bool = False,
         from autonomy.learner import screen_weight_vector
 
         weights_rejected_reasons = screen_weight_vector(derived, None)
-    weights_actually_written = bool(bootstrap_weights and not weights_rejected_reasons)
+    weights_actually_written = bool(
+        bootstrap_weights and derived and not weights_rejected_reasons
+    )
     if weights_rejected_reasons:
         # Fail-closed: keep the ledger's previous weights, alert, log the
         # rejected vector in the report for the post-mortem.
@@ -1369,6 +1508,18 @@ def run_backtest(ledger: AutonomyLedger, bootstrap_weights: bool = False,
                              "contested_mean_brier_edge_ci95",
                              "expected_calibration_error")}
                         for s, t in scope_trackers.items()}
+    capability_inventory = _live_capability_signal_inventory(conn, signals_by_ticker)
+    live_source_capability_matrix = build_live_source_capability_matrix(
+        capability_inventory,
+        sources_by_scope,
+        ledger.all_weights(),
+        source_evidence_mode=LIVE_SOURCE_EVIDENCE_MODE,
+        required_evidence_mode=LIVE_SOURCE_EVIDENCE_MODE,
+    )
+    live_source_capability_matrix["active_inventory"] = {
+        "source": "settled receipt-bounded evidence plus bounded hot live-signal tail",
+        "hot_signal_limit": 100_000,
+    }
     # Diagnostics are ~11 full-ledger-scan sub-reports (signal_data_quality
     # alone is ~10 scans of the 12M-row union view). They are observability, not
     # inputs to the weights or the canary, so the 6-hourly recalibration skips
@@ -1376,6 +1527,16 @@ def run_backtest(ledger: AutonomyLedger, bootstrap_weights: bool = False,
     # them for the dashboard/summary (Wave-44 split).
     diagnostics: dict[str, Any] = {}
     if include_diagnostics:
+        try:
+            from autonomy.tier_performance import tier_performance_report
+
+            tier_performance = tier_performance_report(conn)
+        except Exception as exc:  # noqa: BLE001 -- diagnostics cannot sink recalibration
+            tier_performance = {
+                "status": "UNAVAILABLE",
+                "error": f"{type(exc).__name__}: {exc}"[:300],
+                "legacy_backfill": False,
+            }
         diagnostics = {
             "execution_quality": ledger.execution_summary(),
             "execution_quality_by_book": {
@@ -1391,16 +1552,24 @@ def run_backtest(ledger: AutonomyLedger, bootstrap_weights: bool = False,
             "fill_conditioned_decision_policy": _fill_conditioned_policy_report(conn),
             "shadow_ttl_sensitivity": _shadow_ttl_sensitivity_report(conn),
             "crypto_diagnostics": _crypto_fill_diagnostics(conn),
-            "crypto_challenger_gates": _crypto_challenger_gates(conn, source_summaries),
+            "crypto_challenger_gates": _crypto_challenger_gates(
+                source_summaries, signals_by_ticker, retro_rows,
+            ),
             "execution_adverse_selection": _adverse_selection_report(conn),
             "execution_tournament": _execution_tournament_report(conn),
             "decision_policy": _decision_policy_report(conn),
+            "tier_performance": tier_performance,
         }
     return {
         "report_name": "AUTONOMY_BACKTEST",
         "settled_markets": len(settlements),
         "sources": source_summaries,
-        "source_snapshot_policy": "earliest_decision_time_else_earliest_phantom_opinion",
+        "source_evidence_mode": LIVE_SOURCE_EVIDENCE_MODE,
+        "source_snapshot_policy": (
+            "latest_live_source_at_or_before_earliest_decision_with_receipt_cutoff_"
+            "else_earliest_live_phantom_at_or_before_settlement"
+        ),
+        "retro_source_evidence": retro_source_evidence,
         "sources_by_vertical": {s: {k: t.summary()[k] for k in
                                     ("n", "mean_brier", "contested_n",
                                      "contested_beat_rate", "contested_event_clusters",
@@ -1408,6 +1577,7 @@ def run_backtest(ledger: AutonomyLedger, bootstrap_weights: bool = False,
                                      "expected_calibration_error")}
                                 for s, t in scoped_trackers.items()},
         "sources_by_scope": sources_by_scope,
+        "live_source_capability_matrix": live_source_capability_matrix,
         # WS-8 (spec section 3.3): the literal (specialist, market_type, phase)
         # trust surface, rolled up ADDITIVELY from the source-grain
         # sources_by_scope above -- no re-keying, no second scope tracker.
@@ -1466,14 +1636,31 @@ def summarize_backtest(report: dict[str, Any]) -> dict[str, Any]:
         "report_path": report.get("report_path"),
         "created_at": report.get("created_at"),
         "settled_markets": report.get("settled_markets"),
+        # Canary preflight must be able to grade the already-computed report in
+        # milliseconds.  Omitting source evidence here forced it to rerun a
+        # multi-minute full-ledger backtest while an operator was trying to
+        # start a session.
+        "sources": report.get("sources", {}),
+        "source_evidence_mode": report.get("source_evidence_mode"),
+        "live_source_capability_matrix": report.get(
+            "live_source_capability_matrix", {}
+        ),
+        "source_snapshot_policy": report.get("source_snapshot_policy"),
+        "retro_source_evidence": report.get("retro_source_evidence", {}),
+        "evidence_split": report.get("evidence_split", {}),
+        "bootstrapped_weights": report.get("bootstrapped_weights", {}),
         "decision_policy": {
             "settled_markets": policy.get("settled_markets", 0),
             "event_clusters": policy.get("event_clusters", 0),
+            "ensemble_metrics": ensemble,
             "forecast_brier": ensemble.get("forecast_brier"),
             "market_brier": ensemble.get("market_brier"),
             "brier_skill_vs_market": ensemble.get("brier_skill_vs_market"),
             "expected_calibration_error": ensemble.get("expected_calibration_error"),
             "cluster_robust_advantage": policy.get("cluster_robust_advantage", {}),
+            "walk_forward_threshold_selection": policy.get(
+                "walk_forward_threshold_selection", {}
+            ),
             "walk_forward_out_of_sample": walk_forward,
             "online_forecast_drift": policy.get("online_forecast_drift", {}),
             "sports_performance_cohorts": policy.get(
@@ -1484,6 +1671,8 @@ def summarize_backtest(report: dict[str, Any]) -> dict[str, Any]:
         "execution_quality_by_book": report.get("execution_quality_by_book", {}),
         "execution_drift_by_book": report.get("execution_drift_by_book", {}),
         "realized_trade_statistics": report.get("realized_trade_statistics", {}),
+        "tier_performance": report.get("tier_performance", {}),
+        "realized_decision_pnl_cents": report.get("realized_decision_pnl_cents"),
         "fill_conditioned_decision_policy": report.get(
             "fill_conditioned_decision_policy", {}
         ),

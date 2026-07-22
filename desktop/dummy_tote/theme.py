@@ -102,7 +102,24 @@ def stylesheet() -> str:
         background: {SLAT}; color: {CHALK_DIM};
     }}
     QPushButton#Toggle:checked {{ background: {TURF}; color: {INK}; border: 1px solid {TURF}; }}
+    QPushButton#ToggleMain {{
+        border: 1px solid {CLAY}; padding: 6px 16px; min-width: 54px;
+        font-family: "{DISPLAY_FONT}"; letter-spacing: 1px;
+        background: {SLAT}; color: {CLAY};
+    }}
     QPushButton#ToggleMain:checked {{ background: {AMBER}; color: {INK}; border: 1px solid {AMBER}; }}
+
+    QComboBox {{
+        background: {SLAT}; color: {CHALK}; border: 1px solid {BRASS};
+        padding: 5px 24px 5px 8px;
+    }}
+    QComboBox QAbstractItemView {{
+        background: {FELT}; color: {CHALK}; selection-background-color: {FELT_HI};
+        selection-color: {AMBER}; border: 1px solid {BRASS};
+    }}
+    QMenu {{ background: {FELT}; color: {CHALK}; border: 1px solid {BRASS}; }}
+    QMenu::item {{ padding: 7px 28px 7px 12px; }}
+    QMenu::item:selected {{ background: {FELT_HI}; color: {AMBER}; }}
 
     /* Scrollbars */
     QScrollBar:vertical {{ background: {BOARD}; width: 10px; margin: 0; }}

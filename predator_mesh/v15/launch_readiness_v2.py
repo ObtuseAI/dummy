@@ -3,12 +3,12 @@
 from __future__ import annotations
 
 import json
-import subprocess
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
 from typing import Any
 
+from core.caps_authority import evaluate_caps_authority
 from predator_mesh.v14.credential_forensics import KalshiCredentialForensics
 from predator_mesh.v15.retry_gate_v2 import RealTerrainRetryGateV2
 from predator_mesh.v15.terrain_closure_v3 import RealOrderbookTerrainClosureV3
@@ -23,6 +23,7 @@ class MicroOrderLaunchGateV2(str, Enum):
     READY_ONLY_AFTER_REAL_TERRAIN_PROOF = "READY_ONLY_AFTER_REAL_TERRAIN_PROOF"
     BLOCKED_LIVE_SUBMIT_DISABLED = "BLOCKED_LIVE_SUBMIT_DISABLED"
     BLOCKED_CAPS_NOT_VERIFIED = "BLOCKED_CAPS_NOT_VERIFIED"
+    BLOCKED_CAPS_AUTHORITY_MIGRATION_REQUIRED = "BLOCKED_CAPS_AUTHORITY_MIGRATION_REQUIRED"
     NOT_READY = "NOT_READY"
 
 
@@ -65,18 +66,14 @@ def _live_submit_disabled() -> bool:
 
 
 def _caps_unmodified() -> bool:
-    try:
-        proc = subprocess.run(
-            ["git", "diff", "--", "configs/caps.json"],
-            cwd=ROOT,
-            text=True,
-            capture_output=True,
-            timeout=10,
-            check=False,
-        )
-    except Exception:
-        return False
-    return proc.returncode == 0 and proc.stdout.strip() == ""
+    """Return whether caps match the current protected v2 baseline.
+
+    Worktree cleanliness is not an authority proof.  The exact versioned raw
+    hash is, and the separate operator-registration predicate is checked by
+    ``gate_output`` below.
+    """
+
+    return evaluate_caps_authority().config_integrity_valid
 
 
 class LiquidityLaunchReadinessMatrixV2:
@@ -108,6 +105,8 @@ class LiquidityLaunchReadinessMatrixV2:
             return MicroOrderLaunchGateV2.BLOCKED_LIVE_SUBMIT_DISABLED
         if not _caps_unmodified():
             return MicroOrderLaunchGateV2.BLOCKED_CAPS_NOT_VERIFIED
+        if not evaluate_caps_authority().authority_registration_valid:
+            return MicroOrderLaunchGateV2.BLOCKED_CAPS_AUTHORITY_MIGRATION_REQUIRED
 
         cred = self.credential_shape_readiness()
         if not cred.ready:
@@ -129,6 +128,9 @@ class LiquidityLaunchReadinessMatrixV2:
             blockers.append("LIVE_SUBMIT_ENABLED")
         if not _caps_unmodified():
             blockers.append("CAPS_JSON_MODIFIED")
+        caps_authority = evaluate_caps_authority()
+        if not caps_authority.authority_registration_valid:
+            blockers.append("CAPS_AUTHORITY_MIGRATION_REQUIRED")
         if not self.credential_shape_readiness().ready:
             blockers.append("CREDENTIAL_SHAPE_NOT_READY")
         if not self.auth_readiness().ready:
@@ -140,12 +142,14 @@ class LiquidityLaunchReadinessMatrixV2:
     def to_report(self) -> dict[str, Any]:
         gate = self.gate_output()
         blockers = self.blockers()
+        caps_authority = evaluate_caps_authority()
         categories = {
             "credential_shape_readiness": 1.0 if self.credential_shape_readiness().ready else 0.0,
             "auth_readiness": 1.0 if self.auth_readiness().ready else 0.0,
             "real_terrain_readiness": 1.0 if self.real_terrain_readiness().ready else 0.0,
             "live_submit_disabled": 1.0 if _live_submit_disabled() else 0.0,
             "caps_unmodified": 1.0 if _caps_unmodified() else 0.0,
+            "caps_authority_registered": 1.0 if caps_authority.authority_registration_valid else 0.0,
         }
         readiness_score = round(sum(categories.values()) / len(categories), 4)
         return {
@@ -157,6 +161,9 @@ class LiquidityLaunchReadinessMatrixV2:
             "real_terrain_readiness": self.real_terrain_readiness().to_dict(),
             "live_submit_disabled": _live_submit_disabled(),
             "caps_unmodified": _caps_unmodified(),
+            "caps_authority": caps_authority.to_dict(),
+            "legacy_caps_authority_invalidated": caps_authority.legacy_authority_invalidated,
+            "execution_authority": False,
             "blockers": blockers,
             "gate_output": gate.value,
             "operator_armed_micro_order_ready": gate == MicroOrderLaunchGateV2.READY_FOR_OPERATOR_ARMED_MICRO_ORDER_REHEARSAL,

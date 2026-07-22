@@ -130,14 +130,17 @@ def test_secret_redaction_masks_loaded_values():
 
 
 @pytest.mark.asyncio
-async def test_submitter_accepts_limit_order():
+async def test_retired_submitter_blocks_limit_order_without_contact():
     client = KalshiClient()
     with patch.object(client, "create_order", new_callable=AsyncMock, return_value={"order_id": "ord-1"}):
         submitter = KalshiSubmitter(client)
         order = {"ticker": "M-YES", "side": "yes", "action": "buy", "type": "limit", "count": 1, "price": 50}
-        result = await submitter.submit_limit_order(order)
-        assert result["order_id"] == "ord-1"
-        client.create_order.assert_awaited_once_with(order)
+        with pytest.raises(
+            PermissionError,
+            match="DIRECT_SUBMIT_RETIRED_USE_CENTRAL_LIVE_FIREWALL",
+        ):
+            await submitter.submit_limit_order(order)
+        client.create_order.assert_not_awaited()
 
 
 @pytest.mark.asyncio
@@ -146,7 +149,7 @@ async def test_submitter_rejects_market_order():
     with patch.object(client, "create_order", new_callable=AsyncMock):
         submitter = KalshiSubmitter(client)
         order = {"ticker": "M-YES", "side": "yes", "action": "buy", "type": "market", "count": 1, "price": 50}
-        with pytest.raises(ValueError, match="Only limit orders are allowed"):
+        with pytest.raises(PermissionError, match="DIRECT_SUBMIT_RETIRED"):
             await submitter.submit_limit_order(order)
         client.create_order.assert_not_awaited()
 
@@ -157,7 +160,7 @@ async def test_submitter_respects_single_order_cap():
     with patch.object(client, "create_order", new_callable=AsyncMock):
         submitter = KalshiSubmitter(client)
         order = {"ticker": "M-YES", "side": "yes", "action": "buy", "type": "limit", "count": 10, "price": 200}
-        with pytest.raises(ValueError, match="exceeds max_single_order_cents"):
+        with pytest.raises(PermissionError, match="DIRECT_SUBMIT_RETIRED"):
             await submitter.submit_limit_order(order)
         client.create_order.assert_not_awaited()
 

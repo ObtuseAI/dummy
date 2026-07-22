@@ -64,7 +64,16 @@ def test_second_proof_runner_importable_from_script_directory():
     )
     output = result.stdout + result.stderr
     assert "ModuleNotFoundError" not in output
-    assert "SECOND_PROOF_RUNTIME_PREFLIGHT_PASS" in output or "BLOCKED_PROOF_LOCK" in output
+    assert any(
+        marker in output
+        for marker in (
+            "SECOND_PROOF_RUNTIME_PREFLIGHT_PASS",
+            "BLOCKED_PROOF_LOCK",
+            # Pre-migration active drafts are intentionally schema-invalid
+            # under caps-v2 and therefore fail closed after importing.
+            "BLOCKED_SECOND_PROOF_AUTHORITY",
+        )
+    )
 
 
 def test_preflight_does_not_contact_broker_or_enable_live_submit():

@@ -13,11 +13,13 @@ clusters and reports:
 
 Since the 2026-07-16 owner directive this runner ALSO executes the autonomous
 thresholded promotion pass (autonomy/auto_promotion_runner.py) after the
-readiness report: a scope with statistical proof of profit auto-promotes into
-the fused ensemble at a capped probation weight, rail-guarded, rate-limited,
-and hash-chain audited. Fusion membership only -- this runner still has no
-session, execution, or capital authority, and live trading authorization
-(live_submit.json / second-proof / session live auth) remains operator-gated.
+readiness report. Promotion to a capped probation weight requires predictive
+gates plus ledger-verified, receipt-bounded witnessed-fill net P&L from the
+exact registered candidate over independent forward event clusters.
+Midpoint/maker counterfactual ROI is report-only and cannot auto-promote.
+Fusion membership only -- this runner still has no session, execution, or
+capital authority, and live trading authorization (live_submit.json /
+second-proof / session live auth) remains operator-gated.
 ``--skip-auto-promotion`` restores the report-only behavior. The existing
 DummyReadinessReport scheduled task keeps working unchanged (re-running the
 install script is optional; nothing about the task definition changed).

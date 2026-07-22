@@ -98,7 +98,9 @@ def test_dashboard_status_panel_exposes_tournament(tmp_path):
     finally:
         ledger.close()
     runtime = tmp_path / "runtime"
-    runtime.mkdir()
+    # The autouse isolated risk-state fixture may already have created this
+    # directory; the tournament artifact writer shares the same runtime root.
+    runtime.mkdir(exist_ok=True)
     write_report(report, runtime / "execution_tournament.json")
     snapshot = dashboard.assemble_status_snapshot(runtime_dir=runtime)
     panel = snapshot["execution_tournament"]

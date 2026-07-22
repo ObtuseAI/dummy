@@ -42,6 +42,11 @@ def test_batch_matches_per_market(tmp_path):
         led.record_signal(_sig("s2", "TR", 0.21, "2026-01-01T00:00:01+00:00"))
         led.record_signal(_sig("s1", "TR", 0.55, "2026-01-01T00:00:02+00:00"))  # latest before decision
         led.record_signal(_sig("s1", "TR", 0.99, "2026-01-01T00:00:05+00:00"))  # after decision, excluded
+        # Synthetic historical fixture: these live rows were durably received
+        # when emitted, not months after the decision.
+        led._conn.execute(
+            "UPDATE signals SET ingested_at=created_at WHERE market_ticker='TR'"
+        )
         led._conn.execute(
             "INSERT INTO decisions(decision_id, market_ticker, action, side, price_cents, "
             "count, ev_cents, kelly, notional_cents, probability_yes, sources_used, created_at) "
@@ -60,6 +65,69 @@ def test_batch_matches_per_market(tmp_path):
         tr = {r["source"]: r["probability_yes"] for r in batch["TR"]}
         assert ph["s1"] == 0.10 and ph["s2"] == 0.20
         assert tr["s1"] == 0.55 and tr["s2"] == 0.21
+    finally:
+        led.close()
+
+
+def test_late_retro_rows_cannot_displace_authoritative_live_snapshot(tmp_path):
+    led = AutonomyLedger(db_path=tmp_path / "l.db")
+    try:
+        led.record_signal(_sig("market_prior", "MIX", 0.50, "2026-01-01T00:00:01+00:00"))
+        led.record_signal(_sig("sharp", "MIX", 0.60, "2026-01-01T00:00:01+00:00"))
+        led._conn.execute(
+            "UPDATE signals SET ingested_at=created_at WHERE market_ticker='MIX'"
+        )
+        led.record_signal(
+            _sig("market_prior", "MIX", 0.40, "2026-01-01T00:00:02+00:00"),
+            mode="retro",
+        )
+        led.record_signal(
+            _sig("sharp", "MIX", 0.99, "2026-01-01T00:00:02+00:00"),
+            mode="retro",
+        )
+        led._conn.execute(
+            "INSERT INTO decisions(decision_id, market_ticker, action, side, price_cents, "
+            "count, ev_cents, kelly, notional_cents, probability_yes, sources_used, created_at) "
+            "VALUES ('mix-d','MIX','BUY','yes',50,1,1.0,0.1,50,0.60,'[]',"
+            "'2026-01-01T00:00:03+00:00')"
+        )
+        led._conn.commit()
+        led.record_settlement("MIX", True)
+        live = {r["source"]: r for r in led.calibration_signals_for_market("MIX")}
+        retro = {r["source"]: r for r in led.calibration_signals_for_market(
+            "MIX", evidence_mode="retro"
+        )}
+        assert live["sharp"]["probability_yes"] == 0.60
+        assert live["sharp"]["mode"] == "live"
+        assert retro["sharp"]["probability_yes"] == 0.99
+        assert retro["sharp"]["mode"] == "retro"
+        batch = led.calibration_signals_for_settled(["MIX"])["MIX"]
+        assert _norm(batch) == _norm(live.values())
+    finally:
+        led.close()
+
+
+def test_post_decision_receipt_is_excluded_even_when_claimed_time_is_earlier(tmp_path):
+    led = AutonomyLedger(db_path=tmp_path / "l.db")
+    try:
+        led.record_signal(_sig("on_time", "LATE", 0.55, "2026-01-01T00:00:01+00:00"))
+        led.record_signal(_sig("late", "LATE", 0.95, "2026-01-01T00:00:02+00:00"))
+        led._conn.execute(
+            "UPDATE signals SET ingested_at=created_at WHERE source='on_time' "
+            "AND market_ticker='LATE'"
+        )
+        led._conn.execute(
+            "INSERT INTO decisions(decision_id, market_ticker, action, side, price_cents, "
+            "count, ev_cents, kelly, notional_cents, probability_yes, sources_used, created_at) "
+            "VALUES ('late-d','LATE','BUY','yes',50,1,1.0,0.1,50,0.55,'[]',"
+            "'2026-01-01T00:00:03+00:00')"
+        )
+        led._conn.commit()
+        led.record_settlement("LATE", True)
+        per_market = led.calibration_signals_for_market("LATE")
+        batch = led.calibration_signals_for_settled(["LATE"])["LATE"]
+        assert {r["source"] for r in per_market} == {"on_time"}
+        assert _norm(batch) == _norm(per_market)
     finally:
         led.close()
 

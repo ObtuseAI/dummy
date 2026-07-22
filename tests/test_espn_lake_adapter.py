@@ -49,6 +49,8 @@ def test_status_and_season_mapping():
     by = {r["game_id"]: r for r in rows}
     assert by["1"]["status"] == "post" and by["1"]["season"] == 2025 and by["1"]["home_score"] == 110
     assert by["2"]["status"] == "scheduled" and by["2"]["home_score"] is None
+    assert by["1"]["result_available_at"] is None
+    assert by["1"]["provenance_quality"] == "unknown"
 
 
 def test_ingest_all_leagues_point_in_time(tmp_path):
@@ -59,11 +61,16 @@ def test_ingest_all_leagues_point_in_time(tmp_path):
         "wnba": [_g("w1", "wnba", "LV", "NY", "post", 90, 85, date="2025-08-01T00:00Z", won=True)],
     })
     for league in ("nba", "wnba"):
-        res = ingest_espn_league(store, client, league)
+        res = ingest_espn_league(
+            store, client, league, received_at="2025-11-02T00:00:00+00:00")
         assert res["ok"]
     # all leagues represented; only finished games are point-in-time visible
     assert {g["game_id"] for g in store.games_before("2025-12-01T00:00:00Z")} == {"n1", "w1"}
     assert store.games(league="wnba")[0]["home"] == "LV"
+    strict = store.evaluation_games()
+    assert {game["game_id"] for game in strict} == {"n1", "w1"}
+    assert all(game["provenance_quality"] == "observed_at_receipt" for game in strict)
+    assert all(game["result_available_at"] == game["received_at"] for game in strict)
     store.close()
 
 

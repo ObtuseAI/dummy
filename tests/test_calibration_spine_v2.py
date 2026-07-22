@@ -61,6 +61,7 @@ def test_score_v2_perfect_forecast():
     assert metrics.log_loss == pytest.approx(0.0, abs=1e-6)
     assert metrics.sample_count == 1
     assert metrics.settled_count == 1
+    assert metrics.expected_calibration_error is None
 
 
 def test_score_v2_wrong_forecast():

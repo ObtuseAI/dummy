@@ -41,8 +41,6 @@ def main() -> int:
     parser.add_argument("--hours", type=float, default=24.0)
     parser.add_argument("--interval", type=float, default=120.0)
     parser.add_argument("--operator", default="chris")
-    parser.add_argument("--override-evidence-gate", action="store_true",
-                        help="Deliberately bypass the live evidence gate (operator intent only)")
     args = parser.parse_args()
 
     if args.command == "status":
@@ -69,8 +67,7 @@ def main() -> int:
         _print(report.to_dict())
         return 0
 
-    result = start_session(mode, ack=args.ack, hours=args.hours, operator=args.operator,
-                           override_evidence_gate=args.override_evidence_gate)
+    result = start_session(mode, ack=args.ack, hours=args.hours, operator=args.operator)
     _print(result)
     if not result.get("started"):
         return 2

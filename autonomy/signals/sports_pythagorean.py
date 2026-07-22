@@ -119,5 +119,11 @@ class SportsPythagoreanSignal:
                 "subject_strength": round(model.strength(subject), 3),
                 "opponent_strength": round(model.strength(opponent), 3),
                 "subject_home": subject_home, "min_games": seen,
+                "challenger_only": True,
+                "promotion_eligible": True,
+                "point_in_time": True,
+                "public_read_only": True,
+                "sport": league,
+                "market_type": "winner",
             },
         )

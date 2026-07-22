@@ -32,6 +32,26 @@ Two API surfaces:
   `stale_cache: true`, or a `503` pointing at `/api/status` when no cache
   exists yet — it no longer blocks for minutes recomputing the bootstrap
   inline. The dashboard UI falls back to `/api/status` automatically.
+- `GET /api/bet_board` and `GET /api/tier-performance` — artifact-only guide
+  and issued-tier evidence. They never scan the multi-gigabyte ledger on a web
+  request. Missing or invalid artifacts return `503`; stale artifacts remain
+  visible with explicit age/stale labels. `UNATTRIBUTED` means a legacy or
+  unverifiable row, not WATCH, and is excluded from tier claims.
+
+Tier performance is forward-only and policy-version-separated. Forecast skill
+uses one receipt-bounded fused emission per settled market; realized economics
+require a prior witnessed positive fill and use witnessed cost/fees. Hit rate,
+Brier, log loss, calibration, market-relative skill, P&L, ROI, profit factor,
+and drawdown remain separate. A cohort needs at least 30 rows across at least
+10 independent event clusters before it is labelled sample-available.
+
+## Supported prediction targets
+
+The active prediction surface is sports and crypto. Every other market category
+is excluded from forecasting, ranking, trade proposals, and execution. That
+boundary is enforced independently in target classification, the bet board,
+active strategy registry, autonomous/hybrid paths, and the central live
+firewall.
 
 ## Ops watchdog (aggregate fleet monitor)
 
@@ -61,7 +81,7 @@ artifact/timestamp is missing — fail-closed):
 | task | artifact | cadence | stale after |
 |---|---|---|---|
 | DummyShadowPredator | heartbeat.json (`last_cycle_at`) | 10 min | 20 min |
-| DummyMispricingMonitor | mispricing_monitor_latest.json (`generated_at`) | 2 min | 4 min |
+| DummyMispricingMonitor | mispricing_monitor_latest.json (`generated_at`) | 5 min | 10 min |
 | DummyCryptoPaperTwin | crypto_paper_twin_latest.json (`completed_at`) | 5 min | 10 min |
 | DummySportsSimulation | sports_simulation_latest.json (`completed_at`) | 10 min | 20 min |
 | DummySimulationTrainer | simulation_training_latest.json (`created_at`) | 60 min | 2 h |
@@ -91,53 +111,45 @@ halt state (`/exchange/status`) at the moment of submit, not just at cycle
 start; a status-fetch failure fails open (unknown is not down), matching the
 cycle-start doctrine.
 
-## Continuous shadow + going live (Tier 1)
+## Retired paper/shadow results + going live (Tier 1)
 
 ```bash
-# Continuous shadow (durable): register the scheduled task ONCE, elevated.
-scripts\install_shadow_task.bat        # 10-min cycles, survives reboot
-# ...or run the loop yourself:
-python scripts/run_dummy_shadow_daemon.py --loop --interval 600
+# Historical shadow artifacts remain readable for audit. The scheduled shadow
+# entry point is now a RETIRED_NON_AUTHORITATIVE no-op and must not produce new
+# orders, signals, settlements, or promotion evidence.
+python scripts/run_dummy_shadow_daemon.py
 
-# Watch liveness + history:
-type runtime\autonomy\heartbeat.json
-type runtime\autonomy\cycles.jsonl
-
-# When settlements have accrued, grade + pre-rank, then check readiness:
+# Grade historical research (retired; never grants or blocks LIVE):
 python scripts/run_dummy_backtest.py --bootstrap
-python scripts/run_dummy_autonomous.py canary        # evidence gate report
+python scripts/run_dummy_autonomous.py canary        # retired paper audit report
 
-# First live canary — BLOCKED until the gate passes: >=20 settled markets,
-# bootstrapped weights, five verified settled fills with positive P&L and
-# fill-conditioned Brier skill, and at least one CONTESTED market-beating
-# record (>=20 settled markets where it disagreed with the market prior by
-# >=5c AND was right more than 55% of the time). Agreeing with the market and
-# being right qualifies nothing. Enable the LLM panel for the session with the
-# env var. This is the one irreversible step; it's yours.
+# A LIVE session remains BLOCKED until the separate one-controlled-proof
+# live-submit config, typed/environment acknowledgements, command seal,
+# protected caps registration, central-firewall descriptor, local credential
+# resolver, and unused proof lock all pass. Paper/shadow results are not part
+# of that authority decision. Paid model research is a separate two-key
+# control: configs/model_routing.json must contain the literal JSON value
+# live_model_calls_enabled=true AND the same process must explicitly set:
 set DUMMY_DEBATE_LIVE=1
+# Neither model-call key grants probability, capital, or order authority.
 python scripts/run_dummy_autonomous.py start --live --hours 6 --ack "<exact ack>"
 
 # Stop everything, instantly:
 python scripts/run_dummy_autonomous.py stop
 ```
 
-The evidence gate (`autonomy/canary.py`) is fail-closed: a LIVE start returns
-`started: false` with exact blockers until the shadow record proves earned
-calibration. `--override-evidence-gate` exists but is deliberate operator
-intent only.
+`autonomy/canary.py` and prior paper/shadow files are retained as historical
+research. Their results are `RETIRED_NON_AUTHORITATIVE`: they can neither
+enable nor block a LIVE start. Production monitor runners do not append new
+paper-entry rows, and the paper/shadow scheduled producers are disabled or
+hard-no-op at their entry point. LIVE authority remains fail-closed under the
+explicit one-proof, operator, caps, command-seal, central-firewall, credential,
+and proof-lock contracts; there is no paper-results override flag.
 
 ## Commands
 
 ```bash
-# Shadow session (default): full pipeline on live public data, orders recorded
-# in the shadow book only. This is the calibration bootstrap — run it early,
-# run it often.
-python scripts/run_dummy_autonomous.py start
-
-# One cycle (cron-able):
-python scripts/run_dummy_autonomous.py once
-
-# Status (session, kill switch, performance summary, risk state):
+# Status (session, kill switch, live controls, and retired audit history):
 python scripts/run_dummy_autonomous.py status
 
 # LIVE session: requires the exact typed acknowledgement.
@@ -254,11 +266,15 @@ asserts source-file hashes are byte-identical before and after a full run.
 **Promotion registry (WS-14) + autonomous thresholded promotion (2026-07-16).**
 `autonomy/promotion.py` is the only path a challenger scope can ever reach the
 live ensemble. By owner directive 2026-07-16, positive promotion is no longer
-human-only: the `AutoPromotionEngine` (`autonomy/auto_promotion.py`, run daily
-inside the readiness task by `autonomy/auto_promotion_runner.py`) promotes a
-scope into fusion when it clears a two-stage evidence ladder including a
-fee-adjusted counterfactual **proof of profit** — see
-`docs/AUTO_PROMOTION.md` for every threshold, rail, and the full rationale.
+human-only, but it remains fail-closed: the `AutoPromotionEngine`
+(`autonomy/auto_promotion.py`, run daily inside the readiness task by
+`autonomy/auto_promotion_runner.py`) promotes a scope into fusion only when it
+clears the predictive gates plus receipt-bounded, post-registration, isolated
+witnessed-fill net P&L across enough independent forward event clusters.
+Midpoint/maker counterfactual P&L is a research diagnostic only and grants no
+fusion authority. Evidence that is promising but incomplete is reported as a
+zero-weight human-review candidate — see `docs/AUTO_PROMOTION.md` for every
+threshold, rail, and the full rationale.
 Stage 1 fuses at a capped probation weight (25% of earned trust); stage 2
 (full weight) requires realized scope-attributed trade P&L. Every promotion,
 escalation, and demotion is recorded in an append-only hash-chained ledger
@@ -301,8 +317,9 @@ documented in full in `docs/MARKET_STATE_ROUTING.md`.
 
 | Module | Role |
 |---|---|
-| `autonomy/scanner.py` | Series-targeted sweep of live Kalshi markets (watchlist of weather cities + crypto ladders); normalizes the dollars-string field schema |
-| `autonomy/signals/weather_openmeteo.py` | Multi-model Open-Meteo ensemble (GFS/ECMWF/ICON) vs KXHIGH* temperature strikes; metadata-driven strike semantics with integer-reading continuity corrections |
+| `autonomy/scanner.py` | Series-targeted sweep of live Kalshi markets; normalizes the dollars-string field schema. Production prediction selection is constrained by `autonomy/target_policy.py` to crypto and sports contracts only |
+| `autonomy/target_policy.py` | Canonical fail-closed target policy: weather and commodity contracts are contextual data only and are rejected by selection, fusion, board publication, execution, and the live firewall |
+| `autonomy/signals/weather_openmeteo.py` | Retired prediction compatibility shell plus reusable Open-Meteo parsing/fetch helpers. Weather may inform sports context, but the class cannot emit a forecast or authorize an order |
 | `autonomy/signals/crypto_spot.py` | Coinbase public candles → realized vol → driftless lognormal strike probabilities for KXBTC*/KXETH* |
 | `autonomy/signals/market_prior.py` | The book's own mid as a Bayesian anchor, weight decaying with thinness |
 | `autonomy/signals/sports_elo.py` + `autonomy/sports/` | ESPN public feeds + persistent per-league Elo (home edge, K per sport); win-probability for single-game moneylines; self-retrains from finished games each cycle. **MLB is pitcher-aware**: the probable starters' ERAs (from the scoreboard) shift each team's effective Elo, so an ace can overcome a road disadvantage |
@@ -316,10 +333,12 @@ documented in full in `docs/MARKET_STATE_ROUTING.md`.
 | `autonomy/exchange_status.py` | Venue awareness: exchange down (maintenance) → the cycle skips with an honest `CYCLE_SKIPPED_EXCHANGE_MAINTENANCE`; trading paused (overnight halt) → the full learning loop runs but zero orders are placed; status probe failure → proceed (unknown is not down) |
 | `autonomy/signals/cross_venue.py` | Exact team-set+date matching through Gamma discovery, then public CLOB token-level midpoint/spread/top-depth pricing; Gamma outcome price is fallback only |
 | `autonomy/live_book.py` | Signed Kalshi WebSocket orderbook (snapshot+delta state machine) + fixed-point/legacy REST normalization + synchronous pre-submit guards for crossed, behind-best, and >50-contract queue-ahead quotes |
-| `autonomy/debate.py` | Five-model LLM panel (distinct providers × temperatures) with a revision round; adjudicates only the top-K edge markets per cycle, injected as a trust-weighted signal |
-| `autonomy/weather_calibration.py` | Historical-forecast backfill: per-city bias + sigma from past Open-Meteo forecasts vs ERA5 actuals, pre-training the weather signal |
-| `autonomy/signals/commodities_spot.py` | WTI/natgas/gold spot + realized vol (keyless Yahoo Finance) → lognormal strike probabilities for KXWTI/KXNATGAS/KXGOLD |
+| `autonomy/debate.py` | Exact four-model OpenRouter research panel (Gemini 3.6 Flash, GPT-5.6 Luna, Claude Sonnet 5, and GLM-5.2) with independent bounded roles and a revision round; an incomplete or substituted panel is discarded, and model probability authority remains zero until separately earned from exact-scope forward evidence |
+| `autonomy/weather_calibration.py` | Legacy historical weather-data quality and bias analysis. It is retained for contextual research only and does not produce an eligible prediction target |
+| `autonomy/signals/commodities_spot.py` | Retired prediction compatibility shell plus reusable WTI/natgas/gold spot and realized-volatility data helpers. Commodity data may inform crypto macro context, but commodity contracts cannot be forecast or traded |
 | `autonomy/correlation.py` + risk brain group caps | Collapses correlated markets (adjacent strike buckets, one city-day, both game sides) into one cluster; per-cluster exposure + position-count caps stop the bankroll piling onto one underlying |
+| `autonomy/tier_policy.py` + `autonomy/bet_board.py` | Versioned daily-guide quality tiers based on the best quoted side after a conservative one-contract taker fee: A >=4% with uncertainty <=12%, B >=2%/18%, C >=1%/25%, otherwise WATCH. A current letter also requires a valid two-sided selected-side quote and positive depth witnessed by both selected-side Kalshi `*_size_fp` values; positive legacy liquidity is an explicit fallback. The selected sizes, effective depth, and depth source are frozen into the v5/schema-4 snapshot, so v4 and older rows stay unattributed. A is capped at one per correlated event and five per league/asset. The frozen value side and policy hash are display/research metadata only and never grant execution authority |
+| `autonomy/tier_performance.py` | Forward-only issued-tier evidence: one receipt-bounded fused forecast per settled market for value-side hit rate/Brier/log loss/calibration, kept separate from settled decisions with a prior witnessed fill for P&L/actual-cost ROI/profit factor/drawdown. Policy versions never pool and legacy rows are never retroactively relabelled |
 | `autonomy/backtest.py` | Leakage-resistant replay: decision-time source grading, ECE/MCE, event-cluster bootstrap confidence intervals, strict chronological stability folds, point-in-time walk-forward threshold selection, verified realized P&L/drawdown/profit factor, fill analytics, and derived trust weights |
 | `autonomy/drift.py` | River ADWIN diagnostic over ordered Brier excess; reports local negative regime shifts and can block scale, but never changes weights or orders |
 | `autonomy/statistics_intake.py` | Public BLS macro, Deribit DVOL, and NWS station observations stored as deduplicated raw facts with timestamps, units, and provenance; no probability conversion |
@@ -328,11 +347,11 @@ documented in full in `docs/MARKET_STATE_ROUTING.md`.
 | `autonomy/retention.py` | Fail-closed hot/cold signal retention: markets settled for seven days are eligible for a companion SQLite archive; exact count + SHA-256 verification precedes same-transaction hot deletion, while the `signal_history` union preserves full research evidence and excludes every execution/governance table |
 | `autonomy/simulation_training.py` | Hourly report-only curriculum: nested settlement-lagged/event-purged forecast challengers, witnessed-fill execution filters, and event-cluster bootstrap compounding stress; read-only ledger and zero execution authority |
 | `autonomy/evolution_lab.py` | Recursive report-only research evolution: evidence fingerprints, bounded genome mutation, causal/event-purged tournament replay, execution stress chamber, paired cluster bootstrap, immutable forward epochs, and trace replay; can rotate research JSON but has zero code/deployment/weight/risk/order/capital authority |
-| `autonomy/crypto_paper_twin.py` | Permanent public-read-only market-horizon twin: exact BTC/ETH/SOL 15m/hourly/daily/weekly allowlist plus vertically isolated WTI/natural-gas/gold daily/weekly cohorts; unavailable listings abstain explicitly; immutable explanations, one position per vertical/asset/expiry/lane, quote-executable taker simulation, public-print maker diagnostics, frozen epochs, paper-canary gates, and stress-only compounding proposals; independent of SHADOW/LIVE and zero broker/capital authority |
+| `autonomy/crypto_paper_twin.py` | Permanent public-read-only market-horizon twin for BTC/ETH/SOL. Hourly, daily, and weekly are required coverage scopes for every asset; 15-minute remains supplemental. Every compatible nearest-expiry target is evaluated and one non-pyramiding diagnostic paper decision is frozen per asset/expiry. Unavailable listings abstain without synthetic substitution; normal positions remain fee/uncertainty/liquidity/evidence gated. The twin is independent of SHADOW/LIVE with zero broker/capital authority |
 | Phantom grading (`ledger.unsettled_forecast_markets` + `reconciler.reconcile_forecast_settlements`) | Settles and grades EVERY market the machine forecasted (~1000/cycle), not just the handful it traded — one settled-markets listing per watchlist series per cycle. Calibration evidence accrues from the whole forecast surface at hundreds of settlements/day |
-| `autonomy/retro.py` | Retro evidence engine: point-in-time replay against markets that already settled. Market prior from Kalshi candlesticks at the historical decision moment; crypto spot/vol from historical Coinbase candles fully closed before it; weather from the Open-Meteo historical-forecast API (the day's own model runs). Signals land in the ledger as `mode='retro'` with historical timestamps; fail-closed (no contemporaneous quote -> market skipped) |
+| `autonomy/retro.py` | Retro evidence engine for eligible targets: point-in-time replay against markets that already settled, with the market prior from historical Kalshi candlesticks and crypto spot/vol from fully closed Coinbase candles. Weather prediction replay is retired and reports `RETIRED_DATA_ONLY` |
 | `autonomy/signals/market_debias.py` | Empirical price->outcome curve mined from settled-market history (the exchange's own measured miscalibration, longshot bias included). Opines only where a 5-cent price bucket has >=100 observed outcomes; the retro engine never writes retro signals for this source, so its trust weight is earned on live settlements only |
-| `autonomy/forecaster.py` | Trust-scaled inverse-variance fusion with correlated-source family pooling, disagreement uncertainty, challenger quarantine, and a 25% minimum crypto market anchor |
+| `autonomy/forecaster.py` | Trust-scaled inverse-variance fusion with correlated-source family pooling, disagreement uncertainty, challenger quarantine, a 25% minimum crypto market anchor, and an early data-only target rejection |
 | `autonomy/allocator.py` | Series-aware maker-fee EV, half-sigma uncertainty haircut, maker-first pricing, two-sided <=20c spread requirement, strict one-contract budget floor, symmetric YES/NO evaluation, crypto >=8c EV / <=75c entry guards, and rejected-candidate instrumentation |
 | `autonomy/risk_brain.py` | Self-set dynamic caps: quarter-Kelly, stage ladder (SHADOW→CANARY→RAMP→CRUISE), drawdown ladder (-10% half size, -20% demote, -30% self-stop), stage close-horizon (CANARY 7d / RAMP 30d / CRUISE uncapped) so scarce early-stage slots never freeze on far-dated markets |
 | `autonomy/executor.py` | Shadow book, or live through `KalshiLiveBrokerFirewallAdapter` (LIMIT only, per-order validation, transport-witnessed truth) |
@@ -394,29 +413,90 @@ and reports `execution_authority=false`.
    consume scarce shadow fills. Simulated results are quarantined from canary
    and scale evidence and can only propose a later bounded shadow experiment.
 
-## Enabling the LLM debate panel
+## Four-model OpenRouter research panel
 
-The five-model panel is wired but gated off by cost control. To activate:
+The current directed panel is an exact, role-diverse set:
 
-1. Set `live_model_calls_enabled: true` in `configs/model_routing.json`.
-2. Ensure `OPENROUTER_API_KEY` is set (it is, in `.env`).
+| Provider model | Bounded role calls |
+|---|---|
+| `google/gemini-3.6-flash` | Supplied-data extraction and the primary probability pass |
+| `openai/gpt-5.6-luna` | Independent low-latency structured forecast with a research-only trade draft |
+| `anthropic/claude-sonnet-5` | Deep strategy critique and market-thesis synthesis |
+| `z-ai/glm-5.2` | Adversarial no-trade gate, risk/hypothesis falsification, and calibration critique |
 
-The panel then adjudicates the top-5 edge markets each cycle using five
-distinct models — deepseek-v3, minimax-01, llama-3.3-70b, gemini-2.0-flash,
-qwen-2.5-72b — each estimating a probability, then a revision round where each
-sees the others' numbers. Result is injected as one `llm_debate` signal and
-graded by the calibration ledger like any source. With live calls off (the
-default), the panel returns cleanly with no effect (mock votes are ignored),
-so the loop runs pure-quant.
+`HybridForecastEngine.hybrid_review` makes seven independent, statically
+routed calls: primary forecast, rapid forecast/trade draft, no-trade review,
+strategy critique, risk critique, thesis, and calibration. No model receives
+another model's response. The batch is atomic and fail-closed: a missing,
+extra, duplicated, misrouted, wrong-model, mock/fallback, timed-out, or
+semantically malformed envelope invalidates the entire model review. The
+quantitative forecast, confidence, uncertainty band, vetoes, and no-trade
+decision then remain unchanged.
 
-Add or swap panel models by editing `provider_configs` in the routing config —
-any `route_mode: "openrouter"` entry is picked up automatically (no code
-change), courtesy of the generic `OpenRouterProvider`.
+The provider/model set is exact and order-independent. Archived providers may
+remain configured for historical tests or diagnostics, but they cannot join
+the production panel. The current evidence lineage is
+`openrouter_gemini36flash_gpt56luna_claudesonnet5_glm52_v1`; evidence produced
+by the retired Gemini 3.5 Flash / GPT-5.6 Terra pair, or by any interim panel,
+has zero authority under this lineage and cannot be relabeled or pooled into
+it.
+
+Successful calls are research observations, not permission to move a
+probability or trade. Model probability weight defaults to zero. It can become
+nonzero only through an explicit exact-scope promotion dossier bound by
+SHA-256 to fresh (at most seven days old), point-in-time,
+receipt-bounded forward settlement evidence from all four exact models, with
+no retro rows, at least 300 unique independent event clusters, and a positive
+95% lower confidence bound on Brier edge. Even then, the earned model weight
+is capped at 0.35; missing, stale, cross-scope, duplicated, tampered, demoted,
+or self-promoting evidence resolves to zero authority.
+
+Model access and order submission are separate controls. The shipped routing
+configuration keeps `live_model_calls_enabled=false`; the debate runtime flag
+alone cannot override that gate. Live order submission also remains disabled,
+and enabling research model calls would not grant order, risk, probability,
+promotion, or capital authority. With model calls off, mock votes are ignored
+and the loop remains pure-quant. See
+`docs/OPENROUTER_FOUR_MODEL_PANEL_2026-07-22.md` for the current panel contract.
+
+Provider networking is also enforced at the lower-level sinks. Real provider
+adapters require a process-local capability minted only after the router's
+strict checked gate; the legacy resolver is preflight-only unless it receives
+both literal `allow_live=True` and the same capability. Provider endpoints are
+HTTPS host-allowlisted and bound to their intended credential, alias probes are
+bounded, and archived V8 report generators are zero-network by default.
+Opening dashboards or running ordinary pytest therefore cannot inherit the
+project `.env` credential and silently create paid calls.
+
+Every production order request carries an immutable model-influence
+attestation. `QUANT_ONLY` binds zero model authority; `MODEL_WEIGHTED` binds the
+exact forecast, proposal, model-output reference, scope, evidence artifact,
+and earned weight. The central firewall rejects omission or tampering and
+independently re-evaluates the current exact scope before submit. Crypto scopes
+are separate for `15m`, `1h`, `1d`, and `1w`; sports scopes are separate for
+pre-game and live/in-play evidence. An authorized panel abstention is a hard
+veto, while mock/fallback/zero-authority text remains non-operational.
+
+Exit decisions follow the same proof boundary: the brain publishes
+`runtime/autonomy/exit_advisories.json`, marked at the displayed bid and net of
+taker fees. A displayed bid is not called a fill: quote freshness, displayed
+depth, entry-cost provenance, active-entry state, mark change, and time to close
+are recorded separately. It is explicitly `shadow_advisory_only`; it cannot
+place a sell.
+
+`python scripts/run_dummy_exit_policy_evaluator.py` joins only point-in-time v2
+advisories to witnessed fills and verified settlement P&L. It evaluates the
+first trigger for fixed model-value, adverse-selection, stop-loss, take-profit,
+and time-exit challengers under 0/1/3/5-cent slippage and event-cluster
+bootstrap intervals. Passing that research gate still grants no execution or
+capital authority; sell submission and partial-fill reconciliation require
+separate firewall-backed proof and explicit operator authorization.
 
 ## Pre-live checklist (bootstrapping calibration)
 
 ```bash
-python scripts/run_dummy_weather_backfill.py            # pre-train weather (done: 8 cities)
+# Optional contextual-data QA only; never creates eligible forecasts/orders:
+python scripts/run_dummy_weather_backfill.py
 python scripts/run_dummy_sports_warmup.py --league mlb  # warm Elo (done: 590 games)
 python scripts/run_dummy_sports_warmup.py --league nfl  # NFL preseason (KXNFLGAME live from Aug)
 python scripts/run_dummy_autonomous.py start            # shadow — accumulate settlements

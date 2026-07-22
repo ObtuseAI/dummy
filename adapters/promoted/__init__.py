@@ -1,6 +1,10 @@
 from __future__ import annotations
 
-PROMOTED_ADAPTER_NAMES: list[str] = [
+# Generated modules are research scaffolds, not verified integrations.
+PROMOTED_ADAPTER_NAMES: list[str] = []
+PROMOTED_MODULES: dict[str, str] = {}
+
+PENDING_ADAPTER_NAMES: list[str] = [
     "SharpAPI_TS_adapter",
     "arbitrage_betting_scanner_bot_adapter",
     "NBA_Betting_adapter",
@@ -46,7 +50,7 @@ PROMOTED_ADAPTER_NAMES: list[str] = [
     "awesome_mcp_servers_adapter",
 ]
 
-PROMOTED_MODULES: dict[str, str] = {
+PENDING_MODULES: dict[str, str] = {
     "SharpAPI_TS_adapter": "sharpapi_ts_adapter",
     "arbitrage_betting_scanner_bot_adapter": "arbitrage_betting_scanner_bot_adapter",
     "NBA_Betting_adapter": "nba_betting_adapter",

@@ -1,10 +1,11 @@
-"""Always-on, public-read-only crypto and commodities paper digital twin.
+"""Always-on, public-read-only crypto paper digital twin.
 
 The twin runs independently of Dummy's SHADOW/LIVE session.  It never loads
 credentials, imports a broker adapter, or writes the production autonomy
 ledger. Crypto is restricted to BTC/ETH/SOL at native 15-minute, hourly,
-daily, and weekly horizons. Commodities use equivalent daily and weekly WTI,
-natural-gas, and gold cohorts. Every cohort runs an incumbent lane and a frozen
+daily, and weekly horizons. Commodity prices may enter the separate crypto
+macro-regime feature pipeline, but commodity contracts are never targets in
+this twin. Every cohort runs an incumbent lane and a frozen
 recursive-challenger lane, explicitly ranks every compatible nearest-expiry
 price target, records a plain-language explanation, books one
 quote-executable *simulated* taker contract per asset/expiry, and tracks a
@@ -37,7 +38,6 @@ from autonomy.reconciler import (
     default_fetch_trades,
 )
 from autonomy.scanner import MarketScanner
-from autonomy.signals.commodities_spot import CommoditiesSpotVolSignal
 from autonomy.signals.crypto_indicators import (
     CryptoDataHub,
     CryptoTechnicalCompositeSignal,
@@ -48,6 +48,7 @@ from autonomy.signals.crypto_spot import (
 )
 from autonomy.signals.market_prior import MarketPriorSignal
 from autonomy.stats import mean_ci95 as _mean_ci95
+from autonomy.target_policy import DATA_ONLY_CONTEXT_POLICY
 from kalshi.presubmit import default_fetch_orderbook
 
 
@@ -61,7 +62,8 @@ BASE_STRATEGIES = ("incumbent", "recursive", "exploratory")
 HOURLY_CALIBRATED_STRATEGY = "hourly_calibrated"
 STRATEGIES = (*BASE_STRATEGIES, HOURLY_CALIBRATED_STRATEGY)
 ASSETS = ("BTC", "ETH", "SOL")
-COMMODITY_ASSETS = ("WTI", "NATGAS", "GOLD")
+REQUIRED_TRADING_TIMEFRAMES = ("1h", "1d", "1w")
+SUPPLEMENTAL_TRADING_TIMEFRAMES = ("15m",)
 HOURLY_CALIBRATION_VERSION = "hourly-market-anchor-v1"
 HOURLY_CALIBRATION_MIN_SETTLED = 20
 HOURLY_CALIBRATION_MIN_CLUSTERS = 10
@@ -120,12 +122,6 @@ COHORTS = (
     MarketCohort(Vertical.CRYPTO, "BTC", "1w", ("KXBTCD", "KXBTC")),
     MarketCohort(Vertical.CRYPTO, "ETH", "1w", ("KXETHD", "KXETH")),
     MarketCohort(Vertical.CRYPTO, "SOL", "1w", ("KXSOLD", "KXSOLE")),
-    MarketCohort(Vertical.COMMODITIES, "WTI", "1d", ("KXWTI",)),
-    MarketCohort(Vertical.COMMODITIES, "NATGAS", "1d", ("KXNATGASD",)),
-    MarketCohort(Vertical.COMMODITIES, "GOLD", "1d", ("KXGOLDD",)),
-    MarketCohort(Vertical.COMMODITIES, "WTI", "1w", ("KXWTIW",)),
-    MarketCohort(Vertical.COMMODITIES, "NATGAS", "1w", ("KXNATGASW",)),
-    MarketCohort(Vertical.COMMODITIES, "GOLD", "1w", ("KXGOLDW",)),
 )
 WATCHLIST = sorted({series for cohort in COHORTS for series in cohort.series})
 MIN_MINUTES_TO_CLOSE = {"15m": 1.0, "1h": 5.0, "1d": 60.0, "1w": 360.0}
@@ -2617,7 +2613,6 @@ class CryptoPaperTwin:
         ledger: PaperTwinLedger | None = None,
         scanner: MarketScanner | None = None,
         hub: CryptoDataHub | None = None,
-        commodity_signal: CommoditiesSpotVolSignal | None = None,
         trust: TrustSnapshot | None = None,
         fetch_result: Callable[[str], dict[str, Any]] | None = None,
         fetch_orderbook: Callable[[str], dict[str, Any]] | None = None,
@@ -2630,10 +2625,9 @@ class CryptoPaperTwin:
         self.ledger = ledger or PaperTwinLedger()
         self.scanner = scanner or MarketScanner(
             watchlist=list(WATCHLIST),
-            verticals={Vertical.CRYPTO, Vertical.COMMODITIES},
+            verticals={Vertical.CRYPTO},
         )
         self.hub = hub or CryptoDataHub()
-        self.commodity_signal = commodity_signal or CommoditiesSpotVolSignal()
         self.trust = trust or TrustSnapshot.from_database("runtime/autonomy/ledger.db")
         self.fetch_result = fetch_result or default_fetch_market_result
         self.fetch_orderbook = fetch_orderbook or default_fetch_orderbook
@@ -2664,13 +2658,10 @@ class CryptoPaperTwin:
         forecasts: dict[str, Forecast] = {}
         source_features: dict[str, dict[str, Any]] = {}
         for market in markets:
+            if market.vertical is not Vertical.CRYPTO:
+                continue
             signals: list[Signal] = []
-            sources = (
-                (prior, flat, ewma)
-                if market.vertical is Vertical.CRYPTO
-                else (prior, self.commodity_signal)
-            )
-            for source in sources:
+            for source in (prior, flat, ewma):
                 try:
                     if source.applicable(market):
                         signal = source.generate(market)
@@ -3315,7 +3306,6 @@ class CryptoPaperTwin:
     ) -> dict[str, Any]:
         vertical_timeframes = {
             Vertical.CRYPTO: ("15m", "1h", "1d", "1w"),
-            Vertical.COMMODITIES: ("1d", "1w"),
         }
         hourly_profile = fit_hourly_calibration_profile(
             self.ledger.hourly_calibration_rows()
@@ -3514,7 +3504,6 @@ class CryptoPaperTwin:
         active = self.ledger.active_epoch()
         completed_at = self.now_fn().astimezone(timezone.utc)
         crypto_name = Vertical.CRYPTO.value
-        commodity_name = Vertical.COMMODITIES.value
         return {
             "report_name": "DUMMY_MARKET_HORIZON_PAPER_TWIN",
             "cycle_id": cycle_id,
@@ -3545,19 +3534,41 @@ class CryptoPaperTwin:
             },
             "assets_by_vertical": {
                 crypto_name: list(ASSETS),
-                commodity_name: list(COMMODITY_ASSETS),
             },
             "universe_policy": {
                 "crypto_assets": list(ASSETS),
                 "crypto_timeframes": list(vertical_timeframes[Vertical.CRYPTO]),
-                "other_crypto_allowed": False,
-                "commodity_assets": list(COMMODITY_ASSETS),
-                "commodity_timeframes": list(
-                    vertical_timeframes[Vertical.COMMODITIES]
+                "required_crypto_trading_timeframes": list(
+                    REQUIRED_TRADING_TIMEFRAMES
                 ),
+                "other_crypto_allowed": False,
+                "weather_contracts_allowed": False,
+                "commodity_contracts_allowed": False,
+                "weather_and_commodities_role": "contextual_data_only",
                 "unlisted_market_action": "ABSTAIN",
                 "synthetic_contract_substitution": False,
             },
+            "horizon_execution_contract": {
+                "assets": list(ASSETS),
+                "required_timeframes": list(REQUIRED_TRADING_TIMEFRAMES),
+                "supplemental_timeframes": list(SUPPLEMENTAL_TRADING_TIMEFRAMES),
+                "required_scopes": [
+                    f"{asset}:{timeframe}"
+                    for asset in ASSETS
+                    for timeframe in REQUIRED_TRADING_TIMEFRAMES
+                ],
+                "listed_market_behavior": (
+                    "evaluate every compatible nearest-expiry target and freeze "
+                    "one non-pyramiding diagnostic paper decision per asset/expiry"
+                ),
+                "normal_trade_policy": (
+                    "fee_uncertainty_liquidity_and_evidence_gated"
+                ),
+                "unlisted_market_behavior": "abstain_without_synthetic_substitution",
+                "live_execution_authority": False,
+                "capital_authority": False,
+            },
+            "data_only_context_policy": DATA_ONLY_CONTEXT_POLICY,
             "strategies": list(STRATEGIES),
             "active_recursive_epoch": active,
             # Compatibility: lanes remains the crypto view. New consumers

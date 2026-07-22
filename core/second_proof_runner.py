@@ -7,7 +7,6 @@ the CLI script.
 """
 from __future__ import annotations
 
-import asyncio
 import hashlib
 import json
 import os
@@ -16,17 +15,17 @@ from pathlib import Path
 from typing import Any
 
 from kalshi.rejection_classifier import classify_rejection
+from core.ontology import LiveOrderResult
 from core.proof_authority import (
     SECOND_PROOF_AUTHORITY_DIR,
     V3_CANDIDATE_PATH,
     SecondProofAuthority,
     SecondProofAuthorityStatus,
+    authority_from_dict,
     authority_to_dict,
     mark_authority_used,
 )
 from core.second_proof_lock import consume_second_proof_lock, is_second_proof_lock_consumed
-from live_firewall.exposure_tracker import ExposureTracker
-from live_firewall.firewall import LiveBrokerFirewall
 from predator_mesh.brokers import LimitOrderRequest
 
 
@@ -143,8 +142,9 @@ def run_second_proof_execute_once(
 
     Args:
         active_path: Override path to the active authority file (tests only).
-        firewall_factory: Optional callable returning a LiveBrokerFirewall instance
-            (tests only).
+        firewall_factory: Deprecated compatibility argument. It is never
+            invoked because the legacy proof runner no longer owns a broker
+            write path.
     """
     active_path = active_path or (SECOND_PROOF_AUTHORITY_DIR / "SECOND_PROOF_AUTHORITY_ACTIVE.json")
     if not active_path.exists():
@@ -152,10 +152,7 @@ def run_second_proof_execute_once(
 
     data = _load_json(active_path)
     try:
-        authority = SecondProofAuthority(
-            **{k: v for k, v in data.items() if k != "status"},
-            status=SecondProofAuthorityStatus(data["status"]),
-        )
+        authority = authority_from_dict(data)
     except Exception as exc:
         return {"verdict": "BLOCKED_SECOND_PROOF_AUTHORITY", "reason": f"INVALID_ACTIVE_AUTHORITY:{type(exc).__name__}"}
 
@@ -169,21 +166,13 @@ def run_second_proof_execute_once(
     if authority.candidate_hash != current_candidate_hash:
         return {"verdict": "BLOCKED_CANDIDATE_HASH_MISMATCH"}
 
-    req = _build_limit_order_request(authority)
-    firewall = firewall_factory() if firewall_factory else LiveBrokerFirewall(kalshi_client=None, exposure_tracker=ExposureTracker())
-    try:
-        result = asyncio.run(firewall.submit_limit_order_adapter(req))
-    except Exception as exc:
-        result = type("R", (), {
-            "success": False,
-            "order_id": None,
-            "error": f"RUNNER_EXCEPTION:{type(exc).__name__}",
-            "broker_rejection_code": None,
-            "broker_rejection_safe_message": None,
-            "broker_rejection_http_status": None,
-            "broker_rejection_adapter_error_type": None,
-            "broker_rejection_stage": None,
-        })()
+    del firewall_factory
+    result = LiveOrderResult(
+        success=False,
+        error="LEGACY_SECOND_PROOF_RUNNER_RETIRED_USE_CENTRAL_FIREWALL",
+        proof_reference=authority.authority_id,
+        broker_contacted=False,
+    )
 
     accepted = bool(getattr(result, "success", False) and getattr(result, "order_id", None))
 

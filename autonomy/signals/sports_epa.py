@@ -87,5 +87,14 @@ class SportsEpaSignal:
             source=self.name, market_ticker=market.ticker, probability_yes=p_yes,
             uncertainty=uncertainty,
             rationale=f"{league.upper()} EPA {subject} vs {opponent} home={subject_home} n={seen}",
-            features={"subject_home": subject_home, "min_games": seen},
+            features={
+                "subject_home": subject_home,
+                "min_games": seen,
+                "challenger_only": True,
+                "promotion_eligible": True,
+                "point_in_time": True,
+                "public_read_only": True,
+                "sport": league,
+                "market_type": "winner",
+            },
         )

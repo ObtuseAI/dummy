@@ -2,11 +2,8 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
-from decimal import Decimal
 from typing import Any
 
-from calibration.schema import ForecastRecordV2, SettlementRecord
 from calibration.spine import CalibrationSpine
 from calibration.storage import CalibrationStorage
 from predator_mesh.lanes.base import BaseLane
@@ -35,66 +32,92 @@ class CalibrationLane(BaseLane):
         self.storage = storage or CalibrationStorage()
 
     async def execute(self, ctx: MeshContext) -> MeshResult:
-        updates: list[dict[str, Any]] = []
+        forecasts = self.storage.load_all_forecasts_v2()
+        settlements = self.storage.load_settlements()
 
-        # Score any persisted V2 forecasts for the synthetic contract.
-        contract = "MESH-SYNTH-YES"
-        forecasts = self.storage.load_forecasts_v2(contract)
-
-        # If none exist, create a single synthetic record so the spine always
-        # has something to score in a fresh environment.
-        if not forecasts:
-            now = datetime.now(timezone.utc)
-            forecasts = [
-                ForecastRecordV2(
-                    forecast_id="mesh-calibration-synthetic",
-                    market_ticker="MESH-SYNTH",
-                    contract_ticker=contract,
-                    model_route="mesh_hybrid_router",
-                    market_implied_probability=Decimal("0.5000"),
-                    dummy_probability=Decimal("0.5200"),
-                    deepseekv4flash_probability=Decimal("0.5300"),
-                    minimaxm3_probability=Decimal("0.5100"),
-                    final_probability=Decimal("0.5200"),
-                    confidence_bucket="medium",
-                    timestamp=now,
-                    settlement_status="settled",
-                    realized_outcome=1,
-                    no_trade_reason=None,
-                )
-            ]
-
-        settlement = SettlementRecord(
-            market_ticker="MESH-SYNTH",
-            contract_ticker=contract,
-            outcome=1,
-            settled_at=datetime.now(timezone.utc),
-            source="mesh_synthetic",
-        )
+        # Historical mesh fixtures are useful in tests, but they are not real
+        # calibration evidence and must never contribute to runtime scores.
+        real_forecasts = [
+            record
+            for record in forecasts
+            if not record.market_ticker.upper().startswith("MESH-SYNTH")
+            and not record.contract_ticker.upper().startswith("MESH-SYNTH")
+            and "synthetic" not in record.forecast_id.lower()
+        ]
+        real_settlements = [
+            record
+            for record in settlements
+            if not record.market_ticker.upper().startswith("MESH-SYNTH")
+            and not record.contract_ticker.upper().startswith("MESH-SYNTH")
+            and "synthetic" not in record.source.lower()
+        ]
 
         try:
-            metrics = self.spine.score_v2(forecasts, settlement)
-            updates.append(metrics.model_dump())
+            dataset = self.spine.score_dataset_v2(real_forecasts, real_settlements)
         except Exception as exc:
             return self._fail(ctx, f"calibration scoring failed: {exc}")
 
+        descriptive_contract_count = int(
+            dataset.get("diagnostics", {}).get("scored_contract_count", 0)
+        )
+        dataset_is_calibratable = dataset.get("status") != "INSUFFICIENT_DATA"
+        updates: list[dict[str, Any]] = (
+            list(dataset.get("contract_metrics", [])) if dataset_is_calibratable else []
+        )
+
         if ctx.proof_ledger is not None:
+            if updates:
+                ctx.proof_ledger.record(
+                    event="calibration_scored",
+                    lane=self.name,
+                    settlement_count=descriptive_contract_count,
+                    forecast_count=len(real_forecasts),
+                    calibration_unit=dataset.get("calibration_unit"),
+                    expected_calibration_error=dataset.get("overall", {}).get(
+                        "expected_calibration_error"
+                    ),
+                    maximum_calibration_error=dataset.get("overall", {}).get(
+                        "maximum_calibration_error"
+                    ),
+                )
+            else:
+                ctx.proof_ledger.record(
+                    event="calibration_abstained",
+                    lane=self.name,
+                    reason=dataset.get("overall", {}).get("reason")
+                    or "no_real_scored_forecasts",
+                    real_forecast_count=len(real_forecasts),
+                    real_settlement_count=len(real_settlements),
+                    descriptive_contract_count=descriptive_contract_count,
+                )
             ctx.proof_ledger.record(
-                event="calibration_scored",
+                event="secret_check_status",
                 lane=self.name,
-                contract_ticker=contract,
-                forecast_count=len(forecasts),
-            )
-            ctx.proof_ledger.record(
-                event="no_secret_check",
-                lane=self.name,
-                passed=True,
-                checked="calibration_records",
+                status="not_performed",
             )
 
         ctx.shared_state["calibration_updates"] = updates
+        ctx.shared_state["calibration_dataset"] = dataset
+        if not updates:
+            return self._complete(
+                ctx,
+                {
+                    "status": "abstained",
+                    "reason": dataset.get("overall", {}).get("reason")
+                    or "no_real_scored_forecasts",
+                    "calibration_updates": 0,
+                    "descriptive_contract_count": descriptive_contract_count,
+                    "dataset_metrics": dataset,
+                    "updates": [],
+                },
+                verdict="insufficient_real_calibration_data",
+            )
         return self._complete(
             ctx,
-            {"calibration_updates": len(updates), "updates": updates},
+            {
+                "calibration_updates": len(updates),
+                "dataset_metrics": dataset,
+                "updates": updates,
+            },
             verdict="calibration_scored",
         )

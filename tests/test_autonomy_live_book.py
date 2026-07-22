@@ -106,10 +106,14 @@ def test_fresh_best_quote_supports_fixed_point_dollar_schema():
         "yes_dollars": [["0.3000", "0.01"], ["0.4100", "12.50"]],
         "no_dollars": [["0.5700", "8.25"]],
     })
-    assert quote == {
-        "yes_bid": 41, "yes_ask": 43, "no_bid": 57, "no_ask": 59,
-        "yes_bid_size": 12.5, "no_bid_size": 8.25,
-    }
+    assert quote["yes_bid"] == 41 and quote["yes_ask"] == 43
+    assert quote["no_bid"] == 57 and quote["no_ask"] == 59
+    assert quote["yes_bid_size"] == 12.5 and quote["no_bid_size"] == 8.25
+    assert quote["yes_ask_size"] == 8.25 and quote["no_ask_size"] == 12.5
+    assert quote["yes_ask_levels"] == [[43, 8.25]]
+    assert quote["no_ask_levels"] == [[59, 12.5], [70, 0.01]]
+    assert quote["book_received_at"] is not None
+    assert quote["book_sequence"] is None
 
 
 def test_fresh_best_quote_swallows_error():
@@ -148,11 +152,19 @@ def test_executor_skips_crossed_maker_quote(tmp_path):
     decision = Allocator(brain).decide(market, forecast, state)
     assert decision.side == "yes"
 
-    # Book moved: yes_ask now at/below our resting price -> we'd cross.
-    def crossed(_ticker):
-        return {"yes_bid": decision.price_cents, "yes_ask": decision.price_cents}
+    # The central path consumes a fresh typed full-depth book. If its ask has
+    # moved to our maker limit, the pre-submit book verdict blocks locally.
+    from core.ontology import OrderBook, OrderBookLevel
 
-    executor = Executor(SessionMode.LIVE, session_path=session, kill_path=tmp_path / "KILL", quote_fn=crossed)
-    outcome = asyncio.run(executor.execute(decision))
+    book = OrderBook(
+        market_ticker="T",
+        contract_ticker="T",
+        bids=[OrderBookLevel(price=max(1, decision.price_cents - 1), size=10)],
+        asks=[OrderBookLevel(price=decision.price_cents, size=10)],
+        timestamp=datetime.now(timezone.utc),
+    )
+    executor = Executor(SessionMode.LIVE)
+    outcome, _evidence = executor._live_book_execution_verdict(decision, book)
+    assert outcome is not None
     assert outcome.kind is OutcomeKind.BLOCKED_LOCAL
     assert "crossed" in outcome.detail["reason"]

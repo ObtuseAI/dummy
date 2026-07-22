@@ -9,6 +9,7 @@ from pathlib import Path
 import pytest
 
 from predator_mesh import staged_gate_common as sgc
+from tests.caps_authority_test_helpers import registered_caps_status
 
 _BASE = Path(sgc.ROOT) / "tools" / "operator_authority_appliance"
 _spec = importlib.util.spec_from_file_location("operator_full_completion", _BASE / "operator_full_completion.py")
@@ -19,6 +20,7 @@ PHRASE = fc.REQUIRED_PHRASE
 RISK = fc.REQUIRED_RISK_ACK
 INSTALL = fc.INSTALL_CONFIRM_PHRASE
 GATE = {"DUMMY_LIVE_PROOF_MODE": "1", "DUMMY_LIVE_PROOF_ACK": "FULL_AUTHORITY_OPERATOR_APPROVED_LIVE_PROOF_ONLY"}
+REGISTERED_CAPS_STATUS = registered_caps_status()
 
 
 @pytest.fixture(autouse=True)
@@ -37,6 +39,11 @@ def _no_dotenv_load(monkeypatch):
 def _no_second_proof_draft(monkeypatch):
     """Keep legacy one-shot-check tests isolated from any repo second-proof draft."""
     monkeypatch.setattr(fc, "_second_proof_authority_state", lambda: {"state": "none"})
+
+
+@pytest.fixture(autouse=True)
+def _registered_caps_authority(monkeypatch):
+    monkeypatch.setattr(fc, "_caps_authority_status", lambda: REGISTERED_CAPS_STATUS)
 
 
 class FakeRunner:
@@ -172,6 +179,7 @@ def test_one_shot_check_reports_command_seal_blocked(monkeypatch):
         "order_type_policy": "LIMIT_ONLY",
         "max_order_count": 1,
         "explicit_acknowledgement": fc.LIVE_SUBMIT_REQUIRED_ACK,
+        **fc.build_caps_authority_binding(REGISTERED_CAPS_STATUS),
     }
     monkeypatch.setattr(fc, "_load_json", lambda p: live_submit if "live_submit" in str(p) else {})
     monkeypatch.setattr(fc, "_caps_are_strict", lambda: True)

@@ -3,22 +3,23 @@
 import os
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
 from core import state as state_module
 from core.config_loader import load_caps
-from core.ontology import AccountMode, Forecast, LiveOrderRequest, OrderBook, OrderBookLevel
+from core.ontology import AccountMode, FirewallVerdict, Forecast, LiveOrderRequest, OrderBook, OrderBookLevel
 from live_firewall.firewall import LiveBrokerFirewall, RehearsalVerdict
 from live_firewall.exposure_tracker import ExposureTracker
+from forecasting.model_influence_attestation import build_model_influence_attestation
 
 
 def _make_book(stale: bool = False):
     ts = datetime.now(timezone.utc) - timedelta(seconds=120 if stale else 0)
     return OrderBook(
         market_ticker="MARKET",
-        contract_ticker="MARKET-YES",
+        contract_ticker="MARKET",
         bids=[OrderBookLevel(price=48, size=100)],
         asks=[OrderBookLevel(price=52, size=100)],
         timestamp=ts,
@@ -28,7 +29,7 @@ def _make_book(stale: bool = False):
 def _make_forecast():
     return Forecast(
         market_ticker="MARKET",
-        contract_ticker="MARKET-YES",
+        contract_ticker="MARKET",
         event_title="Event",
         contract_title="Yes",
         market_implied_probability=Decimal("0.5"),
@@ -47,26 +48,34 @@ def _make_forecast():
         model_summary="test",
         calibration_notes="test",
         timestamp=datetime.now(timezone.utc),
-        expiration=datetime.now(timezone.utc),
+        expiration=datetime.now(timezone.utc) + timedelta(hours=1),
         strategy_references=["test"],
         proof_reference="forecast_1",
     )
 
 
-def _make_request(**overrides):
+def _make_request(*, forecast=None, **overrides):
     defaults = dict(
         proposal_id="p1",
         market_ticker="MARKET",
-        contract_ticker="MARKET-YES",
+        contract_ticker="MARKET",
         side="yes",
         price_cents=50,
         size=1,
         strategy_proof_reference="sp1",
-        forecast_proof_reference="fp1",
+        forecast_proof_reference="forecast_1",
         adapter_name="kalshi_live_firewall_adapter",
     )
     defaults.update(overrides)
-    return LiveOrderRequest(**defaults)
+    if forecast is None:
+        return LiveOrderRequest(**defaults)
+    return LiveOrderRequest(
+        **defaults,
+        model_influence_attestation=build_model_influence_attestation(
+            forecast,
+            defaults,
+        ),
+    )
 
 
 @pytest.fixture(autouse=True)
@@ -78,14 +87,42 @@ def reset_state():
     os.environ["KALSHI_API_KEY_ID"] = "test"
 
 
+def _metadata_client():
+    client = AsyncMock()
+    client.get_market.return_value = {
+        "market": {
+            "ticker": "MARKET",
+            "event_ticker": "EVENT",
+            "status": "open",
+            "close_time": (datetime.now(timezone.utc) + timedelta(hours=1)).isoformat(),
+        }
+    }
+    client.get_event.return_value = {
+        "event": {
+            "event_ticker": "EVENT",
+            "series_ticker": "SERIES",
+            "category": "Sports",
+        }
+    }
+    client.get_series.return_value = {
+        "series": {"ticker": "SERIES", "category": "Sports", "tags": []}
+    }
+    return client
+
+
 @pytest.mark.asyncio
 async def test_rehearsal_blocks_by_default():
     state_module.STATE.set_mode(AccountMode.AUTONOMOUS_LIVE_CAPPED)
     caps = load_caps()
     caps.allowed_markets = ["MARKET"]
     with patch("live_firewall.firewall.load_caps", return_value=caps):
-        fw = LiveBrokerFirewall(None, ExposureTracker())
-        verdict = await fw.submit_rehearsal(_make_request(), _make_book(), _make_forecast())
+        fw = LiveBrokerFirewall(_metadata_client(), ExposureTracker())
+        forecast = _make_forecast()
+        verdict = await fw.submit_rehearsal(
+            _make_request(forecast=forecast),
+            _make_book(),
+            forecast,
+        )
         assert isinstance(verdict, RehearsalVerdict)
         assert verdict.firewall_verdict.allow is True
         assert verdict.would_submit is False
@@ -99,11 +136,17 @@ async def test_rehearsal_would_submit_when_enabled():
     state_module.STATE.set_mode(AccountMode.AUTONOMOUS_LIVE_CAPPED)
     caps = load_caps()
     caps.allowed_markets = ["MARKET"]
-    with patch("live_firewall.firewall.load_caps", return_value=caps), patch.object(
-        LiveBrokerFirewall, "_live_submit_enabled", return_value=True
-    ):
-        fw = LiveBrokerFirewall(None, ExposureTracker())
-        verdict = await fw.submit_rehearsal(_make_request(), _make_book(), _make_forecast())
+    with patch("live_firewall.firewall.load_caps", return_value=caps):
+        fw = LiveBrokerFirewall(_metadata_client(), ExposureTracker())
+        fw.live_authority_verdict = lambda: FirewallVerdict(
+            allow=True, reason="test authority"
+        )
+        forecast = _make_forecast()
+        verdict = await fw.submit_rehearsal(
+            _make_request(forecast=forecast),
+            _make_book(),
+            forecast,
+        )
         assert verdict.would_submit is True
         assert verdict.blocked_reason is None
 

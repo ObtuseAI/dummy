@@ -287,6 +287,18 @@ def test_backtest_summary_embeds_adverse_selection(tmp_path):
     assert adverse["report_name"] == "EXECUTION_ADVERSE_SELECTION"
     assert adverse["maker_filled_decisions"] == 12
     assert adverse["headline"]["maker_realized_net_pnl_cents"] < 0
+    taker = adverse["fill_conditioned_slice"]["full_surface_actionable"][
+        "taker_execution_per_contract"
+    ]
+    assert adverse["headline"]["taker_full_surface_net_pnl_cents"] == taker[
+        "net_pnl_cents"
+    ]
+    assert adverse["headline"][
+        "taker_full_surface_mean_pnl_cents_per_contract"
+    ] == taker["average_pnl_cents"]
+    assert (
+        "taker_full_surface_net_pnl_cents_per_contract" not in adverse["headline"]
+    )
 
 
 def _readonly_conn(path) -> sqlite3.Connection:

@@ -1,331 +1,850 @@
 {
-  "incorporated": [
-    {
-      "repo": "Sharp-API/SharpAPI-TS",
-      "adapter_name": "SharpAPI_TS_adapter",
-      "tests_passed": true
-    },
-    {
-      "repo": "odds-api/arbitrage-betting-scanner-bot",
-      "adapter_name": "arbitrage_betting_scanner_bot_adapter",
-      "tests_passed": true
-    },
-    {
-      "repo": "NBA-Betting/NBA_Betting",
-      "adapter_name": "NBA_Betting_adapter",
-      "tests_passed": true
-    },
-    {
-      "repo": "manuelpeba/world-cup-2026-forecast",
-      "adapter_name": "world_cup_2026_forecast_adapter",
-      "tests_passed": true
-    },
+  "schema_version": 2,
+  "registry_status": "PENDING_VERIFICATION_FAIL_CLOSED",
+  "incorporated": [],
+  "rejected": [],
+  "pending_tests": [
     {
       "repo": "nickpadd/EuropeanFootballLeaguePredictor",
       "adapter_name": "EuropeanFootballLeaguePredictor_adapter",
-      "tests_passed": true
-    },
-    {
-      "repo": "paulokuong/noaa",
-      "adapter_name": "noaa_adapter",
-      "tests_passed": true
-    },
-    {
-      "repo": "weather-mcp/weather-mcp",
-      "adapter_name": "weather_mcp_adapter",
-      "tests_passed": true
-    },
-    {
-      "repo": "GClunies/noaa_coops",
-      "adapter_name": "noaa_coops_adapter",
-      "tests_passed": true
-    },
-    {
-      "repo": "microsoft/qlib",
-      "adapter_name": "qlib_adapter",
-      "tests_passed": true
-    },
-    {
-      "repo": "QuantConnect/Lean",
-      "adapter_name": "Lean_adapter",
-      "tests_passed": true
-    },
-    {
-      "repo": "quantrocket-llc/zipline",
-      "adapter_name": "zipline_adapter",
-      "tests_passed": true
-    },
-    {
-      "repo": "stefan-jansen/machine-learning-for-trading",
-      "adapter_name": "machine_learning_for_trading_adapter",
-      "tests_passed": true
+      "tests_passed": false,
+      "test_status": "pending_adapter_specific_tests",
+      "integration_status": "pending",
+      "integration_kind": "scaffold_only",
+      "upstream_integration_verified": false,
+      "production_capability": false,
+      "prediction_authority": false,
+      "execution_authority": false,
+      "category": "sports_prediction_odds",
+      "data_only": false,
+      "passthrough_model_zoo": false
     },
     {
       "repo": "shashankvemuri/Finance",
       "adapter_name": "Finance_adapter",
-      "tests_passed": true
+      "tests_passed": false,
+      "test_status": "pending_adapter_specific_tests",
+      "integration_status": "pending",
+      "integration_kind": "scaffold_only",
+      "upstream_integration_verified": false,
+      "production_capability": false,
+      "prediction_authority": false,
+      "execution_authority": false,
+      "category": "stocks_equities_options_macro",
+      "data_only": false,
+      "passthrough_model_zoo": false
     },
     {
-      "repo": "cfdude/mcp-finnhub",
-      "adapter_name": "mcp_finnhub_adapter",
-      "tests_passed": true
+      "repo": "QuantConnect/Lean",
+      "adapter_name": "Lean_adapter",
+      "tests_passed": false,
+      "test_status": "pending_adapter_specific_tests",
+      "integration_status": "pending",
+      "integration_kind": "scaffold_only",
+      "upstream_integration_verified": false,
+      "production_capability": false,
+      "prediction_authority": false,
+      "execution_authority": false,
+      "category": "stocks_equities_options_macro",
+      "data_only": false,
+      "passthrough_model_zoo": false
     },
     {
-      "repo": "philsv/pycot",
-      "adapter_name": "pycot_adapter",
-      "tests_passed": true
+      "repo": "NBA-Betting/NBA_Betting",
+      "adapter_name": "NBA_Betting_adapter",
+      "tests_passed": false,
+      "test_status": "pending_adapter_specific_tests",
+      "integration_status": "pending",
+      "integration_kind": "scaffold_only",
+      "upstream_integration_verified": false,
+      "production_capability": false,
+      "prediction_authority": false,
+      "execution_authority": false,
+      "category": "sports_prediction_odds",
+      "data_only": false,
+      "passthrough_model_zoo": false
     },
     {
-      "repo": "Mcamin/cftc-cot",
-      "adapter_name": "cftc_cot_adapter",
-      "tests_passed": true
-    },
-    {
-      "repo": "philsv/myeia",
-      "adapter_name": "myeia_adapter",
-      "tests_passed": true
-    },
-    {
-      "repo": "EIAgov/dash-benchmark",
-      "adapter_name": "dash_benchmark_adapter",
-      "tests_passed": true
-    },
-    {
-      "repo": "datasets/oil-prices",
-      "adapter_name": "oil_prices_adapter",
-      "tests_passed": true
+      "repo": "Sharp-API/SharpAPI-TS",
+      "adapter_name": "SharpAPI_TS_adapter",
+      "tests_passed": false,
+      "test_status": "pending_adapter_specific_tests",
+      "integration_status": "pending",
+      "integration_kind": "scaffold_only",
+      "upstream_integration_verified": false,
+      "production_capability": false,
+      "prediction_authority": false,
+      "execution_authority": false,
+      "category": "sports_prediction_odds",
+      "data_only": false,
+      "passthrough_model_zoo": false
     },
     {
       "repo": "BaseMax/XAUUSD-LSTM",
       "adapter_name": "XAUUSD_LSTM_adapter",
-      "tests_passed": true
+      "tests_passed": false,
+      "test_status": "pending_adapter_specific_tests",
+      "integration_status": "pending",
+      "integration_kind": "scaffold_only",
+      "upstream_integration_verified": false,
+      "production_capability": false,
+      "prediction_authority": false,
+      "execution_authority": false,
+      "category": "commodities_energy_agriculture",
+      "data_only": true,
+      "passthrough_model_zoo": false
     },
     {
-      "repo": "je-suis-tm/quant-trading",
-      "adapter_name": "quant_trading_adapter",
-      "tests_passed": true
-    },
-    {
-      "repo": "ccxt/ccxt",
-      "adapter_name": "ccxt_adapter",
-      "tests_passed": true
-    },
-    {
-      "repo": "optuna/optunahub",
-      "adapter_name": "optunahub_adapter",
-      "tests_passed": true
-    },
-    {
-      "repo": "catboost/catboost",
-      "adapter_name": "catboost_adapter",
-      "tests_passed": true
-    },
-    {
-      "repo": "Nixtla/statsforecast",
-      "adapter_name": "statsforecast_adapter",
-      "tests_passed": true
-    },
-    {
-      "repo": "Nixtla/hierarchicalforecast",
-      "adapter_name": "hierarchicalforecast_adapter",
-      "tests_passed": true
-    },
-    {
-      "repo": "Nixtla/utilsforecast",
-      "adapter_name": "utilsforecast_adapter",
-      "tests_passed": true
-    },
-    {
-      "repo": "lightning-ai/pytorch-lightning",
-      "adapter_name": "pytorch_lightning_adapter",
-      "tests_passed": true
+      "repo": "odds-api/arbitrage-betting-scanner-bot",
+      "adapter_name": "arbitrage_betting_scanner_bot_adapter",
+      "tests_passed": false,
+      "test_status": "pending_adapter_specific_tests",
+      "integration_status": "pending",
+      "integration_kind": "scaffold_only",
+      "upstream_integration_verified": false,
+      "production_capability": false,
+      "prediction_authority": false,
+      "execution_authority": false,
+      "category": "sports_prediction_odds",
+      "data_only": false,
+      "passthrough_model_zoo": false
     },
     {
       "repo": "automl/auto-sklearn",
       "adapter_name": "auto_sklearn_adapter",
-      "tests_passed": true
-    },
-    {
-      "repo": "wandb/wandb",
-      "adapter_name": "wandb_adapter",
-      "tests_passed": true
-    },
-    {
-      "repo": "ranaroussi/yfinance",
-      "adapter_name": "yfinance_adapter",
-      "tests_passed": true
-    },
-    {
-      "repo": "ranaroussi/quantstats",
-      "adapter_name": "quantstats_adapter",
-      "tests_passed": true
-    },
-    {
-      "repo": "quantopian/empyrical",
-      "adapter_name": "empyrical_adapter",
-      "tests_passed": true
-    },
-    {
-      "repo": "pmorissette/bt",
-      "adapter_name": "bt_adapter",
-      "tests_passed": true
-    },
-    {
-      "repo": "bukosabino/ta",
-      "adapter_name": "ta_adapter",
-      "tests_passed": true
-    },
-    {
-      "repo": "vitejs/vite",
-      "adapter_name": "vite_adapter",
-      "tests_passed": true
-    },
-    {
-      "repo": "vercel/next.js",
-      "adapter_name": "next.js_adapter",
-      "tests_passed": true
-    },
-    {
-      "repo": "recharts/recharts",
-      "adapter_name": "recharts_adapter",
-      "tests_passed": true
-    },
-    {
-      "repo": "plotly/dash",
-      "adapter_name": "dash_adapter",
-      "tests_passed": true
-    },
-    {
-      "repo": "getredash/redash",
-      "adapter_name": "redash_adapter",
-      "tests_passed": true
-    },
-    {
-      "repo": "crewAIInc/crewAI",
-      "adapter_name": "crewAI_adapter",
-      "tests_passed": true
-    },
-    {
-      "repo": "promptfoo/promptfoo",
-      "adapter_name": "promptfoo_adapter",
-      "tests_passed": true
+      "tests_passed": false,
+      "test_status": "pending_adapter_specific_tests",
+      "integration_status": "pending",
+      "integration_kind": "scaffold_only",
+      "upstream_integration_verified": false,
+      "production_capability": false,
+      "prediction_authority": false,
+      "execution_authority": false,
+      "category": "universal_ml_forecasting_optimization",
+      "data_only": false,
+      "passthrough_model_zoo": true
     },
     {
       "repo": "TensorBlock/awesome-mcp-servers",
       "adapter_name": "awesome_mcp_servers_adapter",
-      "tests_passed": true
+      "tests_passed": false,
+      "test_status": "pending_adapter_specific_tests",
+      "integration_status": "pending",
+      "integration_kind": "scaffold_only",
+      "upstream_integration_verified": false,
+      "production_capability": false,
+      "prediction_authority": false,
+      "execution_authority": false,
+      "category": "agent_automation_evaluation",
+      "data_only": false,
+      "passthrough_model_zoo": false
+    },
+    {
+      "repo": "pmorissette/bt",
+      "adapter_name": "bt_adapter",
+      "tests_passed": false,
+      "test_status": "pending_adapter_specific_tests",
+      "integration_status": "pending",
+      "integration_kind": "scaffold_only",
+      "upstream_integration_verified": false,
+      "production_capability": false,
+      "prediction_authority": false,
+      "execution_authority": false,
+      "category": "financial_data_market_data",
+      "data_only": false,
+      "passthrough_model_zoo": false
+    },
+    {
+      "repo": "catboost/catboost",
+      "adapter_name": "catboost_adapter",
+      "tests_passed": false,
+      "test_status": "pending_adapter_specific_tests",
+      "integration_status": "pending",
+      "integration_kind": "scaffold_only",
+      "upstream_integration_verified": false,
+      "production_capability": false,
+      "prediction_authority": false,
+      "execution_authority": false,
+      "category": "universal_ml_forecasting_optimization",
+      "data_only": false,
+      "passthrough_model_zoo": true
+    },
+    {
+      "repo": "ccxt/ccxt",
+      "adapter_name": "ccxt_adapter",
+      "tests_passed": false,
+      "test_status": "pending_adapter_specific_tests",
+      "integration_status": "pending",
+      "integration_kind": "scaffold_only",
+      "upstream_integration_verified": false,
+      "production_capability": false,
+      "prediction_authority": false,
+      "execution_authority": false,
+      "category": "crypto_btc_event_market",
+      "data_only": false,
+      "passthrough_model_zoo": false
+    },
+    {
+      "repo": "Mcamin/cftc-cot",
+      "adapter_name": "cftc_cot_adapter",
+      "tests_passed": false,
+      "test_status": "pending_adapter_specific_tests",
+      "integration_status": "pending",
+      "integration_kind": "scaffold_only",
+      "upstream_integration_verified": false,
+      "production_capability": false,
+      "prediction_authority": false,
+      "execution_authority": false,
+      "category": "commodities_energy_agriculture",
+      "data_only": true,
+      "passthrough_model_zoo": false
+    },
+    {
+      "repo": "crewAIInc/crewAI",
+      "adapter_name": "crewAI_adapter",
+      "tests_passed": false,
+      "test_status": "pending_adapter_specific_tests",
+      "integration_status": "pending",
+      "integration_kind": "scaffold_only",
+      "upstream_integration_verified": false,
+      "production_capability": false,
+      "prediction_authority": false,
+      "execution_authority": false,
+      "category": "agent_automation_evaluation",
+      "data_only": false,
+      "passthrough_model_zoo": false
+    },
+    {
+      "repo": "plotly/dash",
+      "adapter_name": "dash_adapter",
+      "tests_passed": false,
+      "test_status": "pending_adapter_specific_tests",
+      "integration_status": "pending",
+      "integration_kind": "scaffold_only",
+      "upstream_integration_verified": false,
+      "production_capability": false,
+      "prediction_authority": false,
+      "execution_authority": false,
+      "category": "dashboard_api_observability",
+      "data_only": false,
+      "passthrough_model_zoo": false
+    },
+    {
+      "repo": "EIAgov/dash-benchmark",
+      "adapter_name": "dash_benchmark_adapter",
+      "tests_passed": false,
+      "test_status": "pending_adapter_specific_tests",
+      "integration_status": "pending",
+      "integration_kind": "scaffold_only",
+      "upstream_integration_verified": false,
+      "production_capability": false,
+      "prediction_authority": false,
+      "execution_authority": false,
+      "category": "commodities_energy_agriculture",
+      "data_only": true,
+      "passthrough_model_zoo": false
+    },
+    {
+      "repo": "quantopian/empyrical",
+      "adapter_name": "empyrical_adapter",
+      "tests_passed": false,
+      "test_status": "pending_adapter_specific_tests",
+      "integration_status": "pending",
+      "integration_kind": "scaffold_only",
+      "upstream_integration_verified": false,
+      "production_capability": false,
+      "prediction_authority": false,
+      "execution_authority": false,
+      "category": "financial_data_market_data",
+      "data_only": false,
+      "passthrough_model_zoo": false
+    },
+    {
+      "repo": "Nixtla/hierarchicalforecast",
+      "adapter_name": "hierarchicalforecast_adapter",
+      "tests_passed": false,
+      "test_status": "pending_adapter_specific_tests",
+      "integration_status": "pending",
+      "integration_kind": "scaffold_only",
+      "upstream_integration_verified": false,
+      "production_capability": false,
+      "prediction_authority": false,
+      "execution_authority": false,
+      "category": "universal_ml_forecasting_optimization",
+      "data_only": false,
+      "passthrough_model_zoo": true
+    },
+    {
+      "repo": "stefan-jansen/machine-learning-for-trading",
+      "adapter_name": "machine_learning_for_trading_adapter",
+      "tests_passed": false,
+      "test_status": "pending_adapter_specific_tests",
+      "integration_status": "pending",
+      "integration_kind": "scaffold_only",
+      "upstream_integration_verified": false,
+      "production_capability": false,
+      "prediction_authority": false,
+      "execution_authority": false,
+      "category": "stocks_equities_options_macro",
+      "data_only": false,
+      "passthrough_model_zoo": false
+    },
+    {
+      "repo": "cfdude/mcp-finnhub",
+      "adapter_name": "mcp_finnhub_adapter",
+      "tests_passed": false,
+      "test_status": "pending_adapter_specific_tests",
+      "integration_status": "pending",
+      "integration_kind": "scaffold_only",
+      "upstream_integration_verified": false,
+      "production_capability": false,
+      "prediction_authority": false,
+      "execution_authority": false,
+      "category": "stocks_equities_options_macro",
+      "data_only": false,
+      "passthrough_model_zoo": false
+    },
+    {
+      "repo": "philsv/myeia",
+      "adapter_name": "myeia_adapter",
+      "tests_passed": false,
+      "test_status": "pending_adapter_specific_tests",
+      "integration_status": "pending",
+      "integration_kind": "scaffold_only",
+      "upstream_integration_verified": false,
+      "production_capability": false,
+      "prediction_authority": false,
+      "execution_authority": false,
+      "category": "commodities_energy_agriculture",
+      "data_only": true,
+      "passthrough_model_zoo": false
+    },
+    {
+      "repo": "vercel/next.js",
+      "adapter_name": "next.js_adapter",
+      "tests_passed": false,
+      "test_status": "pending_adapter_specific_tests",
+      "integration_status": "pending",
+      "integration_kind": "scaffold_only",
+      "upstream_integration_verified": false,
+      "production_capability": false,
+      "prediction_authority": false,
+      "execution_authority": false,
+      "category": "dashboard_api_observability",
+      "data_only": false,
+      "passthrough_model_zoo": false
+    },
+    {
+      "repo": "paulokuong/noaa",
+      "adapter_name": "noaa_adapter",
+      "tests_passed": false,
+      "test_status": "pending_adapter_specific_tests",
+      "integration_status": "pending",
+      "integration_kind": "scaffold_only",
+      "upstream_integration_verified": false,
+      "production_capability": false,
+      "prediction_authority": false,
+      "execution_authority": false,
+      "category": "weather_prediction_market",
+      "data_only": true,
+      "passthrough_model_zoo": false
+    },
+    {
+      "repo": "GClunies/noaa_coops",
+      "adapter_name": "noaa_coops_adapter",
+      "tests_passed": false,
+      "test_status": "pending_adapter_specific_tests",
+      "integration_status": "pending",
+      "integration_kind": "scaffold_only",
+      "upstream_integration_verified": false,
+      "production_capability": false,
+      "prediction_authority": false,
+      "execution_authority": false,
+      "category": "weather_prediction_market",
+      "data_only": true,
+      "passthrough_model_zoo": false
+    },
+    {
+      "repo": "datasets/oil-prices",
+      "adapter_name": "oil_prices_adapter",
+      "tests_passed": false,
+      "test_status": "pending_adapter_specific_tests",
+      "integration_status": "pending",
+      "integration_kind": "scaffold_only",
+      "upstream_integration_verified": false,
+      "production_capability": false,
+      "prediction_authority": false,
+      "execution_authority": false,
+      "category": "commodities_energy_agriculture",
+      "data_only": true,
+      "passthrough_model_zoo": false
+    },
+    {
+      "repo": "optuna/optunahub",
+      "adapter_name": "optunahub_adapter",
+      "tests_passed": false,
+      "test_status": "pending_adapter_specific_tests",
+      "integration_status": "pending",
+      "integration_kind": "scaffold_only",
+      "upstream_integration_verified": false,
+      "production_capability": false,
+      "prediction_authority": false,
+      "execution_authority": false,
+      "category": "universal_ml_forecasting_optimization",
+      "data_only": false,
+      "passthrough_model_zoo": true
+    },
+    {
+      "repo": "promptfoo/promptfoo",
+      "adapter_name": "promptfoo_adapter",
+      "tests_passed": false,
+      "test_status": "pending_adapter_specific_tests",
+      "integration_status": "pending",
+      "integration_kind": "scaffold_only",
+      "upstream_integration_verified": false,
+      "production_capability": false,
+      "prediction_authority": false,
+      "execution_authority": false,
+      "category": "agent_automation_evaluation",
+      "data_only": false,
+      "passthrough_model_zoo": false
+    },
+    {
+      "repo": "philsv/pycot",
+      "adapter_name": "pycot_adapter",
+      "tests_passed": false,
+      "test_status": "pending_adapter_specific_tests",
+      "integration_status": "pending",
+      "integration_kind": "scaffold_only",
+      "upstream_integration_verified": false,
+      "production_capability": false,
+      "prediction_authority": false,
+      "execution_authority": false,
+      "category": "commodities_energy_agriculture",
+      "data_only": true,
+      "passthrough_model_zoo": false
+    },
+    {
+      "repo": "lightning-ai/pytorch-lightning",
+      "adapter_name": "pytorch_lightning_adapter",
+      "tests_passed": false,
+      "test_status": "pending_adapter_specific_tests",
+      "integration_status": "pending",
+      "integration_kind": "scaffold_only",
+      "upstream_integration_verified": false,
+      "production_capability": false,
+      "prediction_authority": false,
+      "execution_authority": false,
+      "category": "universal_ml_forecasting_optimization",
+      "data_only": false,
+      "passthrough_model_zoo": true
+    },
+    {
+      "repo": "microsoft/qlib",
+      "adapter_name": "qlib_adapter",
+      "tests_passed": false,
+      "test_status": "pending_adapter_specific_tests",
+      "integration_status": "pending",
+      "integration_kind": "scaffold_only",
+      "upstream_integration_verified": false,
+      "production_capability": false,
+      "prediction_authority": false,
+      "execution_authority": false,
+      "category": "stocks_equities_options_macro",
+      "data_only": false,
+      "passthrough_model_zoo": false
+    },
+    {
+      "repo": "je-suis-tm/quant-trading",
+      "adapter_name": "quant_trading_adapter",
+      "tests_passed": false,
+      "test_status": "pending_adapter_specific_tests",
+      "integration_status": "pending",
+      "integration_kind": "scaffold_only",
+      "upstream_integration_verified": false,
+      "production_capability": false,
+      "prediction_authority": false,
+      "execution_authority": false,
+      "category": "commodities_energy_agriculture",
+      "data_only": true,
+      "passthrough_model_zoo": false
+    },
+    {
+      "repo": "ranaroussi/quantstats",
+      "adapter_name": "quantstats_adapter",
+      "tests_passed": false,
+      "test_status": "pending_adapter_specific_tests",
+      "integration_status": "pending",
+      "integration_kind": "scaffold_only",
+      "upstream_integration_verified": false,
+      "production_capability": false,
+      "prediction_authority": false,
+      "execution_authority": false,
+      "category": "financial_data_market_data",
+      "data_only": false,
+      "passthrough_model_zoo": false
+    },
+    {
+      "repo": "recharts/recharts",
+      "adapter_name": "recharts_adapter",
+      "tests_passed": false,
+      "test_status": "pending_adapter_specific_tests",
+      "integration_status": "pending",
+      "integration_kind": "scaffold_only",
+      "upstream_integration_verified": false,
+      "production_capability": false,
+      "prediction_authority": false,
+      "execution_authority": false,
+      "category": "dashboard_api_observability",
+      "data_only": false,
+      "passthrough_model_zoo": false
+    },
+    {
+      "repo": "getredash/redash",
+      "adapter_name": "redash_adapter",
+      "tests_passed": false,
+      "test_status": "pending_adapter_specific_tests",
+      "integration_status": "pending",
+      "integration_kind": "scaffold_only",
+      "upstream_integration_verified": false,
+      "production_capability": false,
+      "prediction_authority": false,
+      "execution_authority": false,
+      "category": "dashboard_api_observability",
+      "data_only": false,
+      "passthrough_model_zoo": false
+    },
+    {
+      "repo": "Nixtla/statsforecast",
+      "adapter_name": "statsforecast_adapter",
+      "tests_passed": false,
+      "test_status": "pending_adapter_specific_tests",
+      "integration_status": "pending",
+      "integration_kind": "scaffold_only",
+      "upstream_integration_verified": false,
+      "production_capability": false,
+      "prediction_authority": false,
+      "execution_authority": false,
+      "category": "universal_ml_forecasting_optimization",
+      "data_only": false,
+      "passthrough_model_zoo": true
+    },
+    {
+      "repo": "bukosabino/ta",
+      "adapter_name": "ta_adapter",
+      "tests_passed": false,
+      "test_status": "pending_adapter_specific_tests",
+      "integration_status": "pending",
+      "integration_kind": "scaffold_only",
+      "upstream_integration_verified": false,
+      "production_capability": false,
+      "prediction_authority": false,
+      "execution_authority": false,
+      "category": "financial_data_market_data",
+      "data_only": false,
+      "passthrough_model_zoo": false
+    },
+    {
+      "repo": "Nixtla/utilsforecast",
+      "adapter_name": "utilsforecast_adapter",
+      "tests_passed": false,
+      "test_status": "pending_adapter_specific_tests",
+      "integration_status": "pending",
+      "integration_kind": "scaffold_only",
+      "upstream_integration_verified": false,
+      "production_capability": false,
+      "prediction_authority": false,
+      "execution_authority": false,
+      "category": "universal_ml_forecasting_optimization",
+      "data_only": false,
+      "passthrough_model_zoo": true
+    },
+    {
+      "repo": "vitejs/vite",
+      "adapter_name": "vite_adapter",
+      "tests_passed": false,
+      "test_status": "pending_adapter_specific_tests",
+      "integration_status": "pending",
+      "integration_kind": "scaffold_only",
+      "upstream_integration_verified": false,
+      "production_capability": false,
+      "prediction_authority": false,
+      "execution_authority": false,
+      "category": "dashboard_api_observability",
+      "data_only": false,
+      "passthrough_model_zoo": false
+    },
+    {
+      "repo": "wandb/wandb",
+      "adapter_name": "wandb_adapter",
+      "tests_passed": false,
+      "test_status": "pending_adapter_specific_tests",
+      "integration_status": "pending",
+      "integration_kind": "scaffold_only",
+      "upstream_integration_verified": false,
+      "production_capability": false,
+      "prediction_authority": false,
+      "execution_authority": false,
+      "category": "universal_ml_forecasting_optimization",
+      "data_only": false,
+      "passthrough_model_zoo": true
+    },
+    {
+      "repo": "weather-mcp/weather-mcp",
+      "adapter_name": "weather_mcp_adapter",
+      "tests_passed": false,
+      "test_status": "pending_adapter_specific_tests",
+      "integration_status": "pending",
+      "integration_kind": "scaffold_only",
+      "upstream_integration_verified": false,
+      "production_capability": false,
+      "prediction_authority": false,
+      "execution_authority": false,
+      "category": "weather_prediction_market",
+      "data_only": true,
+      "passthrough_model_zoo": false
+    },
+    {
+      "repo": "manuelpeba/world-cup-2026-forecast",
+      "adapter_name": "world_cup_2026_forecast_adapter",
+      "tests_passed": false,
+      "test_status": "pending_adapter_specific_tests",
+      "integration_status": "pending",
+      "integration_kind": "scaffold_only",
+      "upstream_integration_verified": false,
+      "production_capability": false,
+      "prediction_authority": false,
+      "execution_authority": false,
+      "category": "sports_prediction_odds",
+      "data_only": false,
+      "passthrough_model_zoo": false
+    },
+    {
+      "repo": "ranaroussi/yfinance",
+      "adapter_name": "yfinance_adapter",
+      "tests_passed": false,
+      "test_status": "pending_adapter_specific_tests",
+      "integration_status": "pending",
+      "integration_kind": "scaffold_only",
+      "upstream_integration_verified": false,
+      "production_capability": false,
+      "prediction_authority": false,
+      "execution_authority": false,
+      "category": "financial_data_market_data",
+      "data_only": false,
+      "passthrough_model_zoo": false
+    },
+    {
+      "repo": "quantrocket-llc/zipline",
+      "adapter_name": "zipline_adapter",
+      "tests_passed": false,
+      "test_status": "pending_adapter_specific_tests",
+      "integration_status": "pending",
+      "integration_kind": "scaffold_only",
+      "upstream_integration_verified": false,
+      "production_capability": false,
+      "prediction_authority": false,
+      "execution_authority": false,
+      "category": "stocks_equities_options_macro",
+      "data_only": false,
+      "passthrough_model_zoo": false
     }
   ],
-  "rejected": [],
-  "pending_tests": [],
-  "synced_from": "adapter_plan_v3.json",
-  "generated_at": "2026-06-30T19:20:00.151110+00:00",
+  "transient_failures": [],
   "direct_dependency_candidates": [
     {
       "repo": "unit8co/darts",
+      "category": "universal_ml_forecasting_optimization",
       "adapter_name": "darts_dependency",
-      "tests_passed": false
+      "review_status": "pending_dependency_review",
+      "production_capability": false,
+      "prediction_authority": false,
+      "execution_authority": false
     },
     {
       "repo": "autogluon/autogluon",
+      "category": "universal_ml_forecasting_optimization",
       "adapter_name": "autogluon_dependency",
-      "tests_passed": false
+      "review_status": "pending_dependency_review",
+      "production_capability": false,
+      "prediction_authority": false,
+      "execution_authority": false
     },
     {
       "repo": "optuna/optuna",
+      "category": "universal_ml_forecasting_optimization",
       "adapter_name": "optuna_dependency",
-      "tests_passed": false
+      "review_status": "pending_dependency_review",
+      "production_capability": false,
+      "prediction_authority": false,
+      "execution_authority": false
     },
     {
       "repo": "statsmodels/statsmodels",
+      "category": "universal_ml_forecasting_optimization",
       "adapter_name": "statsmodels_dependency",
-      "tests_passed": false
+      "review_status": "pending_dependency_review",
+      "production_capability": false,
+      "prediction_authority": false,
+      "execution_authority": false
     },
     {
       "repo": "scikit-learn/scikit-learn",
+      "category": "universal_ml_forecasting_optimization",
       "adapter_name": "scikit_learn_dependency",
-      "tests_passed": false
+      "review_status": "pending_dependency_review",
+      "production_capability": false,
+      "prediction_authority": false,
+      "execution_authority": false
     },
     {
       "repo": "scipy/scipy",
+      "category": "universal_ml_forecasting_optimization",
       "adapter_name": "scipy_dependency",
-      "tests_passed": false
+      "review_status": "pending_dependency_review",
+      "production_capability": false,
+      "prediction_authority": false,
+      "execution_authority": false
     },
     {
       "repo": "pandas-dev/pandas",
+      "category": "universal_ml_forecasting_optimization",
       "adapter_name": "pandas_dependency",
-      "tests_passed": false
+      "review_status": "pending_dependency_review",
+      "production_capability": false,
+      "prediction_authority": false,
+      "execution_authority": false
     },
     {
       "repo": "dmlc/xgboost",
+      "category": "universal_ml_forecasting_optimization",
       "adapter_name": "xgboost_dependency",
-      "tests_passed": false
+      "review_status": "pending_dependency_review",
+      "production_capability": false,
+      "prediction_authority": false,
+      "execution_authority": false
     },
     {
       "repo": "Nixtla/mlforecast",
+      "category": "universal_ml_forecasting_optimization",
       "adapter_name": "mlforecast_dependency",
-      "tests_passed": false
+      "review_status": "pending_dependency_review",
+      "production_capability": false,
+      "prediction_authority": false,
+      "execution_authority": false
     },
     {
       "repo": "Nixtla/neuralforecast",
+      "category": "universal_ml_forecasting_optimization",
       "adapter_name": "neuralforecast_dependency",
-      "tests_passed": false
+      "review_status": "pending_dependency_review",
+      "production_capability": false,
+      "prediction_authority": false,
+      "execution_authority": false
     },
     {
       "repo": "facebook/prophet",
+      "category": "universal_ml_forecasting_optimization",
       "adapter_name": "prophet_dependency",
-      "tests_passed": false
+      "review_status": "pending_dependency_review",
+      "production_capability": false,
+      "prediction_authority": false,
+      "execution_authority": false
     },
     {
       "repo": "timeseriesAI/tsai",
+      "category": "universal_ml_forecasting_optimization",
       "adapter_name": "tsai_dependency",
-      "tests_passed": false
+      "review_status": "pending_dependency_review",
+      "production_capability": false,
+      "prediction_authority": false,
+      "execution_authority": false
     },
     {
       "repo": "ray-project/ray",
+      "category": "universal_ml_forecasting_optimization",
       "adapter_name": "ray_dependency",
-      "tests_passed": false
+      "review_status": "pending_dependency_review",
+      "production_capability": false,
+      "prediction_authority": false,
+      "execution_authority": false
     },
     {
       "repo": "mlflow/mlflow",
+      "category": "universal_ml_forecasting_optimization",
       "adapter_name": "mlflow_dependency",
-      "tests_passed": false
+      "review_status": "pending_dependency_review",
+      "production_capability": false,
+      "prediction_authority": false,
+      "execution_authority": false
     },
     {
       "repo": "evidentlyai/evidently",
+      "category": "universal_ml_forecasting_optimization",
       "adapter_name": "evidently_dependency",
-      "tests_passed": false
+      "review_status": "pending_dependency_review",
+      "production_capability": false,
+      "prediction_authority": false,
+      "execution_authority": false
     },
     {
       "repo": "duckdb/duckdb",
+      "category": "financial_data_market_data",
       "adapter_name": "duckdb_dependency",
-      "tests_passed": false
+      "review_status": "pending_dependency_review",
+      "production_capability": false,
+      "prediction_authority": false,
+      "execution_authority": false
     },
     {
       "repo": "fastapi/fastapi",
+      "category": "dashboard_api_observability",
       "adapter_name": "fastapi_dependency",
-      "tests_passed": false
+      "review_status": "pending_dependency_review",
+      "production_capability": false,
+      "prediction_authority": false,
+      "execution_authority": false
     },
     {
       "repo": "tailwindlabs/tailwindcss",
+      "category": "dashboard_api_observability",
       "adapter_name": "tailwindcss_dependency",
-      "tests_passed": false
+      "review_status": "pending_dependency_review",
+      "production_capability": false,
+      "prediction_authority": false,
+      "execution_authority": false
     },
     {
       "repo": "streamlit/streamlit",
+      "category": "dashboard_api_observability",
       "adapter_name": "streamlit_dependency",
-      "tests_passed": false
+      "review_status": "pending_dependency_review",
+      "production_capability": false,
+      "prediction_authority": false,
+      "execution_authority": false
     },
     {
       "repo": "ClickHouse/ClickHouse",
+      "category": "dashboard_api_observability",
       "adapter_name": "ClickHouse_dependency",
-      "tests_passed": false
+      "review_status": "pending_dependency_review",
+      "production_capability": false,
+      "prediction_authority": false,
+      "execution_authority": false
     },
     {
       "repo": "prometheus/prometheus",
+      "category": "dashboard_api_observability",
       "adapter_name": "prometheus_dependency",
-      "tests_passed": false
+      "review_status": "pending_dependency_review",
+      "production_capability": false,
+      "prediction_authority": false,
+      "execution_authority": false
     }
   ],
-  "reference_only_strategy_mines": []
+  "reference_only_strategy_mines": [],
+  "synced_from": "adapter_plan_v3.json",
+  "generated_at": "2026-07-22T07:26:42.465835+00:00",
+  "verified_integration_count": 0,
+  "pending_adapter_count": 43
 }

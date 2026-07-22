@@ -2,7 +2,11 @@
 when allowed, exclude them (quota cap) otherwise; env-tunable debate breadth."""
 from __future__ import annotations
 
-from autonomy.brain import _debate_cli_top_k, _debate_top_k
+from autonomy.brain import (
+    DEBATE_HARD_MAX_MARKETS_PER_CYCLE,
+    _debate_cli_top_k,
+    _debate_top_k,
+)
 from autonomy.debate import _panel_configs
 
 _REALS = ["glm_5_2", "minimax_m3", "deepseek_v4_flash", "panel_llama",
@@ -46,9 +50,10 @@ def test_panel_empty_without_providers():
 def test_debate_breadth_is_env_tunable(monkeypatch):
     monkeypatch.delenv("DUMMY_DEBATE_TOP_K", raising=False)
     monkeypatch.delenv("DUMMY_DEBATE_CLI_TOP_K", raising=False)
-    assert _debate_top_k() == 5 and _debate_cli_top_k() == 1
+    assert _debate_top_k() == 1 and _debate_cli_top_k() == 1
     monkeypatch.setenv("DUMMY_DEBATE_TOP_K", "12")
     monkeypatch.setenv("DUMMY_DEBATE_CLI_TOP_K", "3")
-    assert _debate_top_k() == 12 and _debate_cli_top_k() == 3
+    assert _debate_top_k() == DEBATE_HARD_MAX_MARKETS_PER_CYCLE
+    assert _debate_cli_top_k() == 3
     monkeypatch.setenv("DUMMY_DEBATE_TOP_K", "junk")   # bad value -> default
-    assert _debate_top_k() == 5
+    assert _debate_top_k() == 1

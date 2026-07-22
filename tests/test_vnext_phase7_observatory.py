@@ -64,10 +64,13 @@ def test_observatory_frontend_is_first_class_and_read_only() -> None:
     )
     assert "vNext Observatory" in app
     assert 'path="/vnext-observatory"' in app
-    assert "readJson('/api/vnext/observatory')" in page
-    assert "readJson('/api/vnext/claims')" in page
-    assert "readJson('/api/vnext/promotion-review')" in page
-    assert "fetch(" in page
+    # Use the shared safe client so API-base configuration, operator headers,
+    # and consistent HTTP error handling cannot drift on this first-class page.
+    assert "import { fetchJson } from './hooks/useApi';" in page
+    assert "fetchJson('/api/vnext/observatory')" in page
+    assert "fetchJson('/api/vnext/claims')" in page
+    assert "fetchJson('/api/vnext/promotion-review')" in page
+    assert "fetch(" not in page
     assert not any(method in page for method in ("POST", "PUT", "PATCH", "DELETE"))
 
 

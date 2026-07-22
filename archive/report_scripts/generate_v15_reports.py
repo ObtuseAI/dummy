@@ -162,11 +162,9 @@ def generate_no_live_submit_still_disabled_report_v15() -> dict[str, Any]:
 
 
 def generate_no_caps_config_modification_report_v15() -> dict[str, Any]:
-    from archive.report_scripts.generate_v14_reports import generate_no_caps_config_modification_report_v14
+    from archive.report_scripts.caps_integrity import generate_historical_caps_phase_report
 
-    base = generate_no_caps_config_modification_report_v14()
-    base.update({"generated_at": now_iso(), "workstream": "V15: No Caps Config Modification"})
-    return base
+    return generate_historical_caps_phase_report("V15")
 
 
 def generate_no_direct_order_bypass_report_v15() -> dict[str, Any]:

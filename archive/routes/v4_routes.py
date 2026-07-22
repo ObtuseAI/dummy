@@ -7,121 +7,291 @@ import os
 from pathlib import Path
 from typing import Any
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 
+from autonomy.target_policy import is_data_only_target
 from core.config_loader import load_caps
 from core.ontology import AccountMode, OrderBook, OrderBookLevel
 from core.secret_guard import redact
 from core.state import STATE
+from dashboard.backend.operator_auth import require_operator
 from forecasting.engine import ForecastEngine
 from kalshi.live_data import KalshiRealReadOnly
 from strategies.scan import StrategyScanner
 
 router = APIRouter(prefix="/v4", tags=["v4"])
+LOG_FILE = Path("C:/src/engine/dummy/logs/dummy.jsonl")
 
 
 def _credentials_present() -> bool:
     key_id = os.environ.get("KALSHI_API_KEY_ID")
-    pem = os.environ.get("KALSHI_API_PRIVATE_KEY_PEM")
-    pem_path = os.environ.get("KALSHI_API_PRIVATE_KEY_PEM_PATH")
+    pem = os.environ.get("KALSHI_API_PRIVATE_KEY_PEM") or os.environ.get(
+        "KALSHI_PRIVATE_KEY"
+    )
+    pem_path = os.environ.get("KALSHI_API_PRIVATE_KEY_PEM_PATH") or os.environ.get(
+        "KALSHI_PRIVATE_KEY_PATH"
+    )
     return bool(key_id and (pem or pem_path))
+
+
+def _unavailable_payload(*, reason: str, **fields: Any) -> dict[str, Any]:
+    return {
+        **fields,
+        "source": "unavailable",
+        "data_status": "unavailable",
+        "unavailable_reason": reason,
+        "live_snapshot_available": False,
+    }
+
+
+def _target_policy(record: dict[str, Any], *, fallback_ticker: str = "") -> dict[str, Any]:
+    ticker = str(
+        record.get("ticker")
+        or record.get("market_ticker")
+        or record.get("event_ticker")
+        or fallback_ticker
+    )
+    category = record.get("category") or record.get("series_category") or record.get("event_category")
+    if is_data_only_target(ticker, category=category):
+        return {
+            "role": "data_only",
+            "prediction_target": False,
+            "execution_target": False,
+        }
+    return {
+        "role": "eligibility_unverified",
+        "prediction_target": None,
+        "execution_target": None,
+    }
+
+
+def _annotate_records(records: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    return [
+        {**record, "target_policy": _target_policy(record)}
+        for record in records
+        if isinstance(record, dict)
+    ]
 
 
 @router.get("/kalshi/status")
 async def kalshi_status() -> dict[str, Any]:
+    credentials_present = _credentials_present()
+    connected = bool(STATE.kalshi_connected) if credentials_present else False
     return {
-        "connected": _credentials_present() and STATE.mode != AccountMode.OFF,
-        "credentials_present": _credentials_present(),
+        "connected": connected,
+        "connection_status": (
+            "CONNECTED_RUNTIME_WITNESS"
+            if connected
+            else "NOT_CONNECTED_RUNTIME_STATE"
+            if credentials_present
+            else "CREDENTIALS_MISSING"
+        ),
+        "connection_verified": connected,
+        "credentials_present": credentials_present,
         "mode": STATE.mode.value,
         "kalshi_connected": STATE.kalshi_connected,
+        "source": "runtime_connection_state",
     }
 
 
 @router.get("/kalshi/account")
 async def kalshi_account() -> dict[str, Any]:
     if not _credentials_present():
-        return {"error": "credentials_missing", "source": "mock"}
+        return _unavailable_payload(reason="credentials_missing", account=None, balance=None)
+    reader = None
     try:
         reader = KalshiRealReadOnly()
         account = await reader.get_account_status()
         balance = await reader.get_balance()
-        await reader.close()
-        return redact({"account": account, "balance": balance, "source": "live"})
+        return redact({
+            "account": account,
+            "balance": balance,
+            "source": "live",
+            "data_status": "live_read_only",
+            "live_snapshot_available": True,
+        })
     except Exception as exc:
-        return redact({"error": str(exc), "source": "live_error"})
+        return redact({
+            "account": None,
+            "balance": None,
+            "error": str(exc),
+            "source": "live_error",
+            "data_status": "unavailable",
+            "live_snapshot_available": False,
+        })
+    finally:
+        if reader is not None:
+            try:
+                await reader.close()
+            except Exception:
+                pass
 
 
 @router.get("/kalshi/markets")
 async def kalshi_markets() -> dict[str, Any]:
     if not _credentials_present():
-        return {"markets": [], "events": [], "source": "mock"}
+        return _unavailable_payload(reason="credentials_missing", markets=None, events=None)
+    reader = None
     try:
         reader = KalshiRealReadOnly()
         events = await reader.get_events()
         markets = await reader.get_markets()
-        await reader.close()
-        return redact({"events": events, "markets": markets, "source": "live"})
+        if not isinstance(events, list) or not isinstance(markets, list):
+            return {
+                "events": None,
+                "markets": None,
+                "source": "live_incomplete",
+                "data_status": "live_read_only_incomplete",
+                "live_snapshot_available": False,
+            }
+        return redact({
+            "events": _annotate_records(events),
+            "markets": _annotate_records(markets),
+            "source": "live",
+            "data_status": "live_read_only",
+            "live_snapshot_available": True,
+        })
     except Exception as exc:
-        return redact({"error": str(exc), "markets": [], "events": [], "source": "live_error"})
+        return redact({
+            "error": str(exc),
+            "markets": None,
+            "events": None,
+            "source": "live_error",
+            "data_status": "unavailable",
+            "live_snapshot_available": False,
+        })
+    finally:
+        if reader is not None:
+            try:
+                await reader.close()
+            except Exception:
+                pass
 
 
 @router.get("/kalshi/orderbook/{ticker}")
 async def kalshi_orderbook(ticker: str) -> dict[str, Any]:
     if not _credentials_present():
-        book = OrderBook(
-            market_ticker=ticker,
-            contract_ticker=ticker,
-            bids=[OrderBookLevel(price=48, size=100)],
-            asks=[OrderBookLevel(price=52, size=100)],
-            timestamp=__import__("datetime").datetime.now(__import__("datetime").timezone.utc),
+        return _unavailable_payload(
+            reason="credentials_missing",
+            orderbook=None,
+            target_policy=_target_policy({}, fallback_ticker=ticker),
         )
-        return {"orderbook": book.model_dump(), "source": "mock"}
+    reader = None
     try:
         reader = KalshiRealReadOnly()
         book = await reader.get_orderbook(ticker)
-        await reader.close()
-        return redact({"orderbook": book, "source": "live"})
+        return redact({
+            "orderbook": book,
+            "source": "live",
+            "data_status": "live_read_only",
+            "live_snapshot_available": True,
+            "target_policy": _target_policy({}, fallback_ticker=ticker),
+        })
     except Exception as exc:
-        return redact({"error": str(exc), "source": "live_error"})
+        return redact({
+            "error": str(exc),
+            "orderbook": None,
+            "source": "live_error",
+            "data_status": "unavailable",
+            "live_snapshot_available": False,
+            "target_policy": _target_policy({}, fallback_ticker=ticker),
+        })
+    finally:
+        if reader is not None:
+            try:
+                await reader.close()
+            except Exception:
+                pass
 
 
 @router.get("/kalshi/positions")
 async def kalshi_positions() -> dict[str, Any]:
     if not _credentials_present():
-        return {"positions": [], "source": "mock"}
+        return _unavailable_payload(reason="credentials_missing", positions=None)
+    reader = None
     try:
         reader = KalshiRealReadOnly()
         positions = await reader.get_positions()
-        await reader.close()
-        return redact({"positions": positions, "source": "live"})
+        return redact({
+            "positions": positions,
+            "source": "live",
+            "data_status": "live_read_only",
+            "live_snapshot_available": True,
+        })
     except Exception as exc:
-        return redact({"error": str(exc), "positions": [], "source": "live_error"})
+        return redact({
+            "error": str(exc),
+            "positions": None,
+            "source": "live_error",
+            "data_status": "unavailable",
+            "live_snapshot_available": False,
+        })
+    finally:
+        if reader is not None:
+            try:
+                await reader.close()
+            except Exception:
+                pass
 
 
 @router.get("/kalshi/orders")
 async def kalshi_orders() -> dict[str, Any]:
     if not _credentials_present():
-        return {"orders": [], "source": "mock"}
+        return _unavailable_payload(reason="credentials_missing", orders=None)
+    reader = None
     try:
         reader = KalshiRealReadOnly()
         orders = await reader.get_resting_orders()
-        await reader.close()
-        return redact({"orders": orders, "source": "live"})
+        return redact({
+            "orders": orders,
+            "source": "live",
+            "data_status": "live_read_only",
+            "live_snapshot_available": True,
+        })
     except Exception as exc:
-        return redact({"error": str(exc), "orders": [], "source": "live_error"})
+        return redact({
+            "error": str(exc),
+            "orders": None,
+            "source": "live_error",
+            "data_status": "unavailable",
+            "live_snapshot_available": False,
+        })
+    finally:
+        if reader is not None:
+            try:
+                await reader.close()
+            except Exception:
+                pass
 
 
 @router.get("/kalshi/fills")
 async def kalshi_fills() -> dict[str, Any]:
     if not _credentials_present():
-        return {"fills": [], "source": "mock"}
+        return _unavailable_payload(reason="credentials_missing", fills=None)
+    reader = None
     try:
         reader = KalshiRealReadOnly()
         fills = await reader.get_fills()
-        await reader.close()
-        return redact({"fills": fills, "source": "live"})
+        return redact({
+            "fills": fills,
+            "source": "live",
+            "data_status": "live_read_only",
+            "live_snapshot_available": True,
+        })
     except Exception as exc:
-        return redact({"error": str(exc), "fills": [], "source": "live_error"})
+        return redact({
+            "error": str(exc),
+            "fills": None,
+            "source": "live_error",
+            "data_status": "unavailable",
+            "live_snapshot_available": False,
+        })
+    finally:
+        if reader is not None:
+            try:
+                await reader.close()
+            except Exception:
+                pass
 
 
 @router.get("/strategies/scan")
@@ -147,6 +317,8 @@ async def strategies_scan(market_ticker: str = "MKT", contract_ticker: str = "MK
     return {
         "market_ticker": market_ticker,
         "contract_ticker": contract_ticker,
+        "source": "demo",
+        "data_status": "synthetic_orderbook",
         "scan_results": [
             {
                 "family": r.family,
@@ -163,7 +335,7 @@ async def strategies_scan(market_ticker: str = "MKT", contract_ticker: str = "MK
     }
 
 
-@router.get("/firewall/rehearse")
+@router.get("/firewall/rehearse", dependencies=[Depends(require_operator)])
 async def firewall_rehearse(market_ticker: str = "MKT", contract_ticker: str = "MKT-YES") -> dict[str, Any]:
     """Run an autonomous live-cap rehearsal using real data if available."""
     if STATE.mode != AccountMode.AUTONOMOUS_LIVE_CAPPED:
@@ -181,30 +353,34 @@ async def firewall_rehearse(market_ticker: str = "MKT", contract_ticker: str = "
 
 @router.get("/firewall/blocked")
 async def firewall_blocked() -> dict[str, Any]:
-    """Summarize blocked order reasons from firewall rehearsals."""
+    """Count observed firewall rejection reasons from the local event log."""
+    counts: dict[str, int] = {}
+    scanned = 0
+    if LOG_FILE.exists():
+        with LOG_FILE.open(encoding="utf-8") as f:
+            lines = f.readlines()[-1000:]
+        for line in lines:
+            try:
+                entry = json.loads(line)
+            except (json.JSONDecodeError, ValueError):
+                continue
+            if entry.get("component") != "firewall":
+                continue
+            scanned += 1
+            extra = entry.get("extra") if isinstance(entry.get("extra"), dict) else {}
+            reason = extra.get("rejected_by") or extra.get("reason")
+            if reason:
+                key = str(reason)
+                counts[key] = counts.get(key, 0) + 1
     return {
-        "blocked_reasons": [
-            "live_submit_disabled",
-            "mode",
-            "kill_switch",
-            "emergency_stop",
-            "secrets",
-            "unknown_adapter",
-            "repo_bypass",
-            "market_allowlist",
-            "blocked_category",
-            "compliance",
-            "stale_data",
-            "liquidity",
-            "spread",
-            "edge",
-            "proof",
-            "single_order_cap",
-            "market_exposure_cap",
-            "total_exposure_cap",
-            "daily_loss_cap",
-            "settlement_risk",
+        "observed_reasons": [
+            {"reason": reason, "count": count}
+            for reason, count in sorted(counts.items(), key=lambda item: (-item[1], item[0]))
         ],
+        "observed_rejection_count": sum(counts.values()),
+        "firewall_events_scanned": scanned,
+        "source": "local_log_derived",
+        "window": "last_1000_log_lines",
     }
 
 

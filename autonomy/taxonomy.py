@@ -152,6 +152,10 @@ SOURCE_TAXONOMY: dict[str, str] = {
 # (prefix, specialist) resolved in order; the first match wins. Ordering only
 # matters when one prefix is a prefix of another (none are here).
 _SPECIALIST_PREFIXES: tuple[tuple[str, str], ...] = (
+    # Versioned LLM lineages stay in the LLM specialist home without
+    # inheriting the historical bare llm_debate trust row.
+    ("llm_debate_", "llm"),
+    ("llm_panel_", "llm"),
     ("crypto_", "crypto"),
     # Licensed player props (licensed_prop_<stat>) are the sportsbook-consensus
     # family, same home as licensed_consensus (Wave-10).
@@ -277,7 +281,10 @@ def grading_scope(source: str, ticker: str, features: dict[str, Any] | None) -> 
     """
     features = features or {}
     market_type = market_type_for(source, ticker, features)
-    if specialist_for(source) == "crypto":
+    # A cross-vertical source such as the LLM panel stamps its target;
+    # crypto evidence must still split hourly from daily contracts.
+    stamped_vertical = str(features.get("vertical") or "").upper()
+    if specialist_for(source) == "crypto" or stamped_vertical == "CRYPTO":
         axis = horizon_bucket(ticker, features.get("hours_to_close"))
     else:
         axis = _phase(source, features)

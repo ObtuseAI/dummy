@@ -4,7 +4,8 @@ from dataclasses import dataclass, field
 from typing import Any, Optional
 
 from core.ontology import Forecast, OrderBook, TradeProposal
-from strategies.registry import get_repo_derived_strategies
+from autonomy.target_policy import is_prediction_quarantined_target
+from strategies.registry import get_repo_derived_strategies, has_prediction_authority
 
 
 @dataclass
@@ -24,10 +25,45 @@ class StrategyScanResult:
 
 
 class StrategyScanner:
-    """Run repo-derived strategy families against a normalized market snapshot."""
+    """Run prediction-authorized strategy families against a market snapshot.
+
+    Data-only and explicitly no-authority strategies are excluded even when a
+    legacy caller injects them directly. They therefore produce neither scan
+    rows nor trade proposals.
+    """
 
     def __init__(self, strategies: Optional[list] = None):
-        self.strategies = strategies if strategies is not None else get_repo_derived_strategies()
+        candidates = strategies if strategies is not None else get_repo_derived_strategies()
+        self.strategies = [
+            strategy for strategy in candidates if has_prediction_authority(strategy)
+        ]
+
+    def _active_strategies(self) -> tuple[Any, ...]:
+        """Reapply the authority filter in case a legacy caller mutates the list."""
+        return tuple(
+            strategy
+            for strategy in self.strategies
+            if has_prediction_authority(strategy)
+        )
+
+    @property
+    def active_family_names(self) -> tuple[str, ...]:
+        """Ordered names of the families this scanner is allowed to evaluate."""
+        return tuple(str(strategy.name) for strategy in self._active_strategies())
+
+    @property
+    def active_family_count(self) -> int:
+        """Number of prediction-authorized families in this scanner."""
+        return len(self.active_family_names)
+
+    def family_has_prediction_authority(self, family: str) -> bool:
+        """Bind a scan family to exactly one explicitly-authorized strategy."""
+        matches = [
+            strategy
+            for strategy in self._active_strategies()
+            if str(getattr(strategy, "name", "")) == str(family)
+        ]
+        return len(matches) == 1 and has_prediction_authority(matches[0])
 
     def _extract_scores(self, proposal: TradeProposal | None, forecast: Forecast) -> dict[str, float]:
         if proposal is None:
@@ -47,9 +83,26 @@ class StrategyScanner:
             "settlement_risk_score": float(proposal.cap_impact.get("settlement_risk_score", 0.5)),
         }
 
-    def scan(self, forecast: Forecast, orderbook: OrderBook) -> list[StrategyScanResult]:
+    def scan(
+        self,
+        forecast: Forecast,
+        orderbook: OrderBook,
+        *,
+        market_category: str | None = None,
+    ) -> list[StrategyScanResult]:
+        # Repositories and injected strategy objects are untrusted proposal
+        # producers.  Apply the shared target gate before calling any strategy;
+        # caller-authored private fields cannot bypass it.
+        if is_prediction_quarantined_target(
+            forecast.market_ticker,
+            category=market_category,
+        ) or is_prediction_quarantined_target(
+            forecast.contract_ticker,
+            category=market_category,
+        ):
+            return []
         results: list[StrategyScanResult] = []
-        for strategy in self.strategies:
+        for strategy in self._active_strategies():
             try:
                 proposal = strategy.evaluate(forecast, orderbook)
             except Exception as exc:

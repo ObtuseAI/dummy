@@ -1,4 +1,4 @@
-"""Run Dummy's exact crypto plus daily/weekly commodities paper digital twin.
+"""Run Dummy's exact BTC/ETH/SOL multi-horizon paper digital twin.
 
 This process uses public GET data only. It has no broker, credential, live
 session, production-ledger write, execution, or capital authority.
@@ -21,6 +21,7 @@ from autonomy.crypto_paper_twin import (  # noqa: E402
     PaperTwinLedger,
     write_paper_twin_report,
 )
+from autonomy.session import PAPER_RESULTS_AUTHORITY  # noqa: E402
 
 
 def _acquire_lock(path: Path, stale_seconds: int = 1800) -> int | None:
@@ -76,6 +77,7 @@ def _summary(report: dict, report_path: Path) -> dict:
         "vertical_timeframes": report.get("vertical_timeframes"),
         "assets_by_vertical": report.get("assets_by_vertical"),
         "universe_policy": report.get("universe_policy"),
+        "horizon_execution_contract": report.get("horizon_execution_contract"),
         "active_recursive_epoch": report.get("active_recursive_epoch"),
         "hourly_calibration": report.get("hourly_calibration"),
         "target_candidate_counts": rejection_regret.get("counts"),
@@ -158,6 +160,19 @@ def main() -> int:
     parser.add_argument("--log", type=Path)
     parser.add_argument("--summary", action="store_true")
     args = parser.parse_args()
+
+    if PAPER_RESULTS_AUTHORITY == "RETIRED_NON_AUTHORITATIVE":
+        print(json.dumps({
+            "status": PAPER_RESULTS_AUTHORITY,
+            "paper_mode": "RETIRED",
+            "trades_opened": 0,
+            "settlements_recorded": 0,
+            "broker_contacted": False,
+            "execution_authority": False,
+            "capital_authority": False,
+            "note": "Paper-twin production is retired; raw history remains audit-only.",
+        }, sort_keys=True))
+        return 0
 
     descriptor = _acquire_lock(
         args.lock,

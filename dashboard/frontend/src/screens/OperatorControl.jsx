@@ -1,5 +1,12 @@
 import { useEffect, useState } from 'react';
-import { fetchJson, postJson } from '../hooks/useApi';
+import {
+  clearOperatorToken,
+  fetchJson,
+  getOperatorToken,
+  postJson,
+  storeOperatorToken,
+} from '../hooks/useApi';
+import { booleanLabel, valueOrUnknown } from '../components/TruthValue';
 
 const MODE_ACK = '1';
 const PROOF_ACK = 'FULL_AUTHORITY_OPERATOR_APPROVED_LIVE_PROOF_ONLY';
@@ -49,6 +56,7 @@ function Pill({ children, color }) {
 function StatusPill({ status, field, good = 'valid', bad = 'blocked' }) {
   if (!status) return <Pill color="gray">unknown</Pill>;
   const value = status[field];
+  if (value === null || value === undefined) return <Pill color="gray">UNKNOWN</Pill>;
   if (field === 'exists' && value) return <Pill color="blue">staged</Pill>;
   if (field === 'exists' && !value) return <Pill color="red">missing</Pill>;
   if (field === 'staged' && value) return <Pill color="blue">staged</Pill>;
@@ -71,8 +79,8 @@ function NextProofCandidatePanel() {
   if (!candidate) return null;
 
   const v1 = candidate.v1_status || candidate;
-  const v2 = candidate.v2_status || { status: "not_generated_yet" };
-  const v3 = candidate.v3_status || { status: "not_generated_yet" };
+  const v2 = candidate.v2_status || { status: null };
+  const v3 = candidate.v3_status || { status: null };
 
   return (
     <section className="panel next-proof-candidate">
@@ -81,15 +89,15 @@ function NextProofCandidatePanel() {
         <div className="rounded p-3 border border-gray-700 bg-gray-800">
           <h3 className="font-bold text-sm mb-2">V1 No-Network Candidate</h3>
           <div className="text-xs space-y-1">
-            <p>Validation status: {v1.candidate_validation_status}</p>
-            <p>Market validated: {v1.market_validated ? "yes" : "no"}</p>
-            <p>Contract validated: {v1.contract_validated ? "yes" : "no"}</p>
-            <p>Read-only metadata mode: {v1.read_only_metadata_mode}</p>
-            <p>Submit allowed now: {v1.submit_allowed_now ? "true" : "false"}</p>
-            <p>Requires new operator proof authority: {v1.requires_new_operator_proof_authority ? "yes" : "no"}</p>
-            <p>Reason: {v1.reason_submit_not_allowed}</p>
-            <p>Proof lock status: {v1.proof_lock_status}</p>
-            <p>Next action: {v1.next_action}</p>
+            <p>Validation status: {valueOrUnknown(v1.candidate_validation_status)}</p>
+            <p>Market validated: {booleanLabel(v1.market_validated)}</p>
+            <p>Contract validated: {booleanLabel(v1.contract_validated)}</p>
+            <p>Read-only metadata mode: {valueOrUnknown(v1.read_only_metadata_mode)}</p>
+            <p>Submit allowed now: {booleanLabel(v1.submit_allowed_now, 'TRUE', 'FALSE')}</p>
+            <p>Requires new operator proof authority: {booleanLabel(v1.requires_new_operator_proof_authority)}</p>
+            <p>Reason: {valueOrUnknown(v1.reason_submit_not_allowed)}</p>
+            <p>Proof lock status: {valueOrUnknown(v1.proof_lock_status)}</p>
+            <p>Next action: {valueOrUnknown(v1.next_action)}</p>
           </div>
         </div>
 
@@ -100,20 +108,21 @@ function NextProofCandidatePanel() {
               <p>V2 candidate has not been generated yet.</p>
             ) : (
               <>
-                <p>Candidate found: {v2.candidate_found ? "yes" : "no"}</p>
-                <p>Market ticker: {v2.market_ticker || "—"}</p>
-                <p>Contract ticker: {v2.contract_ticker || "—"}</p>
-                <p>Market tradable: {v2.market_tradable ? "yes" : "no"}</p>
-                <p>Contract tradable: {v2.contract_tradable ? "yes" : "no"}</p>
-                <p>Price validated: {v2.price_validated ? "yes" : "no"}</p>
-                <p>Price source: {v2.price_source || "unknown"}</p>
-                <p>Price: {v2.price !== undefined && v2.price !== null ? v2.price : "—"}</p>
-                <p>Read-only metadata contact: {v2.read_only_metadata_contact ? "yes" : "no"}</p>
-                <p>Submit allowed now: {v2.submit_allowed_now ? "true" : "false"}</p>
-                <p>Requires new operator proof authority: {v2.requires_new_operator_proof_authority ? "yes" : "no"}</p>
-                <p>Proof lock status: {v2.proof_lock_status}</p>
-                <p>Next action: {v2.next_action}</p>
-                <p>Secrets redacted: {v2.secrets_redacted ? "yes" : "no"}</p>
+                <p>Candidate found: {booleanLabel(v2.candidate_found)}</p>
+                <p>Status: {valueOrUnknown(v2.status)}</p>
+                <p>Market ticker: {valueOrUnknown(v2.market_ticker)}</p>
+                <p>Contract ticker: {valueOrUnknown(v2.contract_ticker)}</p>
+                <p>Market tradable: {booleanLabel(v2.market_tradable)}</p>
+                <p>Contract tradable: {booleanLabel(v2.contract_tradable)}</p>
+                <p>Price validated: {booleanLabel(v2.price_validated)}</p>
+                <p>Price source: {valueOrUnknown(v2.price_source)}</p>
+                <p>Price: {valueOrUnknown(v2.price)}</p>
+                <p>Read-only metadata contact: {booleanLabel(v2.read_only_metadata_contact)}</p>
+                <p>Submit allowed now: {booleanLabel(v2.submit_allowed_now, 'TRUE', 'FALSE')}</p>
+                <p>Requires new operator proof authority: {booleanLabel(v2.requires_new_operator_proof_authority)}</p>
+                <p>Proof lock status: {valueOrUnknown(v2.proof_lock_status)}</p>
+                <p>Next action: {valueOrUnknown(v2.next_action)}</p>
+                <p>Secrets redacted: {booleanLabel(v2.secrets_redacted)}</p>
               </>
             )}
           </div>
@@ -126,31 +135,31 @@ function NextProofCandidatePanel() {
               <p>V3 discovery candidate has not been generated yet.</p>
             ) : (
               <>
-                <p>Status: {v3.status}</p>
-                <p>Discovery mode: {v3.discovery_mode || "—"}</p>
-                <p>Candidate found: {v3.candidate_found ? "yes" : "no"}</p>
-                <p>Market ticker: {v3.market_ticker || "—"}</p>
-                <p>Contract ticker: {v3.contract_ticker || "—"}</p>
-                <p>Market status: {v3.market_status || "—"}</p>
-                <p>Contract status: {v3.contract_status || "—"}</p>
-                <p>Market tradable: {v3.market_tradable ? "yes" : "no"}</p>
-                <p>Contract tradable: {v3.contract_tradable ? "yes" : "no"}</p>
-                <p>Price validated: {v3.price_validated ? "yes" : "no"}</p>
-                <p>Price source: {v3.price_source || "unknown"}</p>
-                <p>Price: {v3.price !== undefined && v3.price !== null ? v3.price : "—"}</p>
-                <p>Read-only metadata contact: {v3.read_only_metadata_contact ? "yes" : "no"}</p>
-                <p>GET requests: {v3.get_request_count ?? 0}</p>
-                <p>Write requests: {v3.write_request_count ?? 0}</p>
-                <p>Blocked writes: {v3.blocked_write_request_count ?? 0}</p>
-                <p>Response schema: {v3.response_schema_summary || "—"}</p>
+                <p>Status: {valueOrUnknown(v3.status)}</p>
+                <p>Discovery mode: {valueOrUnknown(v3.discovery_mode)}</p>
+                <p>Candidate found: {booleanLabel(v3.candidate_found)}</p>
+                <p>Market ticker: {valueOrUnknown(v3.market_ticker)}</p>
+                <p>Contract ticker: {valueOrUnknown(v3.contract_ticker)}</p>
+                <p>Market status: {valueOrUnknown(v3.market_status)}</p>
+                <p>Contract status: {valueOrUnknown(v3.contract_status)}</p>
+                <p>Market tradable: {booleanLabel(v3.market_tradable)}</p>
+                <p>Contract tradable: {booleanLabel(v3.contract_tradable)}</p>
+                <p>Price validated: {booleanLabel(v3.price_validated)}</p>
+                <p>Price source: {valueOrUnknown(v3.price_source)}</p>
+                <p>Price: {valueOrUnknown(v3.price)}</p>
+                <p>Read-only metadata contact: {booleanLabel(v3.read_only_metadata_contact)}</p>
+                <p>GET requests: {valueOrUnknown(v3.get_request_count)}</p>
+                <p>Write requests: {valueOrUnknown(v3.write_request_count)}</p>
+                <p>Blocked writes: {valueOrUnknown(v3.blocked_write_request_count)}</p>
+                <p>Response schema: {valueOrUnknown(v3.response_schema_summary)}</p>
                 {v3.exact_blockers?.length > 0 && (
                   <p className="text-red-300">Blockers: {v3.exact_blockers.join("; ")}</p>
                 )}
-                <p>Submit allowed now: {v3.submit_allowed_now ? "true" : "false"}</p>
-                <p>Requires new operator proof authority: {v3.requires_new_operator_proof_authority ? "yes" : "no"}</p>
-                <p>Proof lock status: {v3.proof_lock_status}</p>
-                <p>Next action: {v3.next_action}</p>
-                <p>Secrets redacted: {v3.secrets_redacted ? "yes" : "no"}</p>
+                <p>Submit allowed now: {booleanLabel(v3.submit_allowed_now, 'TRUE', 'FALSE')}</p>
+                <p>Requires new operator proof authority: {booleanLabel(v3.requires_new_operator_proof_authority)}</p>
+                <p>Proof lock status: {valueOrUnknown(v3.proof_lock_status)}</p>
+                <p>Next action: {valueOrUnknown(v3.next_action)}</p>
+                <p>Secrets redacted: {booleanLabel(v3.secrets_redacted)}</p>
               </>
             )}
           </div>
@@ -186,7 +195,7 @@ export default function OperatorControl() {
   });
 
   const [liveSubmit, setLiveSubmit] = useState({
-    enabled: true,
+    enabled: false,
     operator: '',
     reason: '',
     expiry: '',
@@ -214,6 +223,12 @@ export default function OperatorControl() {
   const [spReason, setSpReason] = useState('');
   const [spExpiry, setSpExpiry] = useState('');
   const [spConfirm, setSpConfirm] = useState('');
+  const [operatorToken, setOperatorToken] = useState('');
+  const [rememberToken, setRememberToken] = useState(false);
+  const [browserTokenPresent, setBrowserTokenPresent] = useState(() => Boolean(getOperatorToken()));
+  const [tokenMessage, setTokenMessage] = useState('');
+  const [operatorAuth, setOperatorAuth] = useState(null);
+
 
   const refreshSecondProof = () =>
     fetchJson('/api/operator-control/second-proof-authority')
@@ -227,15 +242,85 @@ export default function OperatorControl() {
     fetchJson('/api/operator-control/external-prereqs/status')
       .then(setPrereqStatus)
       .catch(e => setPrereqStatus({ error: e.message }));
-    fetchJson('/api/operator-control/external-prereqs/check-all')
+    postJson('/api/operator-control/external-prereqs/check-all')
       .then(setCheckAll)
       .catch(e => setCheckAll({ ok: false, blockers: [e.message] }));
   };
 
-  useEffect(() => {
+  const refreshPrivilegedStatus = () => {
     refresh();
     refreshPrereqs();
-    refreshSecondProof();
+  };
+
+  const refreshAuth = () =>
+    fetchJson('/operator-auth/status')
+      .then(result => {
+        setOperatorAuth(result);
+        return result;
+      })
+      .catch(error => {
+        const result = { configured: null, authenticated: null, error: error.message };
+        setOperatorAuth(result);
+        return result;
+      });
+
+  const saveBrowserToken = async () => {
+    if (!operatorToken.trim()) {
+      setTokenMessage('Enter the token configured as DUMMY_OPERATOR_TOKEN in the backend process.');
+      return;
+    }
+    storeOperatorToken(operatorToken, rememberToken);
+    setOperatorToken('');
+    setBrowserTokenPresent(true);
+    setTokenMessage('Checking the token against the backend…');
+    const auth = await refreshAuth();
+    if (auth.authenticated === true) {
+      setTokenMessage(
+        rememberToken
+          ? 'Controls unlocked. Token saved on this device; it is sent only as an authorization header and is never rendered or returned by the backend.'
+          : 'Controls unlocked for this browser session. The token is sent only as an authorization header and is never rendered or returned by the backend.',
+      );
+      refreshPrivilegedStatus();
+      refreshSecondProof();
+      return;
+    }
+    clearOperatorToken();
+    setBrowserTokenPresent(false);
+    setTokenMessage(
+      auth.configured === false
+        ? 'Backend token is not configured. Set DUMMY_OPERATOR_TOKEN in the backend process, restart it, then try again.'
+        : 'Token rejected. Nothing was unlocked and the entered value was discarded.',
+    );
+  };
+
+  const relockBrowser = () => {
+    clearOperatorToken();
+    setOperatorToken('');
+    setRememberToken(false);
+    setBrowserTokenPresent(false);
+    setOperatorAuth(current => ({ ...(current || {}), authenticated: false }));
+    setTokenMessage('Browser token cleared. Privileged controls are relocked.');
+    setStatus(null);
+    setPrereqStatus(null);
+    setCheckAll(null);
+  };
+
+  useEffect(() => {
+    refreshAuth().then(auth => {
+      if (auth.authenticated === true) {
+        refresh();
+        refreshPrereqs();
+        refreshSecondProof();
+      } else if (browserTokenPresent) {
+        clearOperatorToken();
+        setBrowserTokenPresent(false);
+        setTokenMessage(
+          auth.configured === false
+            ? 'A saved browser token was discarded because the backend token is not configured.'
+            : 'A saved browser token was rejected and discarded.',
+        );
+      }
+    });
   }, []);
 
   const call = async (key, path, body) => {
@@ -246,6 +331,12 @@ export default function OperatorControl() {
     } catch (e) {
       setOut(o => ({ ...o, [key]: { stderr: e.message, safety_notes: ['fetch-error'] } }));
     } finally {
+      if (key === 'live') {
+        setModeAck('');
+        setProofAck('');
+        setTypedConfirm('');
+        setArmConfirmed(false);
+      }
       setBusy('');
       refresh();
       refreshPrereqs();
@@ -335,10 +426,10 @@ export default function OperatorControl() {
     armConfirmed &&
     checkAll?.ready;
 
-  const Btn = ({ k, label, onClick, disabled, danger, small }) => (
+  const Btn = ({ k, label, onClick, disabled, danger, small, allowDuringBusy = false }) => (
     <button
       onClick={onClick}
-      disabled={disabled || busy}
+      disabled={disabled || operatorAuth?.authenticated !== true || (!allowDuringBusy && Boolean(busy))}
       className={`rounded font-semibold shrink-0 ${
         small ? 'px-2 py-1 text-xs' : 'px-4 py-2'
       } ${danger ? 'bg-red-600 hover:bg-red-500' : 'bg-blue-600 hover:bg-blue-500'} disabled:opacity-40 disabled:cursor-not-allowed`}
@@ -386,12 +477,85 @@ export default function OperatorControl() {
         </p>
       </div>
 
+      <section
+        aria-label="Operator token setup"
+        className="rounded p-4 border border-gray-700 bg-gray-800 space-y-3"
+      >
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <h2 className="font-bold">Privileged-control token</h2>
+            <p className="text-xs text-gray-400 mt-1">
+              State changes and command-backed checks require a token. Set DUMMY_OPERATOR_TOKEN in
+              the backend process, then enter the same value here. The backend value is never
+              returned or displayed.
+            </p>
+          </div>
+          <Pill color={operatorAuth?.authenticated === true ? 'green' : browserTokenPresent ? 'yellow' : 'red'}>
+            {operatorAuth?.authenticated === true
+              ? 'controls unlocked'
+              : browserTokenPresent
+                ? 'token not verified'
+                : 'controls locked'}
+          </Pill>
+        </div>
+        <div className="grid grid-cols-1 gap-2 text-xs sm:grid-cols-3">
+          <div className="rounded bg-gray-900 p-2">Backend token configured: <strong>{booleanLabel(operatorAuth?.configured)}</strong></div>
+          <div className="rounded bg-gray-900 p-2">Browser token stored: <strong>{booleanLabel(browserTokenPresent)}</strong></div>
+          <div className="rounded bg-gray-900 p-2">Token matches backend: <strong>{booleanLabel(operatorAuth?.authenticated)}</strong></div>
+        </div>
+        <label className="block text-xs text-gray-400">
+          Operator token
+          <input
+            type="password"
+            value={operatorToken}
+            onChange={event => setOperatorToken(event.target.value)}
+            autoComplete="new-password"
+            spellCheck={false}
+            placeholder="Enter token; it will not be displayed again"
+            onKeyDown={event => {
+              if (event.key === 'Enter' && operatorToken.trim()) saveBrowserToken();
+            }}
+            className="mt-1 w-full bg-gray-950 border border-gray-700 rounded px-2 py-2 text-sm"
+          />
+        </label>
+        <label className="flex items-start gap-2 text-xs text-gray-300">
+          <input
+            type="checkbox"
+            checked={rememberToken}
+            onChange={event => setRememberToken(event.target.checked)}
+          />
+          <span>Remember on this trusted device. Off by default; otherwise the token exists only for this browser session. Persistent browser storage is accessible to scripts on this dashboard origin.</span>
+        </label>
+        <div className="flex gap-2 flex-wrap">
+          <button disabled={!operatorToken.trim()} onClick={saveBrowserToken} className="px-3 py-2 rounded bg-blue-600 hover:bg-blue-500 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-40">
+            Unlock privileged controls
+          </button>
+          <button onClick={relockBrowser} className="px-3 py-2 rounded bg-gray-700 hover:bg-gray-600 text-sm font-semibold">
+            Relock this browser
+          </button>
+        </div>
+        {tokenMessage && <p role="status" className="text-xs text-amber-200">{tokenMessage}</p>}
+        {status?.error && <p role="alert" className="text-xs text-red-300">{status.error}</p>}
+      </section>
+
       {/* status banner */}
       <div className="rounded p-4 bg-gray-800 border border-gray-700 flex gap-6 flex-wrap">
         <div>
           <div className="text-xs text-gray-400">live_submit.json</div>
-          <div className={`text-xl font-bold ${liveEnabled ? 'text-green-400' : 'text-red-400'}`}>
-            {liveEnabled ? 'ENABLED' : 'DISABLED'}
+          <div className={`text-xl font-bold ${liveEnabled === true ? 'text-green-400' : liveEnabled === false ? 'text-red-400' : 'text-gray-400'}`}>
+            {liveEnabled === true ? 'ENABLED' : liveEnabled === false ? 'DISABLED' : 'UNKNOWN'}
+          </div>
+        </div>
+        <div>
+          <div className="text-xs text-gray-400">kill switch</div>
+          <div className={`text-xl font-bold ${status?.kill_switch_active === true ? 'text-red-400' : status?.kill_switch_active === false ? 'text-green-400' : 'text-gray-400'}`}>
+            {status?.kill_switch_active === true ? 'ACTIVE' : status?.kill_switch_active === false ? 'INACTIVE' : 'UNKNOWN'}
+          </div>
+        </div>
+        <div>
+          <div className="text-xs text-gray-400">emergency stop</div>
+          <div className={`text-xl font-bold ${status?.emergency_stop_active === true ? 'text-red-400' : status?.emergency_stop_active === false ? 'text-green-400' : 'text-gray-400'}`}>
+            {status?.emergency_stop_active === true ? 'ACTIVE' : status?.emergency_stop_active === false ? 'INACTIVE' : 'UNKNOWN'}
           </div>
         </div>
         <div>
@@ -445,7 +609,7 @@ export default function OperatorControl() {
             <p>contract ticker: {secondProof.candidate_contract_ticker}</p>
           )}
           {secondProof?.candidate_price !== undefined && secondProof?.candidate_price !== null && (
-            <p>price: {secondProof.candidate_price} count: {secondProof.candidate_count || 1} type: {secondProof.candidate_order_type || 'LIMIT'}</p>
+            <p>price: {valueOrUnknown(secondProof.candidate_price)} count: {valueOrUnknown(secondProof.candidate_count)} type: {valueOrUnknown(secondProof.candidate_order_type)}</p>
           )}
           {secondProof?.next_action && <p>next action: {secondProof.next_action}</p>}
           {secondProof?.submit_allowed_now === false && (
@@ -552,8 +716,12 @@ export default function OperatorControl() {
         </div>
 
         {checkAll && (
-          <div className={`text-xs p-2 rounded ${checkAll.ready ? 'bg-green-900/30 text-green-200' : 'bg-red-900/30 text-red-200'}`}>
-            {checkAll.ready ? 'All external prerequisites report READY.' : `NOT READY — ${checkAll.blockers?.join('; ') || 'unknown blockers'}`}
+          <div className={`text-xs p-2 rounded ${checkAll.ready === true ? 'bg-green-900/30 text-green-200' : checkAll.ready === false ? 'bg-red-900/30 text-red-200' : 'bg-gray-800 text-gray-300'}`}>
+            {checkAll.ready === true
+              ? 'All external prerequisites report READY.'
+              : checkAll.ready === false
+                ? `NOT READY — ${checkAll.blockers?.join('; ') || 'unknown blockers'}`
+                : 'READINESS UNKNOWN — prerequisite status field unavailable.'}
           </div>
         )}
 
@@ -684,7 +852,7 @@ export default function OperatorControl() {
             <Check label="enabled" checked={liveSubmit.enabled} onChange={v => setLiveSubmit(s => ({ ...s, enabled: v }))} />
             <Field label="operator" value={liveSubmit.operator} onChange={v => setLiveSubmit(s => ({ ...s, operator: v }))} placeholder="operator name" />
             <Field label="reason" value={liveSubmit.reason} onChange={v => setLiveSubmit(s => ({ ...s, reason: v }))} placeholder="one controlled proof" />
-            <Field label="expiry (ISO-8601)" value={liveSubmit.expiry} onChange={v => setLiveSubmit(s => ({ ...s, expiry: v }))} placeholder="2026-07-08T21:00:00Z" />
+            <Field label="expiry (ISO-8601)" value={liveSubmit.expiry} onChange={v => setLiveSubmit(s => ({ ...s, expiry: v }))} placeholder="YYYY-MM-DDTHH:MM:SSZ" />
           </div>
           <label className="block text-xs text-gray-400">
             Typed confirmation
@@ -698,7 +866,7 @@ export default function OperatorControl() {
           <div className="flex gap-2">
             <Btn k="liveSubmitPreview" label="Preview" small onClick={() => call('liveSubmitPreview', '/api/operator-control/external-prereqs/live-submit/preview', liveSubmit)} />
             <Btn k="liveSubmitWrite" label="Write live_submit.json" small onClick={() => call('liveSubmitWrite', '/api/operator-control/external-prereqs/live-submit/write', liveSubmit)} />
-            <Btn k="liveSubmitDisable" label="Relock / Disable" danger small onClick={() => call('liveSubmitDisable', '/api/operator-control/external-prereqs/live-submit/disable')} />
+            <Btn k="liveSubmitDisable" label="Relock / Disable" danger small allowDuringBusy onClick={() => call('liveSubmitDisable', '/api/operator-control/external-prereqs/live-submit/disable')} />
           </div>
           <Out result={out.liveSubmitPreview} />
           <Out result={out.liveSubmitWrite} />
@@ -721,7 +889,7 @@ export default function OperatorControl() {
             <Field label="max_open_exposure (cents)" value={caps.max_open_exposure} onChange={v => setCaps(c => ({ ...c, max_open_exposure: v }))} type="number" />
             <Field label="operator" value={caps.operator} onChange={v => setCaps(c => ({ ...c, operator: v }))} placeholder="operator name" />
             <Field label="reason" value={caps.reason} onChange={v => setCaps(c => ({ ...c, reason: v }))} placeholder="strict one-proof caps" />
-            <Field label="expiry (ISO-8601)" value={caps.expiry} onChange={v => setCaps(c => ({ ...c, expiry: v }))} placeholder="2026-07-08T21:00:00Z" />
+            <Field label="expiry (ISO-8601)" value={caps.expiry} onChange={v => setCaps(c => ({ ...c, expiry: v }))} placeholder="YYYY-MM-DDTHH:MM:SSZ" />
           </div>
           <div className="space-y-1">
             <Check label="order_type_policy = LIMIT_ONLY" checked={caps.order_type_policy === 'LIMIT_ONLY'} onChange={() => {}} />
@@ -740,7 +908,7 @@ export default function OperatorControl() {
           <div className="flex gap-2">
             <Btn k="capsPreview" label="Preview" small onClick={() => call('capsPreview', '/api/operator-control/external-prereqs/caps/preview', caps)} />
             <Btn k="capsWrite" label="Write caps.json" small onClick={() => call('capsWrite', '/api/operator-control/external-prereqs/caps/write', caps)} />
-            <Btn k="capsRelock" label="Relock Caps" danger small onClick={() => call('capsRelock', '/api/operator-control/external-prereqs/caps/relock')} />
+            <Btn k="capsRelock" label="Relock Caps" danger small allowDuringBusy onClick={() => call('capsRelock', '/api/operator-control/external-prereqs/caps/relock')} />
           </div>
           <Out result={out.capsPreview} />
           <Out result={out.capsWrite} />

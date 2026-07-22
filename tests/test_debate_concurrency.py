@@ -18,6 +18,9 @@ def test_debate_bounded_concurrency(monkeypatch, tmp_path):
     monkeypatch.setenv("DUMMY_DEBATE_TOP_K", "6")
     monkeypatch.setenv("DUMMY_DEBATE_CONCURRENCY", "2")
     monkeypatch.setenv("DUMMY_DEBATE_CLI_TOP_K", "0")
+    # Permit two complete panels for this concurrency-only test. The reviewed
+    # code-level market ceiling must still prevent the requested six.
+    monkeypatch.setenv("DUMMY_DEBATE_MAX_LOGICAL_CALLS_PER_CYCLE", "16")
 
     state = {"live": 0, "peak": 0, "calls": 0}
 
@@ -45,18 +48,20 @@ def test_debate_bounded_concurrency(monkeypatch, tmp_path):
     finally:
         ledger.close()
 
-    assert state["calls"] == 6          # every top-K market debated
-    assert state["peak"] == 2           # ...but never more than the bound at once
+    assert state["calls"] == 2          # code-level paid-panel ceiling
+    assert state["peak"] == 2           # ...and never more than the concurrency bound
 
 
 def test_debate_concurrency_one_is_sequential(monkeypatch, tmp_path):
     monkeypatch.setenv("DUMMY_DEBATE_TOP_K", "4")
     monkeypatch.setenv("DUMMY_DEBATE_CONCURRENCY", "1")
     monkeypatch.setenv("DUMMY_DEBATE_CLI_TOP_K", "0")
+    monkeypatch.setenv("DUMMY_DEBATE_MAX_LOGICAL_CALLS_PER_CYCLE", "16")
 
-    state = {"live": 0, "peak": 0}
+    state = {"live": 0, "peak": 0, "calls": 0}
 
     async def fake_run_debate(router, market, base_prob=None, context=None, allow_cli=True):
+        state["calls"] += 1
         state["live"] += 1
         state["peak"] = max(state["peak"], state["live"])
         await asyncio.sleep(0.01)
@@ -74,4 +79,5 @@ def test_debate_concurrency_one_is_sequential(monkeypatch, tmp_path):
         asyncio.run(PredatorBrain._adjudicate_top_k(me, forecaster, scored, report))
     finally:
         ledger.close()
-    assert state["peak"] == 1  # concurrency=1 -> strictly sequential (back-compat)
+    assert state["calls"] == 2  # hard market cap remains in force
+    assert state["peak"] == 1   # concurrency=1 -> strictly sequential (back-compat)

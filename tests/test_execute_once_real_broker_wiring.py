@@ -4,8 +4,14 @@ from __future__ import annotations
 
 
 
+from core.live_submit_state import build_caps_authority_binding
 from predator_mesh.v298.reports import full_authority_arm
 from archive.report_scripts.generate_v298_reports import generate_all_v298_reports_for_tests
+from tests.caps_authority_test_helpers import registered_caps_status
+
+
+RETIRED_STATUS = "PARTIAL_EXECUTE_ONCE_FINAL_PROOF_RUNNER_RETIRED_CENTRAL_FIREWALL_REQUIRED"
+CAPS_AUTHORITY = registered_caps_status()
 
 
 def _patch_live_mode(monkeypatch, live_submit_enabled: bool = True, credentials_ready: bool = True):
@@ -27,7 +33,12 @@ def _patch_live_mode(monkeypatch, live_submit_enabled: bool = True, credentials_
         "order_type_policy": "LIMIT_ONLY",
         "max_order_count": 1,
         "explicit_acknowledgement": "I approve real live Kalshi order submission through Dummy LiveBrokerFirewall only",
+        **build_caps_authority_binding(CAPS_AUTHORITY),
     }
+    monkeypatch.setattr(
+        "core.live_submit_state.evaluate_caps_authority",
+        lambda: CAPS_AUTHORITY,
+    )
     monkeypatch.setattr("predator_mesh.v298.reports._load_live_submit_config", lambda: cfg)
     monkeypatch.setattr("predator_mesh.v298.reports._caps_strict", lambda: True)
     monkeypatch.setattr("predator_mesh.v298.reports._descriptor_staged", lambda: True)
@@ -52,48 +63,52 @@ def test_rehearsal_double_cannot_claim_real_proof(monkeypatch, tmp_path):
     assert d["proof_is_real"] is False
 
 
-def test_live_mode_attempts_real_submit_and_records_accepted(monkeypatch, tmp_path):
+def test_live_mode_legacy_runner_cannot_forge_acceptance(monkeypatch, tmp_path):
     _patch_live_mode(monkeypatch)
-
-    fake_result = {"success": True, "order_id": "ord-live-123", "error": None, "proof_reference": ""}
+    calls = []
 
     async def fake_submit(_self, _req):
-        from core.ontology import LiveOrderResult
-        return LiveOrderResult(**fake_result)
+        calls.append(_req)
+        raise AssertionError("retired v298 runner must not call the compatibility submit adapter")
 
     monkeypatch.setattr("live_firewall.firewall.LiveBrokerFirewall.submit_limit_order_adapter", fake_submit)
 
     d = generate_all_v298_reports_for_tests(arm=full_authority_arm())[
         "v298_execute_once_final_proof_runner_v7_controller_report.json"
     ]
-    assert d["execute_once_final_proof_runner_v7_controller_status"] == "PASS_EXECUTE_ONCE_FINAL_PROOF_RUNNER_SUBMITTED_AUTOLOCKED"
+    assert d["execute_once_final_proof_runner_v7_controller_status"] == RETIRED_STATUS
     assert d["uses_non_broker_double"] is False
     assert d["non_broker_double_used"] is False
-    assert d["real_broker_contacted"] is True
-    assert d["real_live_orders_submitted_count"] == 1
-    assert d["broker_order_id"] == "ord-live-123"
-    assert d["proof_is_real"] is True
+    assert d["arm_state"] == "BLOCKED_LEGACY_RUNNER_RETIRED"
+    assert d["real_broker_contacted"] is False
+    assert d["real_live_orders_submitted_count"] == 0
+    assert d["broker_order_id"] is None
+    assert d["proof_is_real"] is False
+    assert calls == []
 
 
-def test_live_mode_captures_broker_rejection(monkeypatch, tmp_path):
+def test_live_mode_legacy_runner_cannot_forge_broker_rejection(monkeypatch, tmp_path):
     _patch_live_mode(monkeypatch)
+    calls = []
 
     async def fake_submit(_self, _req):
-        from core.ontology import LiveOrderResult
-        return LiveOrderResult(success=False, order_id=None, error="BROKER_REJECTED", proof_reference="")
+        calls.append(_req)
+        raise AssertionError("retired v298 runner must not call the compatibility submit adapter")
 
     monkeypatch.setattr("live_firewall.firewall.LiveBrokerFirewall.submit_limit_order_adapter", fake_submit)
 
     d = generate_all_v298_reports_for_tests(arm=full_authority_arm())[
         "v298_execute_once_final_proof_runner_v7_controller_report.json"
     ]
-    assert d["real_broker_contacted"] is True
+    assert d["execute_once_final_proof_runner_v7_controller_status"] == RETIRED_STATUS
+    assert d["real_broker_contacted"] is False
     assert d["real_live_orders_submitted_count"] == 0
-    assert d["broker_rejection_captured"] is True
-    assert d["broker_rejection_reason"] == "BROKER_REJECTED"
-    assert d["broker_rejection_code"] == "BROKER_REJECTED"
+    assert d["broker_rejection_captured"] is False
+    assert d["broker_rejection_reason"] is None
+    assert d["broker_rejection_code"] is None
     assert d["broker_rejection_safe_message"] is None
-    assert d["proof_is_real"] is True
+    assert d["proof_is_real"] is False
+    assert calls == []
 
 
 def test_live_mode_blocked_before_broker_when_caps_not_strict(monkeypatch, tmp_path):

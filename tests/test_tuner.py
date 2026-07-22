@@ -10,10 +10,14 @@ def _seed(tmp_path):
     day = 1
     for wk in range(40):
         for gid, h, a, hs, as_ in ((f"a{wk}", "AAA", "BBB", 30, 10), (f"b{wk}", "AAA", "CCC", 27, 20)):
+            start = f"2025-{(day // 28) + 1:02d}-{(day % 28) + 1:02d}"
             st.upsert_game({"game_id": gid, "league": "nfl", "season": 2025,
-                            "start_time": f"2025-{(day // 28) + 1:02d}-{(day % 28) + 1:02d}T00:00:00Z",
+                            "start_time": f"{start}T00:00:00Z",
                             "home": h, "away": a, "home_score": hs, "away_score": as_,
-                            "status": "final", "source": "t"})
+                            "status": "final", "source": "t",
+                            "result_available_at": f"{start}T03:00:00Z",
+                            "received_at": f"{start}T03:05:00Z",
+                            "provenance_quality": "source_reported"})
             day += 1
     return st
 

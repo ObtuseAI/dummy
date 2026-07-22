@@ -52,6 +52,12 @@ def test_prices_more_efficient_team(tmp_path):
     assert sig.applicable(m)
     s = sig.generate(m)
     assert s is not None and s.source == "sports_epa" and s.probability_yes > 0.5
+    assert s.features["challenger_only"] is True
+    assert s.features["promotion_eligible"] is True
+    assert s.features["point_in_time"] is True
+    assert s.features["public_read_only"] is True
+    assert s.features["sport"] == "nfl"
+    assert s.features["market_type"] == "winner"
 
 
 def test_abstains_without_epa(tmp_path):

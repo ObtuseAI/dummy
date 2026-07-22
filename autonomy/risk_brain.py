@@ -10,6 +10,7 @@ and an evidence-gated stage ladder so size is always earned, never assumed.
 from __future__ import annotations
 
 import json
+import os
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
@@ -55,6 +56,10 @@ DEMOTION_COOLOFF_HOURS = 24
 # or promotion evidence. Older state files may contain optimistic shadow P&L
 # from pending orders and are reset at the evidence counters only.
 ACCOUNTING_VERSION = 2
+
+
+class RiskStatePersistenceError(RuntimeError):
+    """The durable risk state could not be written atomically."""
 
 
 def kelly_fraction_yes(probability: float, price_cents: int) -> float:
@@ -105,8 +110,14 @@ class OrderBudget:
 class RiskBrain:
     """Derives every limit from live state; persists its own stage ledger."""
 
-    def __init__(self, state_path: Path | str = Path("runtime/autonomy/risk_state.json")):
-        self.state_path = Path(state_path)
+    def __init__(self, state_path: Path | str | None = None):
+        configured = os.environ.get("DUMMY_AUTONOMY_RISK_STATE_PATH")
+        self.state_path = Path(
+            state_path
+            or configured
+            or "runtime/autonomy/risk_state.json"
+        )
+        self.persistence_error: str | None = None
 
     # ------------------------------------------------------------------
     # State persistence
@@ -116,6 +127,8 @@ class RiskBrain:
         if self.state_path.exists():
             try:
                 data = json.loads(self.state_path.read_text(encoding="utf-8"))
+                if not isinstance(data, dict):
+                    raise ValueError("risk state must be a JSON object")
                 accounting_current = int(data.get("accounting_version", 1)) >= ACCOUNTING_VERSION
                 state = RiskState(
                     bankroll_cents=bankroll_cents,
@@ -135,9 +148,26 @@ class RiskBrain:
                     hard_stopped=bool(data.get("hard_stopped", False)),
                     stop_reason=str(data.get("stop_reason", "")),
                 )
+                self.persistence_error = None
                 return state
-            except Exception:
-                pass
+            except Exception as exc:
+                # Existing-but-unreadable state is materially different from a
+                # first run with no state. Never replace unknown prior exposure,
+                # drawdown, or a hard stop with a fresh CANARY budget.
+                self.persistence_error = type(exc).__name__
+                return RiskState(
+                    bankroll_cents=bankroll_cents,
+                    equity_peak_cents=max(0, bankroll_cents),
+                    stage=Stage.SHADOW_ONLY,
+                    open_exposure_cents=0,
+                    open_markets=0,
+                    daily_pnl_cents=0,
+                    settled_count_at_stage=0,
+                    realized_pnl_per_contract_cents=0.0,
+                    hard_stopped=True,
+                    stop_reason=f"risk state unavailable: {self.persistence_error}",
+                )
+        self.persistence_error = None
         return RiskState(
             bankroll_cents=bankroll_cents,
             equity_peak_cents=bankroll_cents,
@@ -150,13 +180,28 @@ class RiskBrain:
         )
 
     def save_state(self, state: RiskState) -> None:
-        self.state_path.parent.mkdir(parents=True, exist_ok=True)
         payload = {
             **state.to_dict(),
             "accounting_version": ACCOUNTING_VERSION,
             "saved_at": datetime.now(timezone.utc).isoformat(),
         }
-        self.state_path.write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
+        temporary = self.state_path.with_suffix(self.state_path.suffix + ".tmp")
+        try:
+            self.state_path.parent.mkdir(parents=True, exist_ok=True)
+            temporary.write_text(
+                json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8"
+            )
+            os.replace(temporary, self.state_path)
+            self.persistence_error = None
+        except Exception as exc:
+            self.persistence_error = type(exc).__name__
+            try:
+                temporary.unlink(missing_ok=True)
+            except OSError:
+                pass
+            raise RiskStatePersistenceError(
+                f"risk state persistence failed: {self.persistence_error}"
+            ) from exc
 
     # ------------------------------------------------------------------
     # Drawdown + stage machinery

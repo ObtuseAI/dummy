@@ -667,7 +667,7 @@ class BaseballIntelligenceSignal:
                 "challenger_only": True,
                 # Evidence-driven now (autonomous thresholded promotion,
                 # 2026-07-16): stays challenger_only until the AutoPromotionEngine
-                # earns it a place from settled proof-of-profit. Marking it
+                # earns it a place from forward witnessed-fill evidence. Marking it
                 # eligible does NOT promote it; the engine still must clear every
                 # ladder gate at its next scheduled run on the live machine.
                 "promotion_eligible": True,
@@ -1868,7 +1868,7 @@ class TeamSportsIntelligenceSignal:
                 "challenger_only": True,
                 # Evidence-driven now (autonomous thresholded promotion,
                 # 2026-07-16): stays challenger_only until the AutoPromotionEngine
-                # earns it a place from settled proof-of-profit. Marking it
+                # earns it a place from forward witnessed-fill evidence. Marking it
                 # eligible does NOT promote it; the engine still must clear every
                 # ladder gate at its next scheduled run on the live machine.
                 "promotion_eligible": True,
@@ -2404,7 +2404,7 @@ class PowerRatingsSignal:
                 "challenger_only": True,
                 # Evidence-driven now (autonomous thresholded promotion,
                 # 2026-07-16): stays challenger_only until the AutoPromotionEngine
-                # earns it a place from settled proof-of-profit. Marking it
+                # earns it a place from forward witnessed-fill evidence. Marking it
                 # eligible does NOT promote it; the engine still must clear every
                 # ladder gate at its next scheduled run on the live machine.
                 "promotion_eligible": True,

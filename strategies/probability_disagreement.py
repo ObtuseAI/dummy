@@ -9,7 +9,7 @@ class ProbabilityDisagreement(StrategyGenome):
     name = "probability_disagreement"
 
     def evaluate(self, forecast: Forecast, orderbook: OrderBook) -> Optional[TradeProposal]:
-        if forecast.probability_delta <= Decimal("0.02"):
+        if abs(forecast.probability_delta) <= Decimal("0.02"):
             return None  # no-trade: edge too small
         compliance = assess_compliance(forecast.market_ticker, forecast.contract_ticker)
         if not compliance.passed:
@@ -17,7 +17,10 @@ class ProbabilityDisagreement(StrategyGenome):
         if not orderbook.asks or not orderbook.bids:
             return None  # no-trade: missing orderbook liquidity
         side = "yes" if forecast.probability_delta > 0 else "no"
-        price = int(orderbook.asks[0].price) if side == "yes" else int(100 - orderbook.bids[0].price)
+        price = int(orderbook.asks[0].price) if side == "yes" else int(100 - orderbook.bids[-1].price)
+        expected_edge_bps = int(abs(forecast.expected_edge) * Decimal("10000"))
+        edge_after_fees_bps = int(abs(forecast.edge_after_fees) * Decimal("10000"))
+        confidence = max(Decimal("0"), min(Decimal("1"), forecast.confidence_score))
         return TradeProposal(
             id=f"{self.name}_{forecast.market_ticker}_{forecast.timestamp.isoformat()}",
             market_ticker=forecast.market_ticker,
@@ -26,9 +29,13 @@ class ProbabilityDisagreement(StrategyGenome):
             price_cents=price,
             size=1,
             forecast_reference=forecast.proof_reference,
-            edge_estimate=EdgeEstimate(expected_edge_bps=150, edge_after_fees_bps=100, confidence_score=Decimal("0.6")),
-            risk_estimate="low",
-            confidence_estimate=Decimal("0.6"),
+            edge_estimate=EdgeEstimate(
+                expected_edge_bps=expected_edge_bps,
+                edge_after_fees_bps=edge_after_fees_bps,
+                confidence_score=confidence,
+            ),
+            risk_estimate=("high" if forecast.settlement_risk_score >= Decimal("0.7") else "bounded"),
+            confidence_estimate=confidence,
             expected_fill_behavior="passive limit fill within 60s",
             stop_condition="edge evaporates",
             cancellation_condition="stale quote > 30s",

@@ -27,6 +27,7 @@ class BaseLane(ABC):
     name: str = "base"
     priority: MeshPriority = MeshPriority()
     timeout: MeshTimeout = MeshTimeout()
+    dependencies: tuple[str, ...] = ()
     state: LaneState = LaneState.READY
 
     @abstractmethod

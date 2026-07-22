@@ -1,9 +1,13 @@
 import { lazy, Suspense } from 'react';
 
-const loaders = import.meta.glob('./V*Dashboard.jsx');
+const loaders = import.meta.glob([
+  './V*Dashboard.jsx',
+  './screens/V6Dashboard.jsx',
+  './screens/V7Dashboard.jsx',
+]);
 const dashboards = Object.fromEntries(
   Object.entries(loaders).map(([path, loader]) => {
-    const match = path.match(/^\.\/V(\d+)Dashboard\.jsx$/);
+    const match = path.match(/^\.\/(?:screens\/)?V(\d+)Dashboard\.jsx$/);
     return [match?.[1], lazy(loader)];
   }),
 );

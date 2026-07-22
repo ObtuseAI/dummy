@@ -24,7 +24,6 @@ from autonomy.risk_brain import RiskBrain
 from autonomy.scanner import MarketScanner
 from autonomy.staleness import DEFAULT_STALENESS_POLICY
 from autonomy.signals.base import SourceRegistry
-from autonomy.signals.commodities_spot import CommoditiesSpotVolSignal
 from autonomy.signals.cross_venue import CrossVenueSignal
 from autonomy.signals.cross_venue_macro import (
     CrossVenueCryptoSignal,
@@ -34,49 +33,107 @@ from autonomy.signals.crypto_spot import CryptoSpotVolSignal
 from autonomy.signals.market_debias import MarketDebiasSignal
 from autonomy.signals.market_prior import MarketPriorSignal
 from autonomy.signals.sports_elo import SportsEloSignal
-from autonomy.signals.weather_openmeteo import OpenMeteoWeatherSignal
+
+
+PAPER_RESULTS_AUTHORITY = "RETIRED_NON_AUTHORITATIVE"
+MIN_LIVE_SESSION_BALANCE_CENTS = 100
+# ``SESSION_PATH`` is an injectable compatibility alias imported from the
+# executor.  It is intentionally *not* the identity used to decide whether a
+# session start may clear the global kill switch: tests and alternate runtimes
+# monkeypatch that alias.  Resolve the one real repository production target
+# once and compare the actual write target against it fail-closed.
+_REAL_PRODUCTION_SESSION_PATH = (
+    Path(__file__).resolve().parents[1] / "runtime" / "autonomy" / "session.json"
+).resolve(strict=False)
+
+
+def _is_real_production_session_target(path: Path) -> bool:
+    """Return whether *path* resolves to Dummy's real production session."""
+    try:
+        return Path(path).resolve(strict=False) == _REAL_PRODUCTION_SESSION_PATH
+    except (OSError, RuntimeError, ValueError):
+        return False
 
 
 def canary_readiness(check_balance: bool = False) -> dict[str, Any]:
-    """Dry evidence check for a first live canary (read-only)."""
+    """Return the retired paper/shadow canary report for audit only.
+
+    The historical calculation remains available so old evidence is not
+    deleted or rewritten.  Its result has no live-authority effect and this
+    compatibility function never contacts the broker, even when an older
+    caller passes ``check_balance=True``.
+    """
     from autonomy.canary import evaluate_canary_readiness
 
-    ledger = AutonomyLedger()
-    balance = None
-    if check_balance:
-        try:
-            balance = _live_balance_cents()
-        except Exception:
-            balance = None
-    try:
-        return evaluate_canary_readiness(ledger, balance_cents=balance).to_dict()
-    finally:
-        ledger.close()
+    result = evaluate_canary_readiness(
+        None,
+        prefer_cached_backtest=True,
+    ).to_dict()
+    historical_ready = bool(result.get("ready"))
+    result["historical_research_ready"] = historical_ready
+    result["ready"] = False
+    result["status"] = PAPER_RESULTS_AUTHORITY
+    result["execution_authority"] = False
+    result["can_enable_live"] = False
+    result["can_block_live"] = False
+    result["broker_contacted"] = False
+    result["balance_check_retired"] = bool(check_balance)
+    return result
+
+
+def live_session_readiness() -> dict[str, Any]:
+    """Read the explicit local live-authority contracts without broker I/O."""
+    from live_firewall.firewall import live_execution_authority_status
+
+    return live_execution_authority_status()
 
 
 def start_session(mode: SessionMode, ack: str = "", hours: float = 24.0,
-                  operator: str = "", session_path: Path | None = None,
-                  override_evidence_gate: bool = False) -> dict[str, Any]:
-    """Write the session authority. LIVE requires the exact typed ack AND a
-    passing evidence gate (settlements + a market-beating source + weights)."""
-    path = session_path or SESSION_PATH
+                  operator: str = "", session_path: Path | None = None) -> dict[str, Any]:
+    """Write session authority after the explicit live contracts pass.
+
+    Paper/shadow/backtest/promotion results are not consulted.  LIVE remains
+    fail-closed behind the exact session acknowledgement, the separately armed
+    one-proof live-submit state, command seal, protected caps registration,
+    central-firewall descriptor, local credential resolution, proof lock, and
+    a signed balance read.
+    """
+    path = Path(session_path) if session_path is not None else Path(SESSION_PATH)
     if mode is SessionMode.LIVE and ack != AUTONOMY_ACK:
         return {"started": False, "reason": "LIVE requires exact ack", "required_ack": AUTONOMY_ACK}
-    if mode is SessionMode.LIVE and not override_evidence_gate:
-        from autonomy.canary import evaluate_canary_readiness
-
-        gate_ledger = AutonomyLedger()
-        try:
-            readiness = evaluate_canary_readiness(gate_ledger)
-        finally:
-            gate_ledger.close()
-        if not readiness.ready:
+    if mode is SessionMode.LIVE:
+        readiness = live_session_readiness()
+        if not readiness.get("execution_authority"):
             return {
                 "started": False,
-                "reason": "LIVE blocked by evidence gate",
-                "blockers": readiness.blockers,
-                "evidence": readiness.evidence,
-                "override_hint": "pass override_evidence_gate=True only with deliberate operator intent",
+                "reason": "LIVE blocked by explicit live authority contracts",
+                "blockers": [readiness.get("blocker") or "LIVE_AUTHORITY_BLOCKED"],
+                "live_authority": readiness,
+                "paper_results_authority": PAPER_RESULTS_AUTHORITY,
+            }
+        # A locally armed contract is necessary but not sufficient.  Explicit
+        # session start must also prove that current credentials can perform a
+        # signed read and the live account can fund the smallest contract.
+        try:
+            balance_cents = _live_balance_cents()
+        except Exception as exc:
+            return {
+                "started": False,
+                "reason": "LIVE blocked by balance/credential readiness",
+                "blockers": [
+                    "Kalshi signed balance read failed; no live session authority written"
+                ],
+                "error_type": type(exc).__name__,
+            }
+        if balance_cents < MIN_LIVE_SESSION_BALANCE_CENTS:
+            return {
+                "started": False,
+                "reason": "LIVE blocked by balance/credential readiness",
+                "blockers": [
+                    f"kalshi balance {balance_cents}c below minimum "
+                    f"{MIN_LIVE_SESSION_BALANCE_CENTS}c"
+                ],
+                "balance_cents": balance_cents,
             }
     now = datetime.now(timezone.utc)
     payload = {
@@ -91,8 +148,11 @@ def start_session(mode: SessionMode, ack: str = "", hours: float = 24.0,
     }
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
-    # Starting a session clears a stale kill file only on explicit start.
-    if KILL_PATH.exists():
+    # Clear the global switch only when the target that was actually written
+    # resolves to the real repository production session.  Call shape is not
+    # authority: an omitted ``session_path`` whose ``SESSION_PATH`` alias was
+    # redirected to a test/alternate runtime must not clear the global KILL.
+    if _is_real_production_session_target(path) and KILL_PATH.exists():
         KILL_PATH.unlink()
     return {"started": True, "mode": mode.value, "expires_at": payload["expires_at"]}
 
@@ -116,7 +176,18 @@ def session_status(ledger: AutonomyLedger | None = None) -> dict[str, Any]:
     own_ledger = ledger is None
     ledger = ledger or AutonomyLedger()
     try:
-        status["performance"] = ledger.performance_summary()
+        status["live_performance"] = {
+            "scope": "verified_live_only",
+            "realized_pnl_cents": ledger.realized_pnl_cents("live"),
+            "execution_authority": False,
+        }
+        status["paper_history"] = {
+            "status": PAPER_RESULTS_AUTHORITY,
+            "raw_history_preserved": True,
+            "execution_authority": False,
+            "can_enable_live": False,
+            "can_block_live": False,
+        }
     finally:
         if own_ledger:
             ledger.close()
@@ -138,8 +209,8 @@ def session_status(ledger: AutonomyLedger | None = None) -> dict[str, Any]:
     shadow_risk = normalized_risk(Path("runtime/autonomy/risk_state.json"))
     live_risk = normalized_risk(Path("runtime/autonomy/risk_state_live.json"))
     status["risk_states"] = {"shadow": shadow_risk, "live": live_risk}
-    active_scope = "live" if session.get("mode") == SessionMode.LIVE.value else "shadow"
-    status["risk_state"] = status["risk_states"].get(active_scope)
+    status["risk_state"] = live_risk
+    status["risk_state_scope"] = "live"
     return status
 
 
@@ -209,8 +280,23 @@ def _order_status_fn(order_id: str) -> dict[str, Any]:
     return _run_coro_sync(fetch())
 
 
-def build_brain(mode: SessionMode):
-    """Assemble the full predator stack for the given mode."""
+def _background_debate_live_enabled(config_enabled: bool) -> bool:
+    """Return the effective two-key gate for scheduled brain debate."""
+    return config_enabled is True and os.environ.get("DUMMY_DEBATE_LIVE") == "1"
+
+
+def build_brain(
+    mode: SessionMode,
+    *,
+    ledger_path: Path | str | None = None,
+    source_health_path: Path | str | None = None,
+):
+    """Assemble the full predator stack for the given mode.
+
+    Runtime callers use the canonical paths by default. Tests and offline
+    tooling can inject isolated paths so registry inspection never opens or
+    mutates the multi-gigabyte production ledger.
+    """
     from autonomy.brain import PredatorBrain
 
     from autonomy.signals.crypto_indicators import (
@@ -228,10 +314,19 @@ def build_brain(mode: SessionMode):
         TeamSportsIntelligenceSignal,
     )
 
-    ledger = AutonomyLedger()
-    registry = SourceRegistry(health_path=Path("runtime/autonomy/source_health.json"))
+    ledger = (
+        AutonomyLedger(db_path=ledger_path)
+        if ledger_path is not None
+        else AutonomyLedger()
+    )
+    registry = SourceRegistry(
+        health_path=(
+            Path(source_health_path)
+            if source_health_path is not None
+            else Path("runtime/autonomy/source_health.json")
+        )
+    )
     registry.register(MarketPriorSignal())
-    registry.register(OpenMeteoWeatherSignal.from_calibration())
     crypto_hub = CryptoDataHub()
     registry.register(CryptoSpotVolSignal(fetch_spot_and_vol=crypto_hub.flat_spot_and_vol))
     # Challenger crypto model (EWMA vol + fat tails) runs beside the champion
@@ -300,11 +395,6 @@ def build_brain(mode: SessionMode):
     from autonomy.signals.crypto_chartist import CryptoChartistSignal
 
     registry.register(CryptoChartistSignal(fetch_state=crypto_hub.state))
-    # CommoditiesSpotVolSignal is retained only as challenger evidence: with
-    # COMMODITIES dropped from the scanner's trading verticals it no longer
-    # receives tradable markets, but keeping it registered is harmless and
-    # preserves its settled-market record.
-    registry.register(CommoditiesSpotVolSignal())
     # One shared season monitor gates every sports warmup: dormant leagues
     # skip their per-cycle fetches and auto-wake when preseason games appear
     # on the scoreboard. Sharing one instance keeps one verdict cache and
@@ -376,7 +466,7 @@ def build_brain(mode: SessionMode):
     # point-in-time evidence. Their challenger gate keeps them out of the
     # execution ensemble until the autonomous promotion ladder (owner
     # directive 2026-07-16, docs/AUTO_PROMOTION.md) earns them a per-scope
-    # place from settled proof-of-profit evidence.
+    # place from forward witnessed-fill evidence.
     # UFC and Formula One intelligence retired 2026-07-12 (operator directive):
     # their markets route to no sports model and are simply never forecast.
     registry.register(BaseballIntelligenceSignal(seasons=seasons))
@@ -440,7 +530,7 @@ def build_brain(mode: SessionMode):
     # docstring), so registering it here only makes it observable in the
     # ledger; it stays excluded from forecaster.fuse() until the autonomous
     # promotion ladder (docs/AUTO_PROMOTION.md) earns its exact scope a
-    # place from settled proof-of-profit evidence.
+    # place from forward witnessed-fill evidence.
     registry.register(PowerRatingsSignal(seasons=seasons))
     registry.register(CrossVenueSignal())
     # Wave-2 E4: Polymarket cross-venue reference pricing extended to CRYPTO and
@@ -478,6 +568,21 @@ def build_brain(mode: SessionMode):
     # per-market source (it must await the router from the async loop).
 
     live = mode is SessionMode.LIVE
+    # The central firewall's account mode is derived from the same validated,
+    # expiring session file the executor rechecks at submit time.  Merely
+    # constructing a LIVE brain never asserts authority.
+    from core import state as core_state
+    from core.ontology import AccountMode
+
+    current_session = load_session()
+    if (
+        live
+        and current_session.get("valid")
+        and current_session.get("mode") == SessionMode.LIVE.value
+    ):
+        core_state.STATE.set_mode(AccountMode.AUTONOMOUS_LIVE_CAPPED)
+    else:
+        core_state.STATE.set_mode(AccountMode.READ_ONLY if not live else AccountMode.OFF)
     if live:
         # The signed client and the firewall adapter read credentials from the
         # process environment; a live brain must have them loaded up front.
@@ -514,11 +619,13 @@ def build_brain(mode: SessionMode):
         from model_router.router import ModelRouter
 
         router = ModelRouter()
-        # Enable the live LLM panel for THIS process only when the operator
-        # opts in via env. The global config file stays false so the test
-        # suite never makes paid network calls.
-        if os.environ.get("DUMMY_DEBATE_LIVE") == "1":
-            router.config.live_model_calls_enabled = True
+        # Background debate is a two-key gate: the checked routing config and
+        # the explicit process opt-in must BOTH be armed.  An inherited user
+        # environment variable must never override a disabled config and turn
+        # a scheduled shadow/test process into an accidental paid-call loop.
+        router.config.live_model_calls_enabled = _background_debate_live_enabled(
+            router.config.live_model_calls_enabled
+        )
     except Exception:
         router = None
 
@@ -539,6 +646,7 @@ def build_brain(mode: SessionMode):
         risk_brain=RiskBrain(state_path=risk_state_path),
         executor=Executor(
             mode,
+            risk_state_path=risk_state_path,
             quote_fn=quote_fn,
             shadow_book_fn=shadow_book_fetcher,
             # Fail-closed stale-data submit gate (defaults documented in
@@ -557,5 +665,8 @@ def build_brain(mode: SessionMode):
         balance_fn=_live_balance_cents if live else None,
         router=router,
         exchange_status_fn=fetch_exchange_status,
-        performance_guard=PerformanceGuard(),
+        # The frozen performance quarantine is derived from the retired
+        # paper/shadow backtest. It remains useful for shadow research, but it
+        # cannot block or authorize a LIVE candidate after the authority pivot.
+        performance_guard=(None if live else PerformanceGuard()),
     )

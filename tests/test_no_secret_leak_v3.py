@@ -160,3 +160,20 @@ def test_redact_masks_secret_keys():
     assert redacted["api_key_id"] == "***REDACTED***"
     assert redacted["private_key"] == "***REDACTED***"
     assert redacted["safe"] == "visible"
+
+
+def test_nested_redaction_snapshots_environment_once(monkeypatch):
+    calls = []
+
+    def secrets():
+        calls.append(True)
+        return ["dynamic-secret"]
+
+    monkeypatch.setattr(secret_guard, "_current_env_secrets", secrets)
+    redacted = secret_guard.redact(
+        {"rows": [{"title": "dynamic-secret"}, {"title": "dynamic-secret"}]}
+    )
+
+    assert calls == [True]
+    assert redacted["rows"][0]["title"] == "***REDACTED***"
+    assert redacted["rows"][1]["title"] == "***REDACTED***"

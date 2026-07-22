@@ -8,6 +8,7 @@ non-control policy consults the new guard hooks.
 from __future__ import annotations
 
 import asyncio
+from datetime import datetime, timedelta, timezone
 
 import pytest
 
@@ -17,7 +18,15 @@ from autonomy.execution_policy import (
     default_cohorts,
 )
 from autonomy.executor import Executor
-from autonomy.ontology import Decision, DecisionAction, Forecast, OutcomeKind, SessionMode
+from autonomy.ontology import (
+    Decision,
+    DecisionAction,
+    Forecast,
+    MarketView,
+    OutcomeKind,
+    SessionMode,
+    Vertical,
+)
 
 
 def _decision(price: int = 48, count: int = 2, forecast_p: float = 0.8) -> Decision:
@@ -30,6 +39,23 @@ def _decision(price: int = 48, count: int = 2, forecast_p: float = 0.8) -> Decis
         side="yes", price_cents=price, count=count, ev_cents_per_contract=5.0,
         kelly_fraction=0.1, notional_cents=price * count, forecast=forecast,
         risk_snapshot={},
+    )
+
+
+def _market() -> MarketView:
+    return MarketView(
+        ticker="KXBTC-26JUN01-A",
+        title="BTC test",
+        vertical=Vertical.CRYPTO,
+        status="active",
+        close_time=(datetime.now(timezone.utc) + timedelta(hours=1)).isoformat(),
+        yes_bid=48,
+        yes_ask=52,
+        no_bid=48,
+        no_ask=52,
+        volume=100,
+        liquidity=100,
+        raw={"category": "Crypto"},
     )
 
 
@@ -94,11 +120,13 @@ def test_invalid_mode_and_cohort_rejected():
 
 def test_executor_control_reproduces_default_behavior_exactly():
     decision = _decision()
-    default = asyncio.run(Executor(SessionMode.SHADOW).execute(decision))
+    default = asyncio.run(
+        Executor(SessionMode.SHADOW).execute(decision, market=_market())
+    )
     control = asyncio.run(
         Executor(
             SessionMode.SHADOW, execution_policy=ExecutionPolicy.maker_only_control()
-        ).execute(decision)
+        ).execute(decision, market=_market())
     )
     assert default.kind is control.kind
     assert default.fill_price_cents == control.fill_price_cents
@@ -118,7 +146,7 @@ def test_c3_divergence_cap_blocks_wide_divergence():
     outcome = asyncio.run(
         Executor(
             SessionMode.SHADOW, execution_policy=ExecutionPolicy.adverse_guard_maker()
-        ).execute(decision, market_prior_yes=0.5)
+        ).execute(decision, market_prior_yes=0.5, market=_market())
     )
     assert outcome.kind is OutcomeKind.BLOCKED_LOCAL
     assert outcome.detail["reason"] == "execution_policy_divergence_cap"
@@ -130,7 +158,7 @@ def test_c3_divergence_cap_allows_narrow_divergence():
     outcome = asyncio.run(
         Executor(
             SessionMode.SHADOW, execution_policy=ExecutionPolicy.adverse_guard_maker()
-        ).execute(decision, market_prior_yes=0.75)
+        ).execute(decision, market_prior_yes=0.75, market=_market())
     )
     assert outcome.kind is OutcomeKind.SHADOW
 
@@ -141,7 +169,7 @@ def test_c3_fails_open_without_market_prior():
     outcome = asyncio.run(
         Executor(
             SessionMode.SHADOW, execution_policy=ExecutionPolicy.adverse_guard_maker()
-        ).execute(decision)
+        ).execute(decision, market=_market())
     )
     assert outcome.kind is OutcomeKind.SHADOW
 
@@ -150,6 +178,8 @@ def test_control_never_blocks_on_divergence():
     # The control policy ignores market prior entirely (no new branch).
     decision = _decision(forecast_p=0.99)
     outcome = asyncio.run(
-        Executor(SessionMode.SHADOW).execute(decision, market_prior_yes=0.01)
+        Executor(SessionMode.SHADOW).execute(
+            decision, market_prior_yes=0.01, market=_market()
+        )
     )
     assert outcome.kind is OutcomeKind.SHADOW

@@ -26,8 +26,14 @@ def test_dashboard_exposes_mispricing_monitor(tmp_path):
 def test_dashboard_fleet_includes_the_monitor_role(tmp_path):
     state = assemble_dashboard_state(runtime_dir=tmp_path)
     roles = [row["role"] for row in state["scheduler_fleet"]]
-    assert "mispricing monitor" in roles
+    assert "legacy mispricing research (non-authoritative)" in roles
     assert MISPRICING_TASK_NAME == "DummyMispricingMonitor"
+    assert state["mispricing_monitor_authority"] == {
+        "status": "LEGACY_RESEARCH_NON_AUTHORITATIVE",
+        "execution_authority": False,
+        "can_gate_sports_grades": False,
+        "can_gate_live": False,
+    }
 
 
 def test_missing_monitor_file_yields_empty_block(tmp_path):

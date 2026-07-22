@@ -22,7 +22,10 @@ def test_four_factors_math():
 def _game(gid, start, home, away, hs, as_):
     return {"game_id": gid, "league": "wnba", "season": 2025, "start_time": start,
             "home": home, "away": away, "home_score": hs, "away_score": as_,
-            "status": "final", "source": "t"}
+            "status": "final", "source": "t",
+            "result_available_at": start.replace("T00:00:00Z", "T03:00:00Z"),
+            "received_at": start.replace("T00:00:00Z", "T03:05:00Z"),
+            "provenance_quality": "source_reported"}
 
 
 def _seed(tmp_path):

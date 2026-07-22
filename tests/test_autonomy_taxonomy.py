@@ -58,7 +58,7 @@ def test_specialist_for_resolves_exact_and_prefixed_sources():
     assert specialist_for("") == "other"
 
 
-def test_registry_completeness_tripwire():
+def test_registry_completeness_tripwire(tmp_path):
     """Every REGISTERED source must resolve to a real specialist.
 
     This is the alarm: a new signal shipped without a taxonomy home resolves
@@ -67,14 +67,21 @@ def test_registry_completeness_tripwire():
     from autonomy.ontology import SessionMode
     from autonomy.session import build_brain
 
-    brain = build_brain(SessionMode.SHADOW)
-    names = sorted(getattr(s, "name", "") for s in brain.registry.sources())
-    # WS-A2: PowerRatingsSignal must actually be wired into build_brain --
-    # not just importable/tested in isolation -- or this challenger stays
-    # permanently inert in the live pipeline.
-    assert "power_ratings" in names
-    unmapped = sorted(name for name in names if specialist_for(name) == "other")
-    assert unmapped == [], f"sources with no taxonomy home: {unmapped}"
+    brain = build_brain(
+        SessionMode.SHADOW,
+        ledger_path=tmp_path / "registry-ledger.db",
+        source_health_path=tmp_path / "source-health.json",
+    )
+    try:
+        names = sorted(getattr(s, "name", "") for s in brain.registry.sources())
+        # WS-A2: PowerRatingsSignal must actually be wired into build_brain --
+        # not just importable/tested in isolation -- or this challenger stays
+        # permanently inert in the live pipeline.
+        assert "power_ratings" in names
+        unmapped = sorted(name for name in names if specialist_for(name) == "other")
+        assert unmapped == [], f"sources with no taxonomy home: {unmapped}"
+    finally:
+        brain.ledger.close()
 
 
 # -- market type + scope -------------------------------------------------------

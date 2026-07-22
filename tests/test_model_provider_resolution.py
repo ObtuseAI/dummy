@@ -47,8 +47,10 @@ async def test_resolver_returns_mock_only_without_key(monkeypatch, no_project_en
 
 
 @pytest.mark.asyncio
-async def test_resolver_proves_live_via_model_list(monkeypatch):
-    monkeypatch.setenv("DEEPSEEK_API_KEY", "sk-test")
+async def test_resolver_proves_live_via_model_list(
+    monkeypatch, model_network_capability
+):
+    monkeypatch.setenv("OPENROUTER_API_KEY", "sk-test")
     resolver = ModelProviderResolver()
 
     async def _fake_model_list(*args, **kwargs):
@@ -60,6 +62,8 @@ async def test_resolver_proves_live_via_model_list(monkeypatch):
             default_base="https://api.deepseek.com",
             default_aliases=["deepseek-chat"],
             smoke_prompt=_DEEPSEEK_SMOKE_PROMPT,
+            allow_live=True,
+            network_capability=model_network_capability,
         )
 
     assert result.status == "LIVE_PROVEN"
@@ -68,8 +72,10 @@ async def test_resolver_proves_live_via_model_list(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_resolver_proves_live_via_alias_smoke(monkeypatch):
-    monkeypatch.setenv("DEEPSEEK_API_KEY", "sk-test")
+async def test_resolver_proves_live_via_alias_smoke(
+    monkeypatch, model_network_capability
+):
+    monkeypatch.setenv("OPENROUTER_API_KEY", "sk-test")
     resolver = ModelProviderResolver()
 
     async def _fake_model_list(*args, **kwargs):
@@ -92,6 +98,8 @@ async def test_resolver_proves_live_via_alias_smoke(monkeypatch):
                 default_base="https://api.deepseek.com",
                 default_aliases=["deepseek-chat"],
                 smoke_prompt=_DEEPSEEK_SMOKE_PROMPT,
+                allow_live=True,
+                network_capability=model_network_capability,
             )
 
     assert result.status == "LIVE_PROVEN"
@@ -100,8 +108,10 @@ async def test_resolver_proves_live_via_alias_smoke(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_resolver_reports_operator_config_when_all_aliases_404(monkeypatch):
-    monkeypatch.setenv("DEEPSEEK_API_KEY", "sk-test")
+async def test_resolver_reports_operator_config_when_all_aliases_404(
+    monkeypatch, model_network_capability
+):
+    monkeypatch.setenv("OPENROUTER_API_KEY", "sk-test")
     resolver = ModelProviderResolver()
 
     async def _fake_request(*args, **kwargs):
@@ -114,6 +124,8 @@ async def test_resolver_reports_operator_config_when_all_aliases_404(monkeypatch
                 default_base="https://api.deepseek.com",
                 default_aliases=["unknown-model"],
                 smoke_prompt=_DEEPSEEK_SMOKE_PROMPT,
+                allow_live=True,
+                network_capability=model_network_capability,
             )
 
     assert result.status == "OPERATOR_MODEL_CONFIG_REQUIRED"

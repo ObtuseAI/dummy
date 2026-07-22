@@ -15,10 +15,20 @@ from enum import Enum
 from pathlib import Path
 from typing import Any
 
+from core.caps_authority import (
+    CAPS_AUTHORITY_REGISTRATION_PATH as DEFAULT_CAPS_AUTHORITY_REGISTRATION_PATH,
+    CURRENT_CAPS_AUTHORITY_EPOCH,
+    CURRENT_CAPS_SCHEMA_VERSION,
+    LEGACY_CAPS_SHA256,
+    PROTECTED_CAPS_SHA256,
+    evaluate_caps_authority,
+)
+
 V3_CANDIDATE_PATH = Path("artifacts/dummy/next_proof_candidate/VALIDATED_KALSHI_PROOF_CANDIDATE_V3.json")
 V3_REPORT_PATH = Path("artifacts/dummy/next_proof_candidate/NEXT_PROOF_CANDIDATE_DISCOVERY_V3_REPORT.json")
 REAL_PROOF_REGISTRY_PATH = Path("artifacts/dummy/real_proof_registry.json")
 CAPS_PATH = Path("configs/caps.json")
+CAPS_AUTHORITY_REGISTRATION_PATH = DEFAULT_CAPS_AUTHORITY_REGISTRATION_PATH
 ADAPTER_DESCRIPTOR_PATH = Path("runtime/operator_external/livebrokerfirewall_adapter_descriptor.json")
 LIVE_SUBMIT_PATH = Path("configs/live_submit.json")
 RUNTIME_APPROVALS_DIR = Path("runtime/approvals")
@@ -28,10 +38,11 @@ SECOND_PROOF_LOCK_DIR = Path("runtime/proof_locks")
 # Hashes from the validated V3 read-only discovery candidate and its context.
 EXPECTED_CANDIDATE_HASH = "937EDB874832F4AAFD9A421E0A13AA781DB2965C79C0A3BBD3FC5C1B4C9C9B85"
 EXPECTED_REGISTRY_HASH = "1C895591A874389AA3855A281B856EE239F920579DC04564B949940CCCF10113"
-EXPECTED_CAPS_HASH = "F7D91453FECCB3A216B733589D69F1C21B5A8CEF753096360630B0B973CAE5B5"
+EXPECTED_CAPS_HASH = PROTECTED_CAPS_SHA256
 EXPECTED_DESCRIPTOR_HASH = "9A3A4ABF56B7BDE9BD84901127A036C8C5A278BB49046B53A1D8AE1B96473508"
 EXPECTED_RUNTIME_APPROVAL_HASH = "726BA607F30462EFAC8A22D43DD515EDF18F4C7DB97DA8F47A51C37D89F99D15"
 EXPECTED_LIVE_SUBMIT_DISABLED_HASH = "3875B81E90B636147CC5BCE5F247B71AD25877C165F4773C98D5C2AD61DB515E"
+SECOND_PROOF_AUTHORITY_SCHEMA_VERSION = 2
 
 # Exact operator confirmation required to activate a second controlled proof.
 REQUIRED_CONFIRMATION = (
@@ -51,6 +62,7 @@ class SecondProofAuthorityStatus(Enum):
 
 @dataclass(frozen=True)
 class SecondProofAuthority:
+    schema_version: int
     authority_id: str
     authority_type: str
     status: SecondProofAuthorityStatus
@@ -65,6 +77,13 @@ class SecondProofAuthority:
     candidate_count: int
     candidate_order_type: str
     caps_hash: str
+    caps_schema_version: int
+    caps_authority_epoch: str
+    caps_authority_state: str
+    caps_authority_registration_sha256: str
+    caps_authority_registration_valid: bool
+    legacy_caps_authority_invalidated: bool
+    execution_authority: bool
     descriptor_hash: str
     runtime_approval_hash: str
     live_submit_required_hash: str | None
@@ -170,12 +189,31 @@ def build_second_proof_authority_draft() -> SecondProofAuthority:
         raise ValueError(reason)
 
     actual_candidate_hash = _sha256_file(V3_CANDIDATE_PATH)
-    caps_hash = _sha256_file(CAPS_PATH)
+    caps_authority = evaluate_caps_authority(
+        caps_path=CAPS_PATH,
+        registration_path=CAPS_AUTHORITY_REGISTRATION_PATH,
+    )
+    if not caps_authority.config_integrity_valid:
+        raise ValueError("BLOCKED_CAPS_V2_CONFIG_INTEGRITY")
+    if not caps_authority.authority_registration_valid:
+        raise ValueError("BLOCKED_CAPS_AUTHORITY_REGISTRATION_REQUIRED")
+    if (
+        caps_authority.state
+        != "REGISTERED_FOR_SEPARATE_LIVE_GATE_EVALUATION"
+    ):
+        raise ValueError("BLOCKED_CAPS_AUTHORITY_STATE")
+    caps_hash = caps_authority.current_caps_sha256
+    registration_hash = caps_authority.authority_registration_sha256
+    if not caps_hash or not registration_hash:
+        raise ValueError("BLOCKED_CAPS_AUTHORITY_BINDING_MISSING")
+    if caps_hash == LEGACY_CAPS_SHA256:
+        raise ValueError("BLOCKED_LEGACY_CAPS_AUTHORITY_INVALIDATED")
     descriptor_hash = _sha256_file(ADAPTER_DESCRIPTOR_PATH)
     runtime_approval_hash = _runtime_approval_hash()
     live_submit_hash = _sha256_file(LIVE_SUBMIT_PATH)
 
     return SecondProofAuthority(
+        schema_version=SECOND_PROOF_AUTHORITY_SCHEMA_VERSION,
         authority_id=f"second-proof-{uuid.uuid4().hex[:16]}",
         authority_type="SECOND_CONTROLLED_REAL_BROKER_PROOF",
         status=SecondProofAuthorityStatus.DRAFT,
@@ -189,7 +227,16 @@ def build_second_proof_authority_draft() -> SecondProofAuthority:
         candidate_price=int(candidate.get("price", 1)),
         candidate_count=int(candidate.get("count", 1)),
         candidate_order_type=candidate.get("order_type", "LIMIT"),
-        caps_hash=caps_hash or EXPECTED_CAPS_HASH,
+        caps_hash=caps_hash,
+        caps_schema_version=CURRENT_CAPS_SCHEMA_VERSION,
+        caps_authority_epoch=CURRENT_CAPS_AUTHORITY_EPOCH,
+        caps_authority_state=caps_authority.state,
+        caps_authority_registration_sha256=registration_hash,
+        caps_authority_registration_valid=True,
+        legacy_caps_authority_invalidated=True,
+        # A draft records predicates only.  It never carries execution
+        # authority, even after operator activation.
+        execution_authority=False,
         descriptor_hash=descriptor_hash or EXPECTED_DESCRIPTOR_HASH,
         runtime_approval_hash=runtime_approval_hash or EXPECTED_RUNTIME_APPROVAL_HASH,
         live_submit_required_hash=live_submit_hash or EXPECTED_LIVE_SUBMIT_DISABLED_HASH,
@@ -225,6 +272,12 @@ def activate_second_proof_authority(
         raise ValueError("MISSING_OPERATOR_REASON_OR_EXPIRY")
     if _is_stale(expires_at):
         raise ValueError("EXPIRES_AT_STALE")
+    if draft.schema_version != SECOND_PROOF_AUTHORITY_SCHEMA_VERSION:
+        raise ValueError("AUTHORITY_SCHEMA_VERSION_MISMATCH")
+    if draft.caps_hash == LEGACY_CAPS_SHA256:
+        raise ValueError("LEGACY_CAPS_AUTHORITY_INVALIDATED")
+    if draft.execution_authority is not False:
+        raise ValueError("DRAFT_MUST_NOT_CARRY_EXECUTION_AUTHORITY")
 
     actual_candidate_hash = _sha256_file(V3_CANDIDATE_PATH)
     if actual_candidate_hash != draft.candidate_hash:
@@ -238,6 +291,26 @@ def activate_second_proof_authority(
     inv_ok, inv_reason = _registry_invariants(registry)
     if not inv_ok:
         raise ValueError(inv_reason)
+
+    caps_authority = evaluate_caps_authority(
+        caps_path=CAPS_PATH,
+        registration_path=CAPS_AUTHORITY_REGISTRATION_PATH,
+    )
+    if not caps_authority.config_integrity_valid:
+        raise ValueError("CAPS_V2_CONFIG_INTEGRITY_INVALID")
+    if not caps_authority.authority_registration_valid:
+        raise ValueError("CAPS_AUTHORITY_REGISTRATION_INVALID")
+    if caps_authority.current_caps_sha256 != draft.caps_hash:
+        raise ValueError("CAPS_HASH_CHANGED")
+    if caps_authority.schema_version != draft.caps_schema_version:
+        raise ValueError("CAPS_SCHEMA_VERSION_CHANGED")
+    if caps_authority.authority_epoch != draft.caps_authority_epoch:
+        raise ValueError("CAPS_AUTHORITY_EPOCH_CHANGED")
+    if (
+        caps_authority.authority_registration_sha256
+        != draft.caps_authority_registration_sha256
+    ):
+        raise ValueError("CAPS_AUTHORITY_REGISTRATION_CHANGED")
 
     live_submit_hash = _sha256_file(LIVE_SUBMIT_PATH)
 
@@ -269,8 +342,22 @@ def authority_to_dict(authority: SecondProofAuthority) -> dict[str, Any]:
 
 def authority_from_dict(data: dict[str, Any]) -> SecondProofAuthority:
     """Deserialize authority from a JSON-safe dict."""
-    status_value = data.get("status", "draft")
-    status = SecondProofAuthorityStatus(status_value) if isinstance(status_value, str) else SecondProofAuthorityStatus.DRAFT
+    if data.get("schema_version") != SECOND_PROOF_AUTHORITY_SCHEMA_VERSION:
+        raise ValueError("AUTHORITY_SCHEMA_VERSION_MISMATCH")
+    if data.get("caps_schema_version") != CURRENT_CAPS_SCHEMA_VERSION:
+        raise ValueError("CAPS_SCHEMA_VERSION_MISMATCH")
+    if data.get("caps_authority_epoch") != CURRENT_CAPS_AUTHORITY_EPOCH:
+        raise ValueError("CAPS_AUTHORITY_EPOCH_MISMATCH")
+    if data.get("caps_hash") in {None, "", LEGACY_CAPS_SHA256}:
+        raise ValueError("LEGACY_OR_MISSING_CAPS_HASH")
+    if data.get("caps_authority_registration_valid") is not True:
+        raise ValueError("CAPS_AUTHORITY_REGISTRATION_NOT_VALID")
+    if data.get("execution_authority") is not False:
+        raise ValueError("AUTHORITY_MUST_NOT_CARRY_EXECUTION_AUTHORITY")
+    status_value = data.get("status")
+    if not isinstance(status_value, str):
+        raise ValueError("AUTHORITY_STATUS_MISSING")
+    status = SecondProofAuthorityStatus(status_value)
     fields = {k: v for k, v in data.items() if k != "status"}
     return SecondProofAuthority(status=status, **fields)
 
@@ -288,6 +375,13 @@ def authority_status(authority: SecondProofAuthority | None) -> dict[str, Any]:
         "candidate_count": authority.candidate_count,
         "candidate_order_type": authority.candidate_order_type,
         "candidate_hash": authority.candidate_hash,
+        "schema_version": authority.schema_version,
+        "caps_schema_version": authority.caps_schema_version,
+        "caps_authority_epoch": authority.caps_authority_epoch,
+        "caps_authority_state": authority.caps_authority_state,
+        "caps_authority_registration_valid": authority.caps_authority_registration_valid,
+        "legacy_caps_authority_invalidated": authority.legacy_caps_authority_invalidated,
+        "execution_authority": authority.execution_authority,
         "market_orders_allowed": authority.market_orders_allowed,
         "scale_allowed": authority.scale_allowed,
         "autonomy_allowed": authority.autonomy_allowed,

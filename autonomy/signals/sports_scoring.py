@@ -125,7 +125,16 @@ class SportsScoringSignal:
             rationale=f"{league.upper()} scoring {home} vs {away} {detail} "
                       f"(E[margin]={exp_m:.1f}, E[total]={exp_t:.1f}, n={n})"
                       if exp_m is not None and exp_t is not None else f"{league.upper()} scoring {detail}",
-            features={"line": line, "expected_margin": round(exp_m, 2) if exp_m is not None else None,
-                      "expected_total": round(exp_t, 2) if exp_t is not None else None,
-                      "market_type": c.market_type, "min_games": n},
+            features={
+                "line": line,
+                "expected_margin": round(exp_m, 2) if exp_m is not None else None,
+                "expected_total": round(exp_t, 2) if exp_t is not None else None,
+                "market_type": c.market_type,
+                "min_games": n,
+                "challenger_only": True,
+                "promotion_eligible": True,
+                "point_in_time": True,
+                "public_read_only": True,
+                "sport": league,
+            },
         )

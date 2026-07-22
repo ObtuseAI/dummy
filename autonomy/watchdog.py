@@ -25,10 +25,11 @@ RUNTIME_DIR = Path("runtime/autonomy")
 STATUS_PATH = RUNTIME_DIR / "watchdog_status.json"
 WATCHDOG_STATE_PATH = RUNTIME_DIR / "watchdog_state.json"
 
-# Defaults chosen against the live runtime (ledger ~9.25 GB, D: free ~126 GB):
-# the ledger ceiling sits above today's size so it flags growth, not the
-# steady state; the disk floor and error-streak threshold are conservative.
-DEFAULT_LEDGER_MAX_GB = 12.0
+# Capacity ceiling is set above the measured seven-day hot-ledger steady state
+# (12.24 GB on 2026-07-22) while remaining far below available runtime-disk
+# capacity.  This keeps normal retained evidence healthy without weakening the
+# independent free-disk floor or allowing unbounded ledger growth.
+DEFAULT_LEDGER_MAX_GB = 16.0
 DEFAULT_DISK_FLOOR_GB = 10.0
 DEFAULT_ERROR_STREAK_THRESHOLD = 3
 STALE_MULTIPLIER = 2.0
@@ -44,6 +45,8 @@ class TaskSpec:
     cadence_seconds: float
     role: str = ""
     stale_multiplier: float = STALE_MULTIPLIER
+    authoritative: bool = True
+    requires_seed_binding: bool = False
 
     @property
     def threshold_seconds(self) -> float:
@@ -52,10 +55,53 @@ class TaskSpec:
 
 # Cadences mirror scripts/install_*_task.ps1 (minutes -> seconds; daily -> 86400).
 DEFAULT_TASKS: list[TaskSpec] = [
-    TaskSpec("DummyShadowPredator", "heartbeat.json", ("last_cycle_at",), 600, "shadow predator"),
-    TaskSpec("DummyMispricingMonitor", "mispricing_monitor_latest.json", ("generated_at",), 120, "mispricing monitor"),
-    TaskSpec("DummyCryptoPaperTwin", "crypto_paper_twin_latest.json", ("completed_at", "started_at"), 300, "crypto paper twin"),
-    TaskSpec("DummySportsSimulation", "sports_simulation_latest.json", ("completed_at", "started_at"), 600, "sports paper twin"),
+    TaskSpec(
+        "DummyShadowPredator",
+        "heartbeat.json",
+        ("last_cycle_at",),
+        600,
+        "retired shadow research (non-authoritative)",
+        authoritative=False,
+    ),
+    TaskSpec(
+        "DummySportsModelSeed",
+        "sports_model_seed_authoritative_status.json",
+        ("last_success_at",),
+        300,
+        "authoritative sports model seed",
+        requires_seed_binding=True,
+    ),
+    TaskSpec(
+        "DummySportsBoardRefresh",
+        "bet_board_display.json",
+        ("generated_at",),
+        300,
+        "authoritative sports quote board",
+    ),
+    TaskSpec(
+        "DummyMispricingMonitor",
+        "mispricing_monitor_latest.json",
+        ("generated_at",),
+        300,
+        "legacy mispricing research (non-authoritative)",
+        authoritative=False,
+    ),
+    TaskSpec(
+        "DummyCryptoPaperTwin",
+        "crypto_paper_twin_latest.json",
+        ("completed_at", "started_at"),
+        300,
+        "retired crypto paper research (non-authoritative)",
+        authoritative=False,
+    ),
+    TaskSpec(
+        "DummySportsSimulation",
+        "sports_simulation_latest.json",
+        ("completed_at", "started_at"),
+        600,
+        "sports research simulation (non-authoritative)",
+        authoritative=False,
+    ),
     TaskSpec("DummySimulationTrainer", "simulation_training_latest.json", ("created_at",), 3600, "simulation trainer"),
     TaskSpec("DummyStrategyMiner", "strategy_mining_report.json", ("generated_at",), 86400, "strategy miner"),
     TaskSpec("DummyReadinessReport", "readiness_report.json", ("generated_at",), 86400, "readiness report"),
@@ -115,11 +161,33 @@ def evaluate_task(spec: TaskSpec, runtime_dir: Path, now_epoch: float) -> dict[s
     age = None if epoch is None else round(now_epoch - epoch, 1)
     # Fail-closed: a missing artifact or an unreadable timestamp is stale.
     stale = (age is None) or (age > spec.threshold_seconds)
+    integrity_status = "NOT_REQUIRED"
+    integrity_error: str | None = None
+    binding: dict[str, Any] | None = None
+    if spec.requires_seed_binding:
+        try:
+            from autonomy.sports_board_refresh import (
+                validate_authoritative_model_seed_binding,
+            )
+
+            binding = validate_authoritative_model_seed_binding(
+                seed_path=runtime_dir / "sports_model_seed_authoritative.json",
+                status_path=path,
+                now=datetime.fromtimestamp(now_epoch, tz=timezone.utc),
+            )
+            integrity_status = "VALID"
+        except Exception as exc:
+            # A fresh-looking status timestamp is not authority without an
+            # exact byte-hash/run binding to the producer's seed artifact.
+            stale = True
+            integrity_status = "INVALID"
+            integrity_error = f"{type(exc).__name__}: {exc}"
     data = _load_json(path) if present else None
     last_status = data.get("status") or data.get("last_status") if isinstance(data, dict) else None
     return {
         "task_name": spec.name,
         "role": spec.role,
+        "authoritative": spec.authoritative,
         "artifact": spec.artifact,
         "present": present,
         "timestamp_source": source,
@@ -128,6 +196,9 @@ def evaluate_task(spec: TaskSpec, runtime_dir: Path, now_epoch: float) -> dict[s
         "threshold_seconds": spec.threshold_seconds,
         "stale": bool(stale),
         "last_status": last_status,
+        "integrity_status": integrity_status,
+        "integrity_error": integrity_error,
+        "binding": binding,
     }
 
 
@@ -193,7 +264,16 @@ def evaluate_watchdog(
     kill = kill_path or (rd / "KILL")
     kill_present = kill.exists()
 
-    stale_tasks = [row["task_name"] for row in task_rows if row["stale"]]
+    stale_tasks = [
+        row["task_name"]
+        for row in task_rows
+        if row["stale"] and row["authoritative"]
+    ]
+    observational_stale_tasks = [
+        row["task_name"]
+        for row in task_rows
+        if row["stale"] and not row["authoritative"]
+    ]
     ledger_over = ledger_gb is not None and ledger_gb > ledger_max_gb
     disk_low = disk_gb is not None and disk_gb < disk_floor_gb
     error_streak_alarm = streak >= error_streak_threshold
@@ -204,6 +284,7 @@ def evaluate_watchdog(
         "healthy": healthy,
         "tasks": task_rows,
         "stale_tasks": stale_tasks,
+        "observational_stale_tasks": observational_stale_tasks,
         "cycle_error_streak": streak,
         "cycle_error_streak_threshold": error_streak_threshold,
         "latest_cycle_status": latest_status,

@@ -8,8 +8,11 @@ from dashboard.backend.main import app
 
 
 @pytest.fixture
-def client():
-    return TestClient(app)
+def client(monkeypatch):
+    token = "next-proof-v2-test-operator"
+    monkeypatch.setenv("DUMMY_OPERATOR_TOKEN", token)
+    with TestClient(app, headers={"X-Operator-Token": token}) as authenticated:
+        yield authenticated
 
 
 def test_next_proof_candidate_returns_200(client):

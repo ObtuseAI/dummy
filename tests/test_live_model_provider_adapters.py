@@ -7,10 +7,13 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from model_router.config import ProviderConfig
+from model_router.error_classifier import ProviderResponseSchemaError
 from model_router.providers import (
     DeepSeekV4FlashProvider,
     MinimaxM3Provider,
     MockProvider,
+    OpenRouterProvider,
+    ProviderError,
 )
 from model_router.tasks import ModelTask
 
@@ -19,7 +22,7 @@ from model_router.tasks import ModelTask
 def mock_config() -> ProviderConfig:
     return ProviderConfig(
         api_base="https://openrouter.ai/api/v1",
-        api_key_env="TEST_API_KEY",
+        api_key_env="OPENROUTER_API_KEY",
         model_name="test/model",
         timeout_seconds=5.0,
     )
@@ -27,6 +30,50 @@ def mock_config() -> ProviderConfig:
 
 def _expected_digest(prompt: str) -> str:
     return hashlib.sha256(prompt.encode("utf-8")).hexdigest()[:16]
+
+
+@pytest.mark.parametrize(
+    ("task", "payload"),
+    [
+        (
+            ModelTask.FORECAST_OPINION,
+            {"dummy_probability": "NaN", "confidence_score": 0.5, "reasoning": "x"},
+        ),
+        (
+            ModelTask.FORECAST_OPINION,
+            {"dummy_probability": 0.5, "confidence_score": 1.01, "reasoning": "x"},
+        ),
+        (
+            ModelTask.STRATEGY_CRITIQUE,
+            {"verdict": "gamble", "reasoning": "x"},
+        ),
+        (
+            ModelTask.RISK_CRITIQUE,
+            {"risk_level": "certain", "reasoning": "x"},
+        ),
+        (
+            ModelTask.MARKET_THESIS,
+            {"thesis": "x", "confidence": -0.1},
+        ),
+        (
+            ModelTask.RAPID_FORECAST,
+            {
+                "dummy_probability": 0.5,
+                "confidence_score": 0.6,
+                "reasoning": "x",
+                "action": "submit_now",
+                "entry_condition": "none",
+            },
+        ),
+    ],
+)
+def test_provider_semantic_validation_rejects_invalid_probability_contracts(
+    task,
+    payload,
+):
+    provider = MockProvider()
+    with pytest.raises(ProviderResponseSchemaError):
+        provider._validate_response(json.dumps(payload), task)
 
 
 @pytest.mark.asyncio
@@ -71,6 +118,13 @@ async def test_mock_provider_never_includes_raw_prompt():
 
 _TASK_CONTENT = {
     ModelTask.FORECAST_OPINION: {"dummy_probability": "0.55", "confidence_score": "0.72", "reasoning": "ok"},
+    ModelTask.RAPID_FORECAST: {
+        "dummy_probability": "0.55",
+        "confidence_score": "0.72",
+        "reasoning": "ok",
+        "action": "hold",
+        "entry_condition": "research only",
+    },
     ModelTask.STRATEGY_CRITIQUE: {"verdict": "proceed", "reasoning": "ok"},
     ModelTask.RISK_CRITIQUE: {"risk_level": "low", "reasoning": "ok"},
     ModelTask.NO_TRADE_REASON: {"reason": "mock", "contributing_factors": ["x"]},
@@ -86,6 +140,7 @@ def _make_post_mock(task: ModelTask = ModelTask.FORECAST_OPINION, response_json:
     response = MagicMock()
     response.status_code = status_code
     response.json.return_value = response_json or {
+        "model": "openai/gpt-5.6-luna",
         "choices": [{"message": {"content": json.dumps(_TASK_CONTENT[task])}}],
         "usage": {"prompt_tokens": 10, "completion_tokens": 5},
     }
@@ -105,13 +160,19 @@ def _make_post_mock(task: ModelTask = ModelTask.FORECAST_OPINION, response_json:
 
 
 @pytest.mark.asyncio
-async def test_deepseek_provider_success(mock_config, monkeypatch):
-    monkeypatch.setenv("TEST_API_KEY", "sk-test")
+async def test_deepseek_provider_success(
+    mock_config, monkeypatch, model_network_capability
+):
+    monkeypatch.setenv("OPENROUTER_API_KEY", "sk-test")
     provider = DeepSeekV4FlashProvider(mock_config)
 
     client_class, post_mock = _make_post_mock()
     with patch("model_router.providers.httpx.AsyncClient", client_class):
-        content, metadata = await provider.complete("prompt", ModelTask.FORECAST_OPINION)
+        content, metadata = await provider.complete(
+            "prompt",
+            ModelTask.FORECAST_OPINION,
+            network_capability=model_network_capability,
+        )
 
     assert json.loads(content)["dummy_probability"] == "0.55"
     assert metadata["provider"] == "deepseek_v4_flash"
@@ -127,13 +188,19 @@ async def test_deepseek_provider_success(mock_config, monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_minimax_provider_success(mock_config, monkeypatch):
-    monkeypatch.setenv("TEST_API_KEY", "sk-test")
+async def test_minimax_provider_success(
+    mock_config, monkeypatch, model_network_capability
+):
+    monkeypatch.setenv("OPENROUTER_API_KEY", "sk-test")
     provider = MinimaxM3Provider(mock_config)
 
     client_class, post_mock = _make_post_mock(task=ModelTask.STRATEGY_CRITIQUE)
     with patch("model_router.providers.httpx.AsyncClient", client_class):
-        content, metadata = await provider.complete("prompt", ModelTask.STRATEGY_CRITIQUE)
+        content, metadata = await provider.complete(
+            "prompt",
+            ModelTask.STRATEGY_CRITIQUE,
+            network_capability=model_network_capability,
+        )
 
     data = json.loads(content)
     assert "verdict" in data
@@ -142,7 +209,64 @@ async def test_minimax_provider_success(mock_config, monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_deepseek_provider_reads_env_overrides(monkeypatch):
+async def test_openrouter_provider_sends_luna_reasoning_effort_and_uses_configured_cost(
+    monkeypatch, model_network_capability
+):
+    monkeypatch.setenv("OPENROUTER_API_KEY", "sk-test")
+    cfg = ProviderConfig(
+        api_base="https://openrouter.ai/api",
+        api_key_env="OPENROUTER_API_KEY",
+        model_name="openai/gpt-5.6-luna",
+        reasoning_effort="medium",
+        prompt_cost_per_million=1.0,
+        completion_cost_per_million=6.0,
+    )
+    provider = OpenRouterProvider(cfg)
+    client_class, post_mock = _make_post_mock()
+    with patch("model_router.providers.httpx.AsyncClient", client_class):
+        _, metadata = await provider.complete(
+            "prompt",
+            ModelTask.FORECAST_OPINION,
+            network_capability=model_network_capability,
+        )
+
+    body = post_mock.await_args.kwargs["json"]
+    assert body["reasoning"] == {"effort": "medium"}
+    assert body["response_format"] == {"type": "json_object"}
+    assert metadata["cost_usd"] == round((10 * 1.0 + 5 * 6.0) / 1_000_000, 6)
+
+
+@pytest.mark.asyncio
+async def test_openrouter_provider_rejects_wrong_actual_model(
+    monkeypatch, model_network_capability
+):
+    monkeypatch.setenv("OPENROUTER_API_KEY", "sk-test")
+    cfg = ProviderConfig(
+        api_base="https://openrouter.ai/api",
+        api_key_env="OPENROUTER_API_KEY",
+        model_name="openai/gpt-5.6-luna",
+        max_retries=0,
+    )
+    provider = OpenRouterProvider(cfg)
+    response_json = {
+        "model": "openai/not-the-requested-model",
+        "choices": [{"message": {"content": json.dumps(_TASK_CONTENT[ModelTask.FORECAST_OPINION])}}],
+        "usage": {"prompt_tokens": 10, "completion_tokens": 5},
+    }
+    client_class, _post_mock = _make_post_mock(response_json=response_json)
+    with patch("model_router.providers.httpx.AsyncClient", client_class):
+        with pytest.raises(Exception, match="other than the configured exact route"):
+            await provider.complete(
+                "prompt",
+                ModelTask.FORECAST_OPINION,
+                network_capability=model_network_capability,
+            )
+
+
+@pytest.mark.asyncio
+async def test_deepseek_provider_rejects_unapproved_env_override(
+    monkeypatch, model_network_capability
+):
     monkeypatch.setenv("DEEPSEEK_API_KEY", "sk-deepseek")
     monkeypatch.setenv("DEEPSEEK_BASE_URL", "https://api.deepseek.test")
     monkeypatch.setenv("DEEPSEEK_MODEL", "deepseek-env-model")
@@ -156,15 +280,20 @@ async def test_deepseek_provider_reads_env_overrides(monkeypatch):
 
     client_class, post_mock = _make_post_mock()
     with patch("model_router.providers.httpx.AsyncClient", client_class):
-        _, metadata = await provider.complete("prompt", ModelTask.FORECAST_OPINION)
+        with pytest.raises(ProviderError, match="endpoint host is not approved"):
+            await provider.complete(
+                "prompt",
+                ModelTask.FORECAST_OPINION,
+                network_capability=model_network_capability,
+            )
 
-    assert metadata["model"] == "deepseek-env-model"
-    call_url = post_mock.await_args[0][0]
-    assert call_url.startswith("https://api.deepseek.test")
+    assert post_mock.await_count == 0
 
 
 @pytest.mark.asyncio
-async def test_provider_unavailable_without_key(mock_config, monkeypatch):
-    monkeypatch.delenv("TEST_API_KEY", raising=False)
+async def test_provider_unavailable_without_key(
+    mock_config, monkeypatch, no_project_env
+):
+    monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
     provider = DeepSeekV4FlashProvider(mock_config)
     assert not provider.available

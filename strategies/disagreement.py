@@ -2,7 +2,6 @@ from __future__ import annotations
 import json
 from datetime import datetime, timezone
 from decimal import Decimal
-from difflib import SequenceMatcher
 import statistics
 from typing import Any
 import uuid
@@ -41,7 +40,40 @@ class HybridDisagreementEngine:
         }
 
     def _agreement(self, a: str, b: str) -> Decimal:
-        return Decimal(str(round(SequenceMatcher(None, a, b).ratio(), 4)))
+        left = self._structured_view(a)
+        right = self._structured_view(b)
+        if left["probability"] is not None and right["probability"] is not None:
+            return (Decimal("1") - abs(left["probability"] - right["probability"])).quantize(
+                Decimal("0.0001")
+            )
+        if left["verdict"] is not None and right["verdict"] is not None:
+            return Decimal("1") if left["verdict"] == right["verdict"] else Decimal("0")
+        return Decimal("0.5")
+
+    @staticmethod
+    def _structured_view(content: str) -> dict[str, Any]:
+        try:
+            payload = json.loads(content)
+        except Exception:
+            return {"probability": None, "verdict": None}
+        if not isinstance(payload, dict):
+            return {"probability": None, "verdict": None}
+        probability = None
+        for key in ("dummy_probability", "probability", "probability_yes", "score"):
+            if key not in payload:
+                continue
+            try:
+                candidate = Decimal(str(payload[key]))
+                if Decimal("0") <= candidate <= Decimal("1"):
+                    probability = candidate
+                    break
+            except Exception:
+                continue
+        verdict = payload.get("verdict")
+        return {
+            "probability": probability,
+            "verdict": str(verdict).strip().lower() if verdict is not None else None,
+        }
 
 
 class HybridDisagreementEngineV2:

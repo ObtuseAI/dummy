@@ -30,7 +30,6 @@ FORBIDDEN_IMPORTS = {
 }
 ALLOWED_CREATE_ORDER_CALLERS = {
     "LiveBrokerFirewall.submit",
-    "KalshiSubmitter.submit_limit_order",
 }
 
 
@@ -129,7 +128,7 @@ def test_repo_strategies_no_direct_order_bypass(path: Path):
     assert not hits, f"Forbidden live-order path in {path.name}: {hits}"
 
 
-def test_only_firewall_and_submitter_call_create_order():
+def test_only_central_firewall_calls_create_order():
     callers = _find_create_order_callers(DUMMY_ROOT)
     qualnames = {c["qualname"] for c in callers}
     unexpected = qualnames - ALLOWED_CREATE_ORDER_CALLERS

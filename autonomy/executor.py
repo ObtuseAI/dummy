@@ -1,22 +1,29 @@
-"""Executor: routes decisions to the shadow book or the hardened live adapter.
+"""Executor: routes decisions to shadow or the central live firewall.
 
 Live mode requires a valid autonomy session authority (exact typed ack,
 unexpired) and a clear kill file. Every live order flows through
-KalshiLiveBrokerFirewallAdapter — LIMIT only, per-order validation, structured
-rejections — with the per-order notional ceiling supplied by the risk brain.
+LiveBrokerFirewall.evaluate/submit — LIMIT only, with persisted risk/exposure,
+current evidence, authority, compliance, and liquidity gates.
 Truthful outcomes: broker contact is claimed only on transport witness.
 """
 from __future__ import annotations
 
 import hashlib
 import json
+import os
 from datetime import datetime, timezone
+from decimal import Decimal
 from pathlib import Path
 from typing import Any, Callable
 
 from autonomy.execution_policy import ExecutionPolicy
-from autonomy.ontology import Decision, DecisionAction, OutcomeKind, SessionMode, TradeOutcome
+from autonomy.ontology import Decision, DecisionAction, MarketView, OutcomeKind, SessionMode, TradeOutcome
 from autonomy.staleness import StalenessPolicy, evaluate_snapshot_freshness
+from autonomy.target_policy import (
+    has_prediction_target_authority,
+    is_prediction_quarantined_target,
+)
+from forecasting.model_influence_attestation import build_model_influence_attestation
 
 SESSION_PATH = Path("runtime/autonomy/session.json")
 KILL_PATH = Path("runtime/autonomy/KILL")
@@ -81,7 +88,7 @@ class Executor:
         mode: SessionMode,
         session_path: Path | None = None,
         kill_path: Path | None = None,
-        adapter_factory: Any | None = None,
+        risk_state_path: Path | None = None,
         quote_fn: Any | None = None,
         shadow_book_fn: Any | None = None,
         staleness_policy: StalenessPolicy | None = None,
@@ -101,7 +108,12 @@ class Executor:
         self.execution_policy = execution_policy or ExecutionPolicy.maker_only_control()
         self.session_path = session_path or SESSION_PATH
         self.kill_path = kill_path or KILL_PATH
-        self.adapter_factory = adapter_factory
+        self.risk_state_path = risk_state_path or Path(
+            os.environ.get(
+                "DUMMY_AUTONOMY_LIVE_RISK_STATE_PATH",
+                "runtime/autonomy/risk_state_live.json",
+            )
+        )
         # Optional pre-submit fresh-book read; when supplied, a maker quote that
         # has crossed since the scan is skipped instead of filled as a taker.
         self.quote_fn = quote_fn
@@ -122,6 +134,42 @@ class Executor:
     def _idempotency_key(self, decision: Decision) -> str:
         return hashlib.sha256(f"autonomy|{decision.decision_id}".encode("utf-8")).hexdigest()[:32]
 
+    def _target_context_block(
+        self,
+        decision: Decision,
+        market: MarketView | None,
+    ) -> TradeOutcome | None:
+        """Verify the exact structured target before either execution book."""
+        if market is None:
+            return self._blocked(decision, "prediction_target_context_unverified")
+        if market.ticker != decision.market_ticker:
+            return self._blocked(decision, "prediction_target_context_mismatch")
+        raw = market.raw or {}
+        context = {
+            "category": raw.get("category"),
+            "vertical": market.vertical,
+            "series_tags": raw.get("series_tags") or raw.get("tags"),
+        }
+        if is_prediction_quarantined_target(decision.market_ticker, **context):
+            return self._blocked(
+                decision,
+                "prediction_target_quarantine",
+                {
+                    "target_category": context["category"],
+                    "target_vertical": market.vertical.value,
+                },
+            )
+        if not has_prediction_target_authority(decision.market_ticker, **context):
+            return self._blocked(
+                decision,
+                "prediction_target_eligibility_unverified",
+                {
+                    "target_category": context["category"],
+                    "target_vertical": market.vertical.value,
+                },
+            )
+        return None
+
     async def execute(
         self,
         decision: Decision,
@@ -129,7 +177,11 @@ class Executor:
         snapshot_ts: Any | None = None,
         is_live_market: bool = False,
         market_prior_yes: float | None = None,
+        market: MarketView | None = None,
     ) -> TradeOutcome:
+        target_block = self._target_context_block(decision, market)
+        if target_block is not None:
+            return target_block
         if decision.action is DecisionAction.ABSTAIN or decision.count < 1:
             return TradeOutcome(
                 decision_id=decision.decision_id,
@@ -187,6 +239,7 @@ class Executor:
                 "expiration_ts": expiration_ts,
                 "queue_snapshot_available": False,
             }
+            detail.update(self._execution_detail(decision))
             if self.shadow_book_fn is not None:
                 try:
                     from autonomy.live_book import normalize_orderbook_levels
@@ -210,7 +263,8 @@ class Executor:
                 except Exception as exc:
                     detail["queue_snapshot_error"] = type(exc).__name__
             if (
-                detail.get("queue_snapshot_available")
+                detail["liquidity_role"] == "maker"
+                and detail.get("queue_snapshot_available")
                 and float(detail.get("queue_ahead_contracts") or 0)
                     > MAX_QUEUE_AHEAD_CONTRACTS
             ):
@@ -248,123 +302,343 @@ class Executor:
         if kill_switch_active(self.kill_path):
             return self._blocked(decision, "kill switch active")
 
-        # Re-check venue halt state at the moment of submit, not just at cycle
-        # start: a maintenance window or trading pause can open mid-cycle.
-        # Fail-open on a fetch error (unknown is not down) to match the
-        # cycle-start doctrine and never become its own stall point.
-        if self.exchange_status_fn is not None:
-            try:
-                venue = self.exchange_status_fn() or {}
-            except Exception:
-                venue = {}
-            if venue.get("exchange_active") is False:
-                return self._blocked(decision, "exchange_maintenance_at_submit")
-            if venue.get("trading_active") is False:
-                return self._blocked(decision, "trading_halted_at_submit")
-
-        # Real-time re-quote guard: if the freshest book shows our resting
-        # maker price would now cross (take liquidity), skip — the edge was
-        # computed as a maker and adverse selection has arrived. (Maker path
-        # only: a taker policy crossing the book is the intent, not adverse
-        # selection — its EV was just re-checked against the same fresh book.)
-        if self.quote_fn is not None and self.execution_policy.mode != "taker":
-            try:
-                fresh = self.quote_fn(decision.market_ticker)
-            except Exception:
-                fresh = None
-            if fresh:
-                if decision.side == "yes" and fresh.get("yes_ask") is not None and decision.price_cents >= fresh["yes_ask"]:
-                    return self._blocked(decision, "quote_crossed_repriced_out_yes")
-                if decision.side == "no" and fresh.get("no_ask") is not None and decision.price_cents >= fresh["no_ask"]:
-                    return self._blocked(decision, "quote_crossed_repriced_out_no")
-                bid = fresh.get(f"{decision.side}_bid")
-                bid_size = fresh.get(f"{decision.side}_bid_size")
-                if bid is not None and decision.price_cents < int(bid):
-                    return self._blocked(decision, "quote_behind_current_best_bid")
-                if (
-                    bid is not None and decision.price_cents == int(bid)
-                    and bid_size is not None
-                    and float(bid_size) > MAX_QUEUE_AHEAD_CONTRACTS
-                ):
-                    return self._blocked(decision, "queue_ahead_exceeds_execution_cap")
-
-        from predator_mesh.brokers.livebrokerfirewall_adapter import LimitOrderRequest
-
-        # Exchange-enforced TTL replaces cancel loops (the repo's
-        # no-direct-cancel-bypass gates forbid direct cancels): a resting
-        # maker quote the market has moved away from dies on its own.
-        # Fast verticals get short quotes: an hourly crypto bucket moves its
-        # fair value in minutes, and a stale maker quote there is standing
-        # adverse selection.
-        ttl_seconds = order_ttl_seconds(decision.market_ticker)
-        expiration_ts = int(datetime.now(timezone.utc).timestamp()) + ttl_seconds
-        request = LimitOrderRequest(
-            venue="KALSHI",
-            order_type="LIMIT",
-            market_orders_allowed=False,
-            side=decision.side,
-            action="buy",
-            price=decision.price_cents,
-            quantity=decision.count,
-            idempotency_key=self._idempotency_key(decision),
-            market_ticker=decision.market_ticker,
-            proof_id=f"autonomy-{decision.decision_id}",
-            proof_target="AUTONOMOUS_SESSION",
-            client_order_id=self._idempotency_key(decision),
-            max_order_count=1,
-            max_order_size_cents=max(100, decision.notional_cents),
-            expiration_ts=expiration_ts,
-        )
-        adapter = self._make_adapter(decision)
+        # A real submit requires a positive, current venue-health witness.
+        # Missing/failed/partial status is unknown authority, not permission.
+        if self.exchange_status_fn is None:
+            return self._blocked(decision, "exchange_status_unavailable_at_submit")
         try:
-            result = await adapter.submit_limit_order(request)
+            venue = self.exchange_status_fn()
+        except Exception:
+            return self._blocked(decision, "exchange_status_unavailable_at_submit")
+        if not isinstance(venue, dict):
+            return self._blocked(decision, "exchange_status_unavailable_at_submit")
+        if venue.get("exchange_active") is not True:
+            return self._blocked(decision, "exchange_maintenance_at_submit")
+        if venue.get("trading_active") is not True:
+            return self._blocked(decision, "trading_halted_at_submit")
+
+        return await self._execute_live_via_firewall(decision, market)
+
+    def _make_firewall(self):
+        """Build the sole production live-submit boundary from real state."""
+        from kalshi.client import KalshiClient
+        from live_firewall.exposure_tracker import get_persistent_exposure_tracker
+        from live_firewall.firewall import LiveBrokerFirewall
+
+        return LiveBrokerFirewall(
+            KalshiClient(),
+            get_persistent_exposure_tracker(),
+            autonomy_risk_state_path=self.risk_state_path,
+            require_autonomy_risk_state=True,
+        )
+
+    def _risk_state_digest(self) -> str | None:
+        try:
+            payload = self.risk_state_path.read_bytes()
+            data = json.loads(payload.decode("utf-8"))
+        except Exception:
+            return None
+        if not isinstance(data, dict):
+            return None
+        return hashlib.sha256(payload).hexdigest().upper()
+
+    @staticmethod
+    def _side_book_levels(orderbook: Any, side: str) -> tuple[list[tuple[int, int]], list[tuple[int, int]]]:
+        """Return bid/ask ladders in the requested contract's price frame."""
+        if side == "yes":
+            bids = [(int(level.price), int(level.size)) for level in orderbook.bids]
+            asks = [(int(level.price), int(level.size)) for level in orderbook.asks]
+        else:
+            bids = [(100 - int(level.price), int(level.size)) for level in orderbook.asks]
+            asks = [(100 - int(level.price), int(level.size)) for level in orderbook.bids]
+        return (
+            sorted(bids, key=lambda item: item[0], reverse=True),
+            sorted(asks, key=lambda item: item[0]),
+        )
+
+    def _live_book_execution_verdict(
+        self,
+        decision: Decision,
+        orderbook: Any,
+    ) -> tuple[TradeOutcome | None, dict[str, Any]]:
+        bids, asks = self._side_book_levels(orderbook, decision.side)
+        evidence: dict[str, Any] = {
+            "firewall_book_timestamp": orderbook.timestamp.isoformat(),
+            "firewall_book_bid_levels": len(bids),
+            "firewall_book_ask_levels": len(asks),
+        }
+        if not bids or not asks:
+            return self._blocked(decision, "firewall_book_missing_two_sided_depth"), evidence
+        best_bid = bids[0][0]
+        best_ask = asks[0][0]
+        evidence.update({
+            "firewall_best_bid_cents": best_bid,
+            "firewall_best_ask_cents": best_ask,
+        })
+        if self.execution_policy.mode != "taker":
+            if decision.price_cents >= best_ask:
+                return self._blocked(decision, "quote_crossed_repriced_out"), evidence
+            if decision.price_cents < best_bid:
+                return self._blocked(decision, "quote_behind_current_best_bid"), evidence
+            queue_ahead = sum(size for price, size in bids if price == decision.price_cents)
+            evidence["firewall_queue_ahead_contracts"] = queue_ahead
+            if queue_ahead > MAX_QUEUE_AHEAD_CONTRACTS:
+                return self._blocked(decision, "queue_ahead_exceeds_execution_cap"), evidence
+            return None, evidence
+
+        from autonomy.executable_liquidity import LIQUIDITY_EVIDENCE_VERSION
+
+        reprice = decision.risk_snapshot.get("execution_reprice")
+        plan = (
+            reprice.get("executable_liquidity")
+            if isinstance(reprice, dict) else None
+        )
+        if not isinstance(plan, dict):
+            return self._blocked(decision, "taker_liquidity_plan_missing"), evidence
+        try:
+            planned_version = str(plan["liquidity_evidence_version"])
+            planned_count = int(plan["executable_count"])
+            planned_limit = int(plan["submitted_limit_price_cents"])
+            planned_vwap = float(plan["modeled_vwap_cents"])
+            planned_fee = int(plan["modeled_fee_cents"])
+            planned_net_ev = float(plan["net_ev_cents_per_contract"])
+            planned_notional = int(plan["worst_case_notional_cents"])
+            fill_status = str(plan["fill_status"])
+        except (KeyError, TypeError, ValueError):
+            return self._blocked(decision, "taker_liquidity_plan_malformed"), evidence
+        if (
+            planned_version != LIQUIDITY_EVIDENCE_VERSION
+            or fill_status != "unfilled_plan_only"
+            or planned_count != int(decision.count)
+            or planned_limit != int(decision.price_cents)
+            or planned_notional != int(decision.notional_cents)
+            or planned_fee < 0
+            or not (0.0 < planned_vwap <= float(planned_limit))
+            or abs(planned_net_ev - float(decision.ev_cents_per_contract)) > 0.011
+        ):
+            return self._blocked(decision, "taker_liquidity_plan_mismatch"), evidence
+        minimum_ev = float(
+            getattr(self.execution_policy, "taker_min_ev_cents", 0.0) or 0.0
+        )
+        if planned_net_ev < minimum_ev:
+            return self._blocked(decision, "taker_ev_below_min"), evidence
+
+        remaining = planned_count
+        cost_cents = 0
+        used_levels: list[dict[str, int]] = []
+        for price, size in asks:
+            if price > planned_limit or remaining <= 0:
+                break
+            take = min(remaining, size)
+            if take > 0:
+                used_levels.append({"price_cents": price, "count": take})
+                cost_cents += price * take
+                remaining -= take
+        if remaining > 0:
+            evidence["firewall_executable_contracts"] = planned_count - remaining
+            return self._blocked(decision, "taker_depth_changed_before_firewall"), evidence
+        vwap = cost_cents / planned_count
+        evidence.update({
+            "firewall_executable_contracts": planned_count,
+            "firewall_execution_vwap_cents": round(vwap, 6),
+            "firewall_execution_levels": used_levels,
+            "planned_execution_vwap_cents": round(planned_vwap, 6),
+            "planned_execution_fee_cents": planned_fee,
+            "planned_net_ev_cents_per_contract": round(planned_net_ev, 6),
+            "liquidity_evidence_version": planned_version,
+        })
+        if vwap > planned_vwap + 1e-6:
+            return self._blocked(
+                decision, "taker_depth_changed_before_firewall"
+            ), evidence
+        return None, evidence
+
+    def _to_firewall_forecast(self, decision: Decision, market: MarketView, orderbook: Any):
+        from core.ontology import Forecast as FirewallForecast
+        from autonomy.risk_brain import kalshi_maker_fee_cents, kalshi_taker_fee_cents
+
+        now = datetime.now(timezone.utc)
+        try:
+            expiration = datetime.fromisoformat(market.close_time.replace("Z", "+00:00"))
+            if expiration.tzinfo is None:
+                expiration = expiration.replace(tzinfo=timezone.utc)
+        except Exception as exc:
+            raise ValueError("market close time unavailable") from exc
+        if expiration <= now:
+            raise ValueError("market already closed")
+        best_bid = max(int(level.price) for level in orderbook.bids)
+        best_ask = min(int(level.price) for level in orderbook.asks)
+        spread = best_ask - best_bid
+        total_depth = sum(int(level.size) for level in orderbook.bids + orderbook.asks)
+        depth_score = min(Decimal("1"), Decimal(total_depth) / Decimal("1000"))
+        spread_score = max(Decimal("0"), Decimal("1") - Decimal(spread) / Decimal("10"))
+        liquidity_score = depth_score * spread_score
+        book_age = max(0.0, (now - orderbook.timestamp).total_seconds())
+        freshness_score = Decimal(str(round(max(0.0, 1.0 - book_age / 300.0), 4)))
+        implied_yes = Decimal(best_bid + best_ask) / Decimal("200")
+        probability_yes = Decimal(str(float(decision.forecast.probability_yes)))
+        uncertainty = max(0.0, min(0.5, float(decision.forecast.uncertainty)))
+        lower = Decimal(str(max(0.0, float(probability_yes) - uncertainty)))
+        upper = Decimal(str(min(1.0, float(probability_yes) + uncertainty)))
+        confidence = Decimal(str(max(0.0, min(1.0, 1.0 - uncertainty * 2.0))))
+        raw_settlement_risk = market.raw.get("settlement_risk_score")
+        try:
+            settlement_risk = Decimal(str(raw_settlement_risk))
+        except Exception:
+            settlement_risk = Decimal("1")
+        settlement_risk = min(Decimal("1"), max(Decimal("0"), settlement_risk))
+        if self.execution_policy.mode == "taker":
+            fee_cents = kalshi_taker_fee_cents(
+                decision.price_cents, decision.count, decision.market_ticker
+            )
+        else:
+            fee_cents = kalshi_maker_fee_cents(
+                decision.price_cents, decision.count, decision.market_ticker
+            )
+        per_contract_fee = fee_cents / max(1, decision.count)
+        gross_edge = Decimal(str((decision.ev_cents_per_contract + per_contract_fee) / 100.0))
+        net_edge = Decimal(str(decision.ev_cents_per_contract / 100.0))
+        forecast_proof = f"autonomy_forecast:{decision.decision_id}"
+        strategy_proof = f"autonomy_strategy_v2:{decision.decision_id}"
+        try:
+            forecast_timestamp = datetime.fromisoformat(decision.created_at.replace("Z", "+00:00"))
+            if forecast_timestamp.tzinfo is None:
+                raise ValueError("decision timestamp must be timezone-aware")
+        except Exception as exc:
+            raise ValueError("decision timestamp unavailable") from exc
+        return FirewallForecast(
+            market_ticker=decision.market_ticker,
+            contract_ticker=decision.market_ticker,
+            event_title=market.title,
+            contract_title=str(market.raw.get("subtitle") or market.title),
+            market_implied_probability=implied_yes,
+            dummy_probability=probability_yes,
+            probability_delta=probability_yes - implied_yes,
+            confidence_score=confidence,
+            uncertainty_band=(lower, upper),
+            expected_edge=gross_edge,
+            edge_after_fees=net_edge,
+            freshness_score=freshness_score,
+            liquidity_score=liquidity_score,
+            spread_score=spread_score,
+            orderbook_depth_score=depth_score,
+            settlement_risk_score=settlement_risk,
+            source_summary=",".join(sorted(decision.forecast.sources_used)) or "no_sources",
+            model_summary=decision.forecast.rationale[:500],
+            calibration_notes=f"uncertainty={uncertainty:.6f};central_firewall_v2",
+            timestamp=forecast_timestamp,
+            expiration=expiration,
+            strategy_references=[strategy_proof],
+            proof_reference=forecast_proof,
+        )
+
+    async def _execute_live_via_firewall(
+        self,
+        decision: Decision,
+        market: MarketView | None,
+    ) -> TradeOutcome:
+        if market is None or market.ticker != decision.market_ticker:
+            return self._blocked(decision, "live_market_context_missing_or_mismatched")
+        try:
+            firewall = self._make_firewall()
+        except Exception as exc:
+            return self._blocked(decision, f"central_firewall_unavailable:{type(exc).__name__}")
+        try:
+            authority = firewall.live_authority_verdict()
+            if not authority.allow:
+                return self._blocked(
+                    decision,
+                    authority.reason,
+                    {"rejected_by": authority.rejected_by or "live_authority"},
+                )
+            risk_digest = self._risk_state_digest()
+            if risk_digest is None:
+                return self._blocked(decision, "persisted_autonomy_risk_state_unavailable")
+            client = getattr(firewall, "client", None)
+            get_orderbook = getattr(client, "get_orderbook", None)
+            if not callable(get_orderbook):
+                return self._blocked(decision, "central_firewall_orderbook_reader_unavailable")
+            try:
+                orderbook = await get_orderbook(decision.market_ticker, depth=10)
+            except Exception as exc:
+                return self._blocked(decision, f"fresh_orderbook_unavailable:{type(exc).__name__}")
+            book_block, book_evidence = self._live_book_execution_verdict(decision, orderbook)
+            if book_block is not None:
+                return TradeOutcome(
+                    **{**book_block.__dict__, "detail": {**book_block.detail, **book_evidence}}
+                )
+            try:
+                firewall_forecast = self._to_firewall_forecast(decision, market, orderbook)
+            except Exception as exc:
+                return self._blocked(decision, f"firewall_forecast_unavailable:{type(exc).__name__}")
+            from core.ontology import LiveOrderRequest
+
+            strategy_proof = f"autonomy_strategy_v2:{decision.decision_id}"
+            expiration_ts = int(datetime.now(timezone.utc).timestamp()) + order_ttl_seconds(
+                decision.market_ticker
+            )
+            request_fields = {
+                "proposal_id": self._idempotency_key(decision),
+                "market_ticker": decision.market_ticker,
+                "contract_ticker": decision.market_ticker,
+                "side": decision.side,
+                "price_cents": decision.price_cents,
+                "size": decision.count,
+                "strategy_proof_reference": strategy_proof,
+                "forecast_proof_reference": firewall_forecast.proof_reference,
+                "adapter_name": "kalshi_live_firewall_adapter",
+                "liquidity_role": self.execution_policy.mode,
+                "risk_state_sha256": risk_digest,
+                "risk_snapshot": dict(decision.risk_snapshot),
+                "expiration_ts": expiration_ts,
+            }
+            request = LiveOrderRequest(
+                **request_fields,
+                model_influence_attestation=build_model_influence_attestation(
+                    firewall_forecast,
+                    request_fields,
+                ),
+            )
+            try:
+                result = await firewall.submit(request, orderbook, firewall_forecast)
+            except Exception as exc:
+                return self._blocked(
+                    decision,
+                    f"central_firewall_submit_failed:{type(exc).__name__}",
+                    book_evidence,
+                )
         finally:
             try:
-                await adapter.close()
+                await firewall.client.close()
             except Exception:
                 pass
-
-        if result.submitted and result.order_id:
+        detail = {
+            **self._execution_detail(decision),
+            **book_evidence,
+            "firewall_error": result.error,
+        }
+        if result.success and result.order_id:
             return TradeOutcome(
                 decision_id=decision.decision_id,
                 market_ticker=decision.market_ticker,
                 kind=OutcomeKind.ACCEPTED,
                 order_id=result.order_id,
                 fill_count=0,
-                fill_price_cents=decision.price_cents,
+                fill_price_cents=None,
                 pnl_cents=None,
-                broker_contacted=True,
-                detail={"state": result.state},
+                broker_contacted=bool(result.broker_contacted),
+                detail={"state": "submitted", **detail},
             )
-        raw = dict(result.raw or {})
-        transport_witnessed = raw.get("stage") == "broker_transport" or raw.get("status_code") is not None
         return TradeOutcome(
             decision_id=decision.decision_id,
             market_ticker=decision.market_ticker,
-            kind=OutcomeKind.REJECTED if transport_witnessed else OutcomeKind.BLOCKED_LOCAL,
+            kind=(OutcomeKind.REJECTED if result.broker_contacted else OutcomeKind.BLOCKED_LOCAL),
             order_id=None,
             fill_count=0,
             fill_price_cents=None,
             pnl_cents=None,
-            broker_contacted=bool(transport_witnessed),
-            detail={"errors": list(result.errors), "raw": raw},
-        )
-
-    def _make_adapter(self, decision: Decision):
-        if self.adapter_factory is not None:
-            return self.adapter_factory(decision)
-        from predator_mesh.brokers.kalshi_livebrokerfirewall_adapter import (
-            KalshiLiveBrokerFirewallAdapter,
-        )
-
-        return KalshiLiveBrokerFirewallAdapter(
-            live_submit_enabled=True,
-            caps_confirmed=True,
-            kill_switch_active=kill_switch_active(self.kill_path),
-            command_seal_ready=True,
-            resolver_armable=True,
-            require_proof_lock=False,
-            max_order_notional_cents=max(100, decision.notional_cents),
+            broker_contacted=bool(result.broker_contacted),
+            detail=detail,
         )
 
     def _stale_gate_block(
@@ -443,47 +717,152 @@ class Executor:
                 )
         return None
 
-    def _apply_taker_policy(self, decision: Decision) -> "Decision | TradeOutcome":
-        """Reprice a decision to cross the freshest book under a taker policy.
+    def _execution_detail(self, decision: Decision) -> dict[str, Any]:
+        """Canonical submitted-order metadata carried by every open outcome.
 
-        No-op (returns the decision unchanged) unless the active policy's mode
-        is taker. Otherwise: fetch the freshest book, require a priceable ask
-        for the decision's side, re-check EV net of the Kalshi taker fee
-        against ``taker_min_ev_cents``, and return a copy of the decision
-        priced at the ask. Every failure blocks fail-closed — a taker policy
-        never silently degrades back into a resting maker quote.
+        ``fill_count`` remains the fill-truth discriminator.  The price here is
+        explicitly the submitted limit until a later simulator/broker witness
+        records a positive fill count and its execution price.
+        """
+        liquidity_role = "taker" if self.execution_policy.mode == "taker" else "maker"
+        detail = {
+            "execution_policy_cohort": self.execution_policy.cohort,
+            "submitted_liquidity_role": liquidity_role,
+            "liquidity_role": liquidity_role,
+            "submitted_price_cents": int(decision.price_cents),
+            "submitted_count": int(decision.count),
+            "submitted_notional_cents": int(decision.notional_cents),
+            "submitted_ev_cents_per_contract": float(decision.ev_cents_per_contract),
+            "submitted_kelly_fraction": float(decision.kelly_fraction),
+            "price_evidence": "submitted_limit",
+        }
+        reprice = decision.risk_snapshot.get("execution_reprice")
+        liquidity = (
+            reprice.get("executable_liquidity")
+            if isinstance(reprice, dict) else None
+        )
+        if isinstance(liquidity, dict):
+            detail["executable_liquidity"] = dict(liquidity)
+        return detail
+
+    def _apply_taker_policy(self, decision: Decision) -> "Decision | TradeOutcome":
+        """Build a fresh, depth-capped, fee-aware executable taker plan.
+
+        A top ask alone does not prove that ``decision.count`` is executable.
+        Taker submission therefore requires a timestamped side-specific ask
+        ladder, discounts displayed depth, caps spread/slippage and the
+        original risk-brain notional, and recomputes EV from modeled VWAP.
+        The plan remains unfilled evidence until reconciliation witnesses the
+        actual broker/simulator quantity, price, role, and fee.
         """
         if self.execution_policy.mode != "taker":
             return decision
+
+        from dataclasses import replace as dataclass_replace
+
+        from autonomy.executable_liquidity import (
+            LIQUIDITY_EVIDENCE_VERSION,
+            MAX_FRESH_QUOTE_AGE_SECONDS,
+            assess_taker_liquidity,
+            evaluate_quote_freshness,
+        )
+        from autonomy.fees import kalshi_taker_fee_cents
+        from autonomy.risk_brain import kelly_fraction_yes
+
         fresh = None
         if self.quote_fn is not None:
             try:
                 fresh = self.quote_fn(decision.market_ticker)
             except Exception:
                 fresh = None
-        ask = (fresh or {}).get(f"{decision.side}_ask")
-        if ask is None:
-            return self._blocked(decision, "taker_no_fresh_book")
-        try:
-            ask = int(ask)
-        except (TypeError, ValueError):
-            return self._blocked(decision, "taker_ask_unpriceable")
-        if not (1 <= ask <= 99):
-            return self._blocked(decision, "taker_ask_unpriceable")
-        from dataclasses import replace as dataclass_replace
-
-        from autonomy.fees import kalshi_taker_fee_cents
+        freshness = evaluate_quote_freshness(fresh, now_ts=self._now_fn())
+        if not freshness.valid:
+            return self._blocked(
+                decision,
+                freshness.reason,
+                {
+                    "quote_age_seconds": freshness.age_seconds,
+                    "quote_received_at": freshness.received_at,
+                    "maximum_quote_age_seconds": MAX_FRESH_QUOTE_AGE_SECONDS,
+                    "liquidity_evidence_version": LIQUIDITY_EVIDENCE_VERSION,
+                },
+            )
 
         p_yes = float(decision.forecast.probability_yes)
-        p_side = p_yes if decision.side == "yes" else 1.0 - p_yes
-        fee = kalshi_taker_fee_cents(ask, decision.count, decision.market_ticker)
-        ev_per_contract = p_side * 100.0 - ask - (fee / max(1, decision.count))
+        forecast_p_side = p_yes if decision.side == "yes" else 1.0 - p_yes
+        # Preserve the allocator's conservative probability rather than
+        # upgrading back to the raw forecast during a book move. The encoded
+        # probability is reconstructed from the decision's fee-adjusted EV and
+        # then capped by the raw side probability.
+        original_fee = kalshi_taker_fee_cents(
+            int(decision.price_cents), 1, decision.market_ticker
+        )
+        encoded_p_side = (
+            float(decision.ev_cents_per_contract)
+            + int(decision.price_cents)
+            + original_fee
+        ) / 100.0
+        p_side = min(forecast_p_side, max(0.0, min(1.0, encoded_p_side)))
         min_ev = float(self.execution_policy.taker_min_ev_cents or 0.0)
-        if ev_per_contract < min_ev:
-            return self._blocked(decision, "taker_ev_below_min")
-        return dataclass_replace(decision, price_cents=ask)
+        edge_floor = float(self.execution_policy.taker_min_edge_cents or 0.0)
+        assessment = assess_taker_liquidity(
+            fresh,
+            side=decision.side,
+            requested_count=max(0, int(decision.count)),
+            notional_cap_cents=max(0, int(decision.notional_cents)),
+            probability_side=p_side,
+            market_ticker=decision.market_ticker,
+            min_ev_cents=min_ev,
+            min_edge_cents=edge_floor,
+        )
+        if not assessment.allowed or assessment.plan is None:
+            return self._blocked(
+                decision,
+                assessment.reason,
+                {
+                    **assessment.detail,
+                    "quote_age_seconds": freshness.age_seconds,
+                    "quote_received_at": freshness.received_at,
+                    "liquidity_evidence_version": LIQUIDITY_EVIDENCE_VERSION,
+                },
+            )
 
-    def _blocked(self, decision: Decision, reason: str) -> TradeOutcome:
+        plan = assessment.plan
+        repriced_kelly = kelly_fraction_yes(p_side, plan.limit_price_cents)
+        liquidity_evidence = plan.evidence(freshness.received_at)
+        risk_snapshot = dict(decision.risk_snapshot)
+        risk_snapshot["execution_reprice"] = {
+            "liquidity_role": "taker",
+            "decision_price_cents": int(decision.price_cents),
+            "decision_count": int(decision.count),
+            "decision_notional_cents": int(decision.notional_cents),
+            "submitted_price_cents": plan.limit_price_cents,
+            "submitted_count": plan.executable_count,
+            "submitted_notional_cents": plan.worst_case_notional_cents,
+            "submitted_ev_cents_per_contract": round(
+                plan.net_ev_cents_per_contract, 2
+            ),
+            "submitted_kelly_fraction": round(repriced_kelly, 4),
+            "executable_liquidity": liquidity_evidence,
+        }
+        return dataclass_replace(
+            decision,
+            price_cents=plan.limit_price_cents,
+            count=plan.executable_count,
+            notional_cents=plan.worst_case_notional_cents,
+            ev_cents_per_contract=round(plan.net_ev_cents_per_contract, 2),
+            kelly_fraction=round(repriced_kelly, 4),
+            risk_snapshot=risk_snapshot,
+        )
+
+    def _blocked(
+        self,
+        decision: Decision,
+        reason: str,
+        detail: dict[str, Any] | None = None,
+    ) -> TradeOutcome:
+        payload = {"reason": reason}
+        payload.update(detail or {})
         return TradeOutcome(
             decision_id=decision.decision_id,
             market_ticker=decision.market_ticker,
@@ -493,5 +872,5 @@ class Executor:
             fill_price_cents=None,
             pnl_cents=None,
             broker_contacted=False,
-            detail={"reason": reason},
+            detail=payload,
         )

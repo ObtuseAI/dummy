@@ -13,6 +13,7 @@ ticker rather than raising.
 from __future__ import annotations
 
 import re
+from datetime import date as calendar_date
 from functools import lru_cache
 from typing import Any
 
@@ -93,17 +94,23 @@ def _split_teams(blob: str, league: str) -> tuple[str, str] | None:
     return None
 
 
-def _event_parts(ticker: str) -> tuple[str | None, str | None]:
-    """(teams_blob, 'Mon DD') from the event token; (None, None) on a miss."""
+def _event_parts(ticker: str) -> tuple[str | None, str | None, str | None]:
+    """(teams_blob, 'Mon DD', YYYY-MM-DD) from the sports event token."""
     parts = str(ticker).split("-")
     if len(parts) < 2:
-        return None, None
+        return None, None, None
     m = _EVENT_RE.match(parts[1])
     if not m:
-        return None, None
-    _yy, mon, dd, _hhmm, blob, _dh = m.groups()
+        return None, None, None
+    yy, mon, dd, _hhmm, blob, _dh = m.groups()
     date = f"{_MON_TITLE.get(mon, mon.title())} {int(dd)}" if mon in _MON_TITLE else None
-    return (blob or None), date
+    event_date = None
+    if mon in _MON:
+        try:
+            event_date = calendar_date(2000 + int(yy), _MON.index(mon) + 1, int(dd)).isoformat()
+        except ValueError:
+            pass
+    return (blob or None), date, event_date
 
 
 def _line_or_subject(ticker: str) -> tuple[str | None, str | None]:
@@ -128,6 +135,32 @@ def _line_or_subject(ticker: str) -> tuple[str | None, str | None]:
     return None, None
 
 
+def _ticker_player_abbreviation(token: str, team: str | None) -> str | None:
+    """Return the player identity encoded in a Kalshi prop token.
+
+    Player tokens have the shape ``TEAM + first initial + surname + number``
+    (for example ``NYMFLINDOR12``). The market title remains the authoritative
+    full name; this parser is the loss-minimizing fallback for ledger rows that
+    predate title persistence. It never invents a first name.
+    """
+    if not team:
+        return None
+    normalized = str(token or "").upper()
+    prefix = str(team).upper()
+    if not normalized.startswith(prefix):
+        return None
+    encoded = normalized[len(prefix):]
+    match = re.fullmatch(r"([A-Z])([A-Z]{2,})(\d+)", encoded)
+    if not match:
+        return None
+    surname = match.group(2)
+    display_surname = {
+        "CROWARMSTRONG": "Crow-Armstrong",
+        "DELACRUZ": "De La Cruz",
+    }.get(surname, surname.title())
+    return f"{match.group(1)} {display_surname}"
+
+
 def humanize_ticker(ticker: str) -> dict[str, Any]:
     """Readable pieces for a ticker: ``{matchup, market, line, date, label}``.
 
@@ -136,7 +169,8 @@ def humanize_ticker(ticker: str) -> dict[str, Any]:
     """
     raw = str(ticker)
     spec = spec_for(raw)
-    blob, date = _event_parts(raw)
+    blob, date, event_date = _event_parts(raw)
+    event_id = raw.split("-", 2)[1] if spec is not None and "-" in raw else None
     subject, line = _line_or_subject(raw)
 
     matchup = None
@@ -166,7 +200,68 @@ def humanize_ticker(ticker: str) -> dict[str, Any]:
         label = market
     else:
         label = raw
-    return {"matchup": matchup or raw, "market": market, "line": line, "date": date, "label": label}
+    return {
+        "matchup": matchup or raw,
+        "market": market,
+        "subject": subject,
+        "line": line,
+        "date": date,
+        "event_date": event_date,
+        "event_id": event_id,
+        "label": label,
+    }
+
+
+def humanize_market(ticker: str, title: str | None = None) -> dict[str, Any]:
+    """Return display pieces enriched with a prop's player or team subject.
+
+    Kalshi player-prop tickers abbreviate the player token, while the market
+    title carries the reliable display name (``"Yandy Diaz: 2+ hits?"``).  The
+    live cycle therefore uses the title.  A cold-start ledger row has no title,
+    so it falls back to the team encoded in the prop token rather than showing
+    an anonymous ``"hits"`` or ``"strikeouts"`` row.
+    """
+    pieces = dict(humanize_ticker(ticker))
+    pieces["subject_team"] = pieces.get("subject")
+    spec = spec_for(str(ticker))
+    if spec is None or spec.market_type != PROP:
+        return pieces
+
+    raw_title = str(title or "").strip()
+    title_match = re.match(r"^\s*(.+?)\s*:\s*(.+?)\s*\??\s*$", raw_title)
+    player = title_match.group(1).strip() if title_match else None
+    description = title_match.group(2).strip() if title_match else None
+
+    # Prop tickers are ``series-event-TEAMPLAYERID-line``. On ledger fallback
+    # the title is unavailable, but the token still carries an exact first
+    # initial plus surname. Use that non-fabricated abbreviation before the
+    # older team-level fallback.
+    subject_team = None
+    parts = str(ticker).upper().split("-")
+    token = parts[-2] if len(parts) >= 4 else ""
+    matchup_teams = str(pieces.get("matchup") or "").split(" vs ")
+    for team in sorted((t for t in matchup_teams if t), key=len, reverse=True):
+        if token.startswith(team.upper()):
+            subject_team = team
+            break
+
+    ticker_player = _ticker_player_abbreviation(token, subject_team)
+    subject = player or ticker_player or (
+        f"{subject_team} player" if subject_team else "Player"
+    )
+    if not description:
+        stat = str(spec.stat or "prop").replace("_", " ")
+        line = pieces.get("line")
+        description = f"{line}+ {stat}" if line else stat
+    display_market = f"{subject} · {description.rstrip('?').strip()}"
+    matchup = pieces.get("matchup")
+    pieces.update({
+        "subject": subject,
+        "subject_team": subject_team,
+        "market": display_market,
+        "label": f"{matchup} · {display_market}" if matchup else display_market,
+    })
+    return pieces
 
 
 def market_label(ticker: str) -> str:

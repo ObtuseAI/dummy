@@ -90,12 +90,14 @@ def _build_opinion(
     except Exception:
         content = {}
 
-    dummy_prob = Decimal(str(content.get("dummy_probability", base.dummy_probability)))
-    confidence = Decimal(str(content.get("confidence_score", base.confidence_score)))
-    band = content.get("uncertainty_band") or [
-        float(max(Decimal("0"), dummy_prob - Decimal("0.05"))),
-        float(min(Decimal("1"), dummy_prob + Decimal("0.05"))),
-    ]
+    observed_probability = content.get("dummy_probability")
+    observed_confidence = content.get("confidence_score")
+    # This legacy mesh has no exact-scope authority registry. Preserve the
+    # live output as research metadata, but retain the deterministic base for
+    # every operational ForecastOpinion field consumed by later lanes.
+    dummy_prob = base.dummy_probability
+    confidence = base.confidence_score
+    band = base.uncertainty_band
 
     return ForecastOpinion(
         market_ticker=base.market_ticker,
@@ -108,12 +110,19 @@ def _build_opinion(
         ),
         confidence_score=confidence,
         uncertainty_band=(Decimal(str(band[0])), Decimal(str(band[1]))),
-        model_summary="mesh_hybrid_router",
-        reasoning=str(content.get("reasoning", "no model reasoning")),
-        no_trade_reason=content.get("no_trade_reason"),
-        calibration_notes=content.get("calibration_notes", []),
+        model_summary="mesh_hybrid_router(RESEARCH_ONLY_ZERO_AUTHORITY)",
+        reasoning=(
+            "Quantitative baseline retained; mesh model observation is research-only. "
+            + str(content.get("reasoning", "no model reasoning"))
+        ),
+        no_trade_reason=None,
+        calibration_notes=[
+            "model_probability_authority=0",
+            f"observed_model_probability={observed_probability}",
+            f"observed_model_confidence={observed_confidence}",
+        ],
         timestamp=datetime.now(timezone.utc),
-        expiration=datetime.now(timezone.utc),
+        expiration=base.expiration,
         proof_reference=f"mesh_hybrid_{base.market_ticker}_{datetime.now(timezone.utc).isoformat()}",
     )
 
@@ -136,6 +145,15 @@ class ForecastUpdateLane(BaseLane):
         self.orderbook = orderbook
 
     async def execute(self, ctx: MeshContext) -> MeshResult:
+        base = self.base_forecast or ctx.shared_state.get("base_forecast")
+        book = self.orderbook or ctx.shared_state.get("orderbook")
+        if base is None or book is None:
+            ctx.shared_state["forecast_abstention"] = "no_real_market_input"
+            return self._complete(
+                ctx,
+                {"status": "abstained", "reason": "no_real_market_input"},
+                verdict="abstained",
+            )
         if not ctx.budget.spend_provider(2):
             return self._fail(
                 ctx,
@@ -143,8 +161,6 @@ class ForecastUpdateLane(BaseLane):
                 state=LaneState.BLOCKED,
             )
 
-        base = self.base_forecast or _synthetic_forecast()
-        book = self.orderbook or _synthetic_orderbook(base.market_ticker, base.contract_ticker)
         prompt = _build_forecast_prompt(base, book)
 
         model_result = await self.hybrid_router.route(

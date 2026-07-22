@@ -125,15 +125,21 @@ def evaluate_alerts(cycle_record: dict[str, Any], risk_state: dict[str, Any] | N
                                     {"drawdown": round(dd, 4), "rung": rung}, now_iso))
         state["drawdown_rung"] = rung
 
-    # Evidence gate edges: green is actionable; regression after green is a
-    # warning because new operating evidence invalidated prior readiness.
+    # Explicit controlled-live authority edges. Paper/shadow evidence is
+    # retired and never feeds this signal.
     if gate_ready and not state.get("gate_green"):
-        fired.append(emit_alert("GATE_GREEN", "live canary evidence gate is READY", {}, now_iso))
+        fired.append(emit_alert(
+            "GATE_GREEN",
+            "controlled live authority contract is READY",
+            {"paper_results_authority": "RETIRED_NON_AUTHORITATIVE"},
+            now_iso,
+        ))
     elif not gate_ready and state.get("gate_green"):
         fired.append(emit_alert(
             "GATE_REGRESSION",
-            "live canary evidence gate returned to BLOCKED after new evidence",
-            {}, now_iso,
+            "controlled live authority contract returned to BLOCKED",
+            {"paper_results_authority": "RETIRED_NON_AUTHORITATIVE"},
+            now_iso,
         ))
     state["gate_green"] = bool(gate_ready)
 
@@ -188,7 +194,7 @@ def evaluate_alerts(cycle_record: dict[str, Any], risk_state: dict[str, Any] | N
                 "authoritative backtest summary is stale "
                 f"(age_hours={backtest_freshness.get('age_hours')}, "
                 f"reason={backtest_freshness.get('reason')}); "
-                "downstream evaluation is fail-closed",
+                "research diagnostics are stale; live authority is unaffected",
                 backtest_freshness, now_iso,
             ))
         state["backtest_stale_alert_active"] = stale

@@ -1,18 +1,27 @@
-"""Live-canary evidence gate: refuse to risk money without earned calibration.
+"""Retired paper/shadow canary calculation retained for historical audit.
 
-Going live is the one irreversible action in the system. This gate blocks a
-LIVE session start until the shadow history proves the machine has learned
-something real: a minimum number of settled markets, at least one source that
-has beaten the market baseline, and bootstrapped trust weights on file. It is
-fail-closed — every missing precondition is a hard block with an exact reason,
-and the operator still supplies the typed acknowledgement separately.
+This module still reproduces the legacy evidence calculation so existing raw
+history remains inspectable.  Its output is ``RETIRED_NON_AUTHORITATIVE`` and
+is not consulted by LIVE session start or the central live-submit firewall.
+Positive results cannot enable LIVE; negative, missing, or stale results cannot
+block it.  Live authority is governed by the separate explicit one-proof,
+operator, caps, command-seal, central-firewall, credential, proof-lock, session,
+and live-risk contracts.
 """
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any
 
-from autonomy.backtest import MIN_CONTESTED_N, run_backtest
+from autonomy.backtest import (
+    LIVE_SOURCE_EVIDENCE_MODE,
+    LATEST_SUMMARY_PATH,
+    MIN_CONTESTED_N,
+    backtest_summary_freshness,
+    run_backtest,
+)
 from autonomy.ledger import AutonomyLedger
 
 MIN_SETTLED_MARKETS = 20
@@ -40,7 +49,11 @@ class CanaryReadiness:
 
     def to_dict(self) -> dict[str, Any]:
         return {
-            "report_name": "LIVE_CANARY_READINESS",
+            "report_name": "RETIRED_PAPER_CANARY_AUDIT",
+            "status": "RETIRED_NON_AUTHORITATIVE",
+            "execution_authority": False,
+            "can_enable_live": False,
+            "can_block_live": False,
             "ready": self.ready,
             "blockers": self.blockers,
             "evidence": self.evidence,
@@ -48,16 +61,106 @@ class CanaryReadiness:
 
 
 def evaluate_canary_readiness(
-    ledger: AutonomyLedger,
+    ledger: AutonomyLedger | None,
     balance_cents: int | None = None,
     min_settled: int = MIN_SETTLED_MARKETS,
     min_policy_settled: int = MIN_DECISION_POLICY_SETTLED,
     min_canary_graded: int = MIN_CANARY_GRADED_TRADES,
     backtest_report: dict[str, Any] | None = None,
+    prefer_cached_backtest: bool = False,
+    cached_backtest_path: Path | None = None,
 ) -> CanaryReadiness:
-    """Assess whether the shadow record justifies a first live canary."""
+    """Reproduce the legacy shadow-readiness calculation for audit only."""
     blockers: list[str] = []
-    backtest = backtest_report or run_backtest(ledger, bootstrap_weights=False)
+    using_cached_backtest = bool(prefer_cached_backtest and backtest_report is None)
+    cache_evidence: dict[str, Any] = {}
+    if backtest_report is not None:
+        backtest = backtest_report
+    elif prefer_cached_backtest:
+        cache_path = cached_backtest_path or LATEST_SUMMARY_PATH
+        freshness = backtest_summary_freshness(path=cache_path)
+        cache_evidence = freshness
+        if freshness.get("is_stale"):
+            return CanaryReadiness(
+                ready=False,
+                blockers=[
+                    "authoritative backtest summary is unavailable or stale: "
+                    f"{freshness.get('reason') or 'unknown'}"
+                ],
+                evidence={"cached_backtest": freshness, "balance_cents": balance_cents},
+            )
+        try:
+            backtest = json.loads(cache_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError, ValueError) as exc:
+            return CanaryReadiness(
+                ready=False,
+                blockers=["authoritative backtest summary could not be read"],
+                evidence={
+                    "cached_backtest": {**freshness, "error_type": type(exc).__name__},
+                    "balance_cents": balance_cents,
+                },
+            )
+        policy = backtest.get("decision_policy") or {}
+        required = {
+            "sources": backtest.get("sources"),
+            "source_evidence_mode": backtest.get("source_evidence_mode"),
+            "live_source_capability_matrix": backtest.get("live_source_capability_matrix"),
+            "bootstrapped_weights": backtest.get("bootstrapped_weights"),
+            "decision_policy.ensemble_metrics": policy.get("ensemble_metrics"),
+            "decision_policy.walk_forward_threshold_selection": policy.get(
+                "walk_forward_threshold_selection"
+            ),
+            "execution_quality_by_book": backtest.get("execution_quality_by_book"),
+            "realized_trade_statistics": backtest.get("realized_trade_statistics"),
+            "fill_conditioned_decision_policy": backtest.get(
+                "fill_conditioned_decision_policy"
+            ),
+        }
+        missing = sorted(key for key, value in required.items() if value is None)
+        if missing:
+            return CanaryReadiness(
+                ready=False,
+                blockers=[
+                    "authoritative backtest summary lacks canary evidence: "
+                    + ", ".join(missing)
+                ],
+                evidence={
+                    "cached_backtest": {**freshness, "missing_fields": missing},
+                    "balance_cents": balance_cents,
+                },
+            )
+    else:
+        if ledger is None:
+            return CanaryReadiness(
+                ready=False,
+                blockers=["live ledger unavailable for uncached canary evaluation"],
+                evidence={"balance_cents": balance_cents},
+            )
+        backtest = run_backtest(ledger, bootstrap_weights=False)
+    source_evidence_mode = backtest.get("source_evidence_mode")
+    if source_evidence_mode != LIVE_SOURCE_EVIDENCE_MODE:
+        blockers.append(
+            "source trust evidence is not authoritative receipt-bounded live-only: "
+            f"{source_evidence_mode!r}"
+        )
+    source_capabilities = backtest.get("live_source_capability_matrix")
+    if not isinstance(source_capabilities, dict) or not source_capabilities:
+        blockers.append("live source capability matrix is missing")
+        source_capabilities = {}
+    elif source_capabilities.get("source_evidence_mode") != LIVE_SOURCE_EVIDENCE_MODE:
+        blockers.append(
+            "live source capability matrix is not receipt-bounded live-only: "
+            f"{source_capabilities.get('source_evidence_mode')!r}"
+        )
+    elif not source_capabilities.get("ready_for_live_canary"):
+        details = source_capabilities.get("global_blockers") or []
+        blocking_scopes = source_capabilities.get("blocking_scopes") or []
+        blockers.append(
+            "default-fusing exact scopes lack live capability proof: "
+            + "; ".join(str(item) for item in details)
+            + (f"; scopes={blocking_scopes[:10]}" if blocking_scopes else "")
+        )
+
     settled = int(backtest.get("settled_markets", 0))
 
     if settled < min_settled:
@@ -145,7 +248,13 @@ def evaluate_canary_readiness(
             f"insufficient observed shadow fills: {confirmed_fills}/{MIN_SHADOW_CONFIRMED_FILLS}"
         )
 
-    weights = ledger.all_weights()
+    if using_cached_backtest:
+        weights = backtest.get("bootstrapped_weights") or {}
+    else:
+        if ledger is None:
+            weights = {}
+        else:
+            weights = ledger.all_weights()
     non_default = {s: w for s, w in weights.items() if abs(w - 1.0) > 1e-6}
     if not non_default:
         blockers.append("trust weights never bootstrapped (run backtest --bootstrap)")
@@ -237,11 +346,23 @@ def evaluate_canary_readiness(
 
     evidence = {
         "settled_markets": settled,
+        "source_evidence_mode": source_evidence_mode,
+        "live_source_capability_matrix": source_capabilities,
+        "retro_source_evidence": backtest.get("retro_source_evidence", {}),
         # Provenance split: 'retro' evidence is point-in-time replay against
         # markets that settled before we traded them (autonomy/retro.py);
         # 'live' is shadow/live forecasts graded as they settled. Both are
         # real markets, real outcomes, no-lookahead inputs.
-        "evidence_split": ledger.evidence_split(),
+        # The production preflight consumes the provenance counts computed by
+        # the scheduled report.  Re-scanning the 9+ GiB ledger here made a
+        # nominal readiness check take minutes.  Offline/direct evaluations
+        # retain the original query for test and research workflows.
+        "evidence_split": (
+            backtest.get("evidence_split", {})
+            if using_cached_backtest
+            else (ledger.evidence_split() if ledger is not None else {})
+        ),
+        "cached_backtest": cache_evidence if using_cached_backtest else {},
         "market_beating_sources": beaters,
         "decision_policy": {
             "settled_markets": decision_policy.get("settled_markets", 0),

@@ -12,6 +12,7 @@ ingest checkpoint rather than raising.
 """
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from typing import Any, Iterable
 
 from autonomy.sports.history_store import SportsHistoryStore
@@ -26,7 +27,9 @@ def _season_of(date: str) -> int | None:
         return None
 
 
-def espn_games_to_rows(games: Iterable[Any], *, source: str = "espn") -> list[dict[str, Any]]:
+def espn_games_to_rows(
+    games: Iterable[Any], *, source: str = "espn", received_at: str | None = None,
+) -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
     for g in games:
         if not getattr(g, "game_id", None) or not getattr(g, "date", None):
@@ -40,6 +43,12 @@ def espn_games_to_rows(games: Iterable[Any], *, source: str = "espn") -> list[di
             "away_score": getattr(g, "away_score", None),
             "source": source,
             "provenance_url": f"espn:{getattr(g, 'league', '')}:{g.game_id}",
+            # ESPN's scoreboard does not report an authoritative finalization
+            # timestamp. A final is therefore knowable no earlier than this
+            # receipt; historical calls without a receipt remain quarantined.
+            "result_available_at": received_at if status == "post" else None,
+            "received_at": received_at,
+            "provenance_quality": "observed_at_receipt" if received_at else "unknown",
             "extra": {
                 "home_ml": getattr(g, "home_ml", None), "away_ml": getattr(g, "away_ml", None),
                 "home_ml_open": getattr(g, "home_ml_open", None),
@@ -74,19 +83,24 @@ def espn_games_to_lines(games: Iterable[Any]) -> list[dict[str, Any]]:
 
 def ingest_espn_league(
     store: SportsHistoryStore, client: Any, league: str, *, dates: str | None = None,
+    received_at: str | None = None,
 ) -> dict[str, Any]:
     """Fetch one league's scoreboard and upsert its games + odds lines."""
     try:
-        games = client.games(league, dates)
+        games = list(client.games(league, dates))
     except Exception as exc:  # noqa: BLE001 -- a down feed must not raise
         store.record_ingest("espn", league, dates or "recent",
                             status=f"error:{type(exc).__name__}", rows=0, http={})
         return {"rows": 0, "ok": False, "error": str(exc)[:120]}
-    rows = espn_games_to_rows(games)
+    observed_at = received_at or datetime.now(timezone.utc).isoformat()
+    rows = espn_games_to_rows(games, received_at=observed_at)
     store.upsert_games(rows)
     lines = espn_games_to_lines(games)
     store.record_lines(lines)
     finals = sum(1 for r in rows if r["status"] == "post")
     store.record_ingest("espn", league, dates or "recent", status="ok",
                         rows=len(rows), http={"finals": finals, "lines": len(lines)})
-    return {"rows": len(rows), "finals": finals, "lines": len(lines), "ok": True}
+    return {
+        "rows": len(rows), "finals": finals, "lines": len(lines), "ok": True,
+        "received_at": observed_at,
+    }

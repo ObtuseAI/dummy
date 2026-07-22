@@ -16,6 +16,7 @@ from core.state import DummyState
 from core.ontology import AccountMode, LiveOrderRequest, OrderBook, OrderBookLevel, Forecast
 from live_firewall.firewall import LiveBrokerFirewall, REJECTED_ADAPTERS, mark_adapter_rejected
 from live_firewall.exposure_tracker import ExposureTracker
+from forecasting.model_influence_attestation import build_model_influence_attestation
 from repo_harvester.adapter_planner import generate_adapter_plan_v3
 from repo_harvester.incorporation_engine import get_allowed_adapter_names, approve_adapter_tests
 from repo_harvester.incorporation_registry import load_registry, save_registry
@@ -38,7 +39,7 @@ def reset_state(tmp_path):
     incorporation_registry.REGISTRY_PATH = original_path
 
 
-def _make_request(**overrides):
+def _make_request(*, forecast=None, **overrides):
     defaults = dict(
         proposal_id="p1",
         market_ticker="MARKET",
@@ -51,7 +52,15 @@ def _make_request(**overrides):
         adapter_name="kalshi_live_firewall_adapter",
     )
     defaults.update(overrides)
-    return LiveOrderRequest(**defaults)
+    if forecast is None:
+        return LiveOrderRequest(**defaults)
+    return LiveOrderRequest(
+        **defaults,
+        model_influence_attestation=build_model_influence_attestation(
+            forecast,
+            defaults,
+        ),
+    )
 
 
 def _make_book():
@@ -190,12 +199,14 @@ def test_source_scan_creates_adapter_target():
         category="stocks_equities_options_macro",
     )
     assert plan["verdict"] == RepoVerdict.ADAPTER_TARGET.value
-    assert plan["plans"][0]["emits_native_types"] is True
+    assert plan["plans"][0]["emits_native_types"] is False
+    assert plan["plans"][0]["integration_status"] == "pending"
+    assert plan["plans"][0]["production_capability"] is False
 
 
 @pytest.mark.asyncio
-async def test_repo_derived_adapter_blocked_until_tested():
-    """A newly accepted adapter plan is not allowed until tests are explicitly approved."""
+async def test_repo_derived_scaffold_stays_blocked_after_structural_tests():
+    """A generated shell cannot enter the live allowlist by boolean test claim."""
     state_module.STATE.set_mode(AccountMode.AUTONOMOUS_LIVE_CAPPED)
     os.environ["KALSHI_API_KEY_ID"] = "test"
     from core.config_loader import load_caps
@@ -207,6 +218,11 @@ async def test_repo_derived_adapter_blocked_until_tested():
         "repo": "owner/new_adapter",
         "adapter_name": "new_adapter",
         "tests_passed": False,
+        "test_status": "pending_adapter_specific_tests",
+        "integration_kind": "scaffold_only",
+        "upstream_integration_verified": False,
+        "production_capability": False,
+        "prediction_authority": False,
     })
     save_registry(registry)
 
@@ -216,9 +232,9 @@ async def test_repo_derived_adapter_blocked_until_tested():
         v = await fw.evaluate(req, _make_book(), _make_forecast_fixed())
         assert not v.allow and v.rejected_by == "unknown_adapter"
 
-        approve_adapter_tests("new_adapter")
+        assert approve_adapter_tests("new_adapter") is False
         v2 = await fw.evaluate(req, _make_book(), _make_forecast_fixed())
-        assert v2.allow
+        assert not v2.allow and v2.rejected_by == "unknown_adapter"
 
 
 @pytest.mark.asyncio
@@ -249,6 +265,19 @@ async def test_unknown_adapter_blocked():
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("ticker", ["KXRAINNYC-26JUL21", "KXWTI-26JUL21-T80"])
+async def test_data_only_contracts_are_blocked_before_other_live_gates(ticker):
+    state_module.STATE.set_mode(AccountMode.AUTONOMOUS_LIVE_CAPPED)
+    fw = LiveBrokerFirewall(None, ExposureTracker())
+    req = _make_request(market_ticker=ticker, contract_ticker=f"{ticker}-YES")
+
+    verdict = await fw.evaluate(req, _make_book(), _make_forecast_fixed())
+
+    assert not verdict.allow
+    assert verdict.rejected_by == "data_only_target"
+
+
+@pytest.mark.asyncio
 async def test_direct_live_order_outside_firewall_is_rejected_by_policy():
     """Only LiveBrokerFirewall.submit may call the broker client.
 
@@ -265,13 +294,18 @@ async def test_direct_live_order_outside_firewall_is_rejected_by_policy():
     client = AsyncMock()
     client.create_order.return_value = {"order": {"order_id": "ord-123"}}
 
-    with patch("live_firewall.firewall.load_caps", return_value=caps), patch.object(
-        LiveBrokerFirewall, "_live_submit_enabled", return_value=True
-    ):
+    with patch("live_firewall.firewall.load_caps", return_value=caps):
         fw = LiveBrokerFirewall(client, ExposureTracker())
-        result = await fw.submit(_make_request(), _make_book(), _make_forecast_fixed())
-        assert result.success
-        client.create_order.assert_awaited_once()
+        forecast = _make_forecast_fixed()
+        result = await fw.submit(
+            _make_request(forecast=forecast),
+            _make_book(),
+            forecast,
+        )
+        assert result.success is False
+        assert result.broker_contacted is False
+        assert "risk" in result.error.lower()
+        client.create_order.assert_not_awaited()
 
     # A direct call to the client outside the firewall would bypass caps,
     # compliance, and exposure checks.  Dummy's architecture forbids that;

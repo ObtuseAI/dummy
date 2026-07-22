@@ -28,12 +28,14 @@ Fail-closed invariants:
 from __future__ import annotations
 
 import json
+import math
 import sqlite3
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable, Mapping
 
 from autonomy.auto_promotion import (
+    ARTIFACT_STALE_HOURS,
     AutoPromotionEngine,
     DEFAULT_CONFIG,
     EngineResult,
@@ -57,6 +59,7 @@ RUNTIME_DIR = Path("runtime/autonomy")
 PROMOTION_LEDGER_PATH = RUNTIME_DIR / "promotion_ledger.jsonl"
 STATE_PATH = RUNTIME_DIR / "auto_promotion_state.json"
 MINED_FAMILIES_PATH = RUNTIME_DIR / "mined_scope_families.json"
+FORWARD_REGISTRATIONS_PATH = RUNTIME_DIR / "promotion_forward_registrations.json"
 
 # A trust weight pinned at the learner's multiplicative ceiling is the
 # weight-saturation anomaly the forecaster's fused-uncertainty note warns
@@ -97,9 +100,116 @@ def _write_json(path: Path, value: dict[str, Any]) -> None:
 
 def _parse_ts(text: Any) -> float | None:
     try:
-        return datetime.fromisoformat(str(text).replace("Z", "+00:00")).timestamp()
+        parsed = datetime.fromisoformat(str(text).replace("Z", "+00:00"))
     except (TypeError, ValueError):
         return None
+    if parsed.tzinfo is None or parsed.utcoffset() is None:
+        return None
+    try:
+        return parsed.timestamp()
+    except (OSError, OverflowError, ValueError):
+        return None
+
+
+def _usable_optional_clv(
+    runtime_dir: Path,
+    now_ts: float,
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    """Return only fresh optional CLV evidence plus an auditable status.
+
+    The promotion policy explicitly supports scopes without CLV by applying
+    ``MIN_CLUSTERS_NO_CLV``. Therefore a missing or stale optional CLV report
+    must behave as unavailable, not as a global promotion-run veto. Excluded
+    CLV can never lower the no-CLV cluster threshold or satisfy the CLV gate.
+    """
+    raw = _load_json(runtime_dir / "clv_report.json")
+    if not raw:
+        return {}, {
+            "status": "MISSING",
+            "used": False,
+            "generated_at": None,
+            "age_hours": None,
+            "max_age_hours": ARTIFACT_STALE_HOURS,
+        }
+
+    generated_at = raw.get("generated_at")
+    generated_ts = _parse_ts(generated_at)
+    if generated_ts is None:
+        return {}, {
+            "status": "INVALID_TIMESTAMP_EXCLUDED",
+            "used": False,
+            "generated_at": generated_at,
+            "age_hours": None,
+            "max_age_hours": ARTIFACT_STALE_HOURS,
+        }
+
+    signed_age_hours = (now_ts - generated_ts) / 3600.0
+    if signed_age_hours < -(5.0 / 60.0):
+        return {}, {
+            "status": "FUTURE_TIMESTAMP_EXCLUDED",
+            "used": False,
+            "generated_at": generated_at,
+            "age_hours": round(signed_age_hours, 3),
+            "max_age_hours": ARTIFACT_STALE_HOURS,
+        }
+
+    age_hours = max(0.0, signed_age_hours)
+    if age_hours > ARTIFACT_STALE_HOURS:
+        return {}, {
+            "status": "STALE_EXCLUDED",
+            "used": False,
+            "generated_at": generated_at,
+            "age_hours": round(age_hours, 3),
+            "max_age_hours": ARTIFACT_STALE_HOURS,
+        }
+
+    return raw, {
+        "status": "FRESH",
+        "used": True,
+        "generated_at": generated_at,
+        "age_hours": round(age_hours, 3),
+        "max_age_hours": ARTIFACT_STALE_HOURS,
+    }
+
+
+def load_forward_registrations(path: Path) -> dict[str, dict[str, Any]]:
+    """Load immutable candidate registrations required before forward scoring.
+
+    A registration binds an exact scope to a SHA-256 candidate fingerprint and
+    an aware UTC instant. Missing, malformed, or duplicate scopes are omitted;
+    omission makes automatic promotion impossible but leaves diagnostics intact.
+    """
+    raw = _load_json(path)
+    entries = raw.get("registrations") or []
+    if not isinstance(entries, list):
+        return {}
+    found: dict[str, dict[str, Any]] = {}
+    invalid: set[str] = set()
+    for entry in entries:
+        if not isinstance(entry, dict):
+            continue
+        scope = str(entry.get("scope") or "")
+        fingerprint = str(entry.get("candidate_fingerprint") or "").lower()
+        registered_at = entry.get("registered_at")
+        if (
+            len(scope.split("|")) != 4
+            or any(not part.strip() for part in scope.split("|"))
+            or len(fingerprint) != 64
+            or any(char not in "0123456789abcdef" for char in fingerprint)
+            or _parse_ts(registered_at) is None
+        ):
+            continue
+        if scope in found:
+            invalid.add(scope)
+            continue
+        found[scope] = {
+            "scope": scope,
+            "candidate_fingerprint": fingerprint,
+            "registered_at": str(registered_at),
+        }
+    for scope in invalid:
+        found.pop(scope, None)
+    return found
 
 
 # --------------------------------------------------------------------------
@@ -155,24 +265,15 @@ def gather_rails_inputs(
         if _valid_trust_key(str(key))
     )
 
-    # Evidence artifact staleness: the heartbeat's last cycle IS the evidence
-    # pulse — if the loop has not run in over ARTIFACT_STALE_HOURS the settled
-    # rows are stale. A missing/unparseable heartbeat is infinitely stale
-    # (fail-closed). The CLV report, when present, must also be fresh.
-    ages: list[float] = []
+    # The heartbeat is the mandatory evidence pulse. Missing/unparseable or old
+    # heartbeat data remains a hard, fail-closed global rail. CLV is optional by
+    # policy and is freshness-filtered separately: stale CLV is excluded and the
+    # stricter no-CLV cluster threshold applies.
     last_cycle = _parse_ts(heartbeat.get("last_cycle_at"))
     if last_cycle is None:
-        ages.append(float("inf"))
+        artifact_age_hours = float("inf")
     else:
-        ages.append(max(0.0, (now_ts - last_cycle) / 3600.0))
-    clv = _load_json(runtime_dir / "clv_report.json")
-    if clv:
-        generated = _parse_ts(clv.get("generated_at"))
-        ages.append(
-            float("inf") if generated is None
-            else max(0.0, (now_ts - generated) / 3600.0)
-        )
-    artifact_age_hours = max(ages) if ages else None
+        artifact_age_hours = max(0.0, (now_ts - last_cycle) / 3600.0)
 
     return RailsInputs(
         kill_file_present=kill_present,
@@ -258,66 +359,160 @@ def clv_by_exact_scope(
     return out
 
 
-def realized_attribution(conn: sqlite3.Connection) -> dict[str, dict[str, Any]]:
-    """Settled trade P&L attributed to exact scopes, share-weighted.
+def realized_attribution(
+    conn: sqlite3.Connection,
+    *,
+    forward_registrations: Mapping[str, Mapping[str, Any]] | None = None,
+) -> dict[str, dict[str, Any]]:
+    """Receipt-bounded witnessed-fill P&L attributed to exact scopes.
 
-    Stage-2 fuel. For every verified settled outcome (a real prior fill, the
-    same standard ``AutonomyLedger.performance_summary`` enforces), the trade's
-    P&L (dollars) is split across the fused sources by their recorded
-    ``sources_used`` share; each slice lands on the source's exact grading
-    scope, derived from that source's point-in-time signal features for the
-    market. Clustered by the ticker's event prefix — cluster-level, never
-    per-trade, when the CI is taken.
+    The top-level attribution remains a share-weighted diagnostic and stage-2
+    input. ``forward_evidence`` is much stricter: the candidate must be the
+    isolated decision source, its exact fingerprint must have been registered
+    before both signal and decision, and one terminal net-P&L row must follow a
+    positive fill witness. Only that nested lane can authorize stage 1.
     """
     from autonomy.retention import install_signal_history
+    from autonomy.correlation import group_key
 
     install_signal_history(conn)
+    registrations = dict(forward_registrations or {})
     rows = conn.execute(
         """
-        SELECT d.market_ticker, d.sources_used, d.created_at, o.pnl_cents
+        SELECT d.decision_id,d.market_ticker,d.sources_used,d.created_at,
+               o.pnl_cents,o.created_at,st.settled_at,
+               (SELECT MIN(fill.created_at) FROM outcomes fill
+                WHERE fill.decision_id=o.decision_id AND fill.id<o.id
+                  AND fill.fill_count>0
+                  AND fill.kind IN ('SHADOW','PARTIALLY_FILLED','FILLED')) AS fill_at
         FROM outcomes o JOIN decisions d USING(decision_id)
+        JOIN settlements st ON st.market_ticker=d.market_ticker
         WHERE o.pnl_cents IS NOT NULL
           AND o.kind IN ('SETTLED_WIN','SETTLED_LOSS')
+          AND o.id=(
+              SELECT MAX(terminal.id) FROM outcomes terminal
+              WHERE terminal.decision_id=o.decision_id
+                AND terminal.pnl_cents IS NOT NULL
+                AND terminal.kind IN ('SETTLED_WIN','SETTLED_LOSS')
+          )
           AND EXISTS (
               SELECT 1 FROM outcomes fill
               WHERE fill.decision_id = o.decision_id
                 AND fill.id < o.id AND fill.fill_count > 0
+                AND fill.kind IN ('SHADOW','PARTIALLY_FILLED','FILLED')
           )
         """
     ).fetchall()
     out: dict[str, dict[str, Any]] = {}
-    for ticker, sources_used_json, decided_at, pnl_cents in rows:
+    for (
+        _decision_id, ticker, sources_used_json, decided_at, pnl_cents,
+        outcome_at, settled_at, fill_at,
+    ) in rows:
+        decision_ts = _parse_ts(decided_at)
+        fill_ts = _parse_ts(fill_at)
+        settlement_ts = _parse_ts(settled_at)
+        outcome_ts = _parse_ts(outcome_at)
+        if (
+            None in {decision_ts, fill_ts, settlement_ts, outcome_ts}
+            or not (
+                float(decision_ts) <= float(fill_ts)
+                <= float(settlement_ts) <= float(outcome_ts)
+            )
+        ):
+            continue
         try:
             shares = json.loads(sources_used_json or "{}")
         except (TypeError, ValueError):
             continue
         if not isinstance(shares, dict):
             continue
-        cluster = str(ticker).rsplit("-", 1)[0]
-        pnl_dollars = float(pnl_cents) / 100.0
-        for source, share in shares.items():
+        parsed_shares: dict[str, float] = {}
+        invalid_shares = False
+        for source, raw_share in shares.items():
             try:
-                share = float(share)
+                share = float(raw_share)
             except (TypeError, ValueError):
-                continue
-            if share <= 0.0:
-                continue
+                invalid_shares = True
+                break
+            if not math.isfinite(share) or share < 0.0 or share > 1.0:
+                invalid_shares = True
+                break
+            if share > 0.0:
+                parsed_shares[str(source)] = share
+        if (
+            invalid_shares
+            or not parsed_shares
+            or sum(parsed_shares.values()) > 1.0 + 1e-9
+        ):
+            continue
+        cluster = group_key(str(ticker))
+        pnl_dollars = float(pnl_cents) / 100.0
+        for source, share in parsed_shares.items():
             feature_row = conn.execute(
-                "SELECT features FROM signal_history"
-                " WHERE source=? AND market_ticker=? AND created_at<=?"
-                " ORDER BY created_at DESC LIMIT 1",
-                (source, ticker, decided_at),
+                "SELECT features,created_at,ingested_at,mode FROM signal_history"
+                " WHERE source=? AND market_ticker=? AND LOWER(mode)='live'"
+                " AND julianday(created_at)<=julianday(?)"
+                " AND julianday(ingested_at)<=julianday(?)"
+                " ORDER BY julianday(created_at) DESC,id DESC LIMIT 1",
+                (source, ticker, decided_at, decided_at),
             ).fetchone()
+            if feature_row is None:
+                continue
             try:
-                features = json.loads(feature_row[0]) if feature_row else {}
+                features = json.loads(feature_row[0])
             except (TypeError, ValueError):
                 features = {}
             if not isinstance(features, dict):
                 features = {}
+            signal_ts = _parse_ts(feature_row[1])
+            receipt_ts = _parse_ts(feature_row[2])
+            if (
+                signal_ts is None or receipt_ts is None
+                or signal_ts > decision_ts or receipt_ts > decision_ts
+            ):
+                continue
             scope = grading_scope(str(source), str(ticker), features)
-            entry = out.setdefault(scope, {"n_trades": 0, "pnl_by_cluster": {}})
+            entry = out.setdefault(scope, {
+                "n_trades": 0,
+                "pnl_by_cluster": {},
+                "evidence_origin": "ledger_verified",
+                "receipt_bounded": True,
+                "witnessed_fill_net_pnl": True,
+            })
             entry["n_trades"] += 1
             entry["pnl_by_cluster"].setdefault(cluster, []).append(pnl_dollars * share)
+            registration = registrations.get(scope)
+            if not isinstance(registration, Mapping):
+                continue
+            registered_ts = _parse_ts(registration.get("registered_at"))
+            fingerprint = str(registration.get("candidate_fingerprint") or "").lower()
+            if (
+                registered_ts is None
+                or signal_ts <= registered_ts
+                or receipt_ts <= registered_ts
+                or decision_ts <= registered_ts
+                or str(features.get("promotion_candidate_fingerprint") or "").lower()
+                != fingerprint
+                or len(parsed_shares) != 1
+                or abs(share - 1.0) > 1e-9
+            ):
+                continue
+            forward = entry.setdefault("forward_evidence", {
+                "evidence_version": "promotion_forward_fill_v1",
+                "evidence_origin": "ledger_verified",
+                "receipt_bounded": True,
+                "witnessed_fill_net_pnl": True,
+                "out_of_sample_after_registration": True,
+                "isolated_candidate_decisions": True,
+                "registered_at": str(registration["registered_at"]),
+                "candidate_fingerprint": fingerprint,
+                "n_trades": 0,
+                "pnl_by_cluster": {},
+                "trade_timestamps": [],
+            })
+            forward["n_trades"] += 1
+            forward["pnl_by_cluster"].setdefault(cluster, []).append(pnl_dollars)
+            forward["trade_timestamps"].append(str(decided_at))
     return out
 
 
@@ -417,7 +612,8 @@ def apply_result(
             by_scope["|".join(str(p) for p in parts)] = entry
 
     applied = {"promoted": [], "escalated": [], "demoted": [],
-               "replacement_candidates": [], "deferred": []}
+               "replacement_candidates": [], "human_review_candidates": [],
+               "deferred": []}
 
     for decision in result.promotions:
         parts = _scope_parts(decision.scope)
@@ -479,6 +675,8 @@ def apply_result(
 
     applied["replacement_candidates"] = [
         d.scope for d in result.replacement_candidates]
+    applied["human_review_candidates"] = [
+        d.scope for d in result.human_review_candidates]
     applied["deferred"] = [d.scope for d in result.deferred]
 
     if applied["promoted"] or applied["escalated"]:
@@ -518,6 +716,8 @@ def run_auto_promotion(
     if alert_fn is None:
         from autonomy.alerts import emit_alert as alert_fn
 
+    clv_report, clv_evidence = _usable_optional_clv(runtime_dir, now_ts)
+
     ledger_path = runtime_dir / "promotion_ledger.jsonl"
     state_path = runtime_dir / "auto_promotion_state.json"
     # Same file the PromotionRegistry defaults to when runtime_dir is the
@@ -530,6 +730,7 @@ def run_auto_promotion(
             "generated_at": now_iso,
             "thresholds": config.as_dict(),
             "live_trading_authority": "OPERATOR_ONLY_UNAFFECTED",
+            "optional_evidence": {"clv": clv_evidence},
             **state,
         }
         _write_json(state_path, state)
@@ -584,13 +785,18 @@ def run_auto_promotion(
     conn = sqlite3.connect(f"file:{Path(db_path).as_posix()}?mode=ro", uri=True)
     try:
         rows = load_settled_rows(conn)
-        realized = realized_attribution(conn)
+        forward_registrations = load_forward_registrations(
+            runtime_dir / FORWARD_REGISTRATIONS_PATH.name
+        )
+        realized = realized_attribution(
+            conn, forward_registrations=forward_registrations,
+        )
     finally:
         conn.close()
 
     scope_rows = group_rows_by_scope(rows)
     eligible = eligible_scopes_from_rows(rows)
-    clv = clv_by_exact_scope(_load_json(runtime_dir / "clv_report.json"), set(scope_rows))
+    clv = clv_by_exact_scope(clv_report, set(scope_rows))
     mined_families = load_mined_family_sizes(runtime_dir / "mined_scope_families.json")
 
     registry = PromotionRegistry(promotions_path, runtime_dir / "auto_demotions.json")
@@ -639,6 +845,15 @@ def run_auto_promotion(
     applied["declined"] = [
         {"scope": d.scope, "reason": d.reason} for d in result.declined
     ]
+    _write_json(runtime_dir / "promotion_human_review_candidates.json", {
+        "generated_at": now_iso,
+        "automatic_promotion_authority": False,
+        "candidates": [d.to_dict() for d in result.human_review_candidates],
+    })
+    applied["human_review_candidates"] = [
+        {"scope": d.scope, "reason": d.reason}
+        for d in result.human_review_candidates
+    ]
     # Engine demotions also land in the sticky auto_demotions.json file the
     # registry honors (same merge discipline as the readiness runner: a
     # demotion never un-sticks without a human).
@@ -663,6 +878,7 @@ def run_auto_promotion(
         "status": "OK",
         "scopes_evaluated": len(scope_rows),
         "eligible_scopes": len(eligible),
+        "forward_registrations": len(forward_registrations),
         "promotions_used_today_before_run": used_today,
         **applied,
     })
@@ -673,6 +889,7 @@ __all__ = [
     "group_rows_by_scope",
     "eligible_scopes_from_rows",
     "clv_by_exact_scope",
+    "load_forward_registrations",
     "realized_attribution",
     "fused_probs_by_source",
     "load_mined_family_sizes",

@@ -161,7 +161,12 @@ def build_completion_lift_v10() -> dict[str, Any]:
     selection = "RUN_EXTERNAL_AUTHORITY_PATH" if not st["caps_ok"] else "RUN_EXECUTE_ONCE_FINAL_PROOF_WITH_AUTHORITY" if not real_proof else "RUN_POST_PROOF_AUTO_INTAKE"
     return {
         "subsystem_percentages": percentages,
+        # Backward-compatible field name; this is a self-assessed checklist
+        # average, not proof that the system is fully operational.
         "fully_operational_estimate": fully_operational,
+        "self_assessed_checklist_score": fully_operational,
+        "checklist_readiness_bar": 80,
+        "operational_readiness_verdict": "PASS" if fully_operational >= 80 else "BELOW_READINESS_BAR",
         "real_first_live_proof_present": real_proof,
         "fixture_proof_inflates_real_score": False,
         "scale_autonomy_blocked_by_no_live_proof": not real_proof,
@@ -186,11 +191,12 @@ REPORT_GROUPS: dict[str, list[str]] = {
 }
 
 V304_ROUTES = [f"/api/v304/{g}" for g in REPORT_GROUPS]
-SUMMARY_FIELDS = [["Mission", "mission_state_verdict"], ["Completion Lift V10", CONTROLLER_KEY], ["Fully Operational Est", "fully_operational_estimate"], ["Next Action Matrix", "next_action_matrix_selection"], ["Next Action", "current_next_action"]]
+SUMMARY_FIELDS = [["Mission", "mission_state_verdict"], ["Completion Lift V10", CONTROLLER_KEY], ["Self-Assessed Checklist Score", "self_assessed_checklist_score"], ["Operational Readiness", "operational_readiness_verdict"], ["Next Action Matrix", "next_action_matrix_selection"], ["Next Action", "current_next_action"]]
 
 
 def _controller(baseline_status: str, **kw: Any) -> dict[str, Any]:
     lift = build_completion_lift_v10()
+    readiness_passed = lift["operational_readiness_verdict"] == "PASS"
     registry = _load_real_proof_registry()
     registry_present = registry is not None
     broker_contacted = bool(registry.get("latest_real_broker_contacted")) if registry_present else False
@@ -217,10 +223,16 @@ def _controller(baseline_status: str, **kw: Any) -> dict[str, Any]:
 
     return {
         "status": "PASS_COMPLETION_LIFT_V10_REAL_PROOF_FORK_LOCKED",
-        "verdict": "PASS",
+        # PASS status above means the controller ran and retained its safety
+        # locks. Overall readiness remains PARTIAL below the declared bar.
+        "verdict": "PASS" if readiness_passed else "PARTIAL",
         "fields": {
             "subsystem_percentages": lift["subsystem_percentages"],
             "fully_operational_estimate": lift["fully_operational_estimate"],
+            "self_assessed_checklist_score": lift["self_assessed_checklist_score"],
+            "checklist_readiness_bar": lift["checklist_readiness_bar"],
+            "operational_readiness_verdict": lift["operational_readiness_verdict"],
+            "controller_status_scope": "report_generation_and_safety_locks",
             "real_first_live_proof_present": lift["real_first_live_proof_present"],
             "fixture_proof_inflates_real_score": lift["fixture_proof_inflates_real_score"],
             "scale_autonomy_blocked_by_no_live_proof": lift["scale_autonomy_blocked_by_no_live_proof"],
@@ -237,7 +249,7 @@ def _controller(baseline_status: str, **kw: Any) -> dict[str, Any]:
             "no_autonomy_proof_status": "PASS_NO_AUTONOMY",
             **preserved_fields,
         },
-        "blockers": [],
+        "blockers": [] if readiness_passed else ["SELF_ASSESSED_CHECKLIST_SCORE_BELOW_80"],
         "next_action": "COMPLETION_LIFT_V10_REAL_PROOF_FORK_LOCKED_NEXT_" + lift["next_action_matrix_selection"] + "_NO_SUBMIT_NO_SCALE_NO_AUTONOMY",
     }
 

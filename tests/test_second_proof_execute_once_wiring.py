@@ -7,13 +7,15 @@ import json
 
 import pytest
 
+from tests.caps_authority_test_helpers import install_registered_caps_authority
 from core.proof_authority import REQUIRED_CONFIRMATION
 from core.second_proof_lock import is_second_proof_lock_consumed
 from core.second_proof_runner import run_second_proof_execute_once
 from live_firewall.firewall import LiveBrokerFirewall
-from core.ontology import LiveOrderResult
-from predator_mesh.brokers import LimitOrderRequest, OrderState, SubmitResult
 from tools.operator_authority_appliance import operator_full_completion as ofc
+
+
+RETIRED_REASON = "LEGACY_SECOND_PROOF_RUNNER_RETIRED_USE_CENTRAL_FIREWALL"
 
 
 @pytest.fixture
@@ -73,6 +75,9 @@ def active_context(tmp_path, monkeypatch):
     (tmp_path / "approvals" / "dummy_controlled_production_pilot_approval.json").write_text(
         json.dumps({"scope": "one_controlled_production_pilot_via_firewall_only"}, sort_keys=True), encoding="utf-8"
     )
+    install_registered_caps_authority(
+        monkeypatch, tmp_path / "caps.json", patch_operator_appliance=True
+    )
 
     args = ofc.build_parser().parse_args(["prepare-second-proof-authority"])
     ofc.cmd_prepare_second_proof_authority(args, io.StringIO())
@@ -124,123 +129,126 @@ def test_blocked_without_active_authority(tmp_path, monkeypatch):
     assert "BLOCKED_PROOF_LOCK_ALREADY_USED" in out.getvalue()
 
 
-def test_cmd_one_shot_live_runs_second_proof_runner(active_context, tmp_path, monkeypatch):
-    captured = {}
+def test_cmd_one_shot_live_blocks_retired_second_proof_runner(active_context, tmp_path, monkeypatch):
+    calls = []
 
-    async def fake_submit(self, req: LimitOrderRequest):
-        captured["market_ticker"] = req.market_ticker
-        captured["price"] = req.price
-        captured["quantity"] = req.quantity
-        captured["order_type"] = req.order_type
-        return LiveOrderResult(success=True, order_id="ord-second-1", error=None, proof_reference="")
+    async def fake_submit(self, req):
+        calls.append(req)
+        raise AssertionError("retired runner must not call the compatibility submit adapter")
 
     monkeypatch.setattr(LiveBrokerFirewall, "submit_limit_order_adapter", fake_submit)
     env = {"DUMMY_LIVE_PROOF_MODE": "1", "DUMMY_LIVE_PROOF_ACK": "FULL_AUTHORITY_OPERATOR_APPROVED_LIVE_PROOF_ONLY"}
     out = io.StringIO()
     rc = ofc.cmd_one_shot_live(env, None, out)
-    assert rc == ofc.EXIT_OK
-    assert captured["market_ticker"] == "KXMVESPORTSMULTIGAMEEXTENDED-S2026507888D9EE4-E8412AFB1D6"
-    assert captured["price"] == 1
-    assert captured["quantity"] == 1
-    assert captured["order_type"] == "LIMIT"
+    assert rc == ofc.EXIT_EXTERNAL
+    assert RETIRED_REASON in out.getvalue()
+    assert calls == []
 
 
-def test_second_attempt_blocked_by_lock(active_context, tmp_path, monkeypatch):
-    async def fake_submit(self, req: LimitOrderRequest):
-        return LiveOrderResult(success=True, order_id="ord-1", error=None, proof_reference="")
+def test_retired_runner_does_not_consume_lock(active_context, tmp_path, monkeypatch):
+    calls = []
+
+    async def fake_submit(self, req):
+        calls.append(req)
+        raise AssertionError("retired runner must not call the compatibility submit adapter")
 
     monkeypatch.setattr(LiveBrokerFirewall, "submit_limit_order_adapter", fake_submit)
     env = {"DUMMY_LIVE_PROOF_MODE": "1", "DUMMY_LIVE_PROOF_ACK": "FULL_AUTHORITY_OPERATOR_APPROVED_LIVE_PROOF_ONLY"}
     out = io.StringIO()
     rc = ofc.cmd_one_shot_live(env, None, out)
-    assert rc == ofc.EXIT_OK
-    # Second attempt should be blocked by the consumed lock.
+    assert rc == ofc.EXIT_EXTERNAL
     out2 = io.StringIO()
     rc = ofc.cmd_one_shot_live(env, None, out2)
-    assert rc == ofc.EXIT_MISSING
-    assert "BLOCKED_SECOND_PROOF_LOCK_ALREADY_USED" in out2.getvalue()
+    assert rc == ofc.EXIT_EXTERNAL
+    assert RETIRED_REASON in out2.getvalue()
+    assert calls == []
+    assert is_second_proof_lock_consumed(_active_authority_id(tmp_path)) is False
 
 
 # --- run_second_proof_execute_once direct tests ---
 
 
-def test_uses_v3_candidate_when_active(active_context, tmp_path, monkeypatch):
-    captured = {}
+def test_active_v3_candidate_is_blocked_in_retired_runner(active_context, tmp_path, monkeypatch):
+    calls = []
 
-    async def fake_submit(self, req: LimitOrderRequest):
-        captured["market_ticker"] = req.market_ticker
-        captured["price"] = req.price
-        captured["quantity"] = req.quantity
-        captured["order_type"] = req.order_type
-        return LiveOrderResult(success=True, order_id="ord-second-1", error=None, proof_reference="")
+    async def fake_submit(self, req):
+        calls.append(req)
+        raise AssertionError("retired runner must not call the compatibility submit adapter")
 
     monkeypatch.setattr(LiveBrokerFirewall, "submit_limit_order_adapter", fake_submit)
     report = run_second_proof_execute_once(live_submit_path=tmp_path / "live_submit.json")
-    assert report["verdict"] == "SECOND_PROOF_EXECUTED_ACCEPTED"
-    assert report["real_live_orders_submitted_count"] == 1
-    assert captured["market_ticker"] == "KXMVESPORTSMULTIGAMEEXTENDED-S2026507888D9EE4-E8412AFB1D6"
-    assert captured["price"] == 1
-    assert captured["quantity"] == 1
-    assert captured["order_type"] == "LIMIT"
+    assert report["verdict"] == "SECOND_PROOF_BLOCKED_BEFORE_BROKER"
+    assert report["block_reason"] == RETIRED_REASON
+    assert report["real_live_orders_submitted_count"] == 0
+    assert report["real_broker_contacted"] is False
+    assert calls == []
 
 
 def test_does_not_use_kxbtc(active_context, tmp_path, monkeypatch):
-    async def fake_submit(self, req: LimitOrderRequest):
-        assert req.market_ticker != "KXBTC-26DEC25000-C"
-        return LiveOrderResult(success=False, order_id=None, error="BROKER_REJECTED", proof_reference="", broker_rejection_code="BROKER_REJECTED", broker_rejection_http_status=400)
+    calls = []
+
+    async def fake_submit(self, req):
+        calls.append(req)
+        raise AssertionError("retired runner must not submit any ticker")
 
     monkeypatch.setattr(LiveBrokerFirewall, "submit_limit_order_adapter", fake_submit)
     report = run_second_proof_execute_once(live_submit_path=tmp_path / "live_submit.json")
-    assert report["verdict"] == "SECOND_PROOF_EXECUTED_BROKER_REJECTED"
+    assert report["verdict"] == "SECOND_PROOF_BLOCKED_BEFORE_BROKER"
+    assert report["block_reason"] == RETIRED_REASON
+    assert calls == []
 
 
-def test_routes_through_live_firewall(active_context, tmp_path, monkeypatch):
+def test_retired_runner_does_not_route_through_compatibility_adapter(active_context, tmp_path, monkeypatch):
     called = []
 
-    async def fake_submit(self, req: LimitOrderRequest):
+    async def fake_submit(self, req):
         called.append(True)
-        return SubmitResult(submitted=True, order_id="ord-2", state=OrderState.OPEN, raw={})
+        raise AssertionError("retired runner must not call the compatibility submit adapter")
 
     monkeypatch.setattr(LiveBrokerFirewall, "submit_limit_order_adapter", fake_submit)
-    run_second_proof_execute_once()
-    assert len(called) == 1
+    report = run_second_proof_execute_once()
+    assert report["block_reason"] == RETIRED_REASON
+    assert called == []
 
 
-def test_mocked_broker_accepted_sets_live_order_count(active_context, tmp_path, monkeypatch):
-    async def fake_submit(self, req: LimitOrderRequest):
-        return LiveOrderResult(success=True, order_id="ord-accepted", error=None, proof_reference="")
+def test_mocked_retired_adapter_cannot_forge_acceptance(active_context, tmp_path, monkeypatch):
+    calls = []
+
+    async def fake_submit(self, req):
+        calls.append(req)
+        raise AssertionError("retired runner must not call the compatibility submit adapter")
 
     monkeypatch.setattr(LiveBrokerFirewall, "submit_limit_order_adapter", fake_submit)
     report = run_second_proof_execute_once(live_submit_path=tmp_path / "live_submit.json")
-    assert report["verdict"] == "SECOND_PROOF_EXECUTED_ACCEPTED"
-    assert report["real_live_orders_submitted_count"] == 1
+    assert report["verdict"] == "SECOND_PROOF_BLOCKED_BEFORE_BROKER"
+    assert report["real_live_orders_submitted_count"] == 0
+    assert calls == []
     aid = _active_authority_id(tmp_path)
-    assert is_second_proof_lock_consumed(aid) is True
+    assert is_second_proof_lock_consumed(aid) is False
 
 
-def test_mocked_broker_rejected_preserves_reason(active_context, tmp_path, monkeypatch):
-    async def fake_submit(self, req: LimitOrderRequest):
-        return LiveOrderResult(
-            success=False, order_id=None, error="BROKER_REJECTED", proof_reference="",
-            broker_rejection_code="BROKER_REJECTED", broker_rejection_http_status=400,
-        )
+def test_mocked_retired_adapter_cannot_forge_broker_rejection(active_context, tmp_path, monkeypatch):
+    calls = []
+
+    async def fake_submit(self, req):
+        calls.append(req)
+        raise AssertionError("retired runner must not call the compatibility submit adapter")
 
     monkeypatch.setattr(LiveBrokerFirewall, "submit_limit_order_adapter", fake_submit)
     report = run_second_proof_execute_once(live_submit_path=tmp_path / "live_submit.json")
-    assert report["verdict"] == "SECOND_PROOF_EXECUTED_BROKER_REJECTED"
+    assert report["verdict"] == "SECOND_PROOF_BLOCKED_BEFORE_BROKER"
+    assert report["block_reason"] == RETIRED_REASON
+    assert calls == []
     aid = _active_authority_id(tmp_path)
     lock_path = tmp_path / "proof_locks" / f"second_proof_{aid}.json"
-    data = json.loads(lock_path.read_text(encoding="utf-8"))
-    assert data["consumed"] is True
-    assert data["rejected"] is True
-    assert data["reason"] == "BROKER_REJECTED"
+    assert is_second_proof_lock_consumed(aid) is False
+    if lock_path.exists():
+        assert json.loads(lock_path.read_text(encoding="utf-8"))["consumed"] is False
 
 
 def test_market_order_rejected_by_firewall(active_context, tmp_path, monkeypatch):
-    async def fake_submit(self, req: LimitOrderRequest):
-        # The firewall itself rejects market orders before reaching here.
-        assert req.order_type == "LIMIT"
-        return LiveOrderResult(success=False, order_id=None, error="MARKET_ORDER_REJECTED", proof_reference="", broker_rejection_code="MARKET_ORDER_REJECTED", broker_rejection_http_status=400)
+    async def fake_submit(self, req):
+        raise AssertionError("retired runner must not call the compatibility submit adapter")
 
     monkeypatch.setattr(LiveBrokerFirewall, "submit_limit_order_adapter", fake_submit)
     report = run_second_proof_execute_once(live_submit_path=tmp_path / "live_submit.json")
@@ -248,8 +256,8 @@ def test_market_order_rejected_by_firewall(active_context, tmp_path, monkeypatch
 
 
 def test_live_submit_restored_after_attempt(active_context, tmp_path, monkeypatch):
-    async def fake_submit(self, req: LimitOrderRequest):
-        return LiveOrderResult(success=True, order_id="ord-1", error=None, proof_reference="")
+    async def fake_submit(self, req):
+        raise AssertionError("retired runner must not call the compatibility submit adapter")
 
     monkeypatch.setattr(LiveBrokerFirewall, "submit_limit_order_adapter", fake_submit)
     run_second_proof_execute_once(live_submit_path=tmp_path / "live_submit.json")

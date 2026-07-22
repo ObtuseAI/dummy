@@ -62,9 +62,16 @@ def main() -> int:
         help="restrict attribution to the witnessed / would-have-filled subset"
         " (WS-A1 adverse-selection localization) and write loss_attribution_fills.json",
     )
-    parser.add_argument(
-        "--no-narration", action="store_true",
-        help="skip the LLM commentary pass; write the deterministic artifact only",
+    narration = parser.add_mutually_exclusive_group()
+    narration.add_argument(
+        "--narration",
+        action="store_true",
+        help="explicitly enable the bounded paid LLM commentary pass",
+    )
+    narration.add_argument(
+        "--no-narration",
+        action="store_true",
+        help="deprecated compatibility flag; deterministic-only is now the default",
     )
     args = parser.parse_args()
     out_path = args.out or (DEFAULT_FILL_OUT if args.fills else DEFAULT_OUT)
@@ -84,7 +91,7 @@ def main() -> int:
         attribution = build_fill_loss_attribution(rows, fill_tickers, now_iso=now_iso)
     else:
         attribution = build_loss_attribution(rows, now_iso=now_iso)
-    if not args.no_narration:
+    if args.narration:
         try:
             attribution["narration"] = narrate_losses(attribution, _get_router())
         except Exception:

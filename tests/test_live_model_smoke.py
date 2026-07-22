@@ -97,10 +97,14 @@ async def test_smoke_run_with_credentials_attempts_live_success(
             },
         )
 
+    live_runner = LiveModelSmoke(
+        artifacts_dir=smoke_runner.artifacts_dir,
+        allow_live=True,
+    )
     with patch.object(
-        smoke_runner, "_build_provider", return_value=MockProvider()
+        live_runner, "_build_provider", return_value=MockProvider()
     ), patch.object(MockProvider, "complete", new=_fake_complete):
-        report = await smoke_runner.run()
+        report = await live_runner.run()
 
     assert report["live_model_status"] == "LIVE"
     assert report["model_mode"] == "LIVE"
@@ -138,8 +142,12 @@ async def test_smoke_run_with_credentials_live_failure_falls_back_to_mock(
             )
 
     failing = _FailingProvider(ProviderConfig(api_base="", api_key_env="", model_name="failing"))
-    with patch.object(smoke_runner, "_build_provider", return_value=failing):
-        report = await smoke_runner.run()
+    live_runner = LiveModelSmoke(
+        artifacts_dir=smoke_runner.artifacts_dir,
+        allow_live=True,
+    )
+    with patch.object(live_runner, "_build_provider", return_value=failing):
+        report = await live_runner.run()
 
     assert report["live_model_status"] == "MOCK_ONLY"
     assert report["model_mode"] == "MOCK_ONLY"
@@ -216,9 +224,13 @@ async def test_smoke_run_falls_back_to_mock_on_provider_timeout(
 
     slow = _SlowProvider(ProviderConfig(api_base="", api_key_env="", model_name="slow"))
     start = asyncio.get_event_loop().time()
-    result = await smoke_runner._execute_call(
+    live_runner = LiveModelSmoke(
+        artifacts_dir=smoke_runner.artifacts_dir,
+        allow_live=True,
+    )
+    result = await live_runner._execute_call(
         slow,
-        smoke_runner.deepseek_prompt,
+        live_runner.deepseek_prompt,
         ModelTask.MARKET_THESIS,
         prompt_summary="harmless market summary prompt",
     )

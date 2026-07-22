@@ -51,9 +51,15 @@ def test_all_archived_dashboard_routes_are_lazy_and_preserved() -> None:
     lazy_route = (source_root / "LegacyDashboardRoute.jsx").read_text(
         encoding="utf-8"
     )
+    # V6/V7 predate the root-level archive convention and remain under
+    # ``screens``. They are still real archived dashboards, not stray routes.
+    dashboard_paths = [
+        *source_root.glob("V*Dashboard.jsx"),
+        *(source_root / "screens").glob("V*Dashboard.jsx"),
+    ]
     dashboard_versions = {
         match.group(1)
-        for path in source_root.glob("V*Dashboard.jsx")
+        for path in dashboard_paths
         if (match := re.fullmatch(r"V(\d+)Dashboard\.jsx", path.name))
     }
     route_versions = set(
@@ -63,8 +69,11 @@ def test_all_archived_dashboard_routes_are_lazy_and_preserved() -> None:
             app,
         )
     )
-    assert len(dashboard_versions) == 293
+    assert len(dashboard_versions) == 295
     assert route_versions == {(version, version) for version in dashboard_versions}
     assert not re.search(r"^import V\d+Dashboard from './V\d+Dashboard';", app, re.M)
-    assert "import.meta.glob('./V*Dashboard.jsx')" in lazy_route
+    assert "import.meta.glob([" in lazy_route
+    assert "'./V*Dashboard.jsx'" in lazy_route
+    assert "'./screens/V6Dashboard.jsx'" in lazy_route
+    assert "'./screens/V7Dashboard.jsx'" in lazy_route
     assert "lazy(loader)" in lazy_route

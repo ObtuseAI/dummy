@@ -33,10 +33,14 @@ from core.proof_authority import (
     REQUIRED_CONFIRMATION as SECOND_PROOF_REQUIRED_CONFIRMATION,
     SECOND_PROOF_AUTHORITY_DIR,
     SecondProofAuthority,
-    SecondProofAuthorityStatus,
     activate_second_proof_authority,
+    authority_from_dict,
     authority_to_dict,
     build_second_proof_authority_draft,
+)
+from core.caps_authority import (
+    CAPS_AUTHORITY_REGISTRATION_PATH as DEFAULT_CAPS_AUTHORITY_REGISTRATION_PATH,
+    evaluate_caps_authority,
 )
 from core.second_proof_lock import (
     create_second_proof_lock,
@@ -46,6 +50,7 @@ from core.env_loader import kalshi_credential_status, load_whitelisted_env
 from core.live_submit_state import (
     LIVE_SUBMIT_REQUIRED_ACK,
     LIVE_SUBMIT_TYPED_CONFIRMATION,
+    build_caps_authority_binding,
     validate_operator_one_proof_enabled,
 )
 from core.proof_lock import REAL_PROOF_REGISTRY_PATH, load_real_proof_registry, real_proof_attempt_exists
@@ -123,6 +128,7 @@ def _bootstrap(argv: list[str], env: dict[str, str], runner: Runner, out) -> int
 LIVE_SUBMIT_PATH = DUMMY_ROOT / "configs" / "live_submit.json"
 CAPS_PATH = DUMMY_ROOT / "configs" / "caps.json"
 ADAPTER_DESCRIPTOR_PATH = DUMMY_ROOT / "runtime" / "operator_external" / "livebrokerfirewall_adapter_descriptor.json"
+CAPS_AUTHORITY_REGISTRATION_PATH = DEFAULT_CAPS_AUTHORITY_REGISTRATION_PATH
 
 
 def _canonical_json(obj: dict[str, object]) -> str:
@@ -135,6 +141,15 @@ def _sha256_file(path: Path) -> str | None:
     h = hashlib.sha256()
     h.update(path.read_bytes())
     return h.hexdigest().upper()
+
+
+def _caps_authority_status():
+    """Evaluate the current caps-v2 file and its separate registration."""
+
+    return evaluate_caps_authority(
+        caps_path=CAPS_PATH,
+        registration_path=CAPS_AUTHORITY_REGISTRATION_PATH,
+    )
 
 
 def _timestamp_suffix() -> str:
@@ -291,6 +306,12 @@ def cmd_prepare_second_proof_authority(args, out) -> int:
         "reason_submit_not_allowed": "SECOND_PROOF_AUTHORITY_NOT_ACTIVE",
         "candidate_hash": authority.candidate_hash,
         "caps_hash": authority.caps_hash,
+        "caps_schema_version": authority.caps_schema_version,
+        "caps_authority_epoch": authority.caps_authority_epoch,
+        "caps_authority_state": authority.caps_authority_state,
+        "caps_authority_registration_sha256": authority.caps_authority_registration_sha256,
+        "caps_authority_registration_valid": authority.caps_authority_registration_valid,
+        "execution_authority": False,
         "descriptor_hash": authority.descriptor_hash,
         "runtime_approval_hash": authority.runtime_approval_hash,
         "proof_registry_hash": authority.prior_proof_registry_hash,
@@ -316,11 +337,21 @@ def cmd_activate_second_proof_authority(args, out) -> int:
         print(json.dumps({"verdict": "BLOCKED_SECOND_PROOF_AUTHORITY", "reason": "DRAFT_MISSING"}, indent=2), file=out)
         return EXIT_SAFETY
 
-    draft_data = json.loads(draft_path.read_text(encoding="utf-8"))
-    draft = SecondProofAuthority(
-        **{k: v for k, v in draft_data.items() if k != "status"},
-        status=SecondProofAuthorityStatus(draft_data["status"]),
-    )
+    try:
+        draft_data = json.loads(draft_path.read_text(encoding="utf-8"))
+        draft = authority_from_dict(draft_data)
+    except (OSError, UnicodeError, json.JSONDecodeError, TypeError, ValueError) as exc:
+        print(
+            json.dumps(
+                {
+                    "verdict": "BLOCKED_SECOND_PROOF_AUTHORITY",
+                    "reason": f"DRAFT_SCHEMA_INVALID:{type(exc).__name__}",
+                },
+                indent=2,
+            ),
+            file=out,
+        )
+        return EXIT_SAFETY
 
     if args.confirm != SECOND_PROOF_REQUIRED_CONFIRMATION:
         print(json.dumps({"verdict": "BLOCKED_CONFIRMATION_MISMATCH"}, indent=2), file=out)
@@ -347,6 +378,11 @@ def cmd_activate_second_proof_authority(args, out) -> int:
         "expiration": active.expires_at,
         "scope": "second_controlled_real_broker_proof_via_firewall_only",
         "candidate_hash": active.candidate_hash,
+        "caps_hash": active.caps_hash,
+        "caps_schema_version": active.caps_schema_version,
+        "caps_authority_epoch": active.caps_authority_epoch,
+        "caps_authority_registration_sha256": active.caps_authority_registration_sha256,
+        "execution_authority": False,
         "confirmation_digest": active.exact_typed_confirmation_digest,
         "market_orders_allowed": False,
         "scale_allowed": False,
@@ -368,6 +404,7 @@ def cmd_activate_second_proof_authority(args, out) -> int:
         LIVE_SUBMIT_PATH.replace(backup)
 
     now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    caps_authority_status = _caps_authority_status()
     scoped = {
         "enabled": True,
         "operator": active.operator_name,
@@ -390,8 +427,15 @@ def cmd_activate_second_proof_authority(args, out) -> int:
         "candidate_hash": active.candidate_hash,
         "descriptor_hashes": [active.descriptor_hash],
         "caps_hashes": [active.caps_hash],
+        "caps_schema_version": active.caps_schema_version,
+        "caps_authority_epoch": active.caps_authority_epoch,
+        "caps_authority_registration_required": True,
+        "caps_authority_registration_sha256": active.caps_authority_registration_sha256,
     }
-    validation = validate_operator_one_proof_enabled(scoped)
+    validation = validate_operator_one_proof_enabled(
+        scoped,
+        caps_authority_status=caps_authority_status,
+    )
     if not validation.ok:
         if backup:
             backup.replace(LIVE_SUBMIT_PATH)
@@ -524,6 +568,7 @@ def cmd_enable_one_proof_live_submit(args, out) -> int:
         return EXIT_MISSING
 
     now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    caps_authority_status = _caps_authority_status()
     proposed: dict[str, object] = {
         "enabled": True,
         "operator": args.operator,
@@ -542,6 +587,7 @@ def cmd_enable_one_proof_live_submit(args, out) -> int:
         "scale_enabled": False,
         "autonomy_enabled": False,
         "explicit_acknowledgement": LIVE_SUBMIT_REQUIRED_ACK,
+        **build_caps_authority_binding(caps_authority_status),
     }
 
     # Optionally include descriptor/caps hashes for hash-tracking.
@@ -552,7 +598,10 @@ def cmd_enable_one_proof_live_submit(args, out) -> int:
     if caps_hash:
         proposed["caps_hashes"] = [caps_hash]
 
-    validation = validate_operator_one_proof_enabled(proposed)
+    validation = validate_operator_one_proof_enabled(
+        proposed,
+        caps_authority_status=caps_authority_status,
+    )
     if not validation.ok:
         print("VALIDATION_FAILED: " + ", ".join(validation.errors), file=out)
         return EXIT_SAFETY
@@ -615,10 +664,7 @@ def _second_proof_authority_state() -> dict[str, Any]:
     if active_path.exists():
         try:
             data = json.loads(active_path.read_text(encoding="utf-8"))
-            authority = SecondProofAuthority(
-                **{k: v for k, v in data.items() if k != "status"},
-                status=SecondProofAuthorityStatus(data["status"]),
-            )
+            authority = authority_from_dict(data)
             return {"state": "active", "authority": authority}
         except Exception:
             return {"state": "active_invalid"}
@@ -633,6 +679,16 @@ def _second_proof_check_env_gate_required(env: dict[str, str], authority: Second
     if authority.candidate_hash != EXPECTED_CANDIDATE_HASH:
         return False
     if authority.caps_hash != _sha256_file(CAPS_PATH):
+        return False
+    caps_authority = _caps_authority_status()
+    if not caps_authority.authority_registration_valid:
+        return False
+    if caps_authority.current_caps_sha256 != authority.caps_hash:
+        return False
+    if (
+        caps_authority.authority_registration_sha256
+        != authority.caps_authority_registration_sha256
+    ):
         return False
     if authority.descriptor_hash != _sha256_file(ADAPTER_DESCRIPTOR_PATH):
         return False
@@ -651,7 +707,12 @@ def cmd_one_shot_check(env: dict[str, str], runner: Runner, out) -> int:
 
     missing_creds, cred_status = _check_kalshi_credentials()
     live_submit = _load_json(LIVE_SUBMIT_PATH)
-    live_submit_valid = validate_operator_one_proof_enabled(live_submit).ok
+    caps_authority = _caps_authority_status()
+    live_submit_validation = validate_operator_one_proof_enabled(
+        live_submit,
+        caps_authority_status=caps_authority,
+    )
+    live_submit_valid = live_submit_validation.ok
     caps_strict = _caps_are_strict()
     descriptor_ok = _descriptor_staged()
     seal = _seal_status()
@@ -661,6 +722,9 @@ def cmd_one_shot_check(env: dict[str, str], runner: Runner, out) -> int:
         "command_seal_status": seal,
         "live_submit_valid": live_submit_valid,
         "caps_strict": caps_strict,
+        "caps_authority_state": caps_authority.state,
+        "caps_authority_registration_valid": caps_authority.authority_registration_valid,
+        "caps_authority_execution_authority": False,
         "descriptor_staged": descriptor_ok,
         "credential_refs": {k: {"present": v.get("present"), "file_exists": v.get("file_exists")}
                             for k, v in cred_status.items()},
@@ -687,6 +751,18 @@ def cmd_one_shot_check(env: dict[str, str], runner: Runner, out) -> int:
             report["verdict"] = "BLOCKED_CANDIDATE_HASH_MISMATCH"
         elif authority.caps_hash != _sha256_file(CAPS_PATH):
             report["verdict"] = "BLOCKED_CAPS_HASH_MISMATCH"
+        elif not caps_authority.config_integrity_valid:
+            report["verdict"] = "BLOCKED_CAPS_V2_CONFIG_INTEGRITY"
+        elif not caps_authority.authority_registration_valid:
+            report["verdict"] = "BLOCKED_CAPS_AUTHORITY_REGISTRATION"
+        elif (
+            caps_authority.authority_registration_sha256
+            != authority.caps_authority_registration_sha256
+        ):
+            report["verdict"] = "BLOCKED_CAPS_AUTHORITY_REGISTRATION_MISMATCH"
+        elif not live_submit_valid:
+            report["verdict"] = "BLOCKED_LIVE_SUBMIT_INVALID"
+            report["live_submit_errors"] = live_submit_validation.errors
         elif authority.descriptor_hash != _sha256_file(ADAPTER_DESCRIPTOR_PATH):
             report["verdict"] = "BLOCKED_DESCRIPTOR_HASH_MISMATCH"
         elif seal != SEAL_READY:
@@ -701,7 +777,9 @@ def cmd_one_shot_check(env: dict[str, str], runner: Runner, out) -> int:
 
     if not (live_submit_valid and caps_strict and descriptor_ok):
         report["verdict"] = "BLOCKED_LIVE_SUBMIT_CAPS"
-        report["live_submit_errors"] = validate_operator_one_proof_enabled(live_submit).errors if not live_submit_valid else []
+        report["live_submit_errors"] = (
+            live_submit_validation.errors if not live_submit_valid else []
+        )
         report["caps_strict"] = caps_strict
         report["descriptor_staged"] = descriptor_ok
         print(json.dumps(report, indent=2), file=out)

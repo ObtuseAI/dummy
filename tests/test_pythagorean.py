@@ -18,7 +18,10 @@ def test_win_expectation_rewards_outscoring():
 def _game(gid, start, home, away, hs, as_):
     return {"game_id": gid, "league": "nfl", "season": 2025, "start_time": start,
             "home": home, "away": away, "home_score": hs, "away_score": as_,
-            "status": "final", "source": "t"}
+            "status": "final", "source": "t",
+            "result_available_at": start.replace("T00:00:00Z", "T03:00:00Z"),
+            "received_at": start.replace("T00:00:00Z", "T03:05:00Z"),
+            "provenance_quality": "source_reported"}
 
 
 def test_lake_strength_is_point_in_time(tmp_path):

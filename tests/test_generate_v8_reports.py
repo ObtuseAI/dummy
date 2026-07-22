@@ -21,6 +21,15 @@ async def test_v8_orchestrator_writes_artifacts(tmp_path, monkeypatch):
     import archive.report_scripts.generate_v8_reports as orchestrator
 
     monkeypatch.setattr(orchestrator, "ARTIFACTS", artifacts)
+    # Unit tests must never reach a live market endpoint merely because the
+    # operator shell happens to contain credentials.
+    for name in (
+        "KALSHI_API_KEY_ID",
+        "KALSHI_API_PRIVATE_KEY_PEM",
+        "KALSHI_API_PRIVATE_KEY_PEM_PATH",
+        "KALSHI_API_PRIVATE_KEY",
+    ):
+        monkeypatch.delenv(name, raising=False)
 
     # Guarantee the orchestrator cannot recursively invoke pytest inside pytest.
     fake_run_pytest = MagicMock(

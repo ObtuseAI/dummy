@@ -139,7 +139,7 @@ def test_fetch_failure_is_a_blocker_not_an_exception():
     assert any(b.startswith("market_fetch_failed") for b in report.blockers)
 
 
-def test_empty_orderbook_warns_but_does_not_block():
+def test_empty_orderbook_blocks_presubmit():
     report = presubmit_validate(
         ticker="T",
         price_cents=42,
@@ -148,8 +148,24 @@ def test_empty_orderbook_warns_but_does_not_block():
         fetch_orderbook=_fetch_orderbook_factory({}),
         now=NOW,
     )
-    assert report.passed is True
-    assert "orderbook_empty_zero_liquidity_fill_unlikely" in report.warnings
+    assert report.passed is False
+    assert "orderbook_empty" in report.blockers
+
+
+def test_orderbook_fetch_failure_blocks_presubmit():
+    def fail(_ticker):
+        raise RuntimeError("network down")
+
+    report = presubmit_validate(
+        ticker="T",
+        price_cents=42,
+        count=1,
+        fetch_market=_fetch_market_factory(_market()),
+        fetch_orderbook=fail,
+        now=NOW,
+    )
+    assert report.passed is False
+    assert "orderbook_fetch_failed:RuntimeError" in report.blockers
 
 
 def test_order_body_schema_valid_v2_body():

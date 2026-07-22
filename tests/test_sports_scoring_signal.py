@@ -56,6 +56,12 @@ def test_prices_spread_and_total(tmp_path):
     assert s is not None and s.source == "sports_scoring"
     assert s.probability_yes > 0.4 and s.features["market_type"] == "spread"
     assert s.features["expected_margin"] is not None
+    assert s.features["challenger_only"] is True
+    assert s.features["promotion_eligible"] is True
+    assert s.features["point_in_time"] is True
+    assert s.features["public_read_only"] is True
+    assert s.features["sport"] == "nba"
+    assert s.features["market_type"] == "spread"
     # total: over a low line -> likely over
     m_total = _market("KXNBATOTAL-25JAN15AAABBB-180", "AAA vs BBB Total Points", 180.0)
     st2 = sig.generate(m_total)

@@ -4,8 +4,9 @@ from __future__ import annotations
 
 import asyncio
 import math
+import os
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import datetime, timezone
 from typing import Any
 
@@ -16,9 +17,10 @@ from autonomy.learner import Learner
 from autonomy.ledger import AutonomyLedger
 from autonomy.ontology import DecisionAction, MarketView, OutcomeKind, SessionMode, TradeOutcome
 from autonomy.reconciler import Reconciler, settlement_pnl_cents
-from autonomy.risk_brain import RiskBrain, RiskState
+from autonomy.risk_brain import RiskBrain, RiskState, RiskStatePersistenceError
 from autonomy.scanner import MarketScanner
 from autonomy.signals.base import SourceRegistry
+from autonomy.target_policy import has_prediction_target_authority
 
 SHADOW_BANKROLL_CENTS = 10_000
 MAX_CANDIDATES_EVALUATED = 100
@@ -29,8 +31,6 @@ _PHANTOM_BATCH_THRESHOLD = 200
 
 
 def _env_int(name: str, default: int) -> int:
-    import os
-
     try:
         value = int(os.environ.get(name, ""))
         return value if value >= 0 else default
@@ -38,10 +38,43 @@ def _env_int(name: str, default: int) -> int:
         return default
 
 
-# Only the top-K markets by |edge| get the expensive LLM panel each cycle;
-# env-tunable so the operator can widen LLM utilization on demand.
+# A debate is four independent calls plus four revisions.  The environment can
+# narrow the slice, but a persistent user variable cannot widen it beyond this
+# code-level ceiling without a reviewed code change.
+DEBATE_LOGICAL_CALLS_PER_MARKET = 8
+DEBATE_HARD_MAX_MARKETS_PER_CYCLE = 2
+DEBATE_HARD_MAX_CONCURRENCY = 2
+DEFAULT_DEBATE_MAX_LOGICAL_CALLS_PER_CYCLE = 8
+DEFAULT_DEBATE_MAX_USD_PER_CYCLE = 0.10
+
+
+def _fail_closed_budget_int(name: str, default: int) -> int:
+    raw = os.environ.get(name)
+    if raw is None:
+        return default
+    try:
+        value = int(raw)
+    except (TypeError, ValueError):
+        return 0
+    return max(0, value)
+
+
+def _fail_closed_budget_float(name: str, default: float) -> float:
+    raw = os.environ.get(name)
+    if raw is None:
+        return default
+    try:
+        value = float(raw)
+    except (TypeError, ValueError):
+        return 0.0
+    return value if math.isfinite(value) and value >= 0 else 0.0
+
+
 def _debate_top_k() -> int:
-    return _env_int("DUMMY_DEBATE_TOP_K", 5)
+    return min(
+        DEBATE_HARD_MAX_MARKETS_PER_CYCLE,
+        _env_int("DUMMY_DEBATE_TOP_K", 1),
+    )
 
 
 # The local-CLI voices (claude/codex) bill personal subscriptions, so they join
@@ -54,10 +87,67 @@ def _debate_cli_top_k() -> int:
 # sequential). This many markets' panels run concurrently -- bounded so parallel
 # HTTP panels don't blow the provider rate limits. Cuts the debate ~N-fold.
 def _debate_concurrency() -> int:
-    return max(1, _env_int("DUMMY_DEBATE_CONCURRENCY", 3))
+    return min(
+        DEBATE_HARD_MAX_CONCURRENCY,
+        max(1, _env_int("DUMMY_DEBATE_CONCURRENCY", 1)),
+    )
 
 
-DEBATE_TOP_K = 5   # module default retained for back-compat/imports
+def _debate_max_logical_calls_per_cycle() -> int:
+    return _fail_closed_budget_int(
+        "DUMMY_DEBATE_MAX_LOGICAL_CALLS_PER_CYCLE",
+        DEFAULT_DEBATE_MAX_LOGICAL_CALLS_PER_CYCLE,
+    )
+
+
+def _debate_max_usd_per_cycle() -> float:
+    return _fail_closed_budget_float(
+        "DUMMY_DEBATE_MAX_USD_PER_CYCLE",
+        DEFAULT_DEBATE_MAX_USD_PER_CYCLE,
+    )
+
+
+def _conservative_debate_panel_cost_usd(router: Any) -> float:
+    """Worst-case configured cost for one complete two-round exact panel.
+
+    Production routers must expose exact provider pricing. Unknown/malformed
+    prices fail closed with infinity. Test doubles without a config remain
+    zero-cost so pure unit tests do not need billing fixtures.
+    """
+    config = getattr(router, "config", None)
+    if config is None:
+        return 0.0
+    names = list(getattr(config, "hybrid_providers", []) or [])
+    provider_configs = getattr(config, "provider_configs", {})
+    if len(names) != 4 or len(set(names)) != 4:
+        return math.inf
+    prompt_tokens = math.ceil(max(0, int(config.max_prompt_length)) / 4)
+    completion_tokens = 512
+    total = 0.0
+    for name in names:
+        provider = provider_configs.get(name)
+        if provider is None:
+            return math.inf
+        prompt_price = provider.prompt_cost_per_million
+        completion_price = provider.completion_cost_per_million
+        if (
+            prompt_price is None
+            or completion_price is None
+            or not math.isfinite(float(prompt_price))
+            or not math.isfinite(float(completion_price))
+            or prompt_price < 0
+            or completion_price < 0
+        ):
+            return math.inf
+        one_round = (
+            prompt_tokens * float(prompt_price)
+            + completion_tokens * float(completion_price)
+        ) / 1_000_000
+        total += 2 * one_round
+    return total
+
+
+DEBATE_TOP_K = 1   # module default retained for back-compat/imports
 
 
 def edge_velocity(market: MarketView, forecast: Any) -> float:
@@ -69,6 +159,59 @@ def edge_velocity(market: MarketView, forecast: Any) -> float:
     except Exception:
         pass
     return abs(forecast.edge_yes) / math.sqrt(hours)
+
+
+def _reserved_exposure_cents(position: dict[str, Any]) -> int:
+    """Worst-case capital still reserved for an open order or position."""
+    explicit = position.get("reserved_notional_cents")
+    if explicit is not None:
+        try:
+            return max(0, int(explicit))
+        except (TypeError, ValueError):
+            pass
+    return max(0, int(position["price_cents"])) * max(
+        0, int(position.get("reserved_count", position["count"]))
+    )
+
+
+def _market_has_prediction_authority(market: MarketView) -> bool:
+    """Authorize a scanner row from its structured point-in-time context."""
+    raw = market.raw or {}
+    return has_prediction_target_authority(
+        market.ticker,
+        category=raw.get("category"),
+        vertical=market.vertical,
+        series_tags=raw.get("series_tags") or raw.get("tags"),
+    )
+
+
+def _authoritative_live_candidate_allowlist() -> frozenset[str] | None:
+    """Load the exact live-candidate set from the protected caps config.
+
+    ``None`` means the authority source is unavailable or invalid.  Callers
+    treat both ``None`` and an empty set as zero candidates; this helper never
+    turns a caps/config failure into a broad live scan.
+    """
+    try:
+        from core.caps_authority import evaluate_caps_authority
+        from core.config_loader import load_caps
+
+        authority = evaluate_caps_authority()
+        if authority.config_integrity_valid is not True:
+            return None
+        raw = load_caps().allowed_markets
+    except Exception:
+        return None
+    if not isinstance(raw, list):
+        return None
+    values: list[str] = []
+    for value in raw:
+        if not isinstance(value, str) or not value or value != value.strip():
+            return None
+        values.append(value)
+    if len(values) != len(set(values)):
+        return None
+    return frozenset(values)
 
 
 @dataclass
@@ -114,6 +257,7 @@ class PredatorBrain:
         router: Any | None = None,
         exchange_status_fn: Any | None = None,
         performance_guard: Any | None = None,
+        board_path: Any | None = None,
     ) -> None:
         self.mode = mode
         self.ledger = ledger
@@ -130,6 +274,7 @@ class PredatorBrain:
         # the check entirely (hermetic tests, offline replays).
         self.exchange_status_fn = exchange_status_fn
         self.performance_guard = performance_guard
+        self.board_path = board_path
         # Position-book scope: a live brain counts only broker positions
         # against its slots/exposure; a shadow brain only the shadow book.
         self.book_scope = "live" if mode is SessionMode.LIVE else "shadow"
@@ -170,9 +315,7 @@ class PredatorBrain:
         exposure = 0
         for open_decision in self._open_positions():
             if open_decision["market_ticker"] == ticker:
-                exposure += int(open_decision["price_cents"]) * int(
-                    open_decision.get("reserved_count", open_decision["count"])
-                )
+                exposure += _reserved_exposure_cents(open_decision)
         return exposure
 
     def _group_exposure(self, ticker: str) -> tuple[int, int]:
@@ -184,11 +327,37 @@ class PredatorBrain:
         count = 0
         for open_decision in self._open_positions():
             if group_key(open_decision["market_ticker"]) == target:
-                exposure += int(open_decision["price_cents"]) * int(
-                    open_decision.get("reserved_count", open_decision["count"])
-                )
+                exposure += _reserved_exposure_cents(open_decision)
                 count += 1
         return exposure, count
+
+    def _sync_live_exposure(self, outcomes: list[TradeOutcome]) -> None:
+        """Project only broker-witnessed fills into central live exposure."""
+        if self.mode is not SessionMode.LIVE or not outcomes:
+            return
+        from live_firewall.exposure_tracker import get_persistent_exposure_tracker
+
+        tracker = get_persistent_exposure_tracker()
+        terminal_states = {
+            OutcomeKind.FILLED: "filled",
+            OutcomeKind.CANCELED: "canceled",
+            OutcomeKind.EXPIRED: "expired",
+        }
+        for outcome in outcomes:
+            order_id = str(outcome.order_id or "").strip()
+            if not order_id:
+                continue
+            terminal_state = terminal_states.get(outcome.kind)
+            if outcome.kind is OutcomeKind.PARTIALLY_FILLED or terminal_state:
+                tracker.record_cumulative_fill(
+                    order_id,
+                    int(outcome.fill_count),
+                    (
+                        int(outcome.fill_price_cents)
+                        if outcome.fill_price_cents is not None else None
+                    ),
+                    terminal_state=terminal_state,
+                )
 
     def _close_position(self, state: RiskState, open_decision: dict[str, Any],
                         result_yes: bool) -> None:
@@ -209,10 +378,25 @@ class PredatorBrain:
                 detail={"reason": "market_settled_before_any_witnessed_fill"},
             ))
             return
+        witnessed_price = open_decision.get("fill_price_cents")
+        fill_price_cents = int(
+            witnessed_price
+            if witnessed_price is not None
+            else open_decision["price_cents"]
+        )
+        liquidity_role = str(open_decision.get("liquidity_role") or "maker").lower()
+        if liquidity_role not in {"maker", "taker", "mixed"}:
+            # Unknown execution provenance must never receive the cheaper fee.
+            liquidity_role = "taker"
+        execution_fee = open_decision.get("execution_fee_cents")
+        fill_cost = open_decision.get("fill_cost_cents")
         pnl = settlement_pnl_cents(
-            str(open_decision["side"]), int(open_decision["price_cents"]),
+            str(open_decision["side"]).lower(), fill_price_cents,
             filled_count, result_yes,
-            market_ticker=str(open_decision["market_ticker"]), liquidity_role="maker",
+            market_ticker=str(open_decision["market_ticker"]),
+            liquidity_role=liquidity_role,
+            fee_cents=(int(execution_fee) if execution_fee is not None else None),
+            fill_cost_cents=(int(fill_cost) if fill_cost is not None else None),
         )
         won = pnl > 0
         self.ledger.record_outcome(
@@ -222,12 +406,40 @@ class PredatorBrain:
                 kind=OutcomeKind.SETTLED_WIN if won else OutcomeKind.SETTLED_LOSS,
                 order_id=open_decision.get("order_id"),
                 fill_count=filled_count,
-                fill_price_cents=int(open_decision["price_cents"]),
+                fill_price_cents=fill_price_cents,
                 pnl_cents=pnl,
                 broker_contacted=self.mode is SessionMode.LIVE,
-                detail={"result_yes": result_yes},
+                detail={
+                    "result_yes": result_yes,
+                    "liquidity_role": liquidity_role,
+                    "fill_price_source": (
+                        "witnessed_outcome"
+                        if witnessed_price is not None
+                        else "submitted_limit_fallback"
+                    ),
+                    "execution_fee_cents": (
+                        int(execution_fee) if execution_fee is not None else None
+                    ),
+                    "fill_cost_cents": (
+                        int(fill_cost) if fill_cost is not None else None
+                    ),
+                },
             )
         )
+        if self.mode is SessionMode.LIVE:
+            from core import state as state_module
+            from live_firewall.exposure_tracker import get_persistent_exposure_tracker
+
+            decision_id = str(open_decision["decision_id"])
+            state_module.STATE.record_realized_pnl(pnl, settlement_id=decision_id)
+            tracker = get_persistent_exposure_tracker()
+            order_id = open_decision.get("order_id")
+            if order_id:
+                tracker.remove_open_order(str(order_id))
+            tracker.remove_position(
+                str(open_decision["market_ticker"]),
+                str(open_decision["side"]),
+            )
         state.daily_pnl_cents += pnl
         state.settled_count_at_stage += 1
         count = max(1, filled_count)
@@ -237,9 +449,21 @@ class PredatorBrain:
         )
 
     def _apply_settlements(self, state: RiskState, report: CycleReport) -> None:
-        for ticker, result_yes in self.reconciler.reconcile_settlements():
+        settlements = list(self.reconciler.reconcile_settlements())
+        decay_dormant = getattr(self.learner, "decay_dormant_weights", None)
+        if callable(decay_dormant):
+            decay_dormant()
+        from autonomy.correlation import group_key
+        cluster_counts: dict[str, int] = {}
+        for ticker, _result_yes in settlements:
+            key = group_key(ticker)
+            cluster_counts[key] = cluster_counts.get(key, 0) + 1
+        for ticker, result_yes in settlements:
             report.settlements += 1
-            report.weight_updates.update(self.learner.apply_settlement(ticker, result_yes))
+            cluster_weight = 1.0 / cluster_counts[group_key(ticker)]
+            report.weight_updates.update(
+                self.learner.apply_settlement(ticker, result_yes, cluster_weight=cluster_weight)
+            )
         self._close_settled_positions(state)
 
     def _close_settled_positions(self, state: RiskState) -> None:
@@ -255,6 +479,16 @@ class PredatorBrain:
             if result is None:
                 continue
             self._close_position(state, open_decision, result)
+
+    def _persist_risk_state(self, state: RiskState, report: CycleReport) -> bool:
+        """Persist risk state or turn the cycle into a fail-closed halt."""
+        try:
+            self.risk_brain.save_state(state)
+        except RiskStatePersistenceError as exc:
+            report.status = "HALTED_RISK_STATE_PERSISTENCE"
+            report.notes.append(str(exc))
+            return False
+        return True
 
     def _apply_phantom_settlements(self, report: CycleReport) -> None:
         """Grade every forecasted market that settled — trades or not.
@@ -279,10 +513,20 @@ class PredatorBrain:
                     prefetch = batch([t for t, _ in phantom])
                 except Exception:
                     prefetch = {}
+        from autonomy.correlation import group_key
+        cluster_counts: dict[str, int] = {}
+        for ticker, _result_yes in phantom:
+            key = group_key(ticker)
+            cluster_counts[key] = cluster_counts.get(key, 0) + 1
         for ticker, result_yes in phantom:
             report.phantom_settlements += 1
             report.weight_updates.update(
-                self.learner.apply_settlement(ticker, result_yes, signals=prefetch.get(ticker))
+                self.learner.apply_settlement(
+                    ticker,
+                    result_yes,
+                    signals=prefetch.get(ticker),
+                    cluster_weight=1.0 / cluster_counts[group_key(ticker)],
+                )
             )
 
     # ------------------------------------------------------------------
@@ -296,7 +540,29 @@ class PredatorBrain:
         from autonomy.debate import run_debate
 
         cli_top_k = _debate_cli_top_k()
-        k = min(_debate_top_k(), len(scored))
+        requested_k = min(_debate_top_k(), len(scored))
+        call_budget = _debate_max_logical_calls_per_cycle()
+        max_by_calls = call_budget // DEBATE_LOGICAL_CALLS_PER_MARKET
+        panel_cost = _conservative_debate_panel_cost_usd(self.router)
+        dollar_budget = _debate_max_usd_per_cycle()
+        max_by_dollars = (
+            requested_k
+            if panel_cost == 0.0
+            else int(dollar_budget // panel_cost)
+            if math.isfinite(panel_cost) and panel_cost > 0
+            else 0
+        )
+        k = min(requested_k, max_by_calls, max_by_dollars)
+        if k <= 0:
+            report.notes.append(
+                "debate:skipped:paid_call_budget_closed"
+            )
+            return
+        report.notes.append(
+            "debate:budget:"
+            f"markets={k}:logical_calls={k * DEBATE_LOGICAL_CALLS_PER_MARKET}:"
+            f"worst_case_usd={k * panel_cost:.6f}"
+        )
         sem = asyncio.Semaphore(_debate_concurrency())
 
         async def _debate_one(idx: int):
@@ -328,7 +594,58 @@ class PredatorBrain:
             if result is None:
                 continue
             market, forecast, signals = scored[idx]
-            debate_signal = result.to_signal(market.ticker)
+            scope_features: dict[str, Any] = {
+                "vertical": market.vertical.value,
+                "market_status": market.status,
+                "live": bool(
+                    (market.raw or {}).get("live")
+                    or (market.raw or {}).get("is_live")
+                    or str(market.status).lower() in {"live", "in_play", "in-play"}
+                ),
+            }
+            # Reuse point-in-time specialist stamps when available. This keeps
+            # LLM evidence isolated by the same market type/horizon as its
+            # quantitative base instead of pooling every bet into one bucket.
+            for original in signals:
+                for key in ("market_type", "hours_to_close"):
+                    value = (original.features or {}).get(key)
+                    if key not in scope_features and value is not None:
+                        scope_features[key] = value
+            if "market_type" not in scope_features:
+                try:
+                    from autonomy.sports_markets import classify
+
+                    contract = classify(market)
+                    if contract is not None:
+                        scope_features["market_type"] = contract.market_type
+                except Exception:
+                    pass
+            if "hours_to_close" not in scope_features:
+                try:
+                    close = datetime.fromisoformat(
+                        str(market.close_time).replace("Z", "+00:00")
+                    )
+                    if close.tzinfo is None:
+                        close = close.replace(tzinfo=timezone)
+                    scope_features["hours_to_close"] = max(
+                        0.0,
+                        (close - datetime.now(timezone.utc)).total_seconds() / 3600.0,
+                    )
+                except (TypeError, ValueError):
+                    pass
+            # Persist raw per-model opinions for settlement grading, but never
+            # feed them into fusion. The versioned aggregate is also a
+            # challenger: the promotion registry is its only path to authority.
+            observations = result.observation_signals(
+                market.ticker, scope_features=scope_features,
+            )
+            if observations:
+                accepted = self.ledger.record_signals(observations)
+                report.signals_generated += sum(1 for ok in accepted if ok)
+                report.signals_rejected += sum(1 for ok in accepted if not ok)
+            debate_signal = result.to_signal(
+                market.ticker, scope_features=scope_features,
+            )
             if not self.ledger.record_signal(debate_signal):
                 report.signals_rejected += 1
                 continue
@@ -336,7 +653,10 @@ class PredatorBrain:
             refused = forecaster.fuse(market, list(signals) + [debate_signal])
             if refused is not None:
                 scored[idx] = (market, refused, list(signals) + [debate_signal])
-                report.notes.append(f"debate:{market.ticker}:{result.probability_yes:.2f}")
+                report.notes.append(
+                    f"debate:observed:{debate_signal.source}:"
+                    f"{market.ticker}:{result.probability_yes:.2f}"
+                )
 
     async def run_cycle(self) -> CycleReport:
         cycle_t0 = time.perf_counter()
@@ -344,6 +664,12 @@ class PredatorBrain:
         state = self.risk_brain.load_state(bankroll)
         report = CycleReport(status="CYCLE_OK", mode=self.mode.value, stage=int(state.stage),
                              bankroll_cents=bankroll)
+
+        load_error = getattr(self.risk_brain, "persistence_error", None)
+        if load_error:
+            report.status = "HALTED_RISK_STATE_UNAVAILABLE"
+            report.notes.append(f"risk_state_load_error={load_error}")
+            return report
 
         if kill_switch_active(self.executor.kill_path):
             report.status = "HALTED_KILL_SWITCH"
@@ -360,8 +686,15 @@ class PredatorBrain:
 
         state = self.risk_brain.apply_drawdown_policy(state)
         if state.hard_stopped:
-            self.risk_brain.save_state(state)
+            if not self._persist_risk_state(state, report):
+                return report
             report.status = f"HALTED_SELF_STOP: {state.stop_reason}"
+            return report
+
+        # Preflight the durable risk sink before reconciliation, forecasting,
+        # or any executor call. A process that cannot preserve its caps,
+        # drawdown, and stage state has no authority to place another order.
+        if not self._persist_risk_state(state, report):
             return report
 
         # Venue awareness: a maintenance window is a fact, not an error.
@@ -374,7 +707,8 @@ class PredatorBrain:
             except Exception:
                 venue = {}
             if venue.get("exchange_active") is False:
-                self.risk_brain.save_state(state)
+                if not self._persist_risk_state(state, report):
+                    return report
                 report.status = "CYCLE_SKIPPED_EXCHANGE_MAINTENANCE"
                 if venue.get("maintenance_windows"):
                     report.notes.append(f"maintenance_windows={venue['maintenance_windows']}")
@@ -387,7 +721,8 @@ class PredatorBrain:
 
         # Refresh order fills before settlement accounting; a last-cycle fill
         # must be seen before deciding whether the order ever became a position.
-        self.reconciler.reconcile_open_orders()
+        live_order_updates = self.reconciler.reconcile_open_orders()
+        self._sync_live_exposure(live_order_updates)
         # Snapshot trust before settlements so a pathological recalibration
         # (e.g. every crypto source pinned at the ceiling) can be reverted.
         try:
@@ -416,15 +751,37 @@ class PredatorBrain:
             markets = self.scanner.scan()
         except Exception as exc:
             report.status = f"CYCLE_DEGRADED_SCAN_FAILED:{type(exc).__name__}"
-            self.risk_brain.save_state(state)
+            if not self._persist_risk_state(state, report):
+                return report
             return report
         report.phase_seconds["scan"] = round(time.perf_counter() - _t, 2)
         # Vertical / per-league switches: crypto off, sports off, or a league
         # off drops those markets from the cycle (the rest keeps trading).
-        scanned = len(markets)
+        if self.mode is SessionMode.LIVE:
+            live_allowlist = _authoritative_live_candidate_allowlist()
+            before_live_filter = len(markets)
+            markets = [
+                market
+                for market in markets
+                if live_allowlist is not None and market.ticker in live_allowlist
+            ]
+            report.notes.append(
+                "live_allowlist_candidates="
+                f"{len(markets)};filtered={before_live_filter - len(markets)};"
+                f"authority={'valid' if live_allowlist is not None else 'invalid'}"
+            )
+        before_switches = len(markets)
         markets = [m for m in markets if switches.market_allowed(m)]
-        if len(markets) != scanned:
-            report.notes.append(f"switches_filtered={scanned - len(markets)}")
+        if len(markets) != before_switches:
+            report.notes.append(
+                f"switches_filtered={before_switches - len(markets)}"
+            )
+        switched = len(markets)
+        markets = [m for m in markets if _market_has_prediction_authority(m)]
+        if len(markets) != switched:
+            report.notes.append(
+                f"target_authority_filtered={switched - len(markets)}"
+            )
         report.markets_scanned = len(markets)
 
         if self.mode is SessionMode.SHADOW:
@@ -439,7 +796,7 @@ class PredatorBrain:
         open_positions = self._open_positions()
         state.open_markets = len({p["market_ticker"] for p in open_positions})
         state.open_exposure_cents = sum(
-            int(p["price_cents"]) * int(p.get("reserved_count", p["count"]))
+            _reserved_exposure_cents(p)
             for p in open_positions
         )
         state = self.risk_brain.maybe_promote(state)
@@ -478,6 +835,13 @@ class PredatorBrain:
             scored.sort(key=lambda t: edge_velocity(t[0], t[1]), reverse=True)
         report.phase_seconds["debate"] = round(time.perf_counter() - _t, 2)
 
+        # One immutable v2 classification is shared by signals, board rows,
+        # and decisions.  This prevents the UI and performance ledger from
+        # assigning different tiers to the same point-in-time forecast.
+        from autonomy.tier_policy import assign_cycle_tiers
+
+        cycle_tiers = assign_cycle_tiers([(m, f) for m, f, _s in scored])
+
         # Wave-14 (picks-first directive): persist the FINAL post-debate fused
         # probability for every scored market as its own ledger row, so pick
         # accuracy and calibration are measured on everything the machine
@@ -505,9 +869,12 @@ class PredatorBrain:
                 # per-source signals above) under the default, session mode
                 # notwithstanding. Passing mode=self.mode.value ("shadow")
                 # silently rejected 24k fused rows as invalid_mode.
-                self.ledger.record_signal(build_fused_signal(market.ticker, forecast))
+                tier_assessment = cycle_tiers.get(market.ticker)
+                self.ledger.record_signal(
+                    build_fused_signal(market.ticker, forecast, tier_assessment)
+                )
                 calibrated = build_calibrated_fused_signal(
-                    market.ticker, forecast, fused_maps)
+                    market.ticker, forecast, fused_maps, tier_assessment)
                 if calibrated is not None:
                     self.ledger.record_signal(calibrated)
             except Exception:
@@ -519,14 +886,40 @@ class PredatorBrain:
         try:
             from autonomy.bet_board import write_board_artifact
 
-            write_board_artifact([(m, f) for m, f, _s in scored])
+            write_board_artifact(
+                [(m, f) for m, f, _s in scored],
+                path=self.board_path,
+                tier_assignments=cycle_tiers,
+            )
+        except Exception:
+            pass
+
+        # Exit logic remains an observational challenger until it has enough
+        # forward evidence and complete live sell/reconciliation proof. It may
+        # recommend EXIT, but this cycle never turns that advice into an order.
+        try:
+            from autonomy.exit_advisor import write_exit_advisory_artifact
+
+            exit_advice = write_exit_advisory_artifact(
+                open_positions, [(m, f) for m, f, _s in scored],
+            )
+            exit_signals = [row.to_signal() for row in exit_advice]
+            if exit_signals:
+                accepted = self.ledger.record_signals(exit_signals)
+                report.signals_generated += sum(1 for ok in accepted if ok)
+                report.signals_rejected += sum(1 for ok in accepted if not ok)
+            exit_candidates = sum(1 for row in exit_advice if row.action == "EXIT")
+            if exit_candidates:
+                report.notes.append(f"shadow_exit_candidates={exit_candidates}")
         except Exception:
             pass
 
         from autonomy.correlation import group_key
 
         allocator = Allocator(
-            self.risk_brain, performance_guard=self.performance_guard,
+            self.risk_brain,
+            performance_guard=self.performance_guard,
+            execution_policy=getattr(self.executor, "execution_policy", None),
         )
         # In-cycle group accumulation so successive orders on one correlated
         # cluster see each other, not just prior-cycle open positions.
@@ -547,6 +940,51 @@ class PredatorBrain:
                 group_exposure_cents=group_cents,
                 group_open_count=group_count,
             )
+            tier_assessment = cycle_tiers.get(market.ticker)
+            if tier_assessment is not None:
+                from autonomy.tier_policy import tier_snapshot_is_valid
+
+                frozen_tier = tier_assessment.feature_fields()
+                side_matches = decision.side == tier_assessment.side
+                if not tier_snapshot_is_valid(
+                    frozen_tier, ticker=market.ticker
+                ):
+                    decision = replace(
+                        decision,
+                        tier_label=None,
+                        tier_policy_version=None,
+                        tier_score=None,
+                        tier_reason=(
+                            "unattributed_invalid_tier_snapshot:"
+                            f"{tier_assessment.reason}"
+                        ),
+                        tier_snapshot={},
+                    )
+                elif decision.action is not DecisionAction.ABSTAIN and not side_matches:
+                    # A value-side label can never follow an actionable order
+                    # on the opposite side.  Leave it unattributed rather than
+                    # laundering an allocator disagreement into tier results.
+                    decision = replace(
+                        decision,
+                        tier_label=None,
+                        tier_policy_version=None,
+                        tier_score=None,
+                        tier_reason="unattributed_decision_side_mismatch",
+                        tier_snapshot={},
+                    )
+                else:
+                    decision = replace(
+                        decision,
+                        tier_label=tier_assessment.tier,
+                        tier_policy_version=tier_assessment.policy_version,
+                        # The immutable tier snapshot stores score at six
+                        # decimals. Persist that same canonical precision so
+                        # harmless binary-float tails cannot de-attribute a
+                        # genuine decision during forward performance grading.
+                        tier_score=round(float(tier_assessment.score), 6),
+                        tier_reason=tier_assessment.reason,
+                        tier_snapshot=frozen_tier,
+                    )
             self.ledger.record_decision(decision)
             report.decisions_made += 1
             if decision.action is DecisionAction.ABSTAIN:
@@ -555,20 +993,35 @@ class PredatorBrain:
                     report.notes.append("candidate_search_stopped_at_stage_position_cap")
                     break
                 continue
-            outcome = await self.executor.execute(
-                decision, snapshot_ts=getattr(market, "fetched_at", None)
-            )
+            # Bind the actionable decision to a just-written risk snapshot.
+            # The central firewall verifies its digest again immediately
+            # before submit; a failed write halts without touching the broker.
+            if self.mode is SessionMode.LIVE and not self._persist_risk_state(state, report):
+                return report
+            execute_kwargs: dict[str, Any] = {
+                "snapshot_ts": getattr(market, "fetched_at", None),
+                # The exact MarketView that produced the forecast is required
+                # in SHADOW as well as LIVE.  Executor independently verifies
+                # identity and structured target authority before either book.
+                "market": market,
+            }
+            outcome = await self.executor.execute(decision, **execute_kwargs)
             self.ledger.record_outcome(outcome)
             if outcome.kind in (OutcomeKind.ACCEPTED, OutcomeKind.SHADOW) and outcome.order_id:
                 report.orders_placed += 1
-                state.open_exposure_cents += decision.notional_cents
+                submitted_notional = int(
+                    outcome.detail.get("submitted_notional_cents")
+                    or decision.notional_cents
+                )
+                state.open_exposure_cents += submitted_notional
                 state.open_markets += 1
-                cycle_group_cents[gkey] = cycle_group_cents.get(gkey, 0) + decision.notional_cents
+                cycle_group_cents[gkey] = cycle_group_cents.get(gkey, 0) + submitted_notional
                 cycle_group_count[gkey] = cycle_group_count.get(gkey, 0) + 1
 
         report.phase_seconds["decide"] = round(time.perf_counter() - _t, 2)
         state.equity_peak_cents = max(state.equity_peak_cents, bankroll)
-        self.risk_brain.save_state(state)
+        if not self._persist_risk_state(state, report):
+            return report
         self.ledger.record_bankroll(bankroll, state.open_exposure_cents, int(state.stage))
         report.phase_seconds["total"] = round(time.perf_counter() - cycle_t0, 2)
         return report

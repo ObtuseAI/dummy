@@ -38,7 +38,7 @@ def _write(path: Path, value) -> None:
 
 def _fresh_runtime(tmp_path: Path) -> Path:
     rd = tmp_path / "runtime"
-    rd.mkdir(parents=True)
+    rd.mkdir(parents=True, exist_ok=True)
     _write(rd / "heartbeat.json", {
         "alive": True, "last_status": "OK",
         "last_cycle_at": (NOW - timedelta(hours=1)).isoformat(),
@@ -73,15 +73,15 @@ def test_rails_kill_file_and_heartbeat_states(tmp_path):
 
 def test_rails_missing_heartbeat_is_infinitely_stale(tmp_path):
     rd = tmp_path / "runtime"
-    rd.mkdir()
+    rd.mkdir(exist_ok=True)
     inputs = gather_rails_inputs(rd, NOW_TS, exchange_anomaly_check=lambda: False)
     assert inputs.artifact_age_hours == float("inf")
     assert inputs.heartbeat_alive is False
 
 
-def test_rails_stale_heartbeat_and_stale_clv(tmp_path):
+def test_rails_stale_heartbeat_but_optional_stale_clv_is_not_a_global_rail(tmp_path):
     rd = tmp_path / "runtime"
-    rd.mkdir()
+    rd.mkdir(exist_ok=True)
     _write(rd / "heartbeat.json", {
         "alive": True, "last_status": "OK",
         "last_cycle_at": (NOW - timedelta(hours=30)).isoformat(),
@@ -94,7 +94,41 @@ def test_rails_stale_heartbeat_and_stale_clv(tmp_path):
         "generated_at": (NOW - timedelta(hours=48)).isoformat(), "scopes": {},
     })
     inputs2 = gather_rails_inputs(rd2, NOW_TS, exchange_anomaly_check=lambda: False)
-    assert inputs2.artifact_age_hours is not None and inputs2.artifact_age_hours > 24
+    assert inputs2.artifact_age_hours == 1.0
+
+
+def test_stale_clv_is_excluded_and_uses_stricter_no_clv_threshold(tmp_path):
+    db = _seed_promotable_db(tmp_path)
+    rd = _fresh_runtime(tmp_path)
+    _write(rd / "clv_report.json", {
+        "generated_at": (NOW - timedelta(hours=48)).isoformat(),
+        "scopes": {"crypto|15m_direction": {
+            "clv_bps_mean": 40.0,
+            "clv_bps_ci95_lower": 12.0,
+            "clv_bps_ci95_upper": 68.0,
+            "n_event_clusters": 55,
+        }},
+    })
+
+    state = run_auto_promotion(
+        db,
+        runtime_dir=rd,
+        now_ts=NOW_TS,
+        now_iso=NOW_ISO,
+        exchange_anomaly_check=lambda: False,
+        alert_fn=lambda *a, **k: None,
+    )
+
+    assert state["status"] == "OK"
+    assert state["optional_evidence"]["clv"]["status"] == "STALE_EXCLUDED"
+    assert state["optional_evidence"]["clv"]["used"] is False
+    review = json.loads(
+        (rd / "promotion_human_review_candidates.json").read_text("utf-8")
+    )
+    dossier = review["candidates"][0]["dossier"]
+    assert dossier["clusters"]["threshold"] == 450
+    assert dossier["clusters"]["note"] == "no CLV instrumentation -> higher cluster bar"
+    assert dossier["clv_ci95_lower"]["measured"] is None
 
 
 def test_rails_quarantined_source_and_saturated_weight(tmp_path):
@@ -211,6 +245,11 @@ def test_realized_attribution_share_weights_settled_trades(tmp_path):
             features={"challenger_only": True, "market_type": "15m_direction",
                       "hours_to_close": 0.2},
             created_at="2026-07-16T00:00:00+00:00"), mode="live")
+        ledger._conn.execute(  # noqa: SLF001
+            "UPDATE signals SET ingested_at=? WHERE source=? AND market_ticker=?",
+            ("2026-07-16T00:01:00+00:00", "crypto_ta_foundry", ticker),
+        )
+        ledger._conn.commit()  # noqa: SLF001
         forecast = Forecast(
             market_ticker=ticker, probability_yes=0.7, uncertainty=0.1,
             sources_used={"crypto_ta_foundry": 0.6, "market_prior": 0.4},
@@ -226,6 +265,12 @@ def test_realized_attribution_share_weights_settled_trades(tmp_path):
             order_id="o1", fill_count=1, fill_price_cents=55, pnl_cents=None,
             broker_contacted=False,
             created_at="2026-07-16T00:06:00+00:00"))
+        ledger.record_settlement(ticker, True)
+        ledger._conn.execute(  # noqa: SLF001
+            "UPDATE settlements SET settled_at=? WHERE market_ticker=?",
+            ("2026-07-16T00:59:00+00:00", ticker),
+        )
+        ledger._conn.commit()  # noqa: SLF001
         ledger.record_outcome(TradeOutcome(
             decision_id="d1", market_ticker=ticker,
             kind=OutcomeKind.SETTLED_WIN, order_id="o1", fill_count=1,
@@ -243,7 +288,9 @@ def test_realized_attribution_share_weights_settled_trades(tmp_path):
     assert SCOPE in attribution
     entry = attribution[SCOPE]
     assert entry["n_trades"] == 1
-    cluster = ticker.rsplit("-", 1)[0]
+    from autonomy.correlation import group_key
+
+    cluster = group_key(ticker)
     assert entry["pnl_by_cluster"][cluster] == [0.45 * 0.6]  # share-weighted
 
 
@@ -351,7 +398,9 @@ def _seed_promotable_db(tmp_path: Path, *, n: int = 320) -> Path:
                 features={"challenger_only": True, "promotion_eligible": True,
                           "market_type": "15m_direction", "hours_to_close": 0.2},
                 created_at=at))
-        accepted = ledger.record_signals(signals, mode="retro")
+        # Promotion authority is earned only from forward/live-observed rows;
+        # retro replay remains a separate research-only lane.
+        accepted = ledger.record_signals(signals, mode="live")
         assert all(accepted)
         # 75% win rate: comfortably clear of the Brier-edge CI boundary (a
         # 70% rate lands the bootstrap lower bound at ~exactly zero here).
@@ -403,7 +452,7 @@ def test_run_no_db_reports_and_promotes_nothing(tmp_path):
     assert not (rd / "promotions.json").exists()
 
 
-def test_run_promotes_an_earned_scope_end_to_end(tmp_path):
+def test_run_with_positive_fill_free_diagnostics_stays_human_review_only(tmp_path):
     db = _seed_promotable_db(tmp_path)
     rd = _fresh_runtime(tmp_path)
     _write(rd / "clv_report.json", {
@@ -418,41 +467,42 @@ def test_run_promotes_an_earned_scope_end_to_end(tmp_path):
         exchange_anomaly_check=lambda: False,
         alert_fn=lambda kind, *a, **k: alerts.append(kind))
     assert state["status"] == "OK"
-    assert state["promoted"] == [SCOPE]
-    assert "AUTO_PROMOTION" in alerts
+    assert state["promoted"] == []
+    assert [row["scope"] for row in state["human_review_candidates"]] == [SCOPE]
+    assert "AUTO_PROMOTION" not in alerts
 
     registry = PromotionRegistry(rd / "promotions.json", rd / "auto_demotions.json")
-    assert registry.is_promoted(SCOPE) and registry.stage_for(SCOPE) == 1
+    assert registry.is_promoted(SCOPE) is False
     chain = PromotionLedger(rd / "promotion_ledger.jsonl").read_verified()
-    assert [e.action for e in chain] == ["PROMOTE"]
-    dossier = chain[0].payload["dossier"]
+    assert chain == ()
+    candidates = json.loads(
+        (rd / "promotion_human_review_candidates.json").read_text("utf-8")
+    )
+    dossier = candidates["candidates"][0]["dossier"]
     assert dossier["counterfactual_pnl_ci95_lower"]["pass"] is True
+    assert dossier["forward_witnessed_fill_evidence"]["pass"] is False
 
-    # Second run the same day: scope already promoted, cap partially consumed,
-    # nothing new happens and the state stays deterministic.
+    # Second run remains a non-authoritative review candidate; the daily
+    # add-risk budget was never consumed.
     state2 = run_auto_promotion(
         db, runtime_dir=rd, now_ts=NOW_TS, now_iso=NOW_ISO,
         exchange_anomaly_check=lambda: False, alert_fn=lambda *a, **k: None)
     assert state2["status"] == "OK"
     assert state2["promoted"] == [] and state2["escalated"] == []
-    assert state2["promotions_used_today_before_run"] == 1
+    assert state2["promotions_used_today_before_run"] == 0
 
 
-def test_run_without_clv_promotes_via_the_roi_door(tmp_path):
-    # Same evidence, no CLV instrumentation: 320 clusters < the 450-cluster
-    # no-CLV bar, so the EVIDENCE door stays shut (that path is strictly
-    # harder without CLV). Wave-21: the seeded scope's counterfactual record
-    # is genuinely profitable, so the ROI proof-of-profit door -- the
-    # operator's second, independent route -- admits it at stage 1 anyway:
-    # money made against real quotes is its own proof, with the door's own
-    # volume/span/CI bars and the unchanged correlation + daily-cap rails.
+def test_run_without_clv_never_promotes_from_counterfactual_roi(tmp_path):
+    # Positive in-sample ROI remains visible for research, but cannot substitute
+    # for registered, isolated forward witnessed-fill evidence.
     db = _seed_promotable_db(tmp_path)
     rd = _fresh_runtime(tmp_path)
     state = run_auto_promotion(
         db, runtime_dir=rd, now_ts=NOW_TS, now_iso=NOW_ISO,
         exchange_anomaly_check=lambda: False, alert_fn=lambda *a, **k: None)
     assert state["status"] == "OK"
-    assert state["promoted"] == ["crypto_ta_foundry|btc|15m_direction|15m"]
+    assert state["promoted"] == []
+    assert [row["scope"] for row in state["human_review_candidates"]] == [SCOPE]
 
 
 def test_run_demotes_a_promoted_scope_and_sticks_it(tmp_path):
@@ -474,7 +524,7 @@ def test_run_demotes_a_promoted_scope_and_sticks_it(tmp_path):
                 features={"challenger_only": True, "promotion_eligible": True,
                           "market_type": "15m_direction", "hours_to_close": 0.2},
                 created_at=at))
-        ledger.record_signals(signals, mode="retro")
+        ledger.record_signals(signals, mode="live")
         for i in range(320):
             ledger.record_settlement(f"KXBTC15M-N{i:04d}-T60000", (i % 10) < 3)
     finally:

@@ -1,8 +1,8 @@
 """Autonomous thresholded promotion — the ladder that earns fusion membership.
 
-Owner directive 2026-07-16: promotion gates become autonomous. A scope with
-statistical PROOF OF PROFIT auto-promotes into the fused ensemble, replacing the
-previous human-only positive promotion. This module is that decision engine.
+Automatic promotion is permitted only after predictive gates and independently
+verified forward witnessed-fill evidence clear. Counterfactual diagnostics can
+never create fusion authority. This module is that fail-closed decision engine.
 
 Scope of authority (read this before anything else):
 
@@ -22,14 +22,15 @@ The ladder (per exact ``source|subject|market_type|horizon`` scope):
     (a) contested clusters >= MIN_CLUSTERS and evidence span >= MIN_SPAN_DAYS;
     (b) cluster-robust contested Brier-edge-vs-market CI95 lower > 0 AND
         contested beat_rate >= MIN_BEAT_RATE;
-    (c) PROOF OF PROFIT: fee-adjusted counterfactual P&L over the scope's
-        contested emissions (entry at the recorded market price at emission
-        time, exit at settlement, Kalshi maker fee model), cluster-level
-        bootstrap CI95 lower > 0. Cluster-level, never per-emission;
+    (c) a positive fee-adjusted midpoint/maker counterfactual, retained only as
+        a diagnostic filter and never treated as fill or profit proof;
     (d) not degrading (trailing-window edge floor);
     (e) CLV mean CI lower > 0 where CLV records exist; a scope with no CLV
         instrumentation may pass without it but needs MIN_CLUSTERS_NO_CLV;
-    (f) correlation guard: emission correlation vs every already-fused source on
+    (f) receipt-bounded, post-registration, isolated witnessed-fill net P&L
+        over enough independent event clusters, with cluster-bootstrap CI95
+        lower > 0. This is the only automatic-promotion profit evidence;
+    (g) correlation guard: emission correlation vs every already-fused source on
         overlapping markets <= CORRELATION_CAP. Exceeded => NOT added, flagged
         as a replacement candidate only (report, no action).
     A scope originating from a strategy-miner family applies a Bonferroni
@@ -49,6 +50,7 @@ seeded by scope; nothing consults a wall clock except through the injected
 """
 from __future__ import annotations
 
+import math
 import random
 from dataclasses import dataclass, field
 from typing import Any, Iterable, Mapping, Sequence
@@ -79,8 +81,12 @@ CORRELATION_CAP = 0.8              # vs any already-fused source on shared marke
 MIN_CORR_OVERLAP = 5               # shared markets needed to trust a correlation
 MAX_PROMOTIONS_PER_DAY = 2         # combined promotions + escalations per UTC day
 STAGE2_MIN_TRADES = 50             # realized scope-attributed trades to escalate
+STAGE1_MIN_FORWARD_TRADES = 50     # witnessed isolated fills after registration
+STAGE1_MIN_FORWARD_CLUSTERS = 30   # independent event clusters, not emissions
+STAGE1_MIN_FORWARD_SPAN_DAYS = 7.0 # forward evidence cannot be one burst
 ARTIFACT_STALE_HOURS = 24.0        # evidence artifacts older than this abort a run
 BOOTSTRAP_SAMPLES = 1000           # matches autonomy/backtest.py
+FORWARD_EVIDENCE_VERSION = "promotion_forward_fill_v1"
 
 
 @dataclass(frozen=True)
@@ -95,15 +101,12 @@ class PromotionConfig:
     min_corr_overlap: int = MIN_CORR_OVERLAP
     max_promotions_per_day: int = MAX_PROMOTIONS_PER_DAY
     stage2_min_trades: int = STAGE2_MIN_TRADES
+    stage1_min_forward_trades: int = STAGE1_MIN_FORWARD_TRADES
+    stage1_min_forward_clusters: int = STAGE1_MIN_FORWARD_CLUSTERS
+    stage1_min_forward_span_days: float = STAGE1_MIN_FORWARD_SPAN_DAYS
     contested_disagreement: float = CONTESTED_DISAGREEMENT
-    # Wave-21: the ROI proof-of-profit door -- a SECOND, independent route to
-    # stage-1 promotion. A scope whose contested counterfactual record shows
-    # >= +5% fee-adjusted return on entry cost (cluster-bootstrap CI strictly
-    # above zero, at volume, over a real span) promotes even when the
-    # Brier-evidence door (beat rate / edge CI) has not cleared: money made
-    # against real quotes is its own proof. Correlation cap, daily cap, and
-    # probation weight still apply -- the door changes the EVIDENCE admitted,
-    # never the rails.
+    # Counterfactual ROI is retained as a research diagnostic only. It can
+    # nominate a human-review candidate, but can never add fusion authority.
     roi_path_min_roi: float = 0.05
     roi_path_min_clusters: int = 200
     roi_path_min_span_days: float = 7.0
@@ -120,6 +123,9 @@ class PromotionConfig:
             "min_corr_overlap": self.min_corr_overlap,
             "max_promotions_per_day": self.max_promotions_per_day,
             "stage2_min_trades": self.stage2_min_trades,
+            "stage1_min_forward_trades": self.stage1_min_forward_trades,
+            "stage1_min_forward_clusters": self.stage1_min_forward_clusters,
+            "stage1_min_forward_span_days": self.stage1_min_forward_span_days,
             "contested_disagreement": self.contested_disagreement,
             "roi_path_min_roi": self.roi_path_min_roi,
             "roi_path_min_clusters": self.roi_path_min_clusters,
@@ -131,7 +137,7 @@ DEFAULT_CONFIG = PromotionConfig()
 
 
 # --------------------------------------------------------------------------
-# Counterfactual P&L (fee-adjusted) — the proof-of-profit primitive.
+# Counterfactual P&L (fee-adjusted) — diagnostic only, never fill evidence.
 # --------------------------------------------------------------------------
 
 def _clamp01(value: float) -> float:
@@ -139,7 +145,7 @@ def _clamp01(value: float) -> float:
 
 
 def counterfactual_pnl(row: Any) -> float:
-    """Fee-adjusted P&L in DOLLARS for one settled, market-benchmarked emission.
+    """Diagnostic fee-adjusted counterfactual in dollars for one emission.
 
     A unit (1-contract) counterfactual: enter the side the model favors versus
     the market at the recorded market price at emission time
@@ -150,10 +156,11 @@ def counterfactual_pnl(row: Any) -> float:
       * payoff = 1 if the side wins at settlement, else 0;
       * net = payoff - entry_cost - maker_fee.
 
-    Maker fee (not taker): Dummy submits edge-preserving resting LIMIT orders,
-    so a taker fee would overstate cost and understate proven profit. The fee
-    formula is symmetric in p and (1-p), so the entry price in cents is the
-    same magnitude for either side.
+    This assumes a maker fill at a recorded market probability. It is not a
+    witnessed fill, executable quote, or realized-profit claim and therefore
+    has no automatic-promotion authority. The formula is retained for research
+    comparison and as a conservative additional filter once real forward fill
+    evidence independently passes.
     """
     market_p = _clamp01(row.market_probability)
     model_p = float(row.probability_yes)
@@ -355,6 +362,9 @@ class ScopeEvidence:
                 "threshold": 0.0,
                 "pass": bool(self.pnl_ci and self.pnl_ci["lower"] > 0.0),
                 "unit": "dollars_per_contract",
+                "evidence_role": "diagnostic_midpoint_maker_counterfactual",
+                "witnessed_fill_evidence": False,
+                "automatic_promotion_authority": False,
             },
             "not_degrading": {
                 "measured": self.trailing_degrade_mean,
@@ -408,7 +418,7 @@ def roi_door_evidence(
     *,
     config: PromotionConfig = DEFAULT_CONFIG,
 ) -> dict[str, Any]:
-    """The Wave-21 ROI proof-of-profit door: an INDEPENDENT stage-1 route.
+    """Research-only ROI diagnostic; never an automatic-promotion route.
 
     Contested counterfactual record only (same disagreement bar as every
     other gate): per cluster, sum fee-adjusted net dollars and entry cost;
@@ -468,6 +478,9 @@ def roi_door_evidence(
     )
     return {
         "pass": bool(passed),
+        "research_only": True,
+        "witnessed_fill_evidence": False,
+        "automatic_promotion_authority": False,
         "roi_on_entry_cost": round(roi, 6) if roi is not None else None,
         "roi_ci95": roi_ci,
         "threshold_roi": config.roi_path_min_roi,
@@ -476,6 +489,152 @@ def roi_door_evidence(
         "span_days": round(span_days, 3),
         "threshold_span_days": config.roi_path_min_span_days,
         "n_contested": len(contested),
+    }
+
+
+def _aware_timestamp(value: Any) -> float | None:
+    from datetime import datetime
+
+    try:
+        parsed = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    except (TypeError, ValueError):
+        return None
+    if parsed.tzinfo is None or parsed.utcoffset() is None:
+        return None
+    try:
+        return parsed.timestamp()
+    except (OSError, OverflowError, ValueError):
+        return None
+
+
+def forward_witnessed_fill_evidence(
+    scope: str,
+    realized: Mapping[str, Any] | None,
+    *,
+    config: PromotionConfig = DEFAULT_CONFIG,
+) -> dict[str, Any]:
+    """Validate the only realized-P&L evidence allowed to auto-promote.
+
+    The runner derives this payload from ledger rows with all of the following:
+    a prior positive fill witness, one terminal net-P&L outcome, a signal whose
+    claimed and receipt timestamps precede the decision, an isolated candidate
+    decision, and an immutable candidate fingerprint registered before every
+    scored decision. Self-attested or malformed payloads fail closed here too.
+    """
+    raw = (realized or {}).get("forward_evidence")
+    base: dict[str, Any] = {
+        "scope": scope,
+        "evidence_version": FORWARD_EVIDENCE_VERSION,
+        "pass": False,
+        "automatic_promotion_authority": False,
+        "n_trades": 0,
+        "event_clusters": 0,
+        "span_days": 0.0,
+        "pnl_ci95": None,
+        "failures": [],
+    }
+    if not isinstance(raw, Mapping):
+        base["failures"] = ["missing_forward_witnessed_fill_evidence"]
+        return base
+
+    failures: list[str] = []
+    required_truth = {
+        "receipt_bounded": raw.get("receipt_bounded") is True,
+        "witnessed_fill_net_pnl": raw.get("witnessed_fill_net_pnl") is True,
+        "out_of_sample_after_registration": (
+            raw.get("out_of_sample_after_registration") is True
+        ),
+        "isolated_candidate_decisions": raw.get("isolated_candidate_decisions") is True,
+        "ledger_verified": raw.get("evidence_origin") == "ledger_verified",
+        "version": raw.get("evidence_version") == FORWARD_EVIDENCE_VERSION,
+    }
+    failures.extend(name for name, passed in required_truth.items() if not passed)
+
+    fingerprint = str(raw.get("candidate_fingerprint") or "").lower()
+    if len(fingerprint) != 64 or any(char not in "0123456789abcdef" for char in fingerprint):
+        failures.append("invalid_candidate_fingerprint")
+    registered_at = raw.get("registered_at")
+    registered_ts = _aware_timestamp(registered_at)
+    if registered_ts is None:
+        failures.append("invalid_registration_timestamp")
+
+    clean_clusters: dict[str, list[float]] = {}
+    payload_clusters = raw.get("pnl_by_cluster")
+    if isinstance(payload_clusters, Mapping):
+        for cluster, values in payload_clusters.items():
+            if not str(cluster).strip() or not isinstance(values, (list, tuple)):
+                continue
+            clean: list[float] = []
+            for value in values:
+                try:
+                    number = float(value)
+                except (TypeError, ValueError):
+                    continue
+                if math.isfinite(number):
+                    clean.append(number)
+            if clean:
+                clean_clusters[str(cluster)] = clean
+    counted_trades = sum(len(values) for values in clean_clusters.values())
+    try:
+        declared_trades = int(raw.get("n_trades", 0))
+    except (TypeError, ValueError):
+        declared_trades = 0
+    if declared_trades != counted_trades:
+        failures.append("trade_count_mismatch")
+
+    raw_timestamps = raw.get("trade_timestamps")
+    timestamps = (
+        [_aware_timestamp(value) for value in raw_timestamps]
+        if isinstance(raw_timestamps, (list, tuple))
+        else []
+    )
+    if len(timestamps) != counted_trades or any(value is None for value in timestamps):
+        failures.append("invalid_trade_timestamps")
+        valid_timestamps: list[float] = []
+    else:
+        valid_timestamps = [float(value) for value in timestamps if value is not None]
+    if registered_ts is not None and valid_timestamps and any(
+        value <= registered_ts for value in valid_timestamps
+    ):
+        failures.append("not_strictly_forward_of_registration")
+
+    span_days = (
+        (max(valid_timestamps) - min(valid_timestamps)) / 86400.0
+        if len(valid_timestamps) >= 2 else 0.0
+    )
+    ci = cluster_bootstrap_ci(clean_clusters, seed=f"forward-fill:{scope}")
+    lower = (ci or {}).get("lower")
+    clusters = len(clean_clusters)
+    gates = {
+        "minimum_trades": counted_trades >= config.stage1_min_forward_trades,
+        "minimum_event_clusters": clusters >= config.stage1_min_forward_clusters,
+        "minimum_span_days": span_days >= config.stage1_min_forward_span_days,
+        "positive_cluster_ci95_lower": lower is not None and float(lower) > 0.0,
+    }
+    failures.extend(name for name, passed in gates.items() if not passed)
+    passed = not failures
+    return {
+        **base,
+        "pass": passed,
+        "automatic_promotion_authority": passed,
+        "candidate_fingerprint": fingerprint or None,
+        "registered_at": registered_at,
+        "n_trades": counted_trades,
+        "minimum_trades": config.stage1_min_forward_trades,
+        "event_clusters": clusters,
+        "minimum_event_clusters": config.stage1_min_forward_clusters,
+        "span_days": round(span_days, 6),
+        "minimum_span_days": config.stage1_min_forward_span_days,
+        "pnl_ci95": ci,
+        "gates": gates,
+        "failures": sorted(set(failures)),
+        "evidence_origin": raw.get("evidence_origin"),
+        "receipt_bounded": raw.get("receipt_bounded") is True,
+        "witnessed_fill_net_pnl": raw.get("witnessed_fill_net_pnl") is True,
+        "out_of_sample_after_registration": (
+            raw.get("out_of_sample_after_registration") is True
+        ),
+        "isolated_candidate_decisions": raw.get("isolated_candidate_decisions") is True,
     }
 
 
@@ -680,6 +839,7 @@ class EngineResult:
     escalations: list[ScopeDecision] = field(default_factory=list)
     demotions: list[ScopeDecision] = field(default_factory=list)
     replacement_candidates: list[ScopeDecision] = field(default_factory=list)
+    human_review_candidates: list[ScopeDecision] = field(default_factory=list)
     deferred: list[ScopeDecision] = field(default_factory=list)
     # Wave-19: eligible scopes that FAILED the dossier gates, full dossier
     # retained. Previously these vanished silently and diagnosing a
@@ -696,6 +856,7 @@ class EngineResult:
             "escalations": [d.to_dict() for d in self.escalations],
             "demotions": [d.to_dict() for d in self.demotions],
             "replacement_candidates": [d.to_dict() for d in self.replacement_candidates],
+            "human_review_candidates": [d.to_dict() for d in self.human_review_candidates],
             "deferred": [d.to_dict() for d in self.deferred],
             "declined": [d.to_dict() for d in self.declined],
         }
@@ -789,60 +950,42 @@ class AutoPromotionEngine:
                 fused_probs_by_source=fused_probs_by_source,
                 config=cfg,
             )
-            if not evidence.evidence_pass():
-                # Wave-21: the ROI proof-of-profit door. A scope that fails
-                # the Brier-evidence gates still promotes when its contested
-                # counterfactual record clears >= roi_path_min_roi on entry
-                # cost with a CI floor above zero, at volume, over a real
-                # span. Correlation cap and the daily cap apply unchanged.
-                roi_door = roi_door_evidence(scope, rows, config=cfg)
-                if roi_door["pass"]:
-                    if not evidence.correlation.get("ok"):
-                        result.replacement_candidates.append(ScopeDecision(
-                            scope=scope, action="REPLACEMENT_CANDIDATE", stage=1,
-                            weight_fraction=0.0,
-                            dossier={**evidence.dossier(), "roi_door": roi_door},
-                            reason="ROI door passed but correlated > %.2f with %s" % (
-                                cfg.correlation_cap,
-                                evidence.correlation.get("with_source")),
-                        ))
-                        continue
-                    decision = ScopeDecision(
-                        scope=scope, action="PROMOTE", stage=1,
-                        weight_fraction=cfg.stage1_weight_fraction,
-                        dossier={**evidence.dossier(), "roi_door": roi_door,
-                                 "promotion_path": "roi_proof_of_profit"},
-                        reason="ROI door: >= %.0f%% fee-adjusted return on entry"
-                               " cost, CI floor > 0" % (cfg.roi_path_min_roi * 100),
+            core_pass = evidence.evidence_pass()
+            roi_diagnostic = roi_door_evidence(scope, rows, config=cfg)
+            forward_fill = forward_witnessed_fill_evidence(
+                scope, realized_by_scope.get(scope), config=cfg,
+            )
+            dossier = {
+                **evidence.dossier(),
+                "counterfactual_roi_diagnostic": roi_diagnostic,
+                "forward_witnessed_fill_evidence": forward_fill,
+            }
+            if not core_pass or not forward_fill["pass"]:
+                if core_pass or roi_diagnostic["pass"] or forward_fill["pass"]:
+                    result.human_review_candidates.append(ScopeDecision(
+                        scope=scope, action="HUMAN_REVIEW_CANDIDATE", stage=0,
+                        weight_fraction=0.0, dossier=dossier,
+                        reason=(
+                            "automatic promotion withheld: requires predictive gates plus "
+                            "receipt-bounded post-registration isolated witnessed-fill net "
+                            "P&L over independent forward event clusters"
+                        ),
+                    ))
+                else:
+                    failing = sorted(
+                        key for key, value in evidence.dossier().items()
+                        if isinstance(value, dict) and value.get("pass") is False
                     )
-                    rank = float((roi_door.get("roi_ci95") or {}).get("lower") or 0.0)
-                    add_candidates.append((rank, decision))
-                    continue
-                dossier = evidence.dossier()
-                dossier["roi_door"] = roi_door
-                failing = sorted(
-                    key for key, value in dossier.items()
-                    if isinstance(value, dict) and value.get("pass") is False
-                    and key != "roi_door"
-                )
-                reason = "failed: " + (", ".join(failing) or "unknown")
-                if not roi_door["pass"]:
-                    reason += " (roi door: %s)" % (
-                        "roi %.3f < %.2f" % (roi_door["roi_on_entry_cost"],
-                                             cfg.roi_path_min_roi)
-                        if roi_door.get("roi_on_entry_cost") is not None
-                        and roi_door["roi_on_entry_cost"] < cfg.roi_path_min_roi
-                        else "volume/span/ci short")
-                result.declined.append(ScopeDecision(
-                    scope=scope, action="DECLINED", stage=0,
-                    weight_fraction=0.0, dossier=dossier,
-                    reason=reason,
-                ))
+                    result.declined.append(ScopeDecision(
+                        scope=scope, action="DECLINED", stage=0,
+                        weight_fraction=0.0, dossier=dossier,
+                        reason="failed: " + (", ".join(failing) or "unknown"),
+                    ))
                 continue
             if not evidence.correlation.get("ok"):
                 result.replacement_candidates.append(ScopeDecision(
                     scope=scope, action="REPLACEMENT_CANDIDATE", stage=1,
-                    weight_fraction=0.0, dossier=evidence.dossier(),
+                    weight_fraction=0.0, dossier=dossier,
                     reason="correlated > %.2f with already-fused %s" % (
                         cfg.correlation_cap, evidence.correlation.get("with_source")),
                 ))
@@ -850,10 +993,13 @@ class AutoPromotionEngine:
             decision = ScopeDecision(
                 scope=scope, action="PROMOTE", stage=1,
                 weight_fraction=cfg.stage1_weight_fraction,
-                dossier=evidence.dossier(),
-                reason="cleared all stage-1 gates incl. proof-of-profit",
+                dossier={**dossier, "promotion_path": "forward_witnessed_fill_v1"},
+                reason=(
+                    "cleared predictive gates and receipt-bounded post-registration "
+                    "isolated witnessed-fill net-P&L gate"
+                ),
             )
-            rank = float((evidence.brier_ci or {}).get("lower") or 0.0)
+            rank = float((forward_fill.get("pnl_ci95") or {}).get("lower") or 0.0)
             add_candidates.append((rank, decision))
 
         # 3) Daily cap on combined add-risk actions. Strongest evidence first,
@@ -906,6 +1052,7 @@ __all__ = [
     "ScopeEvidence",
     "build_scope_evidence",
     "roi_door_evidence",
+    "forward_witnessed_fill_evidence",
     "demotion_breach",
     "RailsInputs",
     "RailsVerdict",
@@ -921,4 +1068,8 @@ __all__ = [
     "CORRELATION_CAP",
     "MAX_PROMOTIONS_PER_DAY",
     "STAGE2_MIN_TRADES",
+    "STAGE1_MIN_FORWARD_TRADES",
+    "STAGE1_MIN_FORWARD_CLUSTERS",
+    "STAGE1_MIN_FORWARD_SPAN_DAYS",
+    "FORWARD_EVIDENCE_VERSION",
 ]

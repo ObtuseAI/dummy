@@ -9,7 +9,7 @@ def test_v34_still_passes_or_partial_expected() -> None:
     assert report["v34_operator_enabled_probe_run_reconciliation_status"] == "PASS_PARTIAL_EXPECTED"
     assert report["v34_qc_confirmation_status"] == "PASS"
     assert report["live_submit_flag_status"] == "PASS_DISABLED"
-    assert report["caps_config_status"] == "PASS_UNCHANGED"
+    assert report["caps_config_status"] == "REVIEW_REQUIRED"
 
 
 def test_v34_baseline_reports_still_present() -> None:

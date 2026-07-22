@@ -47,6 +47,12 @@ def test_prices_the_stronger_team(tmp_path):
     assert s is not None and s.source == "sports_glicko"
     assert s.probability_yes > 0.5           # AAA (stronger + home) favored
     assert s.features["subject_rating"] > s.features["opponent_rating"]
+    assert s.features["challenger_only"] is True
+    assert s.features["promotion_eligible"] is True
+    assert s.features["point_in_time"] is True
+    assert s.features["public_read_only"] is True
+    assert s.features["sport"] == "nfl"
+    assert s.features["market_type"] == "winner"
 
 
 def test_away_subject_is_complement(tmp_path):

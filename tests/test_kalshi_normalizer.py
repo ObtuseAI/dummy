@@ -42,6 +42,39 @@ def test_normalize_orderbook():
     assert ob.asks[0].size == 10
 
 
+def test_normalize_orderbook_sorts_to_canonical_best_prices():
+    raw = {
+        "bids": [{"price": 48, "size": 1}, {"price": 40, "size": 2}],
+        "asks": [{"price": 60, "size": 3}, {"price": 52, "size": 4}],
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+    }
+    ob = KalshiNormalizer().normalize_orderbook("MKT-YES", raw)
+    assert [level.price for level in ob.bids] == [40, 48]
+    assert [level.price for level in ob.asks] == [52, 60]
+    assert ob.depth_summary["best_bid_cents"] == 48
+    assert ob.depth_summary["best_ask_cents"] == 52
+    assert ob.depth_summary["crossed"] is False
+
+
+def test_normalize_orderbook_rejects_crossed_book():
+    raw = {
+        "bids": [{"price": 55, "size": 1}],
+        "asks": [{"price": 52, "size": 1}],
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+    }
+    with pytest.raises(DataNormalizationError, match="crossed"):
+        KalshiNormalizer().normalize_orderbook("MKT-YES", raw)
+
+
+def test_normalize_orderbook_rejects_missing_timestamp():
+    raw = {
+        "bids": [{"price": 48, "size": 1}],
+        "asks": [{"price": 52, "size": 1}],
+    }
+    with pytest.raises(DataNormalizationError, match="timestamp"):
+        KalshiNormalizer().normalize_orderbook("MKT-YES", raw)
+
+
 def test_normalize_orderbook_from_model():
     ob_in = OrderBook(
         market_ticker="MKT",

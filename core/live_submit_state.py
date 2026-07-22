@@ -21,6 +21,13 @@ from enum import Enum
 from pathlib import Path
 from typing import Any
 
+from core.caps_authority import (
+    CURRENT_CAPS_AUTHORITY_EPOCH,
+    CURRENT_CAPS_SCHEMA_VERSION,
+    CapsAuthorityStatus,
+    evaluate_caps_authority,
+)
+
 # This is the acknowledgement the firewall itself requires in
 # configs/live_submit.json before it will treat live-submit as enabled.
 LIVE_SUBMIT_REQUIRED_ACK = (
@@ -47,6 +54,37 @@ class ValidationResult:
     state: LiveSubmitState
     errors: list[str] = field(default_factory=list)
     config: dict[str, Any] = field(default_factory=dict)
+
+
+def _caps_status_value(
+    status: CapsAuthorityStatus | dict[str, Any], key: str
+) -> Any:
+    if isinstance(status, dict):
+        return status.get(key)
+    return getattr(status, key)
+
+
+def build_caps_authority_binding(
+    status: CapsAuthorityStatus | dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Return the non-secret caps-v2 fields an enabled config must bind.
+
+    Copying these fields does not grant authority.  The enabled-state validator
+    independently re-evaluates the current caps file and external registration
+    before accepting the binding.
+    """
+
+    status = status or evaluate_caps_authority()
+    caps_hash = _caps_status_value(status, "current_caps_sha256")
+    return {
+        "caps_schema_version": _caps_status_value(status, "schema_version"),
+        "caps_authority_epoch": _caps_status_value(status, "authority_epoch"),
+        "caps_authority_registration_required": True,
+        "caps_authority_registration_sha256": _caps_status_value(
+            status, "authority_registration_sha256"
+        ),
+        "caps_hashes": [caps_hash] if isinstance(caps_hash, str) and caps_hash else [],
+    }
 
 
 def _is_iso_timestamp(value: Any) -> bool:
@@ -84,11 +122,17 @@ def load_live_submit_config(path: Path | str | None = None) -> dict[str, Any]:
     return data
 
 
-def classify_live_submit_state(config: dict[str, Any] | None = None) -> LiveSubmitState:
+def classify_live_submit_state(
+    config: dict[str, Any] | None = None,
+    *,
+    caps_authority_status: CapsAuthorityStatus | dict[str, Any] | None = None,
+) -> LiveSubmitState:
     """Return the coarse state classification for a live-submit config."""
     if config is None:
         config = load_live_submit_config()
-    result = validate_operator_one_proof_enabled(config)
+    result = validate_operator_one_proof_enabled(
+        config, caps_authority_status=caps_authority_status
+    )
     if result.ok:
         return LiveSubmitState.OPERATOR_ONE_PROOF_ENABLED_VALID
     result = validate_default_disabled(config)
@@ -116,6 +160,7 @@ def validate_operator_one_proof_enabled(
     config: dict[str, Any] | None = None,
     *,
     authority_context: dict[str, Any] | None = None,
+    caps_authority_status: CapsAuthorityStatus | dict[str, Any] | None = None,
 ) -> ValidationResult:
     """Validate the explicit operator-approved one-proof enabled state.
 
@@ -187,12 +232,53 @@ def validate_operator_one_proof_enabled(
     if config.get("autonomy_enabled") is True:
         errors.append("autonomy must not be enabled")
 
-    # Optional descriptor/caps/approval hashes/paths are accepted if present;
-    # their presence alone does not invalidate the state.
-    for list_key in ("descriptor_hashes", "caps_hashes"):
+    # Optional descriptor hashes are shape-checked.  Caps hashes are mandatory
+    # and exact under caps schema v2; a legacy hash can never carry authority
+    # forward into an enabled live-submit config.
+    for list_key in ("descriptor_hashes",):
         value = config.get(list_key)
         if value is not None and not isinstance(value, list):
             errors.append(f"{list_key} must be a list if present")
+
+    caps_status = caps_authority_status or evaluate_caps_authority()
+    config_integrity_valid = _caps_status_value(
+        caps_status, "config_integrity_valid"
+    )
+    registration_valid = _caps_status_value(
+        caps_status, "authority_registration_valid"
+    )
+    authority_state = _caps_status_value(caps_status, "state")
+    current_caps_hash = _caps_status_value(caps_status, "current_caps_sha256")
+    registration_hash = _caps_status_value(
+        caps_status, "authority_registration_sha256"
+    )
+
+    if config_integrity_valid is not True:
+        errors.append("current caps-v2 configuration integrity is not valid")
+    if registration_valid is not True:
+        errors.append("fresh caps-v2 authority registration is not valid")
+    if authority_state != "REGISTERED_FOR_SEPARATE_LIVE_GATE_EVALUATION":
+        errors.append("caps-v2 authority is not registered for separate live-gate evaluation")
+    if config.get("caps_schema_version") != CURRENT_CAPS_SCHEMA_VERSION:
+        errors.append(
+            f"caps_schema_version must be {CURRENT_CAPS_SCHEMA_VERSION}"
+        )
+    if config.get("caps_authority_epoch") != CURRENT_CAPS_AUTHORITY_EPOCH:
+        errors.append("caps_authority_epoch does not match the current protected epoch")
+    if config.get("caps_authority_registration_required") is not True:
+        errors.append("caps_authority_registration_required must be true")
+    if not isinstance(current_caps_hash, str) or config.get("caps_hashes") != [
+        current_caps_hash
+    ]:
+        errors.append("caps_hashes must bind exactly the current protected caps-v2 hash")
+    if (
+        not isinstance(registration_hash, str)
+        or not registration_hash
+        or config.get("caps_authority_registration_sha256") != registration_hash
+    ):
+        errors.append(
+            "caps_authority_registration_sha256 must bind the current valid registration"
+        )
 
     # Runtime approval check when authority context is supplied.
     if authority_context is not None:
@@ -215,6 +301,26 @@ def validate_operator_one_proof_enabled(
     )
 
 
-def is_live_submit_armed(config: dict[str, Any] | None = None) -> bool:
+def is_live_submit_armed(
+    config: dict[str, Any] | None = None,
+    *,
+    caps_authority_status: CapsAuthorityStatus | dict[str, Any] | None = None,
+) -> bool:
     """Return True only when the config is in the valid operator-one-proof enabled state."""
-    return validate_operator_one_proof_enabled(config).ok
+    return validate_operator_one_proof_enabled(
+        config, caps_authority_status=caps_authority_status
+    ).ok
+
+
+__all__ = [
+    "LIVE_SUBMIT_REQUIRED_ACK",
+    "LIVE_SUBMIT_TYPED_CONFIRMATION",
+    "LiveSubmitState",
+    "ValidationResult",
+    "build_caps_authority_binding",
+    "classify_live_submit_state",
+    "is_live_submit_armed",
+    "load_live_submit_config",
+    "validate_default_disabled",
+    "validate_operator_one_proof_enabled",
+]

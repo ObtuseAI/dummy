@@ -1,11 +1,9 @@
-"""Commodities signal: spot + realized vol vs Kalshi price-threshold markets.
+"""Commodity market-data helpers retained for contextual macro features.
 
 Kalshi lists WTI crude (KXWTI), and periodically natural gas and gold, as
-price-threshold markets that settle on the underlying. A driftless lognormal
-over time-to-close — with sigma from recent daily realized vol (keyless Yahoo
-Finance chart API) — prices P(settle above/below/between strikes), exactly the
-crypto approach adapted to slower-moving commodity vol. Fail-closed: no feed,
-no signal.
+Direct commodity-contract probabilities were retired. The Yahoo helpers remain
+available as data plumbing, while the compatibility signal class is permanently
+non-applicable and emits no forecast.
 """
 from __future__ import annotations
 
@@ -14,7 +12,7 @@ import re
 from datetime import datetime, timezone
 from typing import Callable
 
-from autonomy.ontology import MarketView, Signal, Vertical
+from autonomy.ontology import MarketView, Signal
 
 # Kalshi series prefix -> Yahoo Finance continuous-future symbol.
 _ASSET_SYMBOL: list[tuple[str, str]] = [
@@ -66,7 +64,11 @@ def default_fetch_spot_and_vol(symbol: str) -> tuple[float, float]:
 
 
 class CommoditiesSpotVolSignal:
+    """Retired compatibility shell; commodity prices are context data only."""
+
     name = "commodities_spot_vol"
+    data_only = True
+    prediction_authority = False
 
     def __init__(self, fetch_spot_and_vol: Callable[[str], tuple[float, float]] | None = None):
         self.fetch_spot_and_vol = fetch_spot_and_vol or default_fetch_spot_and_vol
@@ -76,7 +78,7 @@ class CommoditiesSpotVolSignal:
         self._cache.clear()
 
     def applicable(self, market: MarketView) -> bool:
-        return market.vertical is Vertical.COMMODITIES and _symbol_for(market.ticker) is not None
+        return False
 
     def _hours_to_close(self, market: MarketView) -> float:
         try:
@@ -86,68 +88,4 @@ class CommoditiesSpotVolSignal:
             return 24.0
 
     def generate(self, market: MarketView) -> Signal | None:
-        symbol = _symbol_for(market.ticker)
-        if symbol is None:
-            return None
-        if symbol not in self._cache:
-            try:
-                self._cache[symbol] = self.fetch_spot_and_vol(symbol)
-            except Exception:
-                return None
-        spot, annual_vol = self._cache[symbol]
-        if spot <= 0 or annual_vol <= 0:
-            return None
-        hours = self._hours_to_close(market)
-        horizon_sigma = annual_vol * math.sqrt(hours / (24 * 365))
-        if horizon_sigma <= 0:
-            return None
-
-        def p_above(strike: float) -> float:
-            if strike <= 0:
-                return 1.0
-            return _normal_cdf(math.log(spot / strike) / horizon_sigma)
-
-        strike_type = str(market.raw.get("strike_type", "")).lower()
-        floor = market.raw.get("floor_strike")
-        cap = market.raw.get("cap_strike")
-        if strike_type in {"greater", "greater_or_equal"} and floor is not None:
-            p_yes = p_above(float(floor))
-        elif strike_type == "less" and cap is not None:
-            p_yes = 1.0 - p_above(float(cap))
-        elif strike_type == "between" and floor is not None and cap is not None:
-            p_yes = p_above(float(floor)) - p_above(float(cap))
-        else:
-            match = _TICKER_RE.match(market.ticker)
-            if not match:
-                return None
-            p_yes = p_above(float(match.group(3)))
-        p_yes = min(0.98, max(0.02, p_yes))
-        boundary_sensitivity = 4.0 * p_yes * (1.0 - p_yes)
-        probability_uncertainty = min(
-            0.5,
-            max(
-                0.10,
-                0.10
-                + 0.05 * boundary_sensitivity
-                + min(0.12, horizon_sigma * 2.0),
-            ),
-        )
-        return Signal(
-            source=self.name,
-            market_ticker=market.ticker,
-            probability_yes=p_yes,
-            uncertainty=probability_uncertainty,
-            rationale=(
-                f"{symbol} spot={spot:.2f} annvol={annual_vol:.0%} h={hours:.1f} "
-                f"{strike_type or 'threshold'} floor={floor} cap={cap}"
-            ),
-            features={
-                "symbol": symbol,
-                "spot": spot,
-                "annual_vol": annual_vol,
-                "hours_to_close": hours,
-                "horizon_log_return_sigma": horizon_sigma,
-                "probability_model_uncertainty": probability_uncertainty,
-                "public_proxy_feed": "Yahoo Finance continuous future",
-            },
-        )
+        return None

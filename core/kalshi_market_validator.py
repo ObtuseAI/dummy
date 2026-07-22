@@ -46,7 +46,11 @@ class MarketMetadata:
     contracts: list[ContractMetadata]
 
 
-_MARKET_TICKER_RE = re.compile(r"^[A-Z0-9]+-[0-9]{2}[A-Z]{3}[0-9]+-[CP]$")
+# Kalshi tickers are opaque identifiers, not OCC option symbols. Current
+# market/event families include long KX... multi-leg ids and legacy INX/INFX
+# series; dots can appear in numeric thresholds. Keep this shape strict enough
+# to reject whitespace, paths, control characters, and synthetic local ids.
+_MARKET_TICKER_RE = re.compile(r"^(?:KX|INX|INFX)[A-Z0-9-][A-Z0-9._-]{1,198}$")
 
 
 def _safe_upper(value: Any) -> str:

@@ -35,6 +35,21 @@ from autonomy.sports.espn import canonical_team
 # Vocabulary
 # ---------------------------------------------------------------------------
 
+# Stable, year-round navigation roster.  This is a capability list, not a
+# claim that any league has a game or listed contract today.  Keep it beside
+# the canonical series registry so dashboard, artifact, and desktop surfaces
+# cannot silently drop an out-of-season league just because its current slate
+# is empty.
+SPORTS_LEAGUES: tuple[str, ...] = (
+    "MLB",
+    "WNBA",
+    "NBA",
+    "NFL",
+    "NHL",
+    "NCAAF",
+    "NCAAMB",
+)
+
 # Market type: WHAT is being priced.
 WINNER = "winner"            # moneyline (2-way, or 3-way when a tie is possible)
 SPREAD = "spread"            # run/point/goal line at a strike

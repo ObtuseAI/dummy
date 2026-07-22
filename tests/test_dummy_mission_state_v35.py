@@ -11,13 +11,18 @@ def test_dummy_mission_state_v35_contract() -> None:
     assert report["dead_constant_removal_verification_status"] == "PASS_VERIFIED"
     assert report["frontend_build_status"] == "PASS"
     assert report["v34_route_api_smoke_status"] == "PASS"
-    assert report["protected_hash_reverification_status"] == "PASS"
+    assert report["protected_hash_reverification_status"] == "REVIEW_REQUIRED"
     assert report["no_execution_bridge_deep_recheck_status"] == "PASS"
     assert report["live_submit_flag_status"] == "PASS_DISABLED"
-    assert report["caps_config_status"] == "PASS_UNCHANGED"
+    assert report["caps_config_status"] == "REVIEW_REQUIRED"
+    assert report["caps_authority_registration_valid"] is False
+    assert report["execution_authority"] is False
     assert report["no_browser_pageagent_dom_status"] == "PASS"
     assert report["no_mined_repo_execution_status"] == "PASS"
     assert report["blunder_separation_status"] == "PASS"
     assert report["canonical_identity_status"] == "PASS"
     assert report["execution_bridge_present"] is False
     assert "enabled path uses fake transport only" in " ".join(report["partial_reasons"])
+    assert "fresh external authority registration is required" in " ".join(
+        report["partial_reasons"]
+    )

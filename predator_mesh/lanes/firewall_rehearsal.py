@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from typing import Any
 
 from core.ontology import Forecast, LiveOrderRequest, OrderBook, OrderBookLevel
+from forecasting.model_influence_attestation import build_model_influence_attestation
 from kalshi.client import KalshiClient
 from live_firewall.exposure_tracker import ExposureTracker
 from live_firewall.firewall import LiveBrokerFirewall
@@ -43,7 +44,7 @@ def _synthetic_forecast() -> Forecast:
         model_summary="firewall_rehearsal",
         calibration_notes="",
         timestamp=now,
-        expiration=now,
+        expiration=now + timedelta(hours=1),
         strategy_references=[],
         proof_reference="mesh_forecast_synthetic",
     )
@@ -59,17 +60,24 @@ def _synthetic_orderbook() -> OrderBook:
     )
 
 
-def _synthetic_request() -> LiveOrderRequest:
+def _synthetic_request(forecast: Forecast) -> LiveOrderRequest:
+    request_fields = {
+        "proposal_id": "mesh-rehearsal-001",
+        "market_ticker": "MESH-SYNTH",
+        "contract_ticker": "MESH-SYNTH-YES",
+        "side": "yes",
+        "price_cents": 50,
+        "size": 1,
+        "strategy_proof_reference": "mesh_strategy_proof",
+        "forecast_proof_reference": forecast.proof_reference,
+        "adapter_name": "mock_adapter",
+    }
     return LiveOrderRequest(
-        proposal_id="mesh-rehearsal-001",
-        market_ticker="MESH-SYNTH",
-        contract_ticker="MESH-SYNTH-YES",
-        side="yes",
-        price_cents=50,
-        size=1,
-        strategy_proof_reference="mesh_strategy_proof",
-        forecast_proof_reference="mesh_forecast_proof",
-        adapter_name="mock_adapter",
+        **request_fields,
+        model_influence_attestation=build_model_influence_attestation(
+            forecast,
+            request_fields,
+        ),
     )
 
 
@@ -77,6 +85,7 @@ class FirewallRehearsalLane(BaseLane):
     """Rehearse an order against the Live Broker Firewall without submitting it."""
 
     name = "firewall_rehearsal"
+    dependencies = ("strategy_governor",)
     priority = MeshPriority(level=LanePriority.CALIBRATION_UPDATE)
     timeout = MeshTimeout(per_lane_timeout_s=6.0)
 
@@ -98,9 +107,16 @@ class FirewallRehearsalLane(BaseLane):
         self.forecast = forecast
 
     async def execute(self, ctx: MeshContext) -> MeshResult:
-        request = self.request or _synthetic_request()
-        orderbook = self.orderbook or _synthetic_orderbook()
-        forecast = self.forecast or _synthetic_forecast()
+        request = self.request or ctx.shared_state.get("live_order_request")
+        orderbook = self.orderbook or ctx.shared_state.get("orderbook")
+        forecast = self.forecast or ctx.shared_state.get("base_forecast")
+        if request is None or orderbook is None or forecast is None:
+            ctx.shared_state["firewall_rehearsal_abstention"] = "no_real_rehearsal_input"
+            return self._complete(
+                ctx,
+                {"status": "abstained", "reason": "no_real_rehearsal_input"},
+                verdict="abstained",
+            )
 
         try:
             verdict = await self.firewall.submit_rehearsal(

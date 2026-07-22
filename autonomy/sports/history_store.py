@@ -2,9 +2,11 @@
 
 A persistent, multi-season SQLite store of free/public sports data (game
 results + boxscores + play-by-play + odds lines + injuries), the foundation the
-analytics foundry and the walk-forward backtester read from. Every row carries
-``as_of`` + ``source`` + ``provenance_url`` so a query can reconstruct exactly
-what was known at any past instant.
+analytics foundry and the walk-forward backtester read from. Every game can
+carry ``result_available_at`` (when the source made the result knowable),
+``received_at`` (when Dummy observed that version), and ``provenance_quality``.
+Historical evaluation is fail-closed: rows missing any of that evidence are
+not eligible to train or grade a model.
 
 Point-in-time is the whole point: :meth:`games_before` and :meth:`team_form`
 return only games that had already **finished** strictly before the given
@@ -16,6 +18,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Iterable
 
@@ -23,6 +26,45 @@ DEFAULT_PATH = Path("runtime/autonomy/sports_history.db")
 
 # A game is "complete" (safe to read as history) only in these statuses.
 _FINAL_STATUSES = ("final", "post", "closed", "complete", "completed")
+
+
+# Only these provenance classes may enter historical evaluation. Flat-file
+# retro backfills without a source publication timestamp deliberately remain
+# unknown and are quarantined from backtests.
+EVALUATION_PROVENANCE_QUALITIES = frozenset({"observed_at_receipt", "source_reported"})
+
+
+def _parse_timestamp(value: Any) -> datetime | None:
+    """Parse an ISO-8601 timestamp for conservative ordering checks."""
+    if not value:
+        return None
+    try:
+        parsed = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    except (TypeError, ValueError):
+        return None
+    if parsed.tzinfo is None:
+        return None
+    return parsed
+
+
+def _evaluation_rejection_reason(game: dict[str, Any]) -> str | None:
+    """Return why a completed game is unsafe for point-in-time evaluation."""
+    if game.get("status") not in _FINAL_STATUSES:
+        return "not_final"
+    if game.get("home_score") is None or game.get("away_score") is None:
+        return "missing_score"
+    if not game.get("result_available_at") or not game.get("received_at"):
+        return "unknown_availability"
+    if game.get("provenance_quality") not in EVALUATION_PROVENANCE_QUALITIES:
+        return "untrusted_provenance"
+    start = _parse_timestamp(game.get("start_time"))
+    available = _parse_timestamp(game.get("result_available_at"))
+    received = _parse_timestamp(game.get("received_at"))
+    if start is None or available is None or received is None:
+        return "invalid_timestamp"
+    if available < start or received < available:
+        return "invalid_timestamp_order"
+    return None
 
 
 class SportsHistoryStore:
@@ -48,6 +90,8 @@ class SportsHistoryStore:
                 home_score INTEGER, away_score INTEGER,
                 venue TEXT, neutral INTEGER DEFAULT 0,
                 as_of TEXT, source TEXT, provenance_url TEXT,
+                result_available_at TEXT, received_at TEXT,
+                provenance_quality TEXT,
                 extra TEXT
             );
             CREATE INDEX IF NOT EXISTS ix_games_league_time ON games(league, start_time);
@@ -82,7 +126,36 @@ class SportsHistoryStore:
                 status TEXT, rows INTEGER, http TEXT, at TEXT DEFAULT (datetime('now'))
             );
             CREATE INDEX IF NOT EXISTS ix_ingest ON ingest_log(source, league, id);
+
+            CREATE TABLE IF NOT EXISTS research_holdout_consumptions(
+                seal_key TEXT PRIMARY KEY,
+                league TEXT NOT NULL, holdout_season INTEGER NOT NULL,
+                model TEXT NOT NULL, holdout_ids_hash TEXT NOT NULL,
+                selection_ids_hash TEXT NOT NULL, consumed_at TEXT NOT NULL,
+                execution_authority INTEGER NOT NULL DEFAULT 0,
+                promotion_authority INTEGER NOT NULL DEFAULT 0
+            );
             """
+        )
+        # Existing lakes predate the point-in-time evidence columns. Do not
+        # backfill them from start_time/as_of: unknown availability must remain
+        # unknown and therefore excluded from historical evaluation.
+        columns = {str(row[1]) for row in cur.execute("PRAGMA table_info(games)")}
+        for name in ("result_available_at", "received_at", "provenance_quality"):
+            if name not in columns:
+                try:
+                    cur.execute(f"ALTER TABLE games ADD COLUMN {name} TEXT")
+                except sqlite3.OperationalError:
+                    # Another process may have completed the idempotent
+                    # migration after our PRAGMA snapshot.
+                    current = {
+                        str(row[1]) for row in cur.execute("PRAGMA table_info(games)")
+                    }
+                    if name not in current:
+                        raise
+        cur.execute(
+            "CREATE INDEX IF NOT EXISTS ix_games_result_availability "
+            "ON games(league, result_available_at, received_at)"
         )
         self.conn.commit()
 
@@ -97,22 +170,39 @@ class SportsHistoryStore:
                 g["start_time"], g.get("status", "scheduled"),
                 g.get("home"), g.get("away"), g.get("home_score"), g.get("away_score"),
                 g.get("venue"), 1 if g.get("neutral") else 0,
-                g.get("as_of") or g.get("start_time"), g.get("source"), g.get("provenance_url"),
+                g.get("as_of") or g.get("received_at"), g.get("source"), g.get("provenance_url"),
+                g.get("result_available_at"), g.get("received_at"),
+                g.get("provenance_quality") or "unknown",
                 json.dumps(g.get("extra")) if g.get("extra") is not None else None,
             )
             for g in games
         ]
         self.conn.executemany(
             """INSERT INTO games(game_id,league,season,start_time,status,home,away,
-                   home_score,away_score,venue,neutral,as_of,source,provenance_url,extra)
-               VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                   home_score,away_score,venue,neutral,as_of,source,provenance_url,
+                   result_available_at,received_at,provenance_quality,extra)
+               VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
                ON CONFLICT(game_id) DO UPDATE SET
                    season=excluded.season, start_time=excluded.start_time,
                    status=excluded.status, home=excluded.home, away=excluded.away,
                    home_score=excluded.home_score, away_score=excluded.away_score,
                    venue=excluded.venue, neutral=excluded.neutral,
                    as_of=excluded.as_of, source=excluded.source,
-                   provenance_url=excluded.provenance_url, extra=excluded.extra""",
+                   provenance_url=excluded.provenance_url,
+                   result_available_at=COALESCE(
+                       excluded.result_available_at, games.result_available_at
+                   ),
+                   received_at=CASE
+                       WHEN excluded.result_available_at IS NOT NULL
+                       THEN excluded.received_at
+                       ELSE COALESCE(games.received_at, excluded.received_at)
+                   END,
+                   provenance_quality=CASE
+                       WHEN excluded.result_available_at IS NOT NULL
+                       THEN excluded.provenance_quality
+                       ELSE COALESCE(games.provenance_quality, excluded.provenance_quality)
+                   END,
+                   extra=excluded.extra""",
             rows,
         )
         self.conn.commit()
@@ -184,19 +274,26 @@ class SportsHistoryStore:
         return [r[0] for r in self.conn.execute(sql, params).fetchall()]
 
     def team_stat_sums_before(
-        self, team: str, as_of: str, league: str,
+        self, team: str, as_of: str, league: str, *,
+        require_known_availability: bool = False,
     ) -> dict[str, Any] | None:
         """Point-in-time SUM of a team's OWN boxscore stats over completed games
         before ``as_of`` (any stat keys). ``{"sums": {...}, "games": n}`` or
         None. Used where a team's row already encodes both sides (e.g. EPA)."""
         finals = ",".join("?" * len(_FINAL_STATUSES))
+        availability_sql, availability_params = self._availability_sql(
+            as_of, require_known_availability
+        )
+        start_time_sql = ("julianday(g.start_time) < julianday(?)"
+                          if require_known_availability else "g.start_time < ?")
         gids = [
             r[0] for r in self.conn.execute(
                 f"""SELECT DISTINCT g.game_id FROM games g
                     JOIN boxscores b ON b.game_id = g.game_id
                     WHERE b.team = ? AND b.player = '' AND g.league = ?
-                      AND g.start_time < ? AND g.status IN ({finals})""",
-                (team, league, as_of, *_FINAL_STATUSES),
+                      AND {start_time_sql} AND g.status IN ({finals})
+                      {availability_sql}""",
+                (team, league, as_of, *_FINAL_STATUSES, *availability_params),
             ).fetchall()
         ]
         if not gids:
@@ -208,19 +305,26 @@ class SportsHistoryStore:
         return {"sums": sums, "games": len(gids)}
 
     def four_factor_sums_before(
-        self, team: str, as_of: str, league: str,
+        self, team: str, as_of: str, league: str, *,
+        require_known_availability: bool = False,
     ) -> dict[str, Any] | None:
         """Point-in-time stat sums for a team's OFFENSE (own) and DEFENSE
         (opponents' stats in the same games), over completed games before
         ``as_of``. The seed for four-factors. None if no boxscores yet."""
         finals = ",".join("?" * len(_FINAL_STATUSES))
+        availability_sql, availability_params = self._availability_sql(
+            as_of, require_known_availability
+        )
+        start_time_sql = ("julianday(g.start_time) < julianday(?)"
+                          if require_known_availability else "g.start_time < ?")
         gids = [
             r[0] for r in self.conn.execute(
                 f"""SELECT DISTINCT g.game_id FROM games g
                     JOIN boxscores b ON b.game_id = g.game_id
                     WHERE b.team = ? AND b.player = '' AND g.league = ?
-                      AND g.start_time < ? AND g.status IN ({finals})""",
-                (team, league, as_of, *_FINAL_STATUSES),
+                      AND {start_time_sql} AND g.status IN ({finals})
+                      {availability_sql}""",
+                (team, league, as_of, *_FINAL_STATUSES, *availability_params),
             ).fetchall()
         ]
         if not gids:
@@ -246,12 +350,23 @@ class SportsHistoryStore:
 
     # ---- point-in-time reads --------------------------------------------
     def games_before(
-        self, as_of: str, league: str | None = None, season: int | None = None,
+        self, as_of: str, league: str | None = None, season: int | None = None, *,
+        require_known_availability: bool = False,
     ) -> list[dict[str, Any]]:
         """Completed games that started strictly before ``as_of`` (most recent
         first). Never returns a scheduled/in-progress game — no future leakage."""
-        clause = ["start_time < ?", "status IN (%s)" % ",".join("?" * len(_FINAL_STATUSES))]
+        start_time_sql = (
+            "julianday(start_time) < julianday(?)"
+            if require_known_availability else "start_time < ?"
+        )
+        clause = [start_time_sql, "status IN (%s)" % ",".join("?" * len(_FINAL_STATUSES))]
         params: list[Any] = [as_of, *_FINAL_STATUSES]
+        availability_sql, availability_params = self._availability_sql(
+            as_of, require_known_availability, prefix=""
+        )
+        if availability_sql:
+            clause.append(availability_sql)
+            params.extend(availability_params)
         if league is not None:
             clause.append("league = ?")
             params.append(league)
@@ -265,14 +380,24 @@ class SportsHistoryStore:
         return [self._row(r) for r in rows]
 
     def team_form(
-        self, team: str, as_of: str, league: str | None = None, n: int = 20,
+        self, team: str, as_of: str, league: str | None = None, n: int = 20, *,
+        require_known_availability: bool = False,
     ) -> list[dict[str, Any]]:
         """The team's last ``n`` completed games before ``as_of`` (most recent
         first) — the point-in-time information set for a cold-start prior."""
         params: list[Any] = [as_of, *_FINAL_STATUSES, team, team]
-        clause = "start_time < ? AND status IN (%s) AND (home = ? OR away = ?)" % (
+        start_time_sql = (
+            "julianday(start_time) < julianday(?)"
+            if require_known_availability else "start_time < ?"
+        )
+        clause = start_time_sql + " AND status IN (%s) AND (home = ? OR away = ?)" % (
             ",".join("?" * len(_FINAL_STATUSES))
         )
+        availability_sql, availability_params = self._availability_sql(
+            as_of, require_known_availability
+        )
+        clause += availability_sql
+        params.extend(availability_params)
         if league is not None:
             clause += " AND league = ?"
             params.append(league)
@@ -281,6 +406,52 @@ class SportsHistoryStore:
             [*params, int(n)],
         ).fetchall()
         return [self._row(r) for r in rows]
+
+    def evaluation_games(
+        self, league: str | None = None, season: int | None = None,
+    ) -> list[dict[str, Any]]:
+        """Completed games safe to use as historical evaluation targets.
+
+        Unlike :meth:`games`, this is deliberately fail-closed. A retro row
+        with a final score but no defensible availability/receipt timestamps is
+        not evidence and is omitted.
+        """
+        return [
+            game for game in self.games(league=league, season=season)
+            if _evaluation_rejection_reason(game) is None
+        ]
+
+    def evaluation_eligibility(
+        self, league: str | None = None, season: int | None = None,
+    ) -> dict[str, Any]:
+        """Explain how many final rows pass the strict historical-data gate."""
+        reasons: dict[str, int] = {}
+        qualities: dict[str, int] = {}
+        sources: dict[str, int] = {}
+        candidates = 0
+        eligible = 0
+        for game in self.games(league=league, season=season):
+            if game.get("status") not in _FINAL_STATUSES:
+                continue
+            candidates += 1
+            quality = str(game.get("provenance_quality") or "unknown")
+            source = str(game.get("source") or "unknown")
+            qualities[quality] = qualities.get(quality, 0) + 1
+            sources[source] = sources.get(source, 0) + 1
+            reason = _evaluation_rejection_reason(game)
+            if reason is None:
+                eligible += 1
+            else:
+                reasons[reason] = reasons.get(reason, 0) + 1
+        return {
+            "final_candidates": candidates,
+            "eligible": eligible,
+            "excluded": candidates - eligible,
+            "rejection_reasons": dict(sorted(reasons.items())),
+            "provenance_quality_counts": dict(sorted(qualities.items())),
+            "source_counts": dict(sorted(sources.items())),
+            "accepted_provenance_qualities": sorted(EVALUATION_PROVENANCE_QUALITIES),
+        }
 
     def games(
         self, league: str | None = None, season: int | None = None,
@@ -323,7 +494,60 @@ class SportsHistoryStore:
             for t in ("games", "boxscores", "plays", "lines")
         }
 
+    def claim_research_holdout(
+        self, *, seal_key: str, league: str, holdout_season: int, model: str,
+        holdout_ids_hash: str, selection_ids_hash: str, consumed_at: str,
+    ) -> bool:
+        """Atomically consume a sealed holdout once, with no live authority.
+
+        The append-only claim prevents repeated parameter fishing against the
+        same holdout identity. There is intentionally no delete/reset helper.
+        """
+        try:
+            self.conn.execute(
+                """INSERT INTO research_holdout_consumptions(
+                       seal_key,league,holdout_season,model,holdout_ids_hash,
+                       selection_ids_hash,consumed_at,execution_authority,
+                       promotion_authority
+                   ) VALUES(?,?,?,?,?,?,?,0,0)""",
+                (
+                    seal_key, league, int(holdout_season), model,
+                    holdout_ids_hash, selection_ids_hash, consumed_at,
+                ),
+            )
+            self.conn.commit()
+            return True
+        except sqlite3.IntegrityError:
+            self.conn.rollback()
+            return False
+
+    def research_holdout_claim(self, seal_key: str) -> dict[str, Any] | None:
+        row = self.conn.execute(
+            "SELECT * FROM research_holdout_consumptions WHERE seal_key=?", (seal_key,)
+        ).fetchone()
+        return None if row is None else dict(row)
+
     # ---- helpers ---------------------------------------------------------
+    @staticmethod
+    def _availability_sql(
+        as_of: str, required: bool, *, prefix: str = " AND ",
+    ) -> tuple[str, list[Any]]:
+        if not required:
+            return "", []
+        placeholders = ",".join("?" * len(EVALUATION_PROVENANCE_QUALITIES))
+        clause = (
+            "result_available_at IS NOT NULL AND received_at IS NOT NULL "
+            f"AND provenance_quality IN ({placeholders}) "
+            "AND julianday(result_available_at) IS NOT NULL "
+            "AND julianday(received_at) IS NOT NULL "
+            "AND julianday(start_time) IS NOT NULL "
+            "AND julianday(result_available_at) >= julianday(start_time) "
+            "AND julianday(received_at) >= julianday(result_available_at) "
+            "AND julianday(result_available_at) < julianday(?) "
+            "AND julianday(received_at) < julianday(?)"
+        )
+        return prefix + clause, [*sorted(EVALUATION_PROVENANCE_QUALITIES), as_of, as_of]
+
     @staticmethod
     def _row(row: sqlite3.Row) -> dict[str, Any]:
         d = dict(row)

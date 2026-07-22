@@ -92,7 +92,9 @@ class KalshiRealReadOnly:
 
     def __init__(self, client: Optional[KalshiClient] = None):
         key_id = os.environ.get("KALSHI_API_KEY_ID")
-        pem = os.environ.get("KALSHI_API_PRIVATE_KEY_PEM")
+        pem = os.environ.get("KALSHI_API_PRIVATE_KEY_PEM") or os.environ.get(
+            "KALSHI_API_PRIVATE_KEY"
+        )
         pem_path = os.environ.get("KALSHI_API_PRIVATE_KEY_PEM_PATH")
         if not key_id or (not pem and not pem_path):
             raise KalshiCredentialsMissing(
@@ -211,8 +213,13 @@ class KalshiRealReadOnly:
                 extra={"component": self.name, "contract_ticker": contract_ticker},
             )
             return {
-                "source": "mock",
+                "source": self.name,
+                "data_status": "UNAVAILABLE",
+                "complete": False,
                 "timeout": True,
+                "data_authority": False,
+                "reason": "real read-only snapshot timed out before completion",
+                "contract_ticker": contract_ticker,
                 "endpoints_called": sorted(self.endpoints_called()),
                 "order_creating_endpoints": [],
                 "request_audit_log": self.request_audit_log,

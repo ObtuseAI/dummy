@@ -49,6 +49,7 @@ class StrategyGovernorLane(BaseLane):
     """Route a forecast opinion through the existing StrategyGovernor."""
 
     name = "strategy_governor"
+    dependencies = ("forecast_update",)
     priority = MeshPriority(level=LanePriority.STRATEGY_REVIEW)
     timeout = MeshTimeout(per_lane_timeout_s=10.0)
 
@@ -63,7 +64,12 @@ class StrategyGovernorLane(BaseLane):
     async def execute(self, ctx: MeshContext) -> MeshResult:
         opinion = self.opinion or ctx.shared_state.get("forecast_opinion")
         if opinion is None:
-            opinion = _synthetic_opinion()
+            ctx.shared_state["governor_abstention"] = "no_real_forecast_opinion"
+            return self._complete(
+                ctx,
+                {"status": "abstained", "reason": "no_real_forecast_opinion"},
+                verdict="abstained",
+            )
 
         try:
             output = self.governor.evaluate(opinion)

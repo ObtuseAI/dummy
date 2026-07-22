@@ -7,6 +7,8 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
+from core import state as state_module
+from core.ontology import CapConfig
 from live_firewall.firewall import LiveBrokerFirewall
 from live_firewall.exposure_tracker import ExposureTracker
 from predator_mesh.brokers import LimitOrderRequest, OrderState, SubmitResult
@@ -37,13 +39,49 @@ def _firewall() -> LiveBrokerFirewall:
     return LiveBrokerFirewall(kalshi_client=None, exposure_tracker=ExposureTracker())
 
 
+def _arm_adapter_path(monkeypatch):
+    cfg = {
+        "enabled": True,
+        "proof_scope": "one_controlled_proof",
+        "auto_run": False,
+        "weaken_gates": False,
+        "requires_command_seal": True,
+        "requires_livebrokerfirewall": True,
+        "requires_limit_order": True,
+        "market_orders_allowed": False,
+        "order_type_policy": "LIMIT_ONLY",
+        "max_order_count": 1,
+        "operator": "operator",
+        "reason": "test",
+        "timestamp": "2026-01-01T00:00:00Z",
+        "expiry": "2099-01-01T00:00:00Z",
+        "explicit_acknowledgement": "I approve real live Kalshi order submission through Dummy LiveBrokerFirewall only",
+    }
+    monkeypatch.setattr("live_firewall.firewall._load_live_submit_config", lambda: cfg)
+    monkeypatch.setattr("live_firewall.firewall._command_seal_ready", lambda: True)
+    monkeypatch.setattr("live_firewall.firewall._caps_strict", lambda: True)
+    monkeypatch.setattr("live_firewall.firewall._descriptor_staged", lambda: True)
+    monkeypatch.setattr("live_firewall.firewall._kalshi_credentials_ready", lambda: True)
+    monkeypatch.setattr("live_firewall.firewall._proof_lock_clear", lambda: True)
+    monkeypatch.setenv("DUMMY_LIVE_PROOF_MODE", "1")
+    monkeypatch.setenv("DUMMY_LIVE_PROOF_ACK", "FULL_AUTHORITY_OPERATOR_APPROVED_LIVE_PROOF_ONLY")
+
+
+@pytest.fixture(autouse=True)
+def _clear_safety_state():
+    state_module.STATE.disable_kill_switch()
+    state_module.STATE.emergency_stop.active = False
+    state_module.STATE.persistence_error = None
+    yield
+
+
 @pytest.mark.asyncio
 async def test_blocks_when_live_submit_disabled(monkeypatch):
     monkeypatch.setattr("live_firewall.firewall._load_live_submit_config", lambda: {"enabled": False})
     fw = _firewall()
     result = await fw.submit_limit_order_adapter(_base_request())
     assert result.success is False
-    assert result.error == "live_submit_disabled"
+    assert result.error == "LEGACY_ADAPTER_SUBMIT_RETIRED_USE_CENTRAL_FIREWALL"
 
 
 @pytest.mark.asyncio
@@ -75,7 +113,7 @@ async def test_blocks_when_env_gate_missing(monkeypatch):
     fw = _firewall()
     result = await fw.submit_limit_order_adapter(_base_request())
     assert result.success is False
-    assert result.error == "ENV_GATE_MISSING"
+    assert result.error == "LEGACY_ADAPTER_SUBMIT_RETIRED_USE_CENTRAL_FIREWALL"
 
 
 @pytest.mark.asyncio
@@ -108,7 +146,7 @@ async def test_blocks_market_order(monkeypatch):
     fw = _firewall()
     result = await fw.submit_limit_order_adapter(_base_request(order_type="MARKET"))
     assert result.success is False
-    assert result.error == "MARKET_ORDER_REJECTED"
+    assert result.error == "LEGACY_ADAPTER_SUBMIT_RETIRED_USE_CENTRAL_FIREWALL"
 
 
 @pytest.mark.asyncio
@@ -141,7 +179,32 @@ async def test_blocks_max_order_count_above_one(monkeypatch):
     fw = _firewall()
     result = await fw.submit_limit_order_adapter(_base_request(max_order_count=2))
     assert result.success is False
-    assert result.error == "MAX_ORDER_COUNT_EXCEEDED"
+    assert result.error == "LEGACY_ADAPTER_SUBMIT_RETIRED_USE_CENTRAL_FIREWALL"
+
+
+@pytest.mark.asyncio
+async def test_emergency_stop_blocks_one_proof_adapter_path(monkeypatch):
+    _arm_adapter_path(monkeypatch)
+    state_module.STATE.trigger_emergency_stop()
+
+    result = await _firewall().submit_limit_order_adapter(_base_request())
+
+    assert result.success is False
+    assert result.error == "LEGACY_ADAPTER_SUBMIT_RETIRED_USE_CENTRAL_FIREWALL"
+
+
+@pytest.mark.asyncio
+async def test_server_cap_overrides_self_attested_request_cap(monkeypatch):
+    _arm_adapter_path(monkeypatch)
+    caps = CapConfig(max_single_order_cents=50)
+    monkeypatch.setattr("live_firewall.firewall.load_caps", lambda: caps)
+
+    result = await _firewall().submit_limit_order_adapter(
+        _base_request(price=51, max_order_size_cents=999)
+    )
+
+    assert result.success is False
+    assert result.error == "LEGACY_ADAPTER_SUBMIT_RETIRED_USE_CENTRAL_FIREWALL"
 
 
 @pytest.mark.asyncio
@@ -184,10 +247,11 @@ async def test_calls_adapter_and_returns_success(monkeypatch):
         fw = _firewall()
         result = await fw.submit_limit_order_adapter(_base_request())
 
-    assert result.success is True
-    assert result.order_id == "ord-123"
-    fake_adapter.submit_limit_order.assert_awaited_once()
-    fake_adapter.close.assert_awaited_once()
+    assert result.success is False
+    assert result.broker_contacted is False
+    assert result.error == "LEGACY_ADAPTER_SUBMIT_RETIRED_USE_CENTRAL_FIREWALL"
+    fake_adapter.submit_limit_order.assert_not_awaited()
+    fake_adapter.close.assert_not_awaited()
 
 
 @pytest.mark.asyncio
@@ -231,7 +295,8 @@ async def test_broker_rejection_returns_failure(monkeypatch):
         result = await fw.submit_limit_order_adapter(_base_request())
 
     assert result.success is False
-    assert result.error == "BROKER_REJECTED"
-    assert result.broker_rejection_code == "BROKER_REJECTED"
-    assert result.broker_rejection_http_status == 400
-    assert result.broker_rejection_raw_redacted == {"status_code": 400}
+    assert result.broker_contacted is False
+    assert result.error == "LEGACY_ADAPTER_SUBMIT_RETIRED_USE_CENTRAL_FIREWALL"
+    assert result.broker_rejection_code is None
+    fake_adapter.submit_limit_order.assert_not_awaited()
+    fake_adapter.close.assert_not_awaited()

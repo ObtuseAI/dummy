@@ -78,8 +78,20 @@ class SportsEloSignal:
             self._models[league] = EloModel.load(league, self.elo_dir / f"elo_{league}.json")
         return self._models[league]
 
-    def warmup(self, league: str, date_ranges: list[str]) -> EloModel:
-        """Replay completed games (chronological) to train ratings."""
+    def warmup(
+        self,
+        league: str,
+        date_ranges: list[str],
+        *,
+        persist: bool = True,
+    ) -> EloModel:
+        """Replay completed games (chronological) to train ratings.
+
+        ``persist=False`` is used by the display-only sports-model seed task:
+        it applies the same just-completed games in memory without competing
+        with the authoritative research cycle for the shared Elo artifact.
+        Existing callers retain the historical persistent behavior.
+        """
         model = self._model(league)
         games: list[Any] = []
         for dates in date_ranges:
@@ -87,7 +99,8 @@ class SportsEloSignal:
         for game in sorted(games, key=lambda g: g.date):
             if game.status == "post" and game.home_won is not None:
                 model.update(game.home, game.away, game.home_won, game_id=game.game_id)
-        model.save(self.elo_dir / f"elo_{league}.json")
+        if persist:
+            model.save(self.elo_dir / f"elo_{league}.json")
         return model
 
     def on_cycle_start(self, recent_range: str | None = None) -> None:

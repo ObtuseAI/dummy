@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from predator_mesh.v31.probes import CAPS_HASH, LIVE_SUBMIT_HASH
+from predator_mesh.v31.probes import LIVE_SUBMIT_HASH
 from predator_mesh.v35 import MILESTONE
 from predator_mesh.v35.run import build_default_v35_state
 
@@ -318,7 +318,15 @@ def _common(state: dict[str, Any]) -> dict[str, Any]:
         "low_sample": state["live_score_low_sample_status"].low_sample,
         "sports_source_mode": state["v34_default_state"]["sports_probe_exclusion_guard"].sports_source_mode,
         "live_submit_hash": LIVE_SUBMIT_HASH,
-        "caps_hash": CAPS_HASH,
+        "caps_hash": state["caps_hash_check"].caps_hash,
+        "caps_authority_state": state["caps_hash_check"].caps_authority_state,
+        "caps_authority_registration_valid": state[
+            "caps_hash_check"
+        ].caps_authority_registration_valid,
+        "legacy_caps_authority_invalidated": state[
+            "caps_hash_check"
+        ].legacy_caps_authority_invalidated,
+        "execution_authority": False,
         **_default_path_summary(state),
         **_enabled_path_summary(state),
     }
@@ -478,6 +486,15 @@ def _component_payload(report_name: str, state: dict[str, Any]) -> dict[str, Any
             if key.endswith("_status") and isinstance(value, str) and value == "FAIL":
                 report["verdict"] = "FAIL"
                 break
+    if report["verdict"] not in {"FAIL", "PARTIAL"}:
+        for key, value in report.items():
+            if (
+                key.endswith("_status")
+                and isinstance(value, str)
+                and value == "REVIEW_REQUIRED"
+            ):
+                report["verdict"] = "PARTIAL"
+                break
     return report
 
 
@@ -548,7 +565,9 @@ def dummy_mission_state_report_v21(reports: dict[str, dict[str, Any]], state: di
         calibration_low_sample_qc_status="PASS_PARTIAL_EXPECTED",
         v34_route_api_smoke_status="PASS" if state["v34_route_smoke_result"].all_http_200 else "FAIL",
         report_transform_consistency_status="PASS",
-        protected_hash_reverification_status="PASS",
+        protected_hash_reverification_status=state[
+            "protected_hash_reverification_v1"
+        ].protected_hash_reverification_v1_status,
         no_execution_bridge_deep_recheck_status="PASS",
         sports_fixture_only_reverification_status="PASS",
         source_truth_v16_status="PASS_PARTIAL_EXPECTED",
@@ -556,7 +575,11 @@ def dummy_mission_state_report_v21(reports: dict[str, dict[str, Any]], state: di
         sprint_queue_v12_status="PASS",
         compounding_v19_status="PASS",
         live_submit_flag_status="PASS_DISABLED",
-        caps_config_status="PASS_UNCHANGED",
+        caps_config_status=(
+            "PASS_REGISTERED"
+            if state["caps_hash_check"].caps_authority_registration_valid
+            else "REVIEW_REQUIRED"
+        ),
         direct_order_cancel_bypass_status="PASS",
         no_browser_pageagent_dom_status="PASS",
         no_mined_repo_execution_status="PASS",
@@ -571,6 +594,13 @@ def dummy_mission_state_report_v21(reports: dict[str, dict[str, Any]], state: di
             "enabled path uses fake transport only and cannot claim live-public score",
             "live score sample remains too small (3 fake-transport scores)",
             "sports remains fixture/replay-only pending terms-safe source approval",
+            *(
+                []
+                if state["caps_hash_check"].caps_authority_registration_valid
+                else [
+                    "caps-v2 configuration integrity passes but fresh external authority registration is required"
+                ]
+            ),
         ],
         proof_paths={
             "mission_state": str(ARTIFACTS / "dummy_mission_state_report_v21.json"),

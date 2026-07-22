@@ -95,7 +95,10 @@ def _pct_change(closes: list[float], sessions: int = 5) -> float | None:
     return usable[-1] / usable[-1 - sessions] - 1.0
 
 
-def default_fetch_macro_state() -> dict[str, float]:
+def default_fetch_macro_state(
+    *,
+    timeout_seconds: float = 15.0,
+) -> dict[str, float]:
     """Recent macro % changes from the keyless Yahoo Finance chart API.
 
     One month of daily candles per symbol; a symbol that fails to fetch or lacks
@@ -110,7 +113,7 @@ def default_fetch_macro_state() -> dict[str, float]:
                 f"https://query1.finance.yahoo.com/v8/finance/chart/{symbol}",
                 params={"range": "1mo", "interval": "1d"},
                 headers={"User-Agent": "Mozilla/5.0"},
-                timeout=15,
+                timeout=max(0.1, float(timeout_seconds)),
             )
             response.raise_for_status()
             result = response.json()["chart"]["result"][0]

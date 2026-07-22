@@ -301,13 +301,10 @@ def generate_no_live_submit_still_disabled_report_v19() -> dict[str, Any]:
 
 
 def generate_no_caps_config_modification_report_v19() -> dict[str, Any]:
-    try:
-        from archive.report_scripts.generate_v18_reports import generate_no_caps_config_modification_report_v18
+    from archive.report_scripts.caps_integrity import generate_historical_caps_phase_report
 
-        report = generate_no_caps_config_modification_report_v18()
-    except Exception:
-        report = {"verdict": "PASS"}
-    report.update({"generated_at": now_iso(), "workstream": "V19: No Caps Config Modification", "modified_by_v19": False, "secret_values_exposed": False})
+    report = generate_historical_caps_phase_report("V19")
+    report["secret_values_exposed"] = False
     return report
 
 
@@ -367,12 +364,19 @@ def _security_reports() -> dict[str, dict[str, Any]]:
 
 
 def generate_prior_statuses_v19() -> dict[str, Any]:
+    from archive.report_scripts.caps_integrity import reconcile_v17_truth_loop_evidence
+
     final_v16 = _load_report("final_report_v16.json", {})
     final_v17 = _load_report("final_report_v17.json", {})
     final_v18 = _load_report("final_report_v18.json", {})
+    v17_evidence = reconcile_v17_truth_loop_evidence(final_v17)
     return {
         "v16_real_terrain_status": final_v16.get("real_terrain_truth_verdict", "UNKNOWN"),
-        "v17_truth_loop_status": final_v17.get("verdict", "UNKNOWN"),
+        "v17_truth_loop_status": v17_evidence["historical_truth_loop_status"],
+        "v17_truth_loop_status_scope": v17_evidence["historical_truth_loop_scope"],
+        "v17_archived_aggregate_status": v17_evidence["archived_aggregate_verdict"],
+        "v17_current_runtime_caps_status": v17_evidence["current_runtime_caps_status"],
+        "v17_retroactive_caps_failure_reconciled": v17_evidence["retroactive_caps_failure_reconciled"],
         "v18_domain_foundation_status": final_v18.get("verdict", "UNKNOWN"),
     }
 

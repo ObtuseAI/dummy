@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 import re
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Any, Callable
 
 from autonomy.ontology import MarketView, Signal, Vertical
@@ -28,7 +29,12 @@ def _norm(code: str) -> str:
     return _CODE_ALIASES.get(up, up)
 
 
-def default_fetch_polymarket_markets(max_pages: int = 6, page_size: int = 100) -> list[dict[str, Any]]:
+def default_fetch_polymarket_markets(
+    max_pages: int = 6,
+    page_size: int = 100,
+    *,
+    timeout_seconds: float = 20.0,
+) -> list[dict[str, Any]]:
     """Paginate the Gamma markets feed (it caps ~100/page) by descending volume."""
     import httpx
 
@@ -40,7 +46,7 @@ def default_fetch_polymarket_markets(max_pages: int = 6, page_size: int = 100) -
                 "closed": "false", "active": "true", "limit": page_size,
                 "offset": page * page_size, "order": "volume", "ascending": "false",
             },
-            timeout=20,
+            timeout=max(0.1, float(timeout_seconds)),
         )
         response.raise_for_status()
         data = response.json()
@@ -53,21 +59,29 @@ def default_fetch_polymarket_markets(max_pages: int = 6, page_size: int = 100) -
     return collected
 
 
-def default_fetch_polymarket_orderbook(token_id: str) -> dict[str, Any]:
+def default_fetch_polymarket_orderbook(
+    token_id: str,
+    *,
+    timeout_seconds: float = 10.0,
+) -> dict[str, Any]:
     """Read one public CLOB book; no wallet, auth header, or mutation."""
     import httpx
 
     response = httpx.get(
         "https://clob.polymarket.com/book",
         params={"token_id": token_id},
-        timeout=10,
+        timeout=max(0.1, float(timeout_seconds)),
     )
     response.raise_for_status()
     payload = response.json()
     return payload if isinstance(payload, dict) else {}
 
 
-def default_fetch_polymarket_orderbooks(token_ids: list[str]) -> dict[str, dict[str, Any]]:
+def default_fetch_polymarket_orderbooks(
+    token_ids: list[str],
+    *,
+    timeout_seconds: float = 10.0,
+) -> dict[str, dict[str, Any]]:
     """Batch public CLOB books so a cycle pays one bounded network round trip."""
     import httpx
 
@@ -79,7 +93,7 @@ def default_fetch_polymarket_orderbooks(token_ids: list[str]) -> dict[str, dict[
         response = httpx.post(
             "https://clob.polymarket.com/books",
             json=[{"token_id": token_id} for token_id in batch],
-            timeout=10,
+            timeout=max(0.1, float(timeout_seconds)),
         )
         response.raise_for_status()
         payload = response.json()
@@ -237,6 +251,64 @@ class CrossVenueSignal:
             except Exception:
                 self._books[token_id] = None
         return self._books[token_id]
+
+    def prefetch_orderbooks_for(
+        self,
+        markets: list[MarketView],
+        *,
+        max_workers: int = 8,
+    ) -> dict[str, str]:
+        """Fetch only the relevant public CLOB books, concurrently.
+
+        The broad research cycle uses the batch read.  The fast sports-model
+        seed is GET-only and calls this method with an individual public-book
+        reader, so the exact target books remain bounded without a write-shaped
+        HTTP method.  Every requested token is cached as either a payload or
+        ``None``; a failed read therefore falls back to the Gamma probability
+        and is never retried serially by ``generate``.
+        """
+        if self.fetch_orderbook is None:
+            return {}
+        index = self._ensure_index()
+        token_ids: set[str] = set()
+        for market in markets:
+            parsed = parse_game_ticker(market.ticker)
+            if parsed is None:
+                continue
+            key = (
+                parsed["league"],
+                frozenset({_norm(parsed["subject"]), _norm(parsed["opponent"])}),
+                parsed["date_yyyymmdd"],
+            )
+            match = index.get(key)
+            if not isinstance(match, dict):
+                continue
+            token_ids.update(
+                str(token_id)
+                for token_id in (match.get("token_ids") or [])
+                if token_id
+            )
+        pending = sorted(token_id for token_id in token_ids if token_id not in self._books)
+        failures: dict[str, str] = {}
+        if not pending:
+            return failures
+        with ThreadPoolExecutor(
+            max_workers=max(1, min(int(max_workers), len(pending))),
+            thread_name_prefix="polymarket-public-book",
+        ) as executor:
+            futures = {
+                executor.submit(self.fetch_orderbook, token_id): token_id
+                for token_id in pending
+            }
+            for future in as_completed(futures):
+                token_id = futures[future]
+                try:
+                    payload = future.result()
+                    self._books[token_id] = payload if isinstance(payload, dict) else None
+                except Exception as exc:
+                    self._books[token_id] = None
+                    failures[token_id] = type(exc).__name__
+        return failures
 
     def applicable(self, market: MarketView) -> bool:
         return market.vertical is Vertical.SPORTS and parse_game_ticker(market.ticker) is not None

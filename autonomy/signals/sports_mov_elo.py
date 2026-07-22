@@ -109,6 +109,15 @@ class SportsMovEloSignal:
             probability_yes=p_yes,
             uncertainty=uncertainty,
             rationale=f"{league.upper()} MOV-Elo {subject}({r_s:.0f}) vs {opponent}({r_o:.0f}) home={subject_home}",
-            features={"subject_rating": round(r_s, 1), "opponent_rating": round(r_o, 1),
-                      "subject_home": subject_home},
+            features={
+                "subject_rating": round(r_s, 1),
+                "opponent_rating": round(r_o, 1),
+                "subject_home": subject_home,
+                "challenger_only": True,
+                "promotion_eligible": True,
+                "point_in_time": True,
+                "public_read_only": True,
+                "sport": league,
+                "market_type": "winner",
+            },
         )

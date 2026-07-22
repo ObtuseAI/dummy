@@ -5,6 +5,11 @@ from repo_harvester.manifest import ALL_REPOS_V2, REPOS_V2
 from repo_harvester.auditor import audit_repo
 from repo_harvester.adapter_planner import generate_adapter_plan
 from core.ontology import RepoVerdict
+from repo_harvester.retry_policy import (
+    HarvestRetryExhausted,
+    PENDING_RETRY,
+    run_with_bounded_retry,
+)
 
 OUT = Path("C:/src/engine/dummy/artifacts/repo_harvester")
 OUT.mkdir(parents=True, exist_ok=True)
@@ -32,7 +37,24 @@ def _category_display_name(slug: str) -> str:
 async def _audit_one(owner: str, name: str, category: str) -> dict:
     async with SEM:
         try:
-            return await audit_repo(owner, name, category=category)
+            return await run_with_bounded_retry(
+                lambda: audit_repo(owner, name, category=category)
+            )
+        except HarvestRetryExhausted as exc:
+            return {
+                "owner": owner,
+                "name": name,
+                "category": category,
+                "url": f"https://github.com/{owner}/{name}",
+                "error": f"{type(exc.cause).__name__}: {exc.cause}",
+                "verdict": PENDING_RETRY,
+                "verdict_reasons": [
+                    "Transient audit failure exhausted the bounded retry budget; "
+                    "repository remains unclassified and unincorporated"
+                ],
+                "retryable": True,
+                "retry_attempts": exc.attempts,
+            }
         except Exception as e:
             return {
                 "owner": owner,
@@ -42,6 +64,7 @@ async def _audit_one(owner: str, name: str, category: str) -> dict:
                 "error": str(e),
                 "verdict": RepoVerdict.REJECT_BROKEN.value,
                 "verdict_reasons": [f"Audit failed: {e}"],
+                "retryable": False,
             }
 
 
@@ -72,14 +95,28 @@ async def run_v2_with_source_scan(limit: int = 20):
     plans = []
     for owner, name, category in ALL_REPOS_V2[:limit]:
         try:
-            meta = await audit_repo(owner, name, category=category)
-            scan = await run_source_scan(owner, name)
+            async def _audit_and_scan():
+                meta_result = await audit_repo(owner, name, category=category)
+                scan_result = await run_source_scan(owner, name)
+                return meta_result, scan_result
+
+            meta, scan = await run_with_bounded_retry(_audit_and_scan)
             plan = generate_adapter_plan(meta, scan)
             meta["scan"] = scan
             meta["adapter_plan"] = plan
             results.append(meta)
             scans.append(scan)
             plans.append(plan)
+        except HarvestRetryExhausted as exc:
+            results.append({
+                "owner": owner,
+                "name": name,
+                "category": category,
+                "error": f"{type(exc.cause).__name__}: {exc.cause}",
+                "verdict": PENDING_RETRY,
+                "retryable": True,
+                "retry_attempts": exc.attempts,
+            })
         except Exception as e:
             results.append({
                 "owner": owner,
@@ -87,6 +124,7 @@ async def run_v2_with_source_scan(limit: int = 20):
                 "category": category,
                 "error": str(e),
                 "verdict": RepoVerdict.REJECT_BROKEN.value,
+                "retryable": False,
             })
 
     # Adapter plan artifact (source-informed)
@@ -100,8 +138,10 @@ async def run_v2_with_source_scan(limit: int = 20):
     direct_order_repos = [s for s in scans if s.get("direct_order_hits")]
     secret_risk_repos = [s for s in scans if len(s.get("secret_hits", [])) > 5]
     (OUT / "firewall_bypass_scan_report.json").write_text(json.dumps({
-        "status": "completed",
+        "status": "completed" if len(scans) == len(results) else "partial_pending_or_failed",
         "repos_scanned": len(scans),
+        "repos_requested": len(results),
+        "pending_retry_count": sum(r.get("verdict") == PENDING_RETRY for r in results),
         "direct_order_count": len(direct_order_repos),
         "direct_order_repos": direct_order_repos,
         "secret_risk_count": len(secret_risk_repos),
@@ -118,7 +158,13 @@ async def run_harvester():
     )
 
     manifest = [
-        {"owner": r["owner"], "name": r["name"], "category": r.get("category"), "verdict": r["verdict"]}
+        {
+            "owner": r["owner"],
+            "name": r["name"],
+            "category": r.get("category"),
+            "verdict": r["verdict"],
+            "retryable": bool(r.get("retryable", False)),
+        }
         for r in results
     ]
 
@@ -164,7 +210,7 @@ async def run_harvester():
 
     # Adapter plan (metadata-level)
     (OUT / "adapter_plan_v2.json").write_text(json.dumps({
-        "plan_count": 0,
+        "plan_count": len(_build_adapter_plan(results)),
         "plans": _build_adapter_plan(results),
         "notes": "Metadata-only scan; concrete adapter plans require source review.",
     }, indent=2, default=str))

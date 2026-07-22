@@ -1,7 +1,4 @@
-"""Truth-labeling tests: pre-broker blocks must not consume the second-proof
-lock, must not retire the authority, and must never be reported as broker
-rejections. Real broker rejections (with transport witness) behave as before.
-"""
+"""Truth-labeling tests for the retired second-proof compatibility runner."""
 
 from __future__ import annotations
 
@@ -10,13 +7,23 @@ import json
 
 import pytest
 
-from core.ontology import LiveOrderResult
+from tests.caps_authority_test_helpers import install_registered_caps_authority
 from core.proof_authority import REQUIRED_CONFIRMATION
 from core.second_proof_lock import is_second_proof_lock_consumed
 from core.second_proof_runner import run_second_proof_execute_once
 from live_firewall.firewall import LiveBrokerFirewall
-from predator_mesh.brokers import LimitOrderRequest
 from tools.operator_authority_appliance import operator_full_completion as ofc
+
+
+RETIRED_REASON = "LEGACY_SECOND_PROOF_RUNNER_RETIRED_USE_CENTRAL_FIREWALL"
+
+
+def _must_not_submit(calls):
+    async def fake_submit(self, req):
+        calls.append(req)
+        raise AssertionError("retired runner must not call the compatibility submit adapter")
+
+    return fake_submit
 
 
 @pytest.fixture
@@ -77,6 +84,9 @@ def active_context(tmp_path, monkeypatch):
     (tmp_path / "approvals" / "dummy_controlled_production_pilot_approval.json").write_text(
         json.dumps({"scope": "one_controlled_production_pilot_via_firewall_only"}, sort_keys=True), encoding="utf-8"
     )
+    install_registered_caps_authority(
+        monkeypatch, tmp_path / "caps.json", patch_operator_appliance=True
+    )
 
     args = ofc.build_parser().parse_args(["prepare-second-proof-authority"])
     ofc.cmd_prepare_second_proof_authority(args, io.StringIO())
@@ -102,26 +112,23 @@ def _authority_status(tmp_path):
     return json.loads(active.read_text(encoding="utf-8"))["status"]
 
 
-def test_local_gate_block_is_not_a_broker_rejection(active_context, tmp_path, monkeypatch):
-    async def fake_submit(self, req: LimitOrderRequest):
-        return LiveOrderResult(success=False, order_id=None, error="live_submit_disabled", proof_reference="")
-
-    monkeypatch.setattr(LiveBrokerFirewall, "submit_limit_order_adapter", fake_submit)
+def test_retired_runner_block_is_not_a_broker_rejection(active_context, tmp_path, monkeypatch):
+    calls = []
+    monkeypatch.setattr(LiveBrokerFirewall, "submit_limit_order_adapter", _must_not_submit(calls))
     report = run_second_proof_execute_once(live_submit_path=tmp_path / "live_submit.json")
 
     assert report["verdict"] == "SECOND_PROOF_BLOCKED_BEFORE_BROKER"
     assert report["real_broker_contacted"] is False
     assert report["broker_rejected"] is False
     assert report["blocked_before_broker"] is True
-    assert report["block_reason"] == "live_submit_disabled"
+    assert report["block_reason"] == RETIRED_REASON
     assert report["rejection_classification"]["category"] == "PRE_BROKER_GATE"
+    assert calls == []
 
 
-def test_local_gate_block_preserves_lock_and_authority(active_context, tmp_path, monkeypatch):
-    async def fake_submit(self, req: LimitOrderRequest):
-        return LiveOrderResult(success=False, order_id=None, error="ENV_GATE_MISSING", proof_reference="")
-
-    monkeypatch.setattr(LiveBrokerFirewall, "submit_limit_order_adapter", fake_submit)
+def test_retired_runner_block_preserves_lock_and_authority(active_context, tmp_path, monkeypatch):
+    calls = []
+    monkeypatch.setattr(LiveBrokerFirewall, "submit_limit_order_adapter", _must_not_submit(calls))
     report = run_second_proof_execute_once(live_submit_path=tmp_path / "live_submit.json")
 
     aid = _authority_id(tmp_path)
@@ -129,56 +136,39 @@ def test_local_gate_block_preserves_lock_and_authority(active_context, tmp_path,
     assert report["authority_still_active"] is True
     assert is_second_proof_lock_consumed(aid) is False
     assert _authority_status(tmp_path) == "active"
+    assert calls == []
 
 
-def test_retry_allowed_after_local_gate_block(active_context, tmp_path, monkeypatch):
+def test_retry_after_retired_runner_block_remains_safely_blocked(active_context, tmp_path, monkeypatch):
     calls = []
-
-    async def blocked_then_accepted(self, req: LimitOrderRequest):
-        calls.append(True)
-        if len(calls) == 1:
-            return LiveOrderResult(success=False, order_id=None, error="live_submit_disabled", proof_reference="")
-        return LiveOrderResult(success=True, order_id="ord-truth-1", error=None, proof_reference="")
-
-    monkeypatch.setattr(LiveBrokerFirewall, "submit_limit_order_adapter", blocked_then_accepted)
+    monkeypatch.setattr(LiveBrokerFirewall, "submit_limit_order_adapter", _must_not_submit(calls))
     first = run_second_proof_execute_once(live_submit_path=tmp_path / "live_submit.json")
     assert first["verdict"] == "SECOND_PROOF_BLOCKED_BEFORE_BROKER"
 
     second = run_second_proof_execute_once(live_submit_path=tmp_path / "live_submit.json")
-    assert second["verdict"] == "SECOND_PROOF_EXECUTED_ACCEPTED"
+    assert second["verdict"] == "SECOND_PROOF_BLOCKED_BEFORE_BROKER"
     aid = _authority_id(tmp_path)
-    assert is_second_proof_lock_consumed(aid) is True
+    assert is_second_proof_lock_consumed(aid) is False
+    assert calls == []
 
 
-def test_real_broker_rejection_still_consumes_lock(active_context, tmp_path, monkeypatch):
-    async def fake_submit(self, req: LimitOrderRequest):
-        return LiveOrderResult(
-            success=False,
-            order_id=None,
-            error="BROKER_VALIDATION",
-            proof_reference="",
-            broker_rejection_code="BROKER_VALIDATION",
-            broker_rejection_http_status=400,
-            broker_rejection_safe_message="market is closed",
-            broker_rejection_stage="broker_transport",
-        )
-
-    monkeypatch.setattr(LiveBrokerFirewall, "submit_limit_order_adapter", fake_submit)
+def test_mocked_transport_rejection_cannot_bypass_retired_runner(active_context, tmp_path, monkeypatch):
+    calls = []
+    monkeypatch.setattr(LiveBrokerFirewall, "submit_limit_order_adapter", _must_not_submit(calls))
     report = run_second_proof_execute_once(live_submit_path=tmp_path / "live_submit.json")
 
-    assert report["verdict"] == "SECOND_PROOF_EXECUTED_BROKER_REJECTED"
-    assert report["real_broker_contacted"] is True
-    assert report["rejection_classification"]["category"] == "MARKET_CLOSED"
+    assert report["verdict"] == "SECOND_PROOF_BLOCKED_BEFORE_BROKER"
+    assert report["real_broker_contacted"] is False
+    assert report["rejection_classification"]["category"] == "PRE_BROKER_GATE"
     aid = _authority_id(tmp_path)
-    assert is_second_proof_lock_consumed(aid) is True
-    assert _authority_status(tmp_path) == "used"
+    assert is_second_proof_lock_consumed(aid) is False
+    assert _authority_status(tmp_path) == "active"
+    assert calls == []
 
 
 def test_evidence_report_carries_classification(active_context, tmp_path, monkeypatch):
-    async def fake_submit(self, req: LimitOrderRequest):
-        return LiveOrderResult(success=False, order_id=None, error="live_submit_disabled", proof_reference="")
-
-    monkeypatch.setattr(LiveBrokerFirewall, "submit_limit_order_adapter", fake_submit)
+    calls = []
+    monkeypatch.setattr(LiveBrokerFirewall, "submit_limit_order_adapter", _must_not_submit(calls))
     report = run_second_proof_execute_once(live_submit_path=tmp_path / "live_submit.json")
 
     from pathlib import Path
@@ -187,13 +177,13 @@ def test_evidence_report_carries_classification(active_context, tmp_path, monkey
     evidence = json.loads(evidence_file.read_text(encoding="utf-8"))
     assert evidence["broker_contacted"] is False
     assert evidence["rejection_classification"]["category"] == "PRE_BROKER_GATE"
+    assert calls == []
 
 
 def test_evidence_written_under_isolated_root(active_context, tmp_path, monkeypatch):
-    async def fake_submit(self, req: LimitOrderRequest):
-        return LiveOrderResult(success=True, order_id="ord-1", error=None, proof_reference="")
-
-    monkeypatch.setattr(LiveBrokerFirewall, "submit_limit_order_adapter", fake_submit)
+    calls = []
+    monkeypatch.setattr(LiveBrokerFirewall, "submit_limit_order_adapter", _must_not_submit(calls))
     report = run_second_proof_execute_once(live_submit_path=tmp_path / "live_submit.json")
     # The autouse conftest fixture points DUMMY_EVIDENCE_ROOT at tmp_path/evidence.
     assert "artifacts" not in report["evidence_dir"].replace("\\", "/").split("/")[0]
+    assert calls == []

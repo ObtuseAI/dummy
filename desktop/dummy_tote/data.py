@@ -11,6 +11,8 @@ the system writes.
 from __future__ import annotations
 
 import json
+import os
+import threading
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -19,6 +21,31 @@ from typing import Any
 DEFAULT_ROOT = Path(r"C:\src\engine\dummy")
 KNOWN_LEAGUES = ("mlb", "nfl", "nba", "nhl", "ncaaf", "ncaamb", "wnba")
 LLM_BACKENDS = ("openrouter", "claude", "codex")
+
+
+def league_filter_options(rows: list[dict]) -> tuple[str, ...]:
+    """Year-round league filters followed by any newly observed league.
+
+    Options are a supported-navigation roster, not evidence of current games.
+    Keeping this pure lets the legacy native surface share the same honest
+    behavior without importing PySide in tests.
+    """
+    observed = {
+        str(row.get("league") or "").strip().lower()
+        for row in rows
+        if isinstance(row, dict) and row.get("league")
+    }
+    extras = sorted(observed.difference(KNOWN_LEAGUES))
+    return (*KNOWN_LEAGUES, *extras)
+
+
+def resolve_runtime_dir(root: Path | str | None = None) -> Path:
+    """Resolve one runtime directory for the tote and its notification reader."""
+    override = os.environ.get("DUMMY_RUNTIME_DIR")
+    if override:
+        return Path(override)
+    checkout = Path(root) if root else DEFAULT_ROOT
+    return checkout / "runtime" / "autonomy"
 
 # Artifact -> freshness threshold (seconds) for the stale badge.
 _FRESHNESS = {
@@ -79,8 +106,8 @@ class Snapshot:
 
     def top_edge(self) -> float | None:
         picks = self.picks()
-        edges = [abs(p["edge"]) for p in picks if isinstance(p.get("edge"), (int, float))]
-        return max(edges) if edges else None
+        edges = [p["edge"] for p in picks if isinstance(p.get("edge"), (int, float))]
+        return max(edges, key=abs) if edges else None
 
     def llm_state(self) -> dict[str, bool]:
         llm = self.switches.get("llm") or {}
@@ -95,14 +122,24 @@ class RepoData:
 
     def __init__(self, root: Path | str | None = None):
         self.root = Path(root) if root else DEFAULT_ROOT
-        self.runtime = self.root / "runtime" / "autonomy"
+        self.runtime = resolve_runtime_dir(self.root)
         self.switches_path = self.root / "configs" / "switches.json"
+        self._cache: dict[Path, tuple[tuple[int, int], Any]] = {}
+        self._switch_lock = threading.RLock()
 
     def _load(self, path: Path) -> Any:
         try:
-            return json.loads(path.read_text(encoding="utf-8"))
+            stat = path.stat()
+            signature = (stat.st_mtime_ns, stat.st_size)
+            cached = self._cache.get(path)
+            if cached and cached[0] == signature:
+                return cached[1]
+            payload = json.loads(path.read_text(encoding="utf-8"))
+            self._cache[path] = (signature, payload)
+            return payload
         except (OSError, ValueError, TypeError):
-            return {}
+            cached = self._cache.get(path)
+            return cached[1] if cached else {}
 
     def _rt(self, name: str) -> dict[str, Any]:
         data = self._load(self.runtime / name)
@@ -160,17 +197,21 @@ class RepoData:
     # -- switch control (the app writes the same file dummy_switches.py does) --
 
     def set_switch(self, domain: str, value: bool, key: str | None = None) -> None:
-        data = self._load(self.switches_path)
-        data = data if isinstance(data, dict) else {}
-        if domain in ("main", "crypto", "sports"):
-            data[domain] = value
-        elif domain == "league" and key:
-            data.setdefault("leagues", {})[key] = value
-        elif domain == "llm" and key:
-            data.setdefault("llm", {})[key] = value
-        else:
-            raise ValueError(f"unknown switch {domain}/{key}")
-        self.switches_path.parent.mkdir(parents=True, exist_ok=True)
-        tmp = self.switches_path.with_suffix(".apptmp")
-        tmp.write_text(json.dumps(data, indent=2, sort_keys=True), encoding="utf-8")
-        tmp.replace(self.switches_path)
+        with self._switch_lock:
+            data = self._load(self.switches_path)
+            data = dict(data) if isinstance(data, dict) else {}
+            if domain in ("main", "crypto", "sports"):
+                data[domain] = value
+            elif domain == "league" and key:
+                data["leagues"] = dict(data.get("leagues") or {})
+                data["leagues"][key] = value
+            elif domain == "llm" and key:
+                data["llm"] = dict(data.get("llm") or {})
+                data["llm"][key] = value
+            else:
+                raise ValueError(f"unknown switch {domain}/{key}")
+            self.switches_path.parent.mkdir(parents=True, exist_ok=True)
+            tmp = self.switches_path.with_suffix(".apptmp")
+            tmp.write_text(json.dumps(data, indent=2, sort_keys=True), encoding="utf-8")
+            tmp.replace(self.switches_path)
+            self._cache.pop(self.switches_path, None)

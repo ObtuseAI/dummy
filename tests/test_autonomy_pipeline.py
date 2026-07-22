@@ -10,6 +10,7 @@ import pytest
 
 from autonomy.allocator import Allocator
 from autonomy.executor import AUTONOMY_ACK, SESSION_ACCOUNTING_VERSION, Executor
+from autonomy.execution_policy import ExecutionPolicy
 from autonomy.forecaster import EnsembleForecaster
 from autonomy.learner import Learner
 from autonomy.ledger import AutonomyLedger
@@ -30,7 +31,7 @@ from autonomy.signals.market_prior import MarketPriorSignal
 from autonomy.signals.weather_openmeteo import OpenMeteoWeatherSignal, parse_temp_ticker
 
 
-def _market(ticker="KXHIGHNY-26JUL10-T85", yes_bid=30, yes_ask=40, volume=500, **overrides) -> MarketView:
+def _market(ticker="KXELONMARS-26JUL10", yes_bid=30, yes_ask=40, volume=500, **overrides) -> MarketView:
     defaults = dict(
         ticker=ticker,
         title="test market",
@@ -101,6 +102,24 @@ def test_scanner_treats_zero_and_one_dollar_quotes_as_missing_sentinels():
     assert view.yes_ask == 76 and view.no_bid == 24
 
 
+def test_scanner_preserves_current_quote_size_fp_schema_when_liquidity_is_zero():
+    view = to_market_view({
+        "ticker": "KXMLBGAME-26JUL221840MINCLE-CLE",
+        "status": "active",
+        "yes_bid_dollars": "0.5600",
+        "yes_ask_dollars": "0.5700",
+        "no_bid_dollars": "0.4300",
+        "no_ask_dollars": "0.4400",
+        "yes_bid_size_fp": "145999.74",
+        "yes_ask_size_fp": "471822.17",
+        "liquidity_dollars": "0.0000",
+    })
+
+    assert view.liquidity == 0
+    assert view.raw["yes_bid_size_fp"] == "145999.74"
+    assert view.raw["yes_ask_size_fp"] == "471822.17"
+
+
 def test_scanner_classifies_exact_added_crypto_and_commodity_series():
     assert classify_vertical("KXSOL15M-26JUL100430-30") is Vertical.CRYPTO
     assert classify_vertical("BTCD-26JUL10-T70000") is Vertical.CRYPTO
@@ -134,6 +153,58 @@ def test_scanner_excludes_weather_market_when_scanned():
     assert all(v.vertical is not Vertical.WEATHER for v in views)
 
 
+def test_scanner_quarantines_equity_even_with_custom_other_vertical():
+    from autonomy.ontology import Vertical
+    from autonomy.scanner import MarketScanner
+
+    page = {"markets": [{
+        "ticker": "KXTSLAA-26JUL22-B350",
+        "status": "active",
+        "category": "Equities",
+        "yes_bid": 40,
+        "yes_ask": 42,
+        "no_bid": 58,
+        "no_ask": 60,
+    }]}
+    scanner = MarketScanner(
+        fetch_series=lambda _series: page,
+        watchlist=["KXTSLAA"],
+        verticals={Vertical.OTHER},
+    )
+
+    assert scanner.scan() == []
+
+
+@pytest.mark.parametrize(
+    ("series", "ticker"),
+    [
+        ("KXBAA", "KXBAA-28JANDELIV-700"),
+        ("KXEBAYA", "KXEBAYA-28JANGMV-92000000000.0"),
+        ("KXCVNAA", "KXCVNAA-28JANUNITS-910000"),
+        ("KXFA", "KXFA-28JANUSSALES-2300000.0"),
+        ("KXUALA", "KXUALA-28JANPAX-190000000"),
+    ],
+)
+def test_scanner_quarantines_current_company_kpi_market_shapes(series, ticker):
+    """Market-list payloads omit series category, so exact series guards apply."""
+    page = {"markets": [{
+        "ticker": ticker,
+        "event_ticker": ticker.rsplit("-", 1)[0],
+        "status": "active",
+        "yes_bid": 40,
+        "yes_ask": 42,
+        "no_bid": 58,
+        "no_ask": 60,
+    }]}
+    scanner = MarketScanner(
+        fetch_series=lambda _series: page,
+        watchlist=[series],
+        verticals={Vertical.OTHER},
+    )
+
+    assert scanner.scan() == []
+
+
 def test_crypto_ticker_parse_hour_glued():
     from autonomy.signals.crypto_spot import parse_crypto_ticker
 
@@ -155,15 +226,13 @@ def test_weather_ticker_parse():
     assert parse_temp_ticker("KXHIGHZZZ-26JUL10-T85") is None
 
 
-def test_weather_signal_probability_direction():
+def test_weather_signal_is_retired_data_only():
     hot = OpenMeteoWeatherSignal(fetch_daily_temps=lambda *a: [90.0, 91.0, 89.5])
-    cold = OpenMeteoWeatherSignal(fetch_daily_temps=lambda *a: [70.0, 71.0, 69.5])
     market = _market()
-    hot_signal = hot.generate(market)
-    cold_signal = cold.generate(market)
-    assert hot_signal.probability_yes > 0.8
-    assert cold_signal.probability_yes < 0.2
-    assert hot_signal.source == "weather_openmeteo"
+    assert hot.data_only is True
+    assert hot.prediction_authority is False
+    assert hot.applicable(market) is False
+    assert hot.generate(market) is None
 
 
 def test_crypto_signal_above_below_strike():
@@ -191,12 +260,11 @@ def test_crypto_between_bucket_far_from_spot_is_near_zero():
     assert result.probability_yes <= 0.01  # dead bucket, not 0.99
 
 
-def test_weather_less_strike_type_respected():
+def test_weather_contract_never_emits_forecast():
     source = OpenMeteoWeatherSignal(fetch_daily_temps=lambda *a: [90.0, 91.0, 89.5])
     market = _market(ticker="KXHIGHNY-26JUL10-T83",
                      raw={"strike_type": "less", "cap_strike": 83.0})
-    result = source.generate(market)
-    assert result.probability_yes < 0.02  # forecast ~90, "below 83" nearly impossible
+    assert source.generate(market) is None
 
 
 def test_market_prior_thin_book_is_weak_anchor():
@@ -283,12 +351,12 @@ def test_crypto_fused_uncertainty_cannot_collapse_below_floor(tmp_path):
 
 
 def test_non_crypto_fused_uncertainty_keeps_global_floor(tmp_path):
-    """The crypto floor is vertical-scoped; weather can still tighten below 8%."""
+    """The crypto floor is vertical-scoped for an allowed generic market."""
     ledger = AutonomyLedger(db_path=tmp_path / "ledger.db")
     try:
         ledger.update_weight("weather_openmeteo", 8.0)
         ledger.update_weight("market_prior", 3.0)
-        market = _market(ticker="KXHIGHNY-26JUL11-T85", yes_bid=39, yes_ask=41)
+        market = _market(ticker="KXELONMARS-26JUL11", yes_bid=39, yes_ask=41)
         assert market.vertical is not Vertical.CRYPTO
         forecast = EnsembleForecaster(ledger).fuse(market, [
             Signal("weather_openmeteo", market.ticker, 0.70, 0.08, ""),
@@ -296,6 +364,17 @@ def test_non_crypto_fused_uncertainty_keeps_global_floor(tmp_path):
         ])
         assert forecast.uncertainty < 0.08
         assert forecast.uncertainty >= 0.02 - 1e-9
+    finally:
+        ledger.close()
+
+
+def test_ensemble_rejects_weather_prediction_target(tmp_path):
+    ledger = AutonomyLedger(db_path=tmp_path / "ledger.db")
+    try:
+        market = _market(ticker="KXHIGHNY-26JUL11-T85", yes_bid=39, yes_ask=41)
+        assert EnsembleForecaster(ledger).fuse(market, [
+            Signal("weather_openmeteo", market.ticker, 0.70, 0.08, ""),
+        ]) is None
     finally:
         ledger.close()
 
@@ -316,7 +395,9 @@ def _forecast(market, probability, uncertainty=0.08):
 def test_allocator_buys_yes_on_positive_edge(tmp_path):
     brain = RiskBrain(state_path=tmp_path / "risk.json")
     state = brain.load_state(100_000)
-    market = _market(yes_bid=30, yes_ask=40)
+    market = _market(
+        ticker="KXBTCD-26JUL10-T100000.00", yes_bid=30, yes_ask=40
+    )
     decision = Allocator(brain).decide(market, _forecast(market, 0.65), state)
     assert decision.action is DecisionAction.BUY_YES
     assert 1 <= decision.price_cents <= 64  # below fair, maker-side
@@ -338,6 +419,29 @@ def test_allocator_abstains_without_edge(tmp_path):
     market = _market(yes_bid=49, yes_ask=51)
     decision = Allocator(brain).decide(market, _forecast(market, 0.50), state)
     assert decision.action is DecisionAction.ABSTAIN
+
+
+def test_taker_allocator_prices_entry_at_executable_ask(tmp_path):
+    brain = RiskBrain(state_path=tmp_path / "risk.json")
+    state = brain.load_state(100_000)
+    market = _market(yes_bid=30, yes_ask=45)
+    decision = Allocator(
+        brain, execution_policy=ExecutionPolicy.taker_only(),
+    ).decide(market, _forecast(market, 0.80), state)
+    assert decision.action is DecisionAction.BUY_YES
+    assert decision.price_cents == 45
+
+
+def test_taker_allocator_rejects_phantom_maker_edge(tmp_path):
+    brain = RiskBrain(state_path=tmp_path / "risk.json")
+    state = brain.load_state(100_000)
+    market = _market(yes_bid=34, yes_ask=54)
+    decision = Allocator(
+        brain, execution_policy=ExecutionPolicy.taker_only(),
+    ).decide(market, _forecast(market, 0.55), state)
+    assert decision.action is DecisionAction.ABSTAIN
+    assert decision.price_cents == 54
+    assert "below taker threshold" in decision.abstain_reason
 
 
 def test_allocator_abstains_on_high_uncertainty(tmp_path):
@@ -390,19 +494,25 @@ def test_allocator_fails_closed_on_missing_close_time_at_canary(tmp_path):
 def test_executor_shadow_never_contacts_broker(tmp_path):
     brain = RiskBrain(state_path=tmp_path / "risk.json")
     state = brain.load_state(100_000)
-    market = _market(yes_bid=30, yes_ask=40)
+    market = _market(
+        ticker="KXBTCD-26JUL10-T100000.00", yes_bid=30, yes_ask=40
+    )
     decision = Allocator(brain).decide(market, _forecast(market, 0.7), state)
     executor = Executor(SessionMode.SHADOW, session_path=tmp_path / "s.json", kill_path=tmp_path / "KILL")
-    outcome = asyncio.run(executor.execute(decision))
+    outcome = asyncio.run(executor.execute(decision, market=market))
     assert outcome.kind is OutcomeKind.SHADOW
     assert outcome.broker_contacted is False
 
 
 def test_executor_shadow_captures_fixed_point_queue_ahead(tmp_path):
-    decision = _forecast(_market(yes_bid=30, yes_ask=50), 0.70)
+    market = _market(
+        ticker="KXBTCD-26JUL10-T100000.00", yes_bid=30, yes_ask=50
+    )
+    decision = _forecast(market, 0.70)
     brain = RiskBrain(state_path=tmp_path / "risk.json")
-    allocated = Allocator(brain).decide(_market(yes_bid=30, yes_ask=50), decision,
-                                        brain.load_state(100_000))
+    allocated = Allocator(brain).decide(
+        market, decision, brain.load_state(100_000)
+    )
     executor = Executor(
         SessionMode.SHADOW,
         shadow_book_fn=lambda _ticker: {
@@ -410,13 +520,15 @@ def test_executor_shadow_captures_fixed_point_queue_ahead(tmp_path):
             "no_dollars": [],
         },
     )
-    outcome = asyncio.run(executor.execute(allocated))
+    outcome = asyncio.run(executor.execute(allocated, market=market))
     assert outcome.detail["queue_snapshot_available"] is True
     assert outcome.detail["queue_ahead_contracts"] == 7.25
 
 
 def test_executor_shadow_blocks_unexecutable_queue(tmp_path):
-    market = _market(yes_bid=30, yes_ask=50)
+    market = _market(
+        ticker="KXBTCD-26JUL10-T100000.00", yes_bid=30, yes_ask=50
+    )
     brain = RiskBrain(state_path=tmp_path / "risk.json")
     allocated = Allocator(brain).decide(
         market, _forecast(market, 0.70), brain.load_state(100_000),
@@ -427,7 +539,7 @@ def test_executor_shadow_blocks_unexecutable_queue(tmp_path):
             "yes_dollars": [[f"{allocated.price_cents / 100:.4f}", "500.00"]],
             "no_dollars": [],
         },
-    ).execute(allocated))
+    ).execute(allocated, market=market))
     assert outcome.kind is OutcomeKind.BLOCKED_LOCAL
     assert outcome.detail["reason"] == "queue_ahead_exceeds_execution_cap"
 
@@ -435,10 +547,12 @@ def test_executor_shadow_blocks_unexecutable_queue(tmp_path):
 def test_executor_live_blocked_without_session(tmp_path):
     brain = RiskBrain(state_path=tmp_path / "risk.json")
     state = brain.load_state(100_000)
-    market = _market(yes_bid=30, yes_ask=40)
+    market = _market(
+        ticker="KXBTCD-26JUL10-T100000.00", yes_bid=30, yes_ask=40
+    )
     decision = Allocator(brain).decide(market, _forecast(market, 0.7), state)
     executor = Executor(SessionMode.LIVE, session_path=tmp_path / "missing.json", kill_path=tmp_path / "KILL")
-    outcome = asyncio.run(executor.execute(decision))
+    outcome = asyncio.run(executor.execute(decision, market=market))
     assert outcome.kind is OutcomeKind.BLOCKED_LOCAL
     assert outcome.broker_contacted is False
 
@@ -460,52 +574,94 @@ def test_executor_live_blocked_on_kill_switch(tmp_path):
     kill.write_text("x", encoding="utf-8")
     brain = RiskBrain(state_path=tmp_path / "risk.json")
     state = brain.load_state(100_000)
-    market = _market(yes_bid=30, yes_ask=40)
+    market = _market(
+        ticker="KXBTCD-26JUL10-T100000.00", yes_bid=30, yes_ask=40
+    )
     decision = Allocator(brain).decide(market, _forecast(market, 0.7), state)
     executor = Executor(SessionMode.LIVE, session_path=session, kill_path=kill)
-    outcome = asyncio.run(executor.execute(decision))
+    outcome = asyncio.run(executor.execute(decision, market=market))
     assert outcome.kind is OutcomeKind.BLOCKED_LOCAL
 
 
-def test_executor_live_accept_and_reject_witness(tmp_path):
+def test_executor_live_accept_and_reject_witness(tmp_path, monkeypatch):
     session = tmp_path / "s.json"
     _write_live_session(session)
     brain = RiskBrain(state_path=tmp_path / "risk.json")
     state = brain.load_state(100_000)
-    market = _market(yes_bid=30, yes_ask=40)
+    brain.save_state(state)
+    market = _market(
+        ticker="KXBTCD-26JUL10-T100000.00", yes_bid=30, yes_ask=40
+    )
     decision = Allocator(brain).decide(market, _forecast(market, 0.7), state)
 
-    class FakeAdapter:
-        def __init__(self, result):
-            self._result = result
+    class FakeClient:
+        async def get_orderbook(self, ticker, depth=10):
+            from core.ontology import OrderBook, OrderBookLevel
 
-        async def submit_limit_order(self, request):
-            return self._result
+            return OrderBook(
+                market_ticker=ticker,
+                contract_ticker=ticker,
+                bids=[OrderBookLevel(price=30, size=10)],
+                asks=[OrderBookLevel(price=40, size=10)],
+                timestamp=datetime.now(timezone.utc),
+            )
 
         async def close(self):
             pass
 
-    from predator_mesh.brokers.livebrokerfirewall_adapter import SubmitResult
+    class FakeFirewall:
+        def __init__(self, result):
+            self._result = result
+            self.client = FakeClient()
 
-    accepted = SubmitResult(submitted=True, order_id="ord-1", state="OPEN", raw={}, errors=[])
-    executor = Executor(SessionMode.LIVE, session_path=session, kill_path=tmp_path / "KILL",
-                        adapter_factory=lambda d: FakeAdapter(accepted))
-    outcome = asyncio.run(executor.execute(decision))
+        def live_authority_verdict(self):
+            from core.ontology import FirewallVerdict
+
+            return FirewallVerdict(allow=True, reason="test authority")
+
+        async def submit(self, request, orderbook, forecast):
+            return self._result
+
+    from core.ontology import LiveOrderResult
+
+    accepted = LiveOrderResult(
+        success=True, order_id="ord-1", proof_reference="sp", broker_contacted=True
+    )
+    executor = Executor(
+        SessionMode.LIVE,
+        session_path=session,
+        kill_path=tmp_path / "KILL",
+        risk_state_path=brain.state_path,
+        exchange_status_fn=lambda: {"exchange_active": True, "trading_active": True},
+    )
+    monkeypatch.setattr(executor, "_make_firewall", lambda: FakeFirewall(accepted))
+    outcome = asyncio.run(executor.execute(decision, market=market))
     assert outcome.kind is OutcomeKind.ACCEPTED
     assert outcome.broker_contacted is True
 
-    rejected = SubmitResult(submitted=False, order_id=None, state="REJECTED",
-                            raw={"status_code": 400, "stage": "broker_transport"}, errors=["BROKER_VALIDATION"])
-    executor2 = Executor(SessionMode.LIVE, session_path=session, kill_path=tmp_path / "KILL",
-                         adapter_factory=lambda d: FakeAdapter(rejected))
-    outcome2 = asyncio.run(executor2.execute(decision))
+    rejected = LiveOrderResult(
+        success=False, error="BROKER_VALIDATION", proof_reference="sp", broker_contacted=True
+    )
+    executor2 = Executor(
+        SessionMode.LIVE, session_path=session, kill_path=tmp_path / "KILL",
+        risk_state_path=brain.state_path,
+        exchange_status_fn=lambda: {"exchange_active": True, "trading_active": True},
+    )
+    monkeypatch.setattr(executor2, "_make_firewall", lambda: FakeFirewall(rejected))
+    outcome2 = asyncio.run(executor2.execute(decision, market=market))
     assert outcome2.kind is OutcomeKind.REJECTED
     assert outcome2.broker_contacted is True
 
-    local = SubmitResult(submitted=False, order_id=None, state="REJECTED", raw={}, errors=["KILL_SWITCH_ACTIVE"])
-    executor3 = Executor(SessionMode.LIVE, session_path=session, kill_path=tmp_path / "KILL",
-                         adapter_factory=lambda d: FakeAdapter(local))
-    outcome3 = asyncio.run(executor3.execute(decision))
+    local = LiveOrderResult(
+        success=False, error="KILL_SWITCH_ACTIVE", proof_reference="sp", broker_contacted=False
+    )
+    executor3 = Executor(
+        SessionMode.LIVE, session_path=session, kill_path=tmp_path / "KILL",
+        risk_state_path=brain.state_path,
+        exchange_status_fn=lambda: {"exchange_active": True, "trading_active": True},
+    )
+    monkeypatch.setattr(executor3, "_make_firewall", lambda: FakeFirewall(local))
+    outcome3 = asyncio.run(executor3.execute(decision, market=market))
     assert outcome3.kind is OutcomeKind.BLOCKED_LOCAL
     assert outcome3.broker_contacted is False
 
@@ -598,6 +754,7 @@ def test_full_shadow_cycle_places_shadow_orders(tmp_path, monkeypatch):
         executor=Executor(SessionMode.SHADOW, session_path=tmp_path / "s.json", kill_path=tmp_path / "KILL"),
         reconciler=Reconciler(ledger, fetch_market_result=lambda t: {"result": ""}),
         learner=Learner(ledger),
+        board_path=tmp_path / "bet_board.json",
     )
     try:
         report = asyncio.run(brain.run_cycle())

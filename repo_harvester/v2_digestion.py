@@ -21,6 +21,13 @@ from repo_harvester.manifest import ALL_REPOS_V2
 from repo_harvester.source_scanner import SCAN_CATEGORIES, categorize_text
 from repo_harvester.adapter_planner import generate_adapter_plan_v3
 from core.ontology import RepoVerdict
+from repo_harvester.adapter_planner import DATA_ONLY_CATEGORIES
+from repo_harvester.retry_policy import (
+    HarvestRetryExhausted,
+    PENDING_RETRY,
+    PENDING_REVIEW,
+    run_with_bounded_retry,
+)
 
 OUT = Path("C:/src/engine/dummy/artifacts/repo_harvester")
 CACHE = OUT / "source_scan_cache_v1"
@@ -28,13 +35,11 @@ CACHE.mkdir(parents=True, exist_ok=True)
 OUT.mkdir(parents=True, exist_ok=True)
 
 GITHUB_TOKEN = os.environ.get("GITHUB_TOKEN")
-if not GITHUB_TOKEN:
-    raise RuntimeError("GITHUB_TOKEN is required. Set it in .env or export it from your secret manager (e.g. `gh auth token`).")
-
 HEADERS = {
-    "Authorization": f"token {GITHUB_TOKEN}",
     "Accept": "application/vnd.github+json",
 }
+if GITHUB_TOKEN:
+    HEADERS["Authorization"] = f"token {GITHUB_TOKEN}"
 SEM = asyncio.Semaphore(8)
 MAX_FILES_PER_REPO = 30
 MAX_TREE_SIZE_FOR_RECURSIVE = 3000
@@ -52,7 +57,17 @@ def _load_cache(owner: str, name: str) -> dict | None:
         try:
             data = json.loads(cp.read_text())
             if data.get("version") == 1:
-                return data
+                scan = data.get("scan")
+                if not isinstance(scan, dict):
+                    return None
+                status = scan.get("harvest_status")
+                # Old complete cache entries had no explicit status. Error
+                # cache entries are deliberately ignored so an outage cannot
+                # become a permanent pseudo-result.
+                if status in {"COMPLETE", "FAILED_PERMANENT"}:
+                    return data
+                if status is None and not scan.get("error"):
+                    return data
         except Exception:
             pass
     return None
@@ -64,25 +79,15 @@ def _save_cache(owner: str, name: str, data: dict):
     cp.write_text(json.dumps(data, indent=2, default=str))
 
 
-async def _sleep_until(reset_ts: int):
-    now = datetime.now(timezone.utc).timestamp()
-    wait = max(1, reset_ts - int(now) + 2)
-    print(f"Rate limit hit; sleeping {wait}s until reset")
-    await asyncio.sleep(wait)
-
-
 async def _github_get(client: httpx.AsyncClient, url: str) -> dict:
-    while True:
+    async def _request() -> dict:
         r = await client.get(url, headers=HEADERS, timeout=HTTP_TIMEOUT)
-        remaining = r.headers.get("x-ratelimit-remaining")
-        reset = r.headers.get("x-ratelimit-reset")
-        if r.status_code in (403, 429) and remaining == "0" and reset:
-            await _sleep_until(int(reset))
-            continue
         if r.status_code == 404:
             raise FileNotFoundError(url)
         r.raise_for_status()
         return r.json()
+
+    return await run_with_bounded_retry(_request)
 
 
 async def fetch_repo_metadata(client: httpx.AsyncClient, owner: str, name: str) -> dict:
@@ -140,13 +145,41 @@ async def _scan_one_repo(client: httpx.AsyncClient, owner: str, name: str, categ
     try:
         meta = await fetch_repo_metadata(client, owner, name)
     except FileNotFoundError:
-        result = {"owner": owner, "name": name, "category": category, "error": "repo_not_found", "files_scanned": 0}
+        result = {
+            "owner": owner,
+            "name": name,
+            "category": category,
+            "error": "repo_not_found",
+            "files_scanned": 0,
+            "scan_complete": False,
+            "harvest_status": "FAILED_PERMANENT",
+            "retryable": False,
+        }
         _save_cache(owner, name, {"meta": None, "scan": result})
         return result
+    except HarvestRetryExhausted as exc:
+        return {
+            "owner": owner,
+            "name": name,
+            "category": category,
+            "error": f"{type(exc.cause).__name__}: {exc.cause}",
+            "files_scanned": 0,
+            "scan_complete": False,
+            "harvest_status": PENDING_RETRY,
+            "retryable": True,
+            "retry_attempts": exc.attempts,
+        }
     except Exception as e:
-        result = {"owner": owner, "name": name, "category": category, "error": str(e), "files_scanned": 0}
-        _save_cache(owner, name, {"meta": None, "scan": result})
-        return result
+        return {
+            "owner": owner,
+            "name": name,
+            "category": category,
+            "error": f"{type(e).__name__}: {e}",
+            "files_scanned": 0,
+            "scan_complete": False,
+            "harvest_status": PENDING_REVIEW,
+            "retryable": False,
+        }
 
     repo_size_kb = meta.get("size", 0)
     # For very large upstream libraries, avoid giant recursive trees and only scan root files.
@@ -154,10 +187,29 @@ async def _scan_one_repo(client: httpx.AsyncClient, owner: str, name: str, categ
 
     try:
         tree = await fetch_repo_tree(client, owner, name, recursive=use_recursive)
+    except HarvestRetryExhausted as exc:
+        return {
+            "owner": owner,
+            "name": name,
+            "category": category,
+            "error": f"tree_fetch_failed: {type(exc.cause).__name__}: {exc.cause}",
+            "files_scanned": 0,
+            "scan_complete": False,
+            "harvest_status": PENDING_RETRY,
+            "retryable": True,
+            "retry_attempts": exc.attempts,
+        }
     except Exception as e:
-        result = {"owner": owner, "name": name, "category": category, "error": f"tree_fetch_failed: {e}", "files_scanned": 0}
-        _save_cache(owner, name, {"meta": meta, "scan": result})
-        return result
+        return {
+            "owner": owner,
+            "name": name,
+            "category": category,
+            "error": f"tree_fetch_failed: {type(e).__name__}: {e}",
+            "files_scanned": 0,
+            "scan_complete": False,
+            "harvest_status": PENDING_REVIEW,
+            "retryable": False,
+        }
 
     files = [
         t for t in tree.get("tree", [])
@@ -174,6 +226,7 @@ async def _scan_one_repo(client: httpx.AsyncClient, owner: str, name: str, categ
         "files_considered": len(files),
         "tree_size": len(tree.get("tree", [])),
         "repo_size_kb": repo_size_kb,
+        "file_fetch_failures": [],
     }
     for cat in SCAN_CATEGORIES:
         result[f"{cat}_hits"] = []
@@ -181,7 +234,14 @@ async def _scan_one_repo(client: httpx.AsyncClient, owner: str, name: str, categ
     for f in files:
         try:
             text = await fetch_file(client, owner, name, f["path"])
-        except Exception:
+        except Exception as exc:
+            result["file_fetch_failures"].append(
+                {
+                    "path": f["path"],
+                    "error_type": type(exc).__name__,
+                    "retryable": isinstance(exc, HarvestRetryExhausted),
+                }
+            )
             continue
         result["files_scanned"] += 1
         categories = categorize_text(text)
@@ -189,7 +249,21 @@ async def _scan_one_repo(client: httpx.AsyncClient, owner: str, name: str, categ
             if hits:
                 result[f"{cat}_hits"].append(f["path"])
 
-    _save_cache(owner, name, {"meta": meta, "scan": result})
+    result["file_fetch_failure_count"] = len(result["file_fetch_failures"])
+    result["scan_complete"] = not result["file_fetch_failures"]
+    all_failures_retryable = bool(result["file_fetch_failures"]) and all(
+        failure["retryable"] for failure in result["file_fetch_failures"]
+    )
+    if result["scan_complete"]:
+        result["harvest_status"] = "COMPLETE"
+        result["retryable"] = False
+    else:
+        result["harvest_status"] = (
+            PENDING_RETRY if all_failures_retryable else PENDING_REVIEW
+        )
+        result["retryable"] = all_failures_retryable
+    if result["scan_complete"]:
+        _save_cache(owner, name, {"meta": meta, "scan": result})
     return result
 
 
@@ -236,6 +310,8 @@ async def run_v2_digestion() -> dict[str, Any]:
             "category": category,
             "files_scanned": scan.get("files_scanned", 0),
             "tree_size": scan.get("tree_size", 0),
+            "harvest_status": scan.get("harvest_status", "UNKNOWN"),
+            "scan_complete": scan.get("scan_complete", False),
             "verdict": plan["verdict"],
         })
         if plan["verdict"].startswith("REJECT"):
@@ -258,7 +334,10 @@ async def run_v2_digestion() -> dict[str, Any]:
     source_scan_summary = {
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "repos_in_manifest": len(ALL_REPOS_V2),
-        "repos_scanned": len(results),
+        "repos_scanned": sum(r.get("scan_complete") is True for r in results),
+        "repos_attempted": len(results),
+        "pending_retry_count": sum(r.get("harvest_status") == PENDING_RETRY for r in results),
+        "pending_review_count": sum(r.get("harvest_status") == PENDING_REVIEW for r in results),
         "total_files_scanned": total_files,
         "verdict_counts": verdict_counts,
         "category_verdict_counts": category_counts,
@@ -282,8 +361,14 @@ async def run_v2_digestion() -> dict[str, Any]:
     ]
     firewall_report = {
         "generated_at": datetime.now(timezone.utc).isoformat(),
-        "status": "completed",
-        "repos_scanned": len(plans),
+        "status": (
+            "completed"
+            if all(r.get("scan_complete") is True for r in results)
+            else "partial_fail_closed_pending"
+        ),
+        "repos_scanned": sum(r.get("scan_complete") is True for r in results),
+        "repos_attempted": len(results),
+        "pending_repo_count": sum(r.get("scan_complete") is not True for r in results),
         "direct_order_count": len(direct_order_repos),
         "direct_order_repos": [{"repo": p["repo"], "category": p["category"], "hits": _bypass_hits(p)} for p in direct_order_repos],
         "secret_risk_count": len(secret_risk_repos),
@@ -304,6 +389,13 @@ async def run_v2_digestion() -> dict[str, Any]:
         "direct_dependency_count": len([p for p in plans if p["verdict"] == RepoVerdict.DIRECT_DEPENDENCY_CANDIDATE.value]),
         "adapter_target_count": len([p for p in plans if p["verdict"] == RepoVerdict.ADAPTER_TARGET.value]),
         "reference_mine_count": len([p for p in plans if p["verdict"] == RepoVerdict.REFERENCE_MINE.value]),
+        "pending_retry_count": len([p for p in plans if p["verdict"] == PENDING_RETRY]),
+        "pending_review_count": len([p for p in plans if p["verdict"] == PENDING_REVIEW]),
+        "pending_repos": [
+            {"repo": p["repo"], "category": p["category"], "verdict": p["verdict"]}
+            for p in plans
+            if p["verdict"] in {PENDING_RETRY, PENDING_REVIEW}
+        ],
         "plans": accepted,
     }
     (OUT / "adapter_plan_v3.json").write_text(json.dumps(adapter_plan_v3, indent=2, default=str))
@@ -350,6 +442,8 @@ def build_strategy_extraction_report(plans: list[dict]) -> dict:
     Every candidate emits TradeProposal objects only and never calls live order endpoints.
     """
     candidates = []
+    data_only_inputs = []
+    quarantined_candidates = []
 
     def add(repo: str, category: str, strategy_name: str, description: str, market_types: list[str]):
         candidates.append({
@@ -368,10 +462,17 @@ def build_strategy_extraction_report(plans: list[dict]) -> dict:
         repo = plan["repo"]
         category = plan["category"]
         scan = plan["scan_summary"]
-        if scan.get("weather_hits"):
-            add(repo, category, "KalshiWeatherForecastStrategy",
-                "Combine NOAA/open-meteo forecasts with Kalshi weather contract orderbooks; emit TradeProposal when model probability diverges from market.",
-                ["weather"])
+        if category in DATA_ONLY_CATEGORIES:
+            data_only_inputs.append({
+                "repo": repo,
+                "source_category": category,
+                "output": "RawObservation",
+                "prediction_authority": False,
+                "trade_proposal_authority": False,
+                "execution_authority": False,
+                "notes": "Weather and commodities are retained only as timestamped data inputs.",
+            })
+            continue
         if scan.get("sports_hits"):
             add(repo, category, "SportsMomentumStrategy",
                 "Mine repo odds/forecast logic for momentum and mispricing signals; emit TradeProposal for sports event contracts only.",
@@ -381,13 +482,21 @@ def build_strategy_extraction_report(plans: list[dict]) -> dict:
                 "Convert repo BTC/crypto event market signals into Dummy-native TradeProposal objects without touching exchange order endpoints.",
                 ["crypto", "btc", "event"])
         if scan.get("stocks_hits"):
-            add(repo, category, "StockMacroMomentumStrategy",
-                "Use repo stock/index/macro forecasting patterns to generate TradeProposal objects for relevant Kalshi macro contracts.",
-                ["stocks", "indices", "macro"])
-        if scan.get("commodities_hits"):
-            add(repo, category, "CommoditiesEnergyStrategy",
-                "Apply commodities/energy price-forecast logic to Kalshi energy contracts; output TradeProposal only.",
-                ["commodities", "energy"])
+            quarantined_candidates.append({
+                "repo": repo,
+                "source_category": category,
+                "strategy_name": "StockMacroMomentumStrategy",
+                "description": (
+                    "Excluded research inventory: this market type is outside "
+                    "the active prediction surface."
+                ),
+                "market_types": ["stocks", "indices", "macro"],
+                "output": "ABSTAIN",
+                "prediction_authority": False,
+                "trade_proposal_authority": False,
+                "execution_authority": False,
+                "quarantine_reason": "outside_supported_prediction_targets",
+            })
         if scan.get("arbitrage_hits"):
             add(repo, category, "RepoDerivedCrossMarketArbitrage",
                 "Identify price disagreements across prediction markets using repo arbitrage patterns and emit paired TradeProposal legs.",
@@ -405,7 +514,16 @@ def build_strategy_extraction_report(plans: list[dict]) -> dict:
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "candidate_count": len(candidates),
         "candidates": candidates,
-        "notes": "All repo-derived strategy candidates emit Dummy-native TradeProposal objects and are prohibited from calling live order endpoints.",
+        "data_only_input_count": len(data_only_inputs),
+        "data_only_inputs": data_only_inputs,
+        "quarantined_candidate_count": len(quarantined_candidates),
+        "quarantined_candidates": quarantined_candidates,
+        "notes": (
+            "All repo-derived strategy candidates emit Dummy-native TradeProposal objects and are "
+            "prohibited from calling live order endpoints. Weather and commodities are data-only "
+            "and never create strategy candidates. Other unsupported market categories remain "
+            "excluded from prediction and execution."
+        ),
     }
 
 

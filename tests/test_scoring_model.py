@@ -1,6 +1,8 @@
 """Phase 2: expected margin/total scoring model + walk-forward."""
 from __future__ import annotations
 
+from datetime import datetime, timedelta, timezone
+
 from autonomy.sports.history_store import SportsHistoryStore
 from autonomy.sports.scoring_model import LakeScoringModel
 from autonomy.sports.walk_forward import walk_forward_scoring
@@ -9,18 +11,24 @@ from autonomy.sports.walk_forward import walk_forward_scoring
 def _game(gid, start, home, away, hs, as_):
     return {"game_id": gid, "league": "nba", "season": 2025, "start_time": start,
             "home": home, "away": away, "home_score": hs, "away_score": as_,
-            "status": "final", "source": "t"}
+            "status": "final", "source": "t",
+            "result_available_at": start.replace("T00:00:00Z", "T03:00:00Z").replace(
+                "T00:00:00+00:00", "T03:00:00+00:00"),
+            "received_at": start.replace("T00:00:00Z", "T03:05:00Z").replace(
+                "T00:00:00+00:00", "T03:05:00+00:00"),
+            "provenance_quality": "source_reported"}
 
 
 def _seed(tmp_path):
     st = SportsHistoryStore(tmp_path / "h.db")
-    day = 1
+    start = datetime(2025, 1, 1, tzinfo=timezone.utc)
+    day = 0
     for wk in range(12):
-        st.upsert_game(_game(f"a{wk}", f"2025-01-{day:02d}T00:00:00Z", "AAA", "CCC", 118, 95))
+        st.upsert_game(_game(f"a{wk}", (start + timedelta(days=day)).isoformat(), "AAA", "CCC", 118, 95))
         day += 1
-        st.upsert_game(_game(f"b{wk}", f"2025-01-{day:02d}T00:00:00Z", "BBB", "CCC", 104, 99))
+        st.upsert_game(_game(f"b{wk}", (start + timedelta(days=day)).isoformat(), "BBB", "CCC", 104, 99))
         day += 1
-        st.upsert_game(_game(f"c{wk}", f"2025-01-{day:02d}T00:00:00Z", "AAA", "BBB", 110, 101))
+        st.upsert_game(_game(f"c{wk}", (start + timedelta(days=day)).isoformat(), "AAA", "BBB", 110, 101))
         day += 1
     return st
 

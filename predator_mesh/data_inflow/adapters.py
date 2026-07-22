@@ -113,12 +113,12 @@ class FileSampleAdapter(BaseDataAdapter):
 
 
 class KalshiReadOnlyAdapter(BaseDataAdapter):
-    """Read-only Kalshi adapter stub.
+    """Read-only Kalshi adapter.
 
     This adapter never places orders and never exposes raw account data.
-    By default it returns a synthetic market snapshot; a real read-only
-    client may be injected via ``set_client`` for the proven Kalshi
-    READ_ONLY path.
+    With no injected client it returns an explicitly empty snapshot; a real
+    read-only client may be injected via ``set_client`` for the proven Kalshi
+    READ_ONLY path. Empty data is not promoted into terrain evidence.
     """
 
     name = "kalshi_readonly"

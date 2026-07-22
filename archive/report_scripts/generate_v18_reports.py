@@ -318,20 +318,10 @@ def generate_no_live_submit_still_disabled_report_v18() -> dict[str, Any]:
 
 
 def generate_no_caps_config_modification_report_v18() -> dict[str, Any]:
-    try:
-        from archive.report_scripts.generate_v17_reports import generate_no_caps_config_modification_report_v17
+    from archive.report_scripts.caps_integrity import generate_historical_caps_phase_report
 
-        report = generate_no_caps_config_modification_report_v17()
-    except Exception:
-        report = {"verdict": "PASS"}
-    report.update(
-        {
-            "generated_at": now_iso(),
-            "workstream": "V18: No Caps Config Modification",
-            "modified_by_v18": False,
-            "secret_values_exposed": False,
-        }
-    )
+    report = generate_historical_caps_phase_report("V18")
+    report["secret_values_exposed"] = False
     return report
 
 
@@ -445,14 +435,21 @@ def _security_reports() -> dict[str, dict[str, Any]]:
 
 
 def generate_prior_statuses_v18() -> dict[str, Any]:
+    from archive.report_scripts.caps_integrity import reconcile_v17_truth_loop_evidence
+
     final_v16 = _load_report("final_report_v16.json", {})
     final_v17 = _load_report("final_report_v17.json", {})
+    v17_evidence = reconcile_v17_truth_loop_evidence(final_v17)
     return {
         "v16_real_terrain_status": final_v16.get("real_terrain_truth_verdict", "UNKNOWN"),
-        "v17_truth_loop_status": final_v17.get("verdict", "UNKNOWN"),
+        "v17_truth_loop_status": v17_evidence["historical_truth_loop_status"],
+        "v17_truth_loop_status_scope": v17_evidence["historical_truth_loop_scope"],
+        "v17_archived_aggregate_status": v17_evidence["archived_aggregate_verdict"],
+        "v17_current_runtime_caps_status": v17_evidence["current_runtime_caps_status"],
+        "v17_retroactive_caps_failure_reconciled": v17_evidence["retroactive_caps_failure_reconciled"],
         "v17_dashboard_status": final_v17.get("dashboard_status", "UNKNOWN"),
         "v17_live_submit_enabled": final_v17.get("live_submit_enabled", "UNKNOWN"),
-        "v17_caps_config_status": final_v17.get("caps_config_status", "UNKNOWN"),
+        "v17_caps_config_status": v17_evidence["historical_caps_status"],
     }
 
 

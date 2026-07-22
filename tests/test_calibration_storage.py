@@ -1,7 +1,10 @@
 import json
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 from decimal import Decimal
 from pathlib import Path
+
+import pytest
 
 from calibration.schema import ForecastRecordV2, SettlementRecord
 from calibration.storage import CalibrationStorage
@@ -31,7 +34,9 @@ def _v2_record(**kwargs):
         market_ticker=kwargs.get("market_ticker", "MKT"),
         contract_ticker=kwargs.get("contract_ticker", "MKT-YES"),
         model_route=kwargs.get("model_route", "MOCK_ONLY"),
-        market_implied_probability=Decimal(kwargs.get("market_implied_probability", "0.5")),
+        market_implied_probability=Decimal(
+            kwargs.get("market_implied_probability", "0.5")
+        ),
         dummy_probability=Decimal(kwargs.get("dummy_probability", "0.55")),
         deepseekv4flash_probability=(
             Decimal(kwargs["deepseekv4flash_probability"])
@@ -114,6 +119,67 @@ def test_storage_appends_settlement(tmp_path):
     assert len(lines) == 1
     data = json.loads(lines[0])
     assert data["outcome"] == 1
+
+
+def test_settlement_retry_is_idempotent_across_storage_instances(tmp_path):
+    first = CalibrationStorage(data_dir=tmp_path)
+    second = CalibrationStorage(data_dir=tmp_path)
+    settlement = SettlementRecord(
+        market_ticker="mkt",
+        contract_ticker="mkt-yes",
+        outcome=1,
+        settled_at=datetime.now(timezone.utc),
+        source="read-only-truth",
+    )
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        results = list(
+            pool.map(
+                lambda storage: storage.append_settlement(settlement),
+                (first, second),
+            )
+        )
+
+    assert sorted(results) == [False, True]
+    assert len((tmp_path / "settlements.jsonl").read_text().splitlines()) == 1
+    assert len(first.load_settlements()) == 1
+
+
+def test_conflicting_settlement_retry_fails_closed_without_append(tmp_path):
+    storage = CalibrationStorage(data_dir=tmp_path)
+    base = {
+        "market_ticker": "MKT",
+        "contract_ticker": "MKT-YES",
+        "settled_at": datetime.now(timezone.utc),
+        "source": "read-only-truth",
+    }
+    assert storage.append_settlement({**base, "outcome": 1}) is True
+
+    with pytest.raises(ValueError, match="conflicting settlement outcome"):
+        storage.append_settlement({**base, "outcome": 0})
+
+    assert len((tmp_path / "settlements.jsonl").read_text().splitlines()) == 1
+    assert storage.load_settlements()[0].outcome == 1
+
+
+def test_malformed_settlement_ledger_blocks_retry_instead_of_healing(tmp_path):
+    (tmp_path / "settlements.jsonl").write_text("not-json\n", encoding="utf-8")
+    storage = CalibrationStorage(data_dir=tmp_path)
+
+    with pytest.raises(ValueError, match="invalid settlements ledger row 1"):
+        storage.append_settlement(
+            {
+                "market_ticker": "MKT",
+                "contract_ticker": "MKT-YES",
+                "outcome": 1,
+                "settled_at": datetime.now(timezone.utc),
+                "source": "read-only-truth",
+            }
+        )
+
+    assert (tmp_path / "settlements.jsonl").read_text(encoding="utf-8") == (
+        "not-json\n"
+    )
 
 
 def test_storage_v1_and_v2_files_are_separate(tmp_path):

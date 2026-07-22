@@ -26,6 +26,10 @@ CREATE TABLE IF NOT EXISTS orders (
     created_at TEXT
 );
 CREATE TABLE IF NOT EXISTS positions (
+    -- NOTE: nothing in the codebase inserts into this table yet (audit 2026-07:
+    -- the live position writer is the ExposureTracker fill path, wired and
+    -- persisted under remediation Task 3). Readers must treat an empty table
+    -- as "no recorded positions", not as a live-zero guarantee.
     market_ticker TEXT PRIMARY KEY,
     contract_ticker TEXT,
     side TEXT,

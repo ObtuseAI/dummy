@@ -28,33 +28,49 @@ async def test_mock_fallback_for_each_task():
 
 
 @pytest.mark.asyncio
-async def test_hybrid_review_resolves_to_glm_when_available(monkeypatch):
+async def test_hybrid_review_resolves_to_gemini_when_available(monkeypatch):
+    monkeypatch.setenv("DUMMY_LLM_OPENROUTER_ENABLED", "1")
     monkeypatch.setenv("OPENROUTER_API_KEY", "sk-openrouter-test")
     router = ModelRouter()
     decision = router.route(ModelTask.HYBRID_REVIEW)
-    assert decision.provider_name == "glm_5_2"
-    assert decision.model_name == "z-ai/glm-5.2"
+    assert decision.provider_name == "gemini_3_6_flash"
+    assert decision.model_name == "google/gemini-3.6-flash"
+    assert router.hybrid_provider_names() == [
+        "gemini_3_6_flash",
+        "gpt_5_6_luna",
+        "claude_sonnet_5",
+        "glm_5_2",
+    ]
 
 
 @pytest.mark.asyncio
-async def test_hybrid_review_fallback_when_glm_unavailable(monkeypatch, no_project_env):
+async def test_hybrid_review_fallback_when_gemini_unavailable(monkeypatch, no_project_env):
     monkeypatch.delenv("DEEPSEEK_API_KEY", raising=False)
     monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
     router = ModelRouter()
     decision = router.route(ModelTask.HYBRID_REVIEW)
     assert decision.provider_name == "mock"
-    assert decision.fallback_reason == "glm_5_2_credentials_missing"
+    assert decision.fallback_reason == "gemini_3_6_flash_credentials_missing"
 
 
 @pytest.mark.asyncio
 async def test_preferred_provider_used_when_key_present(monkeypatch):
+    monkeypatch.setenv("DUMMY_LLM_OPENROUTER_ENABLED", "1")
     monkeypatch.setenv("OPENROUTER_API_KEY", "sk-openrouter-test")
     router = ModelRouter()
 
-    assert router.route(ModelTask.FORECAST_OPINION).provider_name == "glm_5_2"
-    assert router.route(ModelTask.STRATEGY_CRITIQUE).provider_name == "minimax_m3"
-    assert router.route(ModelTask.RISK_CRITIQUE).provider_name == "minimax_m3"
-    assert router.route(ModelTask.NO_TRADE_REASON).provider_name == "minimax_m3"
+    expected_routes = {
+        ModelTask.FORECAST_OPINION: "gemini_3_6_flash",
+        ModelTask.RAPID_FORECAST: "gpt_5_6_luna",
+        ModelTask.TRADE_DRAFT: "gpt_5_6_luna",
+        ModelTask.STRATEGY_CRITIQUE: "claude_sonnet_5",
+        ModelTask.MARKET_THESIS: "claude_sonnet_5",
+        ModelTask.RISK_CRITIQUE: "glm_5_2",
+        ModelTask.NO_TRADE_REASON: "glm_5_2",
+        ModelTask.CALIBRATION_NOTE: "glm_5_2",
+    }
+    for task, provider_name in expected_routes.items():
+        assert router.route(task).provider_name == provider_name
 
 
 @pytest.mark.asyncio

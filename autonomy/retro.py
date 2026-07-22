@@ -35,6 +35,7 @@ Honesty rules (fail-closed):
     exist, so retro evidence never pads the settled count with markets the
     model didn't actually cover.
 """
+
 from __future__ import annotations
 
 import dataclasses
@@ -55,21 +56,29 @@ from autonomy.signals.crypto_indicators import (
     CryptoEmpiricalRegimeSignal,
     CryptoTechnicalCompositeSignal,
 )
-from autonomy.signals.crypto_spot import _PRODUCTS, CryptoSpotVolSignal, parse_crypto_ticker
-from autonomy.signals.market_prior import MarketPriorSignal
-from autonomy.signals.weather_openmeteo import (
-    CITY_TABLE,
-    OpenMeteoWeatherSignal,
-    parse_temp_ticker,
+from autonomy.signals.crypto_spot import (
+    _PRODUCTS,
+    CryptoSpotVolSignal,
+    parse_crypto_ticker,
 )
+from autonomy.signals.market_prior import MarketPriorSignal
+from autonomy.signals.weather_openmeteo import CITY_TABLE
 
 CRYPTO_SERIES = ["KXBTCD", "KXETHD", "KXBTC", "KXETH"]
-WEATHER_SERIES = ["KXHIGHNY", "KXHIGHCHI", "KXHIGHMIA", "KXHIGHAUS", "KXHIGHDEN",
-                  "KXHIGHPHIL", "KXHIGHLAX", "KXHIGHTSEA"]
+WEATHER_SERIES = [
+    "KXHIGHNY",
+    "KXHIGHCHI",
+    "KXHIGHMIA",
+    "KXHIGHAUS",
+    "KXHIGHDEN",
+    "KXHIGHPHIL",
+    "KXHIGHLAX",
+    "KXHIGHTSEA",
+]
 
 # Decision timestamps: when the live loop would realistically have acted.
-CRYPTO_DECISION_LEAD_S = 45 * 60          # 45 minutes before close
-WEATHER_DECISION_HOUR_UTC = 14            # 14:00Z on the event day (morning US)
+CRYPTO_DECISION_LEAD_S = 45 * 60  # 45 minutes before close
+WEATHER_DECISION_HOUR_UTC = 14  # 14:00Z on the event day (morning US)
 
 _KALSHI_BASE_ENV = ("KALSHI_API_BASE", "https://api.elections.kalshi.com")
 
@@ -85,13 +94,18 @@ def _public_base() -> str:
 # ---------------------------------------------------------------------------
 
 
-def default_fetch_candles(series: str, ticker: str, start_ts: int, end_ts: int,
-                          period_interval: int = 60) -> list[dict[str, Any]]:
+def default_fetch_candles(
+    series: str, ticker: str, start_ts: int, end_ts: int, period_interval: int = 60
+) -> list[dict[str, Any]]:
     import httpx
 
     response = httpx.get(
         f"{_public_base()}/series/{series}/markets/{ticker}/candlesticks",
-        params={"start_ts": start_ts, "end_ts": end_ts, "period_interval": period_interval},
+        params={
+            "start_ts": start_ts,
+            "end_ts": end_ts,
+            "period_interval": period_interval,
+        },
         timeout=20,
     )
     response.raise_for_status()
@@ -99,8 +113,9 @@ def default_fetch_candles(series: str, ticker: str, start_ts: int, end_ts: int,
     return candles if isinstance(candles, list) else []
 
 
-def default_fetch_coinbase_candles(product: str, start_iso: str, end_iso: str,
-                                   granularity: int = 3600) -> list[list[float]]:
+def default_fetch_coinbase_candles(
+    product: str, start_iso: str, end_iso: str, granularity: int = 3600
+) -> list[list[float]]:
     import httpx
 
     response = httpx.get(
@@ -127,7 +142,9 @@ def _dollars_to_cents(value: Any) -> int | None:
         return None
 
 
-def candle_quote_at(candles: list[dict[str, Any]], decision_ts: int) -> dict[str, Any] | None:
+def candle_quote_at(
+    candles: list[dict[str, Any]], decision_ts: int
+) -> dict[str, Any] | None:
     """Last candle whose period ended at or before the decision timestamp."""
     best: dict[str, Any] | None = None
     for candle in candles:
@@ -147,8 +164,12 @@ def candle_quote_at(candles: list[dict[str, Any]], decision_ts: int) -> dict[str
         volume = int(float(best.get("volume_fp") or 0))
     except Exception:
         volume = 0
-    return {"yes_bid": bid, "yes_ask": ask, "volume": volume,
-            "end_period_ts": int(best["end_period_ts"])}
+    return {
+        "yes_bid": bid,
+        "yes_ask": ask,
+        "volume": volume,
+        "end_period_ts": int(best["end_period_ts"]),
+    }
 
 
 class HourlyPriceSeries:
@@ -158,8 +179,13 @@ class HourlyPriceSeries:
     time use only candles that fully closed before it — no lookahead.
     """
 
-    def __init__(self, product: str, start_ts: int, end_ts: int,
-                 fetch: Callable[..., list[list[float]]] | None = None) -> None:
+    def __init__(
+        self,
+        product: str,
+        start_ts: int,
+        end_ts: int,
+        fetch: Callable[..., list[list[float]]] | None = None,
+    ) -> None:
         fetch = fetch or default_fetch_coinbase_candles
         self.closes: list[tuple[int, float]] = []  # (candle_start_ts, close) ascending
         seen: set[int] = set()
@@ -181,7 +207,9 @@ class HourlyPriceSeries:
             cursor = upper
         self.closes.sort()
 
-    def spot_and_vol_at(self, ts: int, window_hours: int = 168) -> tuple[float, float] | None:
+    def spot_and_vol_at(
+        self, ts: int, window_hours: int = 168
+    ) -> tuple[float, float] | None:
         """(spot, annualized_vol) using candles fully closed before ts.
 
         Mirrors the live signal's math: hourly log-return stdev annualized.
@@ -192,7 +220,11 @@ class HourlyPriceSeries:
         recent = closed[-window_hours:]
         closes = [c for _t, c in recent]
         spot = closes[-1]
-        rets = [math.log(closes[i] / closes[i - 1]) for i in range(1, len(closes)) if closes[i - 1] > 0]
+        rets = [
+            math.log(closes[i] / closes[i - 1])
+            for i in range(1, len(closes))
+            if closes[i - 1] > 0
+        ]
         if not rets:
             return None
         mean = sum(rets) / len(rets)
@@ -243,8 +275,11 @@ def build_weather_history_fetcher(
         except Exception:
             continue
         times = daily.get("time", [])
-        columns = [v for k, v in daily.items()
-                   if k.startswith("temperature_2m_max") and isinstance(v, list)]
+        columns = [
+            v
+            for k, v in daily.items()
+            if k.startswith("temperature_2m_max") and isinstance(v, list)
+        ]
         per_date: dict[str, list[float]] = {}
         for i, date in enumerate(times):
             vals = [col[i] for col in columns if i < len(col) and col[i] is not None]
@@ -252,7 +287,9 @@ def build_weather_history_fetcher(
                 per_date[date] = [float(v) for v in vals]
         by_city[code] = per_date
 
-    coord_to_code = {(round(c["lat"], 4), round(c["lon"], 4)): code for code, c in CITY_TABLE.items()}
+    coord_to_code = {
+        (round(c["lat"], 4), round(c["lon"], 4)): code for code, c in CITY_TABLE.items()
+    }
 
     def fetcher(lat: float, lon: float, date_iso: str, kind: str) -> list[float]:
         code = coord_to_code.get((round(lat, 4), round(lon, 4)))
@@ -298,7 +335,9 @@ class RetroEvidenceEngine:
 
     # -- listing ----------------------------------------------------------
 
-    def settled_markets(self, series: str, lookback_days: float, max_markets: int) -> list[dict[str, Any]]:
+    def settled_markets(
+        self, series: str, lookback_days: float, max_markets: int
+    ) -> list[dict[str, Any]]:
         min_close_ts = int(self.now.timestamp() - lookback_days * 86400)
         out: list[dict[str, Any]] = []
         cursor: str | None = None
@@ -320,29 +359,39 @@ class RetroEvidenceEngine:
 
     # -- per-market replay -------------------------------------------------
 
-    def _market_prior_view(self, raw: dict[str, Any], series: str,
-                           decision_ts: int) -> MarketView | None:
+    def _market_prior_view(
+        self, raw: dict[str, Any], series: str, decision_ts: int
+    ) -> MarketView | None:
         ticker = str(raw.get("ticker", ""))
         try:
-            candles = self.fetch_candles(series, ticker, decision_ts - 48 * 3600, decision_ts, 60)
+            candles = self.fetch_candles(
+                series, ticker, decision_ts - 48 * 3600, decision_ts, 60
+            )
         except Exception:
             return None
         quote = candle_quote_at(candles, decision_ts)
         if quote is None:
             # Sparse book: retry at minute resolution over a tight window.
             try:
-                candles = self.fetch_candles(series, ticker, decision_ts - 6 * 3600, decision_ts, 1)
+                candles = self.fetch_candles(
+                    series, ticker, decision_ts - 6 * 3600, decision_ts, 1
+                )
             except Exception:
                 return None
             quote = candle_quote_at(candles, decision_ts)
         if quote is None:
             return None
         view = to_market_view(raw)
-        return dataclasses.replace(view, yes_bid=quote["yes_bid"], yes_ask=quote["yes_ask"],
-                                   volume=quote["volume"])
+        return dataclasses.replace(
+            view,
+            yes_bid=quote["yes_bid"],
+            yes_ask=quote["yes_ask"],
+            volume=quote["volume"],
+        )
 
-    def _write_market(self, view: MarketView, model_signal: Signal, decision_ts: int,
-                      result_yes: bool) -> bool:
+    def _write_market(
+        self, view: MarketView, model_signal: Signal, decision_ts: int, result_yes: bool
+    ) -> bool:
         prior = MarketPriorSignal().generate(view)
         if prior is None:
             return False
@@ -351,10 +400,14 @@ class RetroEvidenceEngine:
             dataclasses.replace(signal, created_at=decision_iso)
             for signal in (prior, model_signal)
         ]
-        if not all(self.ledger.record_signals(replay_signals, mode="retro", all_or_none=True)):
+        if not all(
+            self.ledger.record_signals(replay_signals, mode="retro", all_or_none=True)
+        ):
             return False
         self.ledger.record_settlement(view.ticker, result_yes)
-        mid_prob = min(0.995, max(0.005, ((view.yes_bid or 0) + (view.yes_ask or 0)) / 200.0))
+        mid_prob = min(
+            0.995, max(0.005, ((view.yes_bid or 0) + (view.yes_ask or 0)) / 200.0)
+        )
         self.debias_samples.append((mid_prob, 1 if result_yes else 0))
         return True
 
@@ -366,16 +419,25 @@ class RetroEvidenceEngine:
 
     # -- verticals ----------------------------------------------------------
 
-    def replay_crypto(self, lookback_days: float = 10.0, max_per_series: int = 250,
-                      series_list: list[str] | None = None) -> dict[str, Any]:
-        stats = {"written": 0, "skipped_no_quote": 0, "skipped_no_model": 0,
-                 "skipped_already_settled": 0, "listed": 0}
+    def replay_crypto(
+        self,
+        lookback_days: float = 10.0,
+        max_per_series: int = 250,
+        series_list: list[str] | None = None,
+    ) -> dict[str, Any]:
+        stats = {
+            "written": 0,
+            "skipped_no_quote": 0,
+            "skipped_no_model": 0,
+            "skipped_already_settled": 0,
+            "listed": 0,
+        }
         already = self._already_settled()
         window_start = int(self.now.timestamp() - (lookback_days + 9) * 86400)
         window_end = int(self.now.timestamp())
         price_series: dict[str, HourlyPriceSeries] = {}
 
-        for series in (series_list or CRYPTO_SERIES):
+        for series in series_list or CRYPTO_SERIES:
             for raw in self.settled_markets(series, lookback_days, max_per_series):
                 stats["listed"] += 1
                 ticker = str(raw.get("ticker", ""))
@@ -391,8 +453,9 @@ class RetroEvidenceEngine:
                 asset = parsed["asset"]
                 if asset not in price_series:
                     product = _PRODUCTS[asset]
-                    price_series[asset] = HourlyPriceSeries(product, window_start, window_end,
-                                                            fetch=self.fetch_coinbase)
+                    price_series[asset] = HourlyPriceSeries(
+                        product, window_start, window_end, fetch=self.fetch_coinbase
+                    )
                 spot_vol = price_series[asset].spot_and_vol_at(decision_ts)
                 if spot_vol is None:
                     stats["skipped_no_model"] += 1
@@ -405,9 +468,13 @@ class RetroEvidenceEngine:
                     stats["skipped_no_quote"] += 1
                     continue
                 hours = (close_ts - decision_ts) / 3600.0
-                signal = _RetroCryptoSignal(spot_vol[0], spot_vol[1], hours).generate(view)
+                signal = _RetroCryptoSignal(spot_vol[0], spot_vol[1], hours).generate(
+                    view
+                )
                 if signal is None:
-                    self._collect_debias_only(view, str(raw.get("result")).lower() == "yes")
+                    self._collect_debias_only(
+                        view, str(raw.get("result")).lower() == "yes"
+                    )
                     stats["skipped_no_model"] += 1
                     continue
                 result_yes = str(raw.get("result")).lower() == "yes"
@@ -436,7 +503,7 @@ class RetroEvidenceEngine:
         price_series: dict[str, HourlyPriceSeries] = {}
         frozen_hours = CRYPTO_DECISION_LEAD_S / 3600.0
 
-        for series in (series_list or CRYPTO_SERIES):
+        for series in series_list or CRYPTO_SERIES:
             for raw in self.settled_markets(series, lookback_days, max_per_series):
                 stats["listed"] += 1
                 ticker = str(raw.get("ticker", ""))
@@ -450,7 +517,8 @@ class RetroEvidenceEngine:
                     continue
                 decision_ts = close_ts - CRYPTO_DECISION_LEAD_S
                 decision_iso = datetime.fromtimestamp(
-                    decision_ts, tz=timezone.utc,
+                    decision_ts,
+                    tz=timezone.utc,
                 ).isoformat()
                 exists = self.ledger._conn.execute(  # noqa: SLF001
                     "SELECT 1 FROM signal_history WHERE source='crypto_empirical_regime'"
@@ -463,7 +531,9 @@ class RetroEvidenceEngine:
                 asset = str(parsed["asset"])
                 if asset not in price_series:
                     price_series[asset] = HourlyPriceSeries(
-                        _PRODUCTS[asset], window_start, window_end,
+                        _PRODUCTS[asset],
+                        window_start,
+                        window_end,
                         fetch=self.fetch_coinbase,
                     )
                 closes = price_series[asset].closes_at(decision_ts)
@@ -523,7 +593,7 @@ class RetroEvidenceEngine:
         price_series: dict[str, HourlyPriceSeries] = {}
         dvol_series: dict[str, list[tuple[int, float]]] = {}
 
-        for series in (series_list or CRYPTO_SERIES):
+        for series in series_list or CRYPTO_SERIES:
             for raw in self.settled_markets(series, lookback_days, max_per_series):
                 stats["listed"] += 1
                 ticker = str(raw.get("ticker", ""))
@@ -545,30 +615,40 @@ class RetroEvidenceEngine:
                     continue
                 decision_ts = close_ts - CRYPTO_DECISION_LEAD_S
                 decision_iso = datetime.fromtimestamp(
-                    decision_ts, tz=timezone.utc,
+                    decision_ts,
+                    tz=timezone.utc,
                 ).isoformat()
                 asset = str(parsed["asset"])
                 if asset not in price_series:
                     price_series[asset] = HourlyPriceSeries(
-                        _PRODUCTS[asset], window_start, window_end,
+                        _PRODUCTS[asset],
+                        window_start,
+                        window_end,
                         fetch=self.fetch_coinbase,
                     )
                 if asset not in dvol_series:
                     try:
                         payload = self.fetch_deribit(
-                            asset, window_start * 1000, window_end * 1000,
+                            asset,
+                            window_start * 1000,
+                            window_end * 1000,
                         )
-                        dvol_series[asset] = sorted([
-                            (int(row[0] // 1000), float(row[4]))
-                            for row in ((payload.get("result") or {}).get("data") or [])
-                            if isinstance(row, list) and len(row) >= 5
-                        ])
+                        dvol_series[asset] = sorted(
+                            [
+                                (int(row[0] // 1000), float(row[4]))
+                                for row in (
+                                    (payload.get("result") or {}).get("data") or []
+                                )
+                                if isinstance(row, list) and len(row) >= 5
+                            ]
+                        )
                     except Exception:
                         dvol_series[asset] = []
                 closes = price_series[asset].closes_at(decision_ts)
                 # A one-hour DVOL candle is knowable only after its period.
                 eligible_dvol = [
-                    value for timestamp, value in dvol_series[asset]
+                    value
+                    for timestamp, value in dvol_series[asset]
                     if timestamp + 3600 <= decision_ts
                 ]
                 if len(closes) < 48 or not eligible_dvol:
@@ -626,7 +706,7 @@ class RetroEvidenceEngine:
         frozen_hours = CRYPTO_DECISION_LEAD_S / 3600.0
         price_series: dict[str, HourlyPriceSeries] = {}
 
-        for series in (series_list or CRYPTO_SERIES):
+        for series in series_list or CRYPTO_SERIES:
             for raw in self.settled_markets(series, lookback_days, max_per_series):
                 stats["listed"] += 1
                 ticker = str(raw.get("ticker", ""))
@@ -648,12 +728,15 @@ class RetroEvidenceEngine:
                     continue
                 decision_ts = close_ts - CRYPTO_DECISION_LEAD_S
                 decision_iso = datetime.fromtimestamp(
-                    decision_ts, tz=timezone.utc,
+                    decision_ts,
+                    tz=timezone.utc,
                 ).isoformat()
                 asset = str(parsed["asset"])
                 if asset not in price_series:
                     price_series[asset] = HourlyPriceSeries(
-                        _PRODUCTS[asset], window_start, window_end,
+                        _PRODUCTS[asset],
+                        window_start,
+                        window_end,
                         fetch=self.fetch_coinbase,
                     )
                 closes = price_series[asset].closes_at(decision_ts)
@@ -692,45 +775,21 @@ class RetroEvidenceEngine:
                     stats["skipped_existing_signal"] += 1
         return stats
 
-    def replay_weather(self, lookback_days: float = 30.0, max_per_series: int = 60,
-                       series_list: list[str] | None = None) -> dict[str, Any]:
-        stats = {"written": 0, "skipped_no_quote": 0, "skipped_no_model": 0,
-                 "skipped_already_settled": 0, "listed": 0}
-        already = self._already_settled()
-        fetcher = build_weather_history_fetcher(int(lookback_days) + 2, today=self.now,
-                                                fetch_history=self.fetch_weather_history)
-        weather_signal = OpenMeteoWeatherSignal.from_calibration(fetch_daily_temps=fetcher)
-
-        for series in (series_list or WEATHER_SERIES):
-            for raw in self.settled_markets(series, lookback_days, max_per_series):
-                stats["listed"] += 1
-                ticker = str(raw.get("ticker", ""))
-                if ticker in already:
-                    stats["skipped_already_settled"] += 1
-                    continue
-                parsed = parse_temp_ticker(ticker)
-                if parsed is None:
-                    stats["skipped_no_model"] += 1
-                    continue
-                event_day = datetime.fromisoformat(parsed["date_iso"]).replace(
-                    hour=WEATHER_DECISION_HOUR_UTC, tzinfo=timezone.utc)
-                decision_ts = int(event_day.timestamp())
-                view = self._market_prior_view(raw, series, decision_ts)
-                if self.sleep_s:
-                    time.sleep(self.sleep_s)
-                if view is None:
-                    stats["skipped_no_quote"] += 1
-                    continue
-                signal = weather_signal.generate(view)
-                result_yes = str(raw.get("result")).lower() == "yes"
-                if signal is None:
-                    self._collect_debias_only(view, result_yes)
-                    stats["skipped_no_model"] += 1
-                    continue
-                if self._write_market(view, signal, decision_ts, result_yes):
-                    already.add(ticker)
-                    stats["written"] += 1
-        return stats
+    def replay_weather(
+        self,
+        lookback_days: float = 30.0,
+        max_per_series: int = 60,
+        series_list: list[str] | None = None,
+    ) -> dict[str, Any]:
+        return {
+            "status": "RETIRED_DATA_ONLY",
+            "written": 0,
+            "skipped_no_quote": 0,
+            "skipped_no_model": 0,
+            "skipped_already_settled": 0,
+            "listed": 0,
+            "reason": "weather may supply contextual data but is not a prediction target",
+        }
 
     # -- orchestration -------------------------------------------------------
 
@@ -738,27 +797,40 @@ class RetroEvidenceEngine:
         rows = self.ledger._conn.execute("SELECT market_ticker FROM settlements")  # noqa: SLF001
         return {r[0] for r in rows}
 
-    def run(self, crypto_days: float = 10.0, weather_days: float = 30.0,
-            crypto_max_per_series: int = 250, weather_max_per_series: int = 60,
-            curve_path: Path | None = None) -> dict[str, Any]:
+    def run(
+        self,
+        crypto_days: float = 10.0,
+        weather_days: float = 30.0,
+        crypto_max_per_series: int = 250,
+        weather_max_per_series: int = 60,
+        curve_path: Path | None = None,
+    ) -> dict[str, Any]:
         crypto = self.replay_crypto(crypto_days, crypto_max_per_series)
         crypto_challengers = self.replay_crypto_challengers(
-            crypto_days, crypto_max_per_series,
+            crypto_days,
+            crypto_max_per_series,
         )
         crypto_dvol_challenger = self.replay_crypto_dvol_challenger(
-            crypto_days, crypto_max_per_series,
+            crypto_days,
+            crypto_max_per_series,
         )
         crypto_technical_challenger = self.replay_crypto_technical_challenger(
-            crypto_days, crypto_max_per_series,
+            crypto_days,
+            crypto_max_per_series,
         )
         weather = self.replay_weather(weather_days, weather_max_per_series)
 
-        from autonomy.signals.market_debias import fit_curve, ledger_samples, write_curve
+        from autonomy.signals.market_debias import (
+            LIVE_EVIDENCE_MODE,
+            fit_curve,
+            ledger_samples,
+            write_curve,
+        )
 
-        # Candle-derived samples from this run, plus every settled market the
-        # ledger already holds a contemporaneous market-prior opinion for.
-        combined = list(self.debias_samples) + ledger_samples(self.ledger)
-        curve = fit_curve(combined)
+        # Retro candles remain a research diagnostic; only receipt-bounded
+        # live observations may train the operational debias challenger.
+        verified_live_samples = ledger_samples(self.ledger)
+        curve = fit_curve(verified_live_samples)
         curve_path = write_curve(curve, curve_path)
 
         report = {
@@ -769,27 +841,35 @@ class RetroEvidenceEngine:
             "crypto_technical_challenger": crypto_technical_challenger,
             "weather": weather,
             "written_total": (
-                crypto["written"] + crypto_challengers["written"]
+                crypto["written"]
+                + crypto_challengers["written"]
                 + crypto_dvol_challenger["written"]
-                + crypto_technical_challenger["written"] + weather["written"]
+                + crypto_technical_challenger["written"]
+                + weather["written"]
             ),
-            "debias_samples": len(combined),
-            "debias_samples_from_candles": len(self.debias_samples),
+            "debias_samples": len(verified_live_samples),
+            "debias_samples_from_candles": 0,
+            "debias_retro_candle_samples_quarantined": len(self.debias_samples),
+            "debias_evidence_mode": LIVE_EVIDENCE_MODE,
+            "debias_prediction_authority": False,
             "debias_curve_path": str(curve_path),
-            "flags": {"weather_calibration_overlap": True},
+            "flags": {"weather_prediction_backfill_retired": True},
             "created_at": datetime.now(timezone.utc).isoformat(),
         }
         root = Path(os.environ.get("DUMMY_EVIDENCE_ROOT", "artifacts/dummy")) / "retro"
         root.mkdir(parents=True, exist_ok=True)
         stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S")
         (root / f"RETRO_EVIDENCE_{stamp}.json").write_text(
-            json.dumps(report, indent=2, sort_keys=True), encoding="utf-8")
+            json.dumps(report, indent=2, sort_keys=True), encoding="utf-8"
+        )
         return report
 
 
 def _close_ts(raw: dict[str, Any]) -> int | None:
     try:
-        close = datetime.fromisoformat(str(raw.get("close_time", "")).replace("Z", "+00:00"))
+        close = datetime.fromisoformat(
+            str(raw.get("close_time", "")).replace("Z", "+00:00")
+        )
         return int(close.timestamp())
     except Exception:
         return None

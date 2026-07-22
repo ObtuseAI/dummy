@@ -9,13 +9,21 @@ system.
 """
 from __future__ import annotations
 
+from collections import deque
+from pathlib import Path
 from typing import Callable
 
 import pyqtgraph as pg
 from PySide6 import QtCore, QtGui, QtWidgets
 
 from desktop.dummy_tote import theme
-from desktop.dummy_tote.data import KNOWN_LEAGUES, LLM_BACKENDS, RepoData, Snapshot
+from desktop.dummy_tote.data import (
+    KNOWN_LEAGUES,
+    LLM_BACKENDS,
+    RepoData,
+    Snapshot,
+    league_filter_options,
+)
 
 REFRESH_MS = 4000
 # A cell is text, or (text, colour), or (text, colour, align_right).
@@ -92,11 +100,36 @@ def _to_item(cell: Cell) -> QtWidgets.QTableWidgetItem:
 def _fill(table: QtWidgets.QTableWidget, rows: list[list[Cell]]):
     was_sorting = table.isSortingEnabled()
     table.setSortingEnabled(False)
+    table.clearSpans()
+    if not rows:
+        table.setRowCount(1)
+        table.setItem(0, 0, _cell("No data", theme.CHALK_DIM))
+        if table.columnCount() > 1:
+            table.setSpan(0, 0, 1, table.columnCount())
+        table.setSortingEnabled(was_sorting)
+        return
     table.setRowCount(len(rows))
     for r, row in enumerate(rows):
         for c, cell in enumerate(row):
             table.setItem(r, c, _to_item(cell))
     table.setSortingEnabled(was_sorting)
+
+
+class SnapshotWorker(QtCore.QThread):
+    """Read and parse artifacts away from the GUI thread."""
+
+    ready = QtCore.Signal(object)
+    failed = QtCore.Signal(str)
+
+    def __init__(self, data: RepoData, parent=None):
+        super().__init__(parent)
+        self._data = data
+
+    def run(self):
+        try:
+            self.ready.emit(self._data.snapshot())
+        except Exception as exc:  # UI must survive unexpected artifact-reader failures
+            self.failed.emit(str(exc))
 
 
 def _pct(value) -> str:
@@ -220,7 +253,7 @@ class OverviewView(QtWidgets.QWidget):
             f'font-family:"{theme.DISPLAY_FONT}";font-size:34px;'
             f'color:{theme.AMBER if alive else theme.CLAY};')
         conn = "online" if snap.connectivity_ok() else "OFFLINE"
-        self.s_status.setText(f"{snap.mode()} · {conn} · cycle {snap.last_cycle()[11:19] or '—'}")
+        self.s_status.setText(f"{snap.mode()} · {conn} · cycle {snap.last_cycle()[11:19] or '—'} UTC")
 
         risk = snap.risk or {}
         bankroll = risk.get("bankroll_cents")
@@ -238,10 +271,12 @@ class OverviewView(QtWidgets.QWidget):
         picks = snap.picks()[:12]
         self.plot.clear()
         if picks:
-            edges = [abs(p.get("edge") or 0) * 100 for p in picks][::-1]
+            edges = [(p.get("edge") or 0) * 100 for p in picks][::-1]
             ys = list(range(len(edges)))
             colors = [_edge_color(p.get("edge")) for p in picks][::-1]
-            bars = pg.BarGraphItem(x0=0, y=ys, height=0.6, width=edges,
+            bars = pg.BarGraphItem(x0=[min(0, edge) for edge in edges],
+                                   x1=[max(0, edge) for edge in edges],
+                                   y=ys, height=0.6,
                                    brushes=[pg.mkBrush(c) for c in colors])
             self.plot.addItem(bars)
             self.plot.getAxis("left").setTicks(
@@ -266,6 +301,7 @@ class BetBoardView(QtWidgets.QWidget):
         bar = QtWidgets.QHBoxLayout()
         self.filter = QtWidgets.QComboBox()
         self.filter.addItem("all leagues")
+        self.filter.addItems(KNOWN_LEAGUES)
         self.filter.currentTextChanged.connect(lambda _: self._render())
         bar.addWidget(_display("BET BOARD", 20, theme.CHALK))
         bar.addStretch(1)
@@ -276,6 +312,11 @@ class BetBoardView(QtWidgets.QWidget):
         bar.addWidget(QtWidgets.QLabel("filter:"))
         bar.addWidget(self.filter)
         box.addLayout(bar)
+        self.empty_state = QtWidgets.QLabel("")
+        self.empty_state.setObjectName("Muted")
+        self.empty_state.setWordWrap(True)
+        self.empty_state.hide()
+        box.addWidget(self.empty_state)
         self.table = _table(["#", "market (as on Kalshi)", "league", "type", "pick", "prob", "market", "edge", "tier"])
         box.addWidget(self.table)
         self._rows: list[dict] = []
@@ -289,8 +330,7 @@ class BetBoardView(QtWidgets.QWidget):
                     rows.extend(x for x in items if isinstance(x, dict))
         rows.sort(key=lambda x: abs(x.get("edge") or 0), reverse=True)
         self._rows = rows
-        self.count.setText(f"{len(rows)} markets priced")
-        leagues = sorted({str(r.get("league", "")) for r in rows if r.get("league")})
+        leagues = league_filter_options(rows)
         current = self.filter.currentText()
         self.filter.blockSignals(True)
         self.filter.clear()
@@ -303,11 +343,27 @@ class BetBoardView(QtWidgets.QWidget):
 
     def _render(self):
         chosen = self.filter.currentText()
-        rows = [r for r in self._rows if chosen == "all leagues" or str(r.get("league")) == chosen]
+        rows = [
+            r for r in self._rows
+            if chosen == "all leagues"
+            or str(r.get("league") or "").lower() == chosen.lower()
+        ]
+        displayed = rows[:200]
+        if chosen != "all leagues" and not rows:
+            self.count.setText(f"{chosen.upper()} · 0 current markets")
+            self.empty_state.setText(
+                f"{chosen.upper()} stays selectable year-round. No markets from "
+                "that league are present in the current board; no event has been "
+                "invented or pulled forward from another date."
+            )
+            self.empty_state.show()
+        else:
+            self.count.setText(f"showing {len(displayed)} of {len(rows)} markets")
+            self.empty_state.hide()
         out = []
-        for r, p in enumerate(rows):
+        for r, p in enumerate(displayed):
             pick = str(p.get("pick") or "—").upper()
-            out.append([str(p.get("rank", r + 1)), _label(p)[:44], str(p.get("league", "")),
+            out.append([str(r + 1), _label(p)[:44], str(p.get("league", "")),
                         str(p.get("bet_type", "")), (pick, _pick_color(pick)),
                         (_pct(p.get("probability")), None, True),
                         (_pct(p.get("market_probability")), None, True),
@@ -328,6 +384,10 @@ class SwitchesView(QtWidgets.QWidget):
         note = QtWidgets.QLabel("Toggles write configs/switches.json — the tasks pick them up on the next fire.")
         note.setObjectName("Muted")
         box.addWidget(note)
+        self.error = QtWidgets.QLabel("")
+        self.error.setStyleSheet(f"color:{theme.CLAY};")
+        self.error.hide()
+        box.addWidget(self.error)
         box.addWidget(self._row("MAIN (kill switch)", "main", "", main=True))
         box.addWidget(self._row("crypto", "crypto", ""))
         box.addWidget(self._row("sports", "sports", ""))
@@ -355,8 +415,16 @@ class SwitchesView(QtWidgets.QWidget):
     def _flip(self, domain: str, key: str, checked: bool):
         try:
             self._data.set_switch(domain, checked, key or None)
-        except Exception:
-            pass
+        except Exception as exc:
+            button = self._buttons[(domain, key)]
+            button.blockSignals(True)
+            button.setChecked(not checked)
+            button.setText("OFF" if checked else "ON")
+            button.blockSignals(False)
+            self.error.setText(f"Switch write failed: {exc}")
+            self.error.show()
+            return
+        self.error.hide()
         self._buttons[(domain, key)].setText("ON" if checked else "OFF")
 
     def update(self, snap: Snapshot):
@@ -495,8 +563,8 @@ def _models_rows(snap: Snapshot):
         ("vNext errors", str(len(v.get("errors") or [])),
          theme.CLAY if (v.get("errors") or []) else theme.TURF),
         ("", "", None),
-        ("odds credits spent today", str(budget.get("spent_today", "—")), None),
-        ("odds daily cap", str(budget.get("daily_credits", "—")), None),
+        ("odds credits remaining (reported)", str(budget.get("remaining_reported", "—")), None),
+        ("odds credits spent this month", str(budget.get("spent_month", "—")), None),
     ]
     return rows
 
@@ -528,7 +596,7 @@ def _health_rows(snap: Snapshot):
         ("venues reachable", f"{len(reach)}/{len(reach) + len(unreach)}", None),
         ("restarted (last heal)", ", ".join(heal.get("restarted") or []) or "none", None),
         ("heartbeat", "alive" if snap.alive() else "stale", theme.TURF if snap.alive() else theme.CLAY),
-        ("last cycle", snap.last_cycle()[11:19] or "—", None),
+        ("last cycle (UTC)", snap.last_cycle()[11:19] or "—", None),
         ("stale artifacts", ", ".join(snap.stale()) or "none",
          theme.CLAY if snap.stale() else theme.TURF),
     ]
@@ -541,6 +609,10 @@ class MainWindow(QtWidgets.QMainWindow):
         super().__init__()
         self.data = RepoData(root)
         self.setWindowTitle("Dummy Tote")
+        icon_path = Path(__file__).resolve().parents[1] / "assets" / "dummy.ico"
+        self._icon = QtGui.QIcon(str(icon_path)) if icon_path.exists() else QtGui.QIcon()
+        if not self._icon.isNull():
+            self.setWindowIcon(self._icon)
         self.resize(1420, 880)
 
         root_w = QtWidgets.QWidget()
@@ -602,8 +674,13 @@ class MainWindow(QtWidgets.QMainWindow):
         th.addStretch(1)
         self.updated = QtWidgets.QLabel("")
         self.updated.setObjectName("Muted")
+        self.refresh_warning = QtWidgets.QLabel("")
+        self.refresh_warning.setStyleSheet(f"color:{theme.CLAY};")
+        self.refresh_warning.hide()
         self.lamp = QtWidgets.QLabel("···")
         self.lamp.setObjectName("LampDead")
+        th.addWidget(self.refresh_warning)
+        th.addSpacing(10)
         th.addWidget(self.updated)
         th.addSpacing(14)
         th.addWidget(self.lamp)
@@ -613,6 +690,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
         self._nav_buttons[0].setChecked(True)
         self._tray()
+        self._refresh_worker: SnapshotWorker | None = None
         self.refresh()
         self.timer = QtCore.QTimer(self)
         self.timer.timeout.connect(self.refresh)
@@ -636,7 +714,7 @@ class MainWindow(QtWidgets.QMainWindow):
             b.setChecked(i == index)
 
     def _tray(self):
-        icon = self.style().standardIcon(QtWidgets.QStyle.SP_DesktopIcon)
+        icon = self._icon if not self._icon.isNull() else self.style().standardIcon(QtWidgets.QStyle.SP_DesktopIcon)
         self.tray = QtWidgets.QSystemTrayIcon(icon, self)
         self.tray.setToolTip("Dummy Tote")
         menu = QtWidgets.QMenu()
@@ -659,6 +737,8 @@ class MainWindow(QtWidgets.QMainWindow):
             self._bet_last_id = bet_notify.read_state()
         except Exception:
             self._bet_last_id = 0
+        self._toast_queue = deque()
+        self._toast_batch_active = False
         self._bet_timer = QtCore.QTimer(self)
         self._bet_timer.timeout.connect(self._check_bet_events)
         self._bet_timer.start(30000)
@@ -692,32 +772,75 @@ class MainWindow(QtWidgets.QMainWindow):
             events, new_last = self._bet_notify.collect_events(self._bet_last_id)
             if new_last <= self._bet_last_id:
                 return
-            for ev in events[:6]:
-                level = (QtWidgets.QSystemTrayIcon.Warning if ev["warning"]
-                         else QtWidgets.QSystemTrayIcon.Information)
-                self.tray.showMessage(ev["title"], ev["body"], level, 6000)
-            extra = len(events) - min(len(events), 6)
-            if extra > 0:
-                self.tray.showMessage("Dummy", f"+{extra} more bet events",
-                                      QtWidgets.QSystemTrayIcon.Information, 5000)
+            self._toast_queue.extend(events)
+            self._drain_toasts()
             self._bet_last_id = new_last
             self._bet_notify.write_state(new_last)
-        except Exception:
-            pass
+        except Exception as exc:
+            self.refresh_warning.setText(f"Notification check failed: {exc}")
+            self.refresh_warning.show()
+
+    def _drain_toasts(self):
+        if self._toast_batch_active or not self._toast_queue:
+            return
+        self._toast_batch_active = True
+        for _ in range(min(3, len(self._toast_queue))):
+            ev = self._toast_queue.popleft()
+            level = (QtWidgets.QSystemTrayIcon.Warning if ev["warning"]
+                     else QtWidgets.QSystemTrayIcon.Information)
+            self.tray.showMessage(ev["title"], ev["body"], level, 6000)
+        QtCore.QTimer.singleShot(7000, self._finish_toast_batch)
+
+    def _finish_toast_batch(self):
+        self._toast_batch_active = False
+        self._drain_toasts()
 
     def refresh(self):
-        snap = self.data.snapshot()
+        if self._refresh_worker is not None and self._refresh_worker.isRunning():
+            return
+        worker = SnapshotWorker(self.data, self)
+        worker.ready.connect(self._apply_snapshot)
+        worker.failed.connect(self._refresh_failed)
+        worker.finished.connect(self._refresh_finished)
+        self._refresh_worker = worker
+        worker.start()
+
+    def _apply_snapshot(self, snap: Snapshot):
         alive = snap.alive()
         self.lamp.setText("LIVE" if alive else "STALE")
         self.lamp.setObjectName("LampLive" if alive else "LampDead")
         self.lamp.setStyleSheet(self.styleSheet())
-        import time as _t
-        self.updated.setText("updated " + _t.strftime("%H:%M:%S"))
-        for view in self.views:
+        from datetime import datetime, timezone
+        now = datetime.now().astimezone()
+        utc = datetime.now(timezone.utc)
+        self.updated.setText(f"updated {now:%H:%M:%S} local / {utc:%H:%M:%S} UTC")
+        errors = []
+        for index, view in enumerate(self.views):
             try:
                 view.update(snap)
-            except Exception:
-                pass
+            except Exception as exc:
+                errors.append(f"{index}: {exc}")
+        if errors:
+            self.refresh_warning.setText(f"{len(errors)} view refresh error(s)")
+            self.refresh_warning.setToolTip("\n".join(errors))
+            self.refresh_warning.show()
+        else:
+            self.refresh_warning.hide()
+
+    def _refresh_failed(self, message: str):
+        self.refresh_warning.setText(f"Artifact refresh failed: {message}")
+        self.refresh_warning.show()
+
+    def _refresh_finished(self):
+        worker = self._refresh_worker
+        self._refresh_worker = None
+        if worker is not None:
+            worker.deleteLater()
+
+    def closeEvent(self, event):
+        if self._refresh_worker is not None and self._refresh_worker.isRunning():
+            self._refresh_worker.wait(2000)
+        super().closeEvent(event)
 
 
 def run(root: str | None = None) -> int:

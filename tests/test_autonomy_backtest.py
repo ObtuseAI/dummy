@@ -82,3 +82,36 @@ def test_run_backtest_reports_realized_pnl(tmp_path):
         assert report["unverified_settlement_outcomes"] == 0
     finally:
         ledger.close()
+
+
+def test_retro_only_success_is_reported_but_cannot_change_live_weights_or_readiness(tmp_path):
+    from autonomy.canary import evaluate_canary_readiness
+
+    ledger = AutonomyLedger(db_path=tmp_path / "l.db")
+    try:
+        for i in range(25):
+            ticker = f"RETRO-{i}"
+            result = i % 2 == 0
+            ledger.record_signal(_signal("market_prior", ticker, 0.5), mode="retro")
+            ledger.record_signal(
+                _signal("sharp", ticker, 0.9 if result else 0.1), mode="retro"
+            )
+            ledger.record_settlement(ticker, result)
+        report = run_backtest(ledger, bootstrap_weights=True)
+        assert report["sources"] == {}
+        assert report["derived_weights"] == {}
+        assert report["weights_written"] is False
+        assert ledger.get_weight("sharp") == 1.0
+        assert report["retro_source_evidence"]["status"] == "reported"
+        assert report["retro_source_evidence"]["sources"]["sharp"]["n"] == 25
+        assert report["retro_source_evidence"]["counts_toward_live_weights"] is False
+        assert report["retro_source_evidence"]["counts_toward_readiness"] is False
+        readiness = evaluate_canary_readiness(
+            ledger, min_settled=0, min_policy_settled=0, min_canary_graded=0,
+            backtest_report=report,
+        )
+        assert readiness.ready is False
+        assert "sharp" not in readiness.evidence["market_beating_sources"]
+        assert any("no source beats" in blocker for blocker in readiness.blockers)
+    finally:
+        ledger.close()

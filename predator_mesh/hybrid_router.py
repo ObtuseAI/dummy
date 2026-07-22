@@ -77,19 +77,30 @@ class MeshHybridRouter:
             )
 
         sanitized = self.prompt_firewall.sanitize(prompt)
+        forecast_prompt = (
+            sanitized
+            + "\nReturn STRICT JSON with keys dummy_probability (0..1), "
+            "confidence_score (0..1), reasoning (non-empty string), and optional "
+            "uncertainty_band [low, high]."
+        )
+        critique_prompt = (
+            sanitized
+            + "\nAct as an independent strategy critic. Return STRICT JSON with "
+            "keys verdict (proceed/warn/block) and reasoning (non-empty string)."
+        )
 
         try:
             fast_env, critique_env = await asyncio.wait_for(
                 asyncio.gather(
                     self.router.call(
                         ModelTask.FORECAST_OPINION,
-                        sanitized,
+                        forecast_prompt,
                         context=context,
                         max_tokens=max_tokens,
                     ),
                     self.router.call(
                         ModelTask.STRATEGY_CRITIQUE,
-                        sanitized,
+                        critique_prompt,
                         context=context,
                         max_tokens=max_tokens,
                     ),
@@ -113,6 +124,34 @@ class MeshHybridRouter:
         fast_reason: str | None = None
         critique_reason: str | None = None
         for label, env in (("fast", fast_env), ("critique", critique_env)):
+            expected_task = (
+                ModelTask.FORECAST_OPINION
+                if label == "fast"
+                else ModelTask.STRATEGY_CRITIQUE
+            )
+            decision = getattr(env, "decision", None)
+            config = getattr(self.router, "config", None)
+            expected_provider = (
+                config.default_provider.get(expected_task.value)
+                if config is not None
+                else None
+            )
+            if (
+                getattr(env, "task", None) != expected_task
+                or decision is None
+                or getattr(decision, "task", None) != expected_task
+                or getattr(decision, "fallback_reason", None)
+                or getattr(decision, "provider_name", None) in {"mock", "none"}
+                or (
+                    expected_provider is not None
+                    and getattr(decision, "provider_name", None) != expected_provider
+                )
+            ):
+                return HybridModelResult(
+                    degraded=True,
+                    fallback=f"route_contract_invalid:{label}",
+                    prompt_sanitized=sanitized,
+                )
             if env.blocked_by:
                 reason = env.blocked_by
                 blocked.append({"envelope": label, "category": reason})

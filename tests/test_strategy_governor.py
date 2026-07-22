@@ -96,6 +96,37 @@ def test_stale_data_blocks():
     assert "stale_data" in out.blocked_by
 
 
+def test_missing_quality_is_unknown_not_measured_bad():
+    opinion = _base_opinion()
+    opinion.calibration_notes = []
+    out = StrategyGovernor().evaluate(opinion)
+    assert out.decision == GovernorDecision.REQUIRE_MORE_EVIDENCE
+    assert out.blocked_by == ["missing_quality_evidence"]
+
+
+def test_equity_target_is_quarantined_before_other_governor_evidence():
+    opinion = _base_opinion(
+        market_ticker="KXTSLA-26JUL22-B350",
+        contract_ticker="KXTSLA-26JUL22-B350",
+    )
+    opinion.calibration_notes = []
+
+    out = StrategyGovernor().evaluate(opinion)
+
+    assert out.decision == GovernorDecision.NO_TRADE
+    assert out.blocked_by == ["prediction_target_quarantine"]
+
+
+def test_structured_equity_category_is_quarantined_for_opaque_ticker():
+    out = StrategyGovernor().evaluate(
+        _base_opinion(),
+        market_category="Equities",
+    )
+
+    assert out.decision == GovernorDecision.NO_TRADE
+    assert out.blocked_by == ["prediction_target_quarantine"]
+
+
 def test_missing_proof_requires_more_evidence():
     gov = StrategyGovernor()
     opinion = _base_opinion()

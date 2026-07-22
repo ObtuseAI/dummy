@@ -20,6 +20,7 @@ class SignalNormalizationLane(BaseLane):
     """Convert data source candidates into normalized signals."""
 
     name = "signal_normalization"
+    dependencies = ("recursive_inflow",)
     priority = MeshPriority(level=LanePriority.HIGH_VALUE_SIGNAL)
     timeout = MeshTimeout(per_lane_timeout_s=8.0)
 

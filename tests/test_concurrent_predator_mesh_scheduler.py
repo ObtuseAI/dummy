@@ -119,7 +119,39 @@ async def test_budget_tracks_provider_and_kalshi_calls() -> None:
 
     run = await scheduler.run_cycle(lanes, budget, cycle_timeout=10.0)
 
-    assert run.budget_used.provider_call_count > 0
+    # Default lanes have no real forecast input, so the forecast lane abstains
+    # before spending provider budget.
+    assert run.budget_used.provider_call_count == 0
     assert run.budget_used.kalshi_call_count > 0
     assert run.budget_used.provider_call_count <= budget.max_provider_calls
     assert run.budget_used.kalshi_call_count <= budget.max_kalshi_calls
+
+
+@pytest.mark.asyncio
+async def test_scheduler_waits_for_declared_dependencies() -> None:
+    order: list[str] = []
+
+    class Producer(BaseLane):
+        name = "producer"
+
+        async def execute(self, ctx: MeshContext) -> MeshResult:
+            await asyncio.sleep(0.03)
+            ctx.shared_state["produced"] = True
+            order.append("producer")
+            return self._complete(ctx, {"produced": True})
+
+    class Consumer(BaseLane):
+        name = "consumer"
+        dependencies = ("producer",)
+        priority = MeshPriority(level=LanePriority.REALTIME_MARKET_TERRAIN)
+
+        async def execute(self, ctx: MeshContext) -> MeshResult:
+            assert ctx.shared_state["produced"] is True
+            order.append("consumer")
+            return self._complete(ctx, {"consumed": True})
+
+    run = await MeshScheduler(max_concurrency=2).run_cycle(
+        [Consumer(), Producer()], build_default_budget(), cycle_timeout=2.0
+    )
+    assert order == ["producer", "consumer"]
+    assert all(result.state == LaneState.COMPLETED for result in run.lane_results)

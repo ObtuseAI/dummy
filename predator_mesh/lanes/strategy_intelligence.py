@@ -2,11 +2,9 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
-from decimal import Decimal
 from typing import Any
 
-from core.ontology import Forecast, OrderBook, OrderBookLevel
+from core.ontology import Forecast, OrderBook
 from strategies.critique import StrategyCritiqueEngine
 from strategies.intelligence import StrategyIntelligence
 from strategies.scan import StrategyScanner
@@ -19,46 +17,6 @@ from predator_mesh.models import (
     MeshTimeout,
 )
 
-
-def _synthetic_forecast() -> Forecast:
-    now = datetime.now(timezone.utc)
-    return Forecast(
-        market_ticker="MESH-SYNTH",
-        contract_ticker="MESH-SYNTH-YES",
-        event_title="Synthetic mesh event",
-        contract_title="Synthetic yes contract",
-        market_implied_probability=Decimal("0.5000"),
-        dummy_probability=Decimal("0.5200"),
-        probability_delta=Decimal("0.0200"),
-        confidence_score=Decimal("0.65"),
-        uncertainty_band=(Decimal("0.45"), Decimal("0.60")),
-        expected_edge=Decimal("0.0010"),
-        edge_after_fees=Decimal("0.0005"),
-        freshness_score=Decimal("0.80"),
-        liquidity_score=Decimal("0.70"),
-        spread_score=Decimal("0.75"),
-        orderbook_depth_score=Decimal("0.60"),
-        settlement_risk_score=Decimal("0.20"),
-        source_summary="mesh_synthetic",
-        model_summary="strategy_intelligence",
-        calibration_notes="",
-        timestamp=now,
-        expiration=now,
-        strategy_references=[],
-        proof_reference="mesh_forecast_synthetic",
-    )
-
-
-def _synthetic_orderbook() -> OrderBook:
-    return OrderBook(
-        market_ticker="MESH-SYNTH",
-        contract_ticker="MESH-SYNTH-YES",
-        bids=[OrderBookLevel(price=49, size=100)],
-        asks=[OrderBookLevel(price=51, size=100)],
-        timestamp=datetime.now(timezone.utc),
-    )
-
-
 class StrategyIntelligenceLane(BaseLane):
     """Invoke strategy families through the existing StrategyIntelligence engine.
 
@@ -68,6 +26,7 @@ class StrategyIntelligenceLane(BaseLane):
     """
 
     name = "strategy_intelligence"
+    dependencies = ("forecast_update",)
     priority = MeshPriority(level=LanePriority.STRATEGY_REVIEW)
     timeout = MeshTimeout(per_lane_timeout_s=12.0)
 
@@ -85,10 +44,37 @@ class StrategyIntelligenceLane(BaseLane):
         self.orderbook = orderbook
 
     async def execute(self, ctx: MeshContext) -> MeshResult:
-        forecast = self.forecast or _synthetic_forecast()
-        orderbook = self.orderbook or _synthetic_orderbook()
+        forecast = self.forecast or ctx.shared_state.get("base_forecast")
+        orderbook = self.orderbook or ctx.shared_state.get("orderbook")
+        has_real_inputs = (
+            forecast is not None
+            and orderbook is not None
+            and not forecast.market_ticker.upper().startswith("MESH-SYNTH")
+            and not forecast.contract_ticker.upper().startswith("MESH-SYNTH")
+            and not orderbook.market_ticker.upper().startswith("MESH-SYNTH")
+            and not orderbook.contract_ticker.upper().startswith("MESH-SYNTH")
+        )
+        if not has_real_inputs:
+            if ctx.proof_ledger is not None:
+                ctx.proof_ledger.record(
+                    event="strategy_abstained",
+                    lane=self.name,
+                    reason="no_real_strategy_input",
+                )
+                ctx.proof_ledger.record(
+                    event="secret_check_status",
+                    lane=self.name,
+                    status="not_performed",
+                )
+            ctx.shared_state["strategy_intelligence_results"] = []
+            return self._complete(
+                ctx,
+                {"status": "abstained", "reason": "no_real_strategy_input", "strategies": []},
+                verdict="no_real_strategy_input",
+            )
 
         try:
+            assert forecast is not None and orderbook is not None
             results = await self.intelligence.evaluate(forecast, orderbook)
         except Exception as exc:
             return self._fail(ctx, f"strategy intelligence failed: {exc}")
@@ -110,17 +96,10 @@ class StrategyIntelligenceLane(BaseLane):
                         result.critique.verdict if result.critique else None
                     ),
                 )
-            if not results:
-                ctx.proof_ledger.record(
-                    event="strategy_evaluated",
-                    lane=self.name,
-                    strategy_count=0,
-                )
             ctx.proof_ledger.record(
-                event="no_secret_check",
+                event="secret_check_status",
                 lane=self.name,
-                passed=True,
-                checked="strategy_results",
+                status="not_performed",
             )
         for result in results:
             payload.append(
@@ -141,4 +120,16 @@ class StrategyIntelligenceLane(BaseLane):
             )
 
         ctx.shared_state["strategy_intelligence_results"] = results
+        if not results:
+            if ctx.proof_ledger is not None:
+                ctx.proof_ledger.record(
+                    event="strategy_abstained",
+                    lane=self.name,
+                    reason="no_strategy_results",
+                )
+            return self._complete(
+                ctx,
+                {"status": "abstained", "reason": "no_strategy_results", "strategies": []},
+                verdict="no_strategy_results",
+            )
         return self._complete(ctx, {"strategies": payload}, verdict="strategies_evaluated")

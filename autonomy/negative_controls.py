@@ -31,10 +31,13 @@ Controls (all computed per source over settled, market-benchmarked rows):
     pseudo-uniform draw. A random forecaster must not beat the market;
     if it does, the benchmark itself is broken. Expectation: CI upper <= 0
     or spans 0.
-  * placebo_prior    — rows re-graded against a flat 0.5 "market". A large
-    edge INFLATION versus the real-prior edge means the measured edge
-    depends on the prior being weak/fabricated rather than the forecast
-    being strong (the fabricated-mid signature).
+  * placebo_prior    — rows re-graded against a flat 0.5 "market". This is a
+    diagnostic baseline, not a contamination test: a useful model should
+    normally beat a flat coin by much more than it beats an already-strong
+    market. The falsification question is instead whether the flat coin
+    significantly BEATS the recorded market on the same contested rows. If it
+    does, the benchmark is weak/fabricated and any claimed edge against it is
+    unsafe to trust.
   * best_day_removal — the top decile of days by contributed edge removed.
     Reported as the retained fraction; a knife-edge source retains little.
   * best_cluster_removal — the top 5 event clusters removed, same idea.
@@ -53,16 +56,12 @@ from typing import Any, Iterable
 
 REPORT_PATH = Path("runtime/autonomy/negative_control_report.json")
 
-MIN_CONTESTED_ROWS = 100      # below this the controls are underpowered
+MIN_CONTESTED_ROWS = 100      # repeated emissions alone do not establish power
+MIN_CONTESTED_CLUSTERS = 30   # inference unit: independent event clusters
 BOOTSTRAP_RESAMPLES = 500
 CONTESTED_DISAGREEMENT = 0.05
 SEED = 20260717               # deterministic battery; reruns reproduce
 
-# Placebo-prior inflation beyond this ratio marks prior-dependent "edge" —
-# but only when the real edge is MATERIAL; a near-zero real edge makes the
-# ratio explode meaninglessly for any calibrated extreme-heavy source.
-PLACEBO_INFLATION_RATIO = 3.0
-MATERIAL_EDGE = 0.01
 # An honest market's average contested price tracks realized prevalence;
 # beyond this gap (while claiming positive edge) the benchmark is suspect.
 MAX_BENCHMARK_PREVALENCE_GAP = 0.15
@@ -152,6 +151,14 @@ def run_battery_for_source(source: str, rows: Iterable[Any]) -> dict[str, Any]:
     if real is None or len(data) < MIN_CONTESTED_ROWS:
         result["status"] = "insufficient_rows"
         return result
+    if int(real.get("clusters") or 0) < MIN_CONTESTED_CLUSTERS:
+        # A hundred repeated ladder/prop emissions can still represent one
+        # independent event. Bootstrapping one or two clusters produces a
+        # degenerate interval and must never be described as a powered
+        # falsification result.
+        result["status"] = "insufficient_clusters"
+        result["minimum_contested_clusters"] = MIN_CONTESTED_CLUSTERS
+        return result
 
     rng = random.Random(SEED)
 
@@ -199,19 +206,31 @@ def run_battery_for_source(source: str, rows: Iterable[Any]) -> dict[str, Any]:
     if ci and ci["lower"] > 0:
         result["flags"].append("random_forecaster_beats_market")
 
-    # 4. Placebo prior: grade against a flat coin instead of the real prior.
-    # Material-edge gate: the inflation ratio is only meaningful when the
-    # claimed real edge is itself material; otherwise any calibrated
-    # extreme-heavy source trivially crushes a coin.
+    # 4. Placebo prior: grade the source against a flat coin instead of the
+    # real prior. This is diagnostic only. A calibrated source can quite
+    # legitimately beat a flat coin by 10-20pp of Brier while improving only
+    # a few tenths of a point over an efficient market; that is incremental
+    # skill, not contamination.
     placebo = [dict(row, market_probability=0.5) for row in data]
     ci = _cluster_bootstrap_ci(_contested_edges(placebo))
     result["controls"]["placebo_prior"] = ci
-    if (
-        ci and real["mean"] >= MATERIAL_EDGE
-        and ci["mean"] > PLACEBO_INFLATION_RATIO * real["mean"]
-        and ci["lower"] > 0
-    ):
-        result["flags"].append("edge_inflates_against_placebo_prior")
+
+    # Direct benchmark falsification: positive values mean the RECORDED
+    # market has larger Brier error than the flat 0.5 baseline. Cluster the
+    # comparison exactly as every other edge statistic so repeated emissions
+    # for one event cannot manufacture significance. A strictly-positive
+    # lower bound is a real measurement-integrity alarm.
+    flat_vs_recorded = _cluster_bootstrap_ci([
+        (
+            str(row["event_cluster"]),
+            _brier(float(row["market_probability"]), int(row["result_yes"]))
+            - _brier(0.5, int(row["result_yes"])),
+        )
+        for row in contested_rows
+    ])
+    result["controls"]["flat_prior_vs_recorded_market"] = flat_vs_recorded
+    if flat_vs_recorded and flat_vs_recorded["lower"] > 0:
+        result["flags"].append("flat_prior_beats_recorded_market")
 
     # 5. Best-day removal: drop the top decile of days by contributed edge.
     by_day: dict[str, float] = {}
@@ -248,11 +267,18 @@ def run_battery(rows_by_source: dict[str, list[Any]]) -> dict[str, Any]:
         for source, rows in sorted(rows_by_source.items())
     }
     flagged = sorted(s for s, r in sources.items() if r.get("flags"))
+    powered_count = sum(
+        result.get("status") in {"clean", "flagged"}
+        for result in sources.values()
+    )
     return {
         "report_name": "NEGATIVE_CONTROL_REPORT",
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "seed": SEED,
         "sources": sources,
+        "screened_source_count": len(sources),
+        "powered_source_count": powered_count,
+        "insufficient_source_count": len(sources) - powered_count,
         "flagged_sources": flagged,
         "status": "FLAGGED" if flagged else "CLEAN",
     }

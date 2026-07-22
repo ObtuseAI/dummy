@@ -19,7 +19,9 @@ VERSION = _kalshi_version()
 
 
 def load_private_key():
-    pem = os.environ.get("KALSHI_API_PRIVATE_KEY_PEM", "")
+    pem = os.environ.get("KALSHI_API_PRIVATE_KEY_PEM", "") or os.environ.get(
+        "KALSHI_API_PRIVATE_KEY", ""
+    )
     if not pem:
         pem_path = os.environ.get("KALSHI_API_PRIVATE_KEY_PEM_PATH", "")
         if pem_path and Path(pem_path).exists():

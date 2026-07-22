@@ -103,7 +103,7 @@ async def test_smoke_runner_has_total_timeout(tmp_path, monkeypatch):
     monkeypatch.setattr(smoke_module, "SMOKE_TOTAL_TIMEOUT", 1)
     monkeypatch.setattr(smoke_module, "SMOKE_CALL_TIMEOUT", 60)
 
-    runner = LiveModelSmoke(artifacts_dir=tmp_path)
+    runner = LiveModelSmoke(artifacts_dir=tmp_path, allow_live=True)
     slow = _SlowProvider(ProviderConfig(api_base="", api_key_env="", model_name="slow"))
     monkeypatch.setattr(runner, "_build_provider", lambda name: slow)
 

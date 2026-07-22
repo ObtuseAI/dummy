@@ -42,6 +42,15 @@ async def test_v1_engine_still_works():
     assert "proof_reference" in result
 
 
+def test_v1_agreement_uses_structured_probability_not_prose_similarity():
+    engine = HybridDisagreementEngine()
+    assert engine._agreement(
+        '{"dummy_probability": 0.60, "reasoning": "completely different words"}',
+        '{"dummy_probability": 0.55, "reasoning": "unrelated prose"}',
+    ) == Decimal("0.9500")
+    assert engine._agreement("unstructured prose", "unstructured prose") == Decimal("0.5")
+
+
 @pytest.mark.asyncio
 async def test_v2_review_returns_required_fields():
     engine = HybridDisagreementEngineV2()

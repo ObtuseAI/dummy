@@ -15,9 +15,11 @@ from __future__ import annotations
 
 import json
 import os
+from datetime import datetime, timezone
 from typing import Any
 
 from autonomy.ledger import AutonomyLedger
+from autonomy.target_policy import is_prediction_quarantined_target
 
 # Multiplicative-weights learning rate. Small: one lucky settlement should
 # not crown a source; a season of them should.
@@ -215,9 +217,38 @@ class Learner:
     # Loop 1: calibration -> trust weights
     # ------------------------------------------------------------------
 
+    def decay_dormant_weights(
+        self,
+        now: datetime | None = None,
+        starvation_days: float = 30.0,
+        decay_per_period: float = 0.10,
+    ) -> dict[str, float]:
+        """Move long-dormant learned weights toward the neutral prior."""
+        rows = getattr(self.ledger, "trust_rows", lambda: [])()
+        now = now or datetime.now(timezone.utc)
+        updated: dict[str, float] = {}
+        for row in rows:
+            try:
+                observed = datetime.fromisoformat(str(row["updated_at"]).replace("Z", "+00:00"))
+                age_days = max(0.0, (now - observed).total_seconds() / 86400.0)
+            except Exception:
+                continue
+            if age_days < starvation_days:
+                continue
+            periods = age_days / starvation_days
+            fraction = min(0.50, periods * decay_per_period)
+            old = float(row["weight"])
+            new = old + (1.0 - old) * fraction
+            if abs(new - old) <= 1e-12:
+                continue
+            self.ledger.update_weight(str(row["source"]), new)
+            updated[str(row["source"])] = new
+        return updated
+
     def apply_settlement(
         self, market_ticker: str, result_yes: bool,
         signals: list[dict[str, Any]] | None = None,
+        cluster_weight: float = 1.0,
     ) -> dict[str, float]:
         """Score every source that opined on this market; update weights.
 
@@ -228,11 +259,23 @@ class Learner:
         so a backlog of settlements can share one batched fetch instead of one
         query per market.
         """
+        if is_prediction_quarantined_target(market_ticker):
+            return {}
         if signals is None:
             calibration_signals = getattr(self.ledger, "calibration_signals_for_market", None)
             signals = (calibration_signals(market_ticker) if callable(calibration_signals)
                        else self.ledger.signals_for_market(market_ticker))
         if not signals:
+            return {}
+        if any(
+            is_prediction_quarantined_target(
+                market_ticker,
+                category=(signal.get("features") or {}).get("market_category")
+                or (signal.get("features") or {}).get("category"),
+            )
+            for signal in signals
+            if isinstance(signal, dict)
+        ):
             return {}
         from autonomy.scanner import classify_vertical
         from autonomy.taxonomy import scope_weight_key
@@ -267,7 +310,10 @@ class Learner:
                 continue
             score = brier(probability, result_yes)
             advantage = baseline - score  # positive = beat the market
-            multiplier = pow(2.718281828, ETA * advantage / 0.25)  # 0.25 = max Brier scale
+            # Brier ranges from 0 to 1. Cluster weighting ensures a batch of
+            # correlated contracts contributes one average update, not N
+            # compounded copies of the same event evidence.
+            multiplier = pow(2.718281828, ETA * advantage * max(0.0, cluster_weight) / 1.0)
             old = self.ledger.get_weight(source, default=1.0)
             new = max(WEIGHT_FLOOR, min(WEIGHT_CEILING, old * multiplier))
             self.ledger.update_weight(source, new, brier=score)
@@ -311,7 +357,20 @@ class Learner:
             + ' concrete, testable lessons. Return STRICT JSON: {"lessons": ["...", ...]}'
         )
         try:
-            envelope = asyncio.run(self._router.call(ModelTask.MARKET_THESIS, prompt, context={}))
+            envelope = asyncio.run(
+                self._router.call(ModelTask.REFLECTION_LESSONS, prompt, context={})
+            )
+            decision = envelope.decision
+            expected_provider = self._router.config.default_provider.get(
+                ModelTask.REFLECTION_LESSONS.value
+            )
+            if (
+                envelope.blocked_by
+                or decision.fallback_reason
+                or decision.provider_name != expected_provider
+                or decision.provider_name in {"mock", "none"}
+            ):
+                return []
             lessons = json.loads(envelope.content).get("lessons", [])
         except Exception:
             return []
