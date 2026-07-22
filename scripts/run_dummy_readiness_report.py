@@ -258,6 +258,27 @@ def main() -> int:
     if where_we_bleed:
         summary["where_we_bleed"] = where_we_bleed
 
+    # Wave-58: strict point-in-time eligibility per league, so the exact
+    # moment enough stamped seasons exist for the sealed temporal holdout is
+    # observable instead of discovered by a blocked run. Read-only; never
+    # claims or consumes the holdout.
+    try:
+        from autonomy.sports.history_store import SportsHistoryStore
+        from autonomy.sports_markets import SPORTS_LEAGUES
+
+        store = SportsHistoryStore()
+        eligibility: dict[str, dict] = {}
+        for league in SPORTS_LEAGUES:
+            row = store.evaluation_eligibility(league=league)
+            eligibility[league] = {
+                "eligible": row["eligible"],
+                "final_candidates": row["final_candidates"],
+                "rejection_reasons": row["rejection_reasons"],
+            }
+        summary["holdout_eligibility"] = eligibility
+    except Exception:
+        pass
+
     # Wave-14: the one-line picks readout (fused accuracy is the headline
     # number under the picks-first directive; absent until rows accrue).
     try:

@@ -189,15 +189,29 @@ class SportsHistoryStore:
                    venue=excluded.venue, neutral=excluded.neutral,
                    as_of=excluded.as_of, source=excluded.source,
                    provenance_url=excluded.provenance_url,
-                   result_available_at=COALESCE(
-                       excluded.result_available_at, games.result_available_at
-                   ),
+                   -- Observation always outranks derivation: a row whose
+                   -- availability was witnessed at receipt is never downgraded
+                   -- by a later derived source_reported backfill.
+                   result_available_at=CASE
+                       WHEN games.provenance_quality='observed_at_receipt'
+                            AND excluded.provenance_quality='source_reported'
+                       THEN games.result_available_at
+                       ELSE COALESCE(
+                           excluded.result_available_at, games.result_available_at
+                       )
+                   END,
                    received_at=CASE
+                       WHEN games.provenance_quality='observed_at_receipt'
+                            AND excluded.provenance_quality='source_reported'
+                       THEN games.received_at
                        WHEN excluded.result_available_at IS NOT NULL
                        THEN excluded.received_at
                        ELSE COALESCE(games.received_at, excluded.received_at)
                    END,
                    provenance_quality=CASE
+                       WHEN games.provenance_quality='observed_at_receipt'
+                            AND excluded.provenance_quality='source_reported'
+                       THEN games.provenance_quality
                        WHEN excluded.result_available_at IS NOT NULL
                        THEN excluded.provenance_quality
                        ELSE COALESCE(games.provenance_quality, excluded.provenance_quality)

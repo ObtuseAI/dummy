@@ -574,6 +574,7 @@ class AutonomyLedger:
             return [False] * len(signals)
 
         accepted: list[bool] = []
+        fingerprints, registered_sources = self._forward_candidate_fingerprints()
         for signal, error, is_duplicate in zip(signals, errors, duplicate):
             if error is not None or is_duplicate:
                 self._reject_signal(
@@ -581,6 +582,8 @@ class AutonomyLedger:
                 )
                 accepted.append(False)
                 continue
+            if registered_sources and signal.source in registered_sources:
+                self._stamp_forward_fingerprint(signal, fingerprints)
             features = json.dumps(
                 signal.features, sort_keys=True, separators=(",", ":"), allow_nan=False,
             )
@@ -610,6 +613,59 @@ class AutonomyLedger:
             accepted.append(True)
         self._retry_on_locked(self._conn.commit)
         return accepted
+
+    _FORWARD_REGISTRATIONS_PATH = (
+        Path(__file__).resolve().parents[1]
+        / "runtime" / "autonomy" / "promotion_forward_registrations.json"
+    )
+
+    def _forward_candidate_fingerprints(self) -> tuple[dict[str, str], frozenset[str]]:
+        """Registered scope -> fingerprint, refreshed when the file changes.
+
+        Stamping is provenance annotation only: auto-promotion refuses forward
+        credit unless the signal's fingerprint matches an immutable
+        registration made strictly BEFORE the signal existed, so a stamp can
+        start an evidence clock but can never promote anything by itself. A
+        missing or malformed registrations file means no stamping.
+        """
+        path = self._FORWARD_REGISTRATIONS_PATH
+        try:
+            mtime = path.stat().st_mtime_ns
+        except OSError:
+            return {}, frozenset()
+        cached = getattr(self, "_forward_fp_cache", None)
+        if cached is not None and cached[0] == mtime:
+            return cached[1], cached[2]
+        fingerprints: dict[str, str] = {}
+        try:
+            raw = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return {}, frozenset()
+        entries = raw.get("registrations") if isinstance(raw, dict) else None
+        for entry in entries or []:
+            if not isinstance(entry, dict):
+                continue
+            scope = str(entry.get("scope") or "")
+            fingerprint = str(entry.get("candidate_fingerprint") or "").lower()
+            if len(scope.split("|")) == 4 and len(fingerprint) == 64:
+                fingerprints[scope] = fingerprint
+        sources = frozenset(scope.split("|", 1)[0] for scope in fingerprints)
+        self._forward_fp_cache = (mtime, fingerprints, sources)
+        return fingerprints, sources
+
+    def _stamp_forward_fingerprint(
+        self, signal: Signal, fingerprints: dict[str, str],
+    ) -> None:
+        from autonomy.taxonomy import grading_scope
+
+        if not isinstance(signal.features, dict):
+            return
+        if "promotion_candidate_fingerprint" in signal.features:
+            return
+        scope = grading_scope(signal.source, signal.market_ticker, signal.features)
+        fingerprint = fingerprints.get(scope)
+        if fingerprint:
+            signal.features["promotion_candidate_fingerprint"] = fingerprint
 
     def record_signal(self, signal: Signal, mode: str = "live") -> bool:
         return self.record_signals([signal], mode=mode)[0]

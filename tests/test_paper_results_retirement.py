@@ -308,43 +308,89 @@ def test_production_mispricing_runner_does_not_append_retired_paper_entries():
     assert "history is deliberately never appended here" in runner
 
 
-def test_scheduled_shadow_daemon_is_a_retired_noop(monkeypatch, capsys):
+def test_scheduled_shadow_daemon_runs_cycles_without_authority(monkeypatch, capsys):
+    """Production must continue; authority must not.
+
+    The retirement is an *authority* contract: shadow evidence keeps accruing
+    (the forward proof plan depends on it) while every emitted record
+    discloses that it can never enable or block live trading.
+    """
     from scripts import run_dummy_shadow_daemon as runner
 
     monkeypatch.setattr(runner.sys, "argv", ["run_dummy_shadow_daemon.py"])
+    seen: dict[str, object] = {}
 
-    def forbidden_cycle(*_args, **_kwargs):
-        raise AssertionError("retired shadow daemon must not run a cycle")
+    def fake_cycle(at, mode):
+        seen["mode"] = mode
+        return {"at": at, "status": "CYCLE_OK", "orders_placed": 0}
 
-    monkeypatch.setattr(runner, "run_one_cycle", forbidden_cycle)
+    monkeypatch.setattr(runner, "run_one_cycle", fake_cycle)
 
     assert runner.main() == 0
     output = capsys.readouterr().out
-    assert "RETIRED_NON_AUTHORITATIVE" in output
-    assert '"orders_placed": 0' in output
+    assert seen["mode"] is runner.SessionMode.SHADOW
+    assert '"status": "CYCLE_OK"' in output
+    assert '"paper_results_authority": "RETIRED_NON_AUTHORITATIVE"' in output
+    assert '"execution_authority": false' in output
 
 
-def test_crypto_paper_twin_runner_is_a_retired_noop(monkeypatch, capsys):
+def test_crypto_paper_twin_runner_runs_cycles_without_authority(
+    monkeypatch, capsys, tmp_path
+):
     from scripts import run_dummy_crypto_paper_twin as runner
 
-    monkeypatch.setattr(runner.sys, "argv", ["run_dummy_crypto_paper_twin.py"])
+    monkeypatch.setattr(runner.sys, "argv", [
+        "run_dummy_crypto_paper_twin.py",
+        "--db", str(tmp_path / "twin.db"),
+        "--out-dir", str(tmp_path / "out"),
+        "--lock", str(tmp_path / "twin.lock"),
+    ])
 
-    class ForbiddenLedger:
+    class FakeLedger:
         def __init__(self, *_args, **_kwargs):
-            raise AssertionError("retired paper twin must not open its ledger")
+            pass
 
-    monkeypatch.setattr(runner, "PaperTwinLedger", ForbiddenLedger)
+    class FakeTwin:
+        def __init__(self, *_args, **_kwargs):
+            pass
+
+        def run_cycle(self):
+            return {"status": "CYCLE_OK", "trades_opened": 1}
+
+        def close(self):
+            pass
+
+    monkeypatch.setattr(runner, "PaperTwinLedger", FakeLedger)
+    monkeypatch.setattr(runner, "CryptoPaperTwin", FakeTwin)
+    monkeypatch.setattr(
+        runner, "write_paper_twin_report",
+        lambda report, out_dir: tmp_path / "out" / "report.json",
+    )
+    monkeypatch.setattr(runner, "_summary", lambda report, path: dict(report))
+    monkeypatch.setattr(runner, "_atomic_json", lambda path, row: None)
+    monkeypatch.setattr(runner, "_console_summary", lambda summary: dict(summary))
 
     assert runner.main() == 0
     output = capsys.readouterr().out
-    assert "RETIRED_NON_AUTHORITATIVE" in output
-    assert '"trades_opened": 0' in output
+    assert '"status": "CYCLE_OK"' in output
+    assert '"paper_results_authority": "RETIRED_NON_AUTHORITATIVE"' in output
+    assert '"execution_authority": false' in output
+    assert '"capital_authority": false' in output
 
 
-def test_vnext_shadow_runner_is_a_retired_noop(capsys):
+def test_vnext_shadow_runner_runs_passes_without_authority(monkeypatch, capsys):
+    import autonomy.vnext_runtime as vnext_runtime
     from scripts import run_dummy_vnext_shadow as runner
 
+    monkeypatch.setattr(
+        vnext_runtime,
+        "run_shadow_pass",
+        lambda: {"status": "SHADOW_PASS_OK", "episodes_issued": 2},
+    )
+
     assert runner.main() == 0
     output = capsys.readouterr().out
-    assert "RETIRED_NON_AUTHORITATIVE" in output
-    assert '"episodes_issued": 0' in output
+    assert '"status": "SHADOW_PASS_OK"' in output
+    assert '"episodes_issued": 2' in output
+    assert '"paper_results_authority": "RETIRED_NON_AUTHORITATIVE"' in output
+    assert '"execution_authority": false' in output

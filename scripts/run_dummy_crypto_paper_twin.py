@@ -161,19 +161,6 @@ def main() -> int:
     parser.add_argument("--summary", action="store_true")
     args = parser.parse_args()
 
-    if PAPER_RESULTS_AUTHORITY == "RETIRED_NON_AUTHORITATIVE":
-        print(json.dumps({
-            "status": PAPER_RESULTS_AUTHORITY,
-            "paper_mode": "RETIRED",
-            "trades_opened": 0,
-            "settlements_recorded": 0,
-            "broker_contacted": False,
-            "execution_authority": False,
-            "capital_authority": False,
-            "note": "Paper-twin production is retired; raw history remains audit-only.",
-        }, sort_keys=True))
-        return 0
-
     descriptor = _acquire_lock(
         args.lock,
         stale_seconds=max(60, int(args.lock_stale_seconds)),
@@ -191,9 +178,17 @@ def main() -> int:
         console = _console_summary(summary)
         if args.log is not None:
             _append_rotating_jsonl(args.log, console)
-        print(json.dumps(console if args.summary else {
+        payload = console if args.summary else {
             **report, "report_path": str(report_path.resolve()),
-        }, indent=None if args.summary else 2, sort_keys=True, default=str))
+        }
+        # Authority retirement disclosure: paper-twin evidence keeps accruing
+        # for research, but it can never enable or block live trading.
+        payload["paper_results_authority"] = PAPER_RESULTS_AUTHORITY
+        payload["execution_authority"] = False
+        payload["capital_authority"] = False
+        print(json.dumps(
+            payload, indent=None if args.summary else 2, sort_keys=True, default=str,
+        ))
         return 0 if report.get("status") == "CYCLE_OK" else 1
     finally:
         twin.close()

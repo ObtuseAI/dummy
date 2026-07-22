@@ -16,6 +16,7 @@ import io
 from typing import Any, Iterable
 
 from autonomy.ingest.fetcher import PoliteFetcher
+from autonomy.ingest.provenance import stamp_retro_source_reported
 from autonomy.sports.history_store import SportsHistoryStore
 
 CFBD_GAMES_URL = (
@@ -69,6 +70,7 @@ def ingest_cfbd_games(
         store.record_ingest("cfbfastr", "ncaaf", None, status=f"http_{resp.status}", rows=0, http={})
         return {"rows": 0, "ok": False, "status": resp.status}
     games = parse_cfbd_games(resp.text, url=url, seasons=season_set)
+    stamp_retro_source_reported(games)
     store.upsert_games(games)
     date_range = f"{min(season_set)}-{max(season_set)}" if season_set else "all"
     store.record_ingest("cfbfastr", "ncaaf", date_range, status="ok",

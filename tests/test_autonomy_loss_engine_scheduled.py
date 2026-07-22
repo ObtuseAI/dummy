@@ -35,4 +35,4 @@ def test_installer_runs_the_loss_engine_after_miner_and_grader():
     assert miner_at < grader_at < engine_at
     # The effective ScheduledTask action array includes all three actions in
     # order (Task Scheduler runs array actions sequentially).
-    assert "@($minerAction, $graderAction, $lossEngineAction)" in text
+    assert "@($minerAction, $graderAction, $lossEngineAction, $exitEvaluatorAction)" in text
