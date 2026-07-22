@@ -25,6 +25,11 @@ def main() -> None:
     ledger = AutonomyLedger()
     try:
         report = run_backtest(ledger, bootstrap_weights=False, include_diagnostics=True)
+        # Compute provenance once in the scheduled heavy-report window.  Live
+        # canary preflight consumes this cached value and never scans the full
+        # signal-history union view synchronously.
+        report["evidence_split"] = ledger.evidence_split()
+        report["bootstrapped_weights"] = ledger.all_weights()
         write_latest_backtest_summary(summarize_backtest(report))
         try:
             from autonomy.self_improvement import write_self_improvement_artifacts

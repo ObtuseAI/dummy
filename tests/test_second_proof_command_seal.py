@@ -7,6 +7,7 @@ import json
 
 import pytest
 
+from tests.caps_authority_test_helpers import install_registered_caps_authority
 from core.proof_authority import REQUIRED_CONFIRMATION
 from tools.operator_authority_appliance import operator_full_completion as ofc
 
@@ -64,6 +65,9 @@ def base_context(tmp_path, monkeypatch):
     (tmp_path / "approvals").mkdir()
     (tmp_path / "approvals" / "dummy_controlled_production_pilot_approval.json").write_text(
         json.dumps({"scope": "one_controlled_production_pilot_via_firewall_only"}, sort_keys=True), encoding="utf-8"
+    )
+    install_registered_caps_authority(
+        monkeypatch, tmp_path / "caps.json", patch_operator_appliance=True
     )
     return tmp_path
 

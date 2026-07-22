@@ -56,12 +56,19 @@ def net_rating(off: dict[str, float], deff: dict[str, float]) -> float:
 class LakeFourFactors:
     """Point-in-time Four-Factors strength + matchup probability from the lake."""
 
-    def __init__(self, store: SportsHistoryStore, league: str) -> None:
+    def __init__(
+        self, store: SportsHistoryStore, league: str, *,
+        require_known_availability: bool = False,
+    ) -> None:
         self.store = store
         self.league = league
+        self.require_known_availability = require_known_availability
 
     def strength(self, team: str, as_of: str) -> float | None:
-        sums = self.store.four_factor_sums_before(team, as_of, self.league)
+        sums = self.store.four_factor_sums_before(
+            team, as_of, self.league,
+            require_known_availability=self.require_known_availability,
+        )
         if not sums:
             return None
         off, deff = four_factors(sums["off"]), four_factors(sums["def"])
@@ -70,7 +77,10 @@ class LakeFourFactors:
         return net_rating(off, deff)
 
     def games_seen(self, team: str, as_of: str) -> int:
-        sums = self.store.four_factor_sums_before(team, as_of, self.league)
+        sums = self.store.four_factor_sums_before(
+            team, as_of, self.league,
+            require_known_availability=self.require_known_availability,
+        )
         return int(sums["games"]) if sums else 0
 
     def matchup_prob(

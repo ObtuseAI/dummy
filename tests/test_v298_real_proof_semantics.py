@@ -3,8 +3,13 @@
 from __future__ import annotations
 
 
+from core.live_submit_state import build_caps_authority_binding
 from predator_mesh.v298.reports import full_authority_arm
 from archive.report_scripts.generate_v298_reports import generate_all_v298_reports_for_tests
+from tests.caps_authority_test_helpers import registered_caps_status
+
+
+CAPS_AUTHORITY = registered_caps_status()
 
 
 def _patch_live_mode(monkeypatch):
@@ -25,7 +30,12 @@ def _patch_live_mode(monkeypatch):
         "order_type_policy": "LIMIT_ONLY",
         "max_order_count": 1,
         "explicit_acknowledgement": "I approve real live Kalshi order submission through Dummy LiveBrokerFirewall only",
+        **build_caps_authority_binding(CAPS_AUTHORITY),
     }
+    monkeypatch.setattr(
+        "core.live_submit_state.evaluate_caps_authority",
+        lambda: CAPS_AUTHORITY,
+    )
     monkeypatch.setattr("predator_mesh.v298.reports._load_live_submit_config", lambda: cfg)
     monkeypatch.setattr("predator_mesh.v298.reports._caps_strict", lambda: True)
     monkeypatch.setattr("predator_mesh.v298.reports._descriptor_staged", lambda: True)
@@ -41,9 +51,11 @@ def test_no_secret_values_in_artifact(monkeypatch, tmp_path):
     monkeypatch.setenv("KALSHI_API_KEY_ID", "secret-key-id-123")
     monkeypatch.setenv("KALSHI_API_PRIVATE_KEY_PEM", "-----BEGIN PRIVATE KEY-----\nSECRET\n-----END PRIVATE KEY-----")
 
+    calls = []
+
     async def fake_submit(_self, _req):
-        from core.ontology import LiveOrderResult
-        return LiveOrderResult(success=True, order_id="ord-1", error=None, proof_reference="")
+        calls.append(_req)
+        raise AssertionError("retired v298 runner must not call the compatibility submit adapter")
 
     monkeypatch.setattr("live_firewall.firewall.LiveBrokerFirewall.submit_limit_order_adapter", fake_submit)
 
@@ -54,16 +66,16 @@ def test_no_secret_values_in_artifact(monkeypatch, tmp_path):
     assert "secret-key-id-123" not in text
     assert "-----BEGIN PRIVATE KEY-----" not in text
     assert "SECRET" not in text
+    assert calls == []
 
 
 def test_market_order_never_submitted(monkeypatch, tmp_path):
     _patch_live_mode(monkeypatch)
+    calls = []
 
     async def fake_submit(_self, req):
-        assert req.order_type == "LIMIT"
-        assert req.market_orders_allowed is False
-        from core.ontology import LiveOrderResult
-        return LiveOrderResult(success=True, order_id="ord-1", error=None, proof_reference="")
+        calls.append(req)
+        raise AssertionError("retired v298 runner must not call the compatibility submit adapter")
 
     monkeypatch.setattr("live_firewall.firewall.LiveBrokerFirewall.submit_limit_order_adapter", fake_submit)
 
@@ -71,18 +83,16 @@ def test_market_order_never_submitted(monkeypatch, tmp_path):
         "v298_execute_once_final_proof_runner_v7_controller_report.json"
     ]
     assert d["market_order_submitted"] is False
+    assert calls == []
 
 
-def test_idempotency_key_present_and_stable(monkeypatch, tmp_path):
+def test_idempotency_key_present_in_retired_report_without_submit(monkeypatch, tmp_path):
     _patch_live_mode(monkeypatch)
-
-    captured = {}
+    calls = []
 
     async def fake_submit(_self, req):
-        captured["idem"] = req.idempotency_key
-        captured["client_order_id"] = req.client_order_id
-        from core.ontology import LiveOrderResult
-        return LiveOrderResult(success=True, order_id="ord-1", error=None, proof_reference="")
+        calls.append(req)
+        raise AssertionError("retired v298 runner must not call the compatibility submit adapter")
 
     monkeypatch.setattr("live_firewall.firewall.LiveBrokerFirewall.submit_limit_order_adapter", fake_submit)
 
@@ -90,23 +100,23 @@ def test_idempotency_key_present_and_stable(monkeypatch, tmp_path):
         "v298_execute_once_final_proof_runner_v7_controller_report.json"
     ]
     assert d["idempotency_key"]
-    assert d["idempotency_key"] == captured["idem"]
-    assert captured["client_order_id"] == captured["idem"]
+    assert len(d["idempotency_key"]) == 32
+    assert calls == []
 
 
 def test_max_one_order(monkeypatch, tmp_path):
     _patch_live_mode(monkeypatch)
+    calls = []
 
     async def fake_submit(_self, req):
-        assert req.max_order_count == 1
-        assert req.quantity == 1
-        from core.ontology import LiveOrderResult
-        return LiveOrderResult(success=True, order_id="ord-1", error=None, proof_reference="")
+        calls.append(req)
+        raise AssertionError("retired v298 runner must not call the compatibility submit adapter")
 
     monkeypatch.setattr("live_firewall.firewall.LiveBrokerFirewall.submit_limit_order_adapter", fake_submit)
 
     d = generate_all_v298_reports_for_tests(arm=full_authority_arm())[
         "v298_execute_once_final_proof_runner_v7_controller_report.json"
     ]
-    assert d["real_live_orders_submitted_count"] == 1
+    assert d["real_live_orders_submitted_count"] == 0
     assert d["max_attempts"] == 1
+    assert calls == []

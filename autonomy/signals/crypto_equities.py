@@ -119,7 +119,10 @@ def _volume_surge(volumes: list[float]) -> float | None:
     return recent / baseline if baseline > 0 else None
 
 
-def default_fetch_equity_state() -> dict[str, Any]:
+def default_fetch_equity_state(
+    *,
+    timeout_seconds: float = 15.0,
+) -> dict[str, Any]:
     """Keyless Yahoo chart fetch: %-changes for every factor + ETF volume surge.
 
     A symbol that fails is omitted (lower coverage, never a raise) --
@@ -135,7 +138,7 @@ def default_fetch_equity_state() -> dict[str, Any]:
                 f"https://query1.finance.yahoo.com/v8/finance/chart/{symbol}",
                 params={"range": "3mo", "interval": "1d"},
                 headers={"User-Agent": "Mozilla/5.0"},
-                timeout=15,
+                timeout=max(0.1, float(timeout_seconds)),
             )
             response.raise_for_status()
             result = response.json()["chart"]["result"][0]

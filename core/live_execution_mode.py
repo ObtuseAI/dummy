@@ -9,6 +9,7 @@ from __future__ import annotations
 from enum import Enum
 from typing import Any
 
+from core.caps_authority import CapsAuthorityStatus
 from core.live_submit_state import (
     validate_default_disabled,
     validate_operator_one_proof_enabled,
@@ -35,6 +36,7 @@ def classify_live_execution_mode(
     credentials_ready: bool,
     proof_lock_clear: bool,
     authority_context: dict[str, Any] | None = None,
+    caps_authority_status: CapsAuthorityStatus | dict[str, Any] | None = None,
 ) -> tuple[LiveExecutionMode, str, dict[str, Any]]:
     """Classify the current live execution environment.
 
@@ -58,7 +60,9 @@ def classify_live_execution_mode(
         return LiveExecutionMode.DEFAULT_DISABLED, "DEFAULT_DISABLED", context
 
     enabled = validate_operator_one_proof_enabled(
-        live_submit_config, authority_context=authority_context
+        live_submit_config,
+        authority_context=authority_context,
+        caps_authority_status=caps_authority_status,
     )
     if not enabled.ok:
         return (

@@ -16,6 +16,11 @@ export default function StrategyScan() {
   return (
     <div className="space-y-6">
       <h1 className="text-2xl font-bold">Strategy Scan</h1>
+      {data?.source !== 'live' && (
+        <div className="rounded border-2 border-amber-500 bg-amber-950 p-4 font-bold text-amber-200">
+          DEMO DATA — strategy scan uses a synthetic order book; not live
+        </div>
+      )}
       {data ? (
         <div className="bg-gray-800 rounded p-4">
           <p className="text-sm text-gray-400 mb-4">{data.market_ticker} / {data.contract_ticker}</p>

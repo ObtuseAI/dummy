@@ -17,6 +17,7 @@ from autonomy.promotion import (
     cluster_series,
     scope_readiness,
 )
+from autonomy.taxonomy import grading_scope
 
 NOW_TS = 1_800_000_000.0
 
@@ -367,5 +368,160 @@ def test_reviewed_crypto_candidates_share_correlated_family_precision(tmp_path):
         assert sum(weights[name] for name in (
             "crypto_macro_regime", "crypto_equities_flow",
         )) == pytest.approx(1 / 3, abs=1e-4)
+    finally:
+        ledger.close()
+
+
+def test_promoted_sports_lake_models_share_family_precision_and_uncertainty(tmp_path):
+    """Correlated sports transforms cannot manufacture additive precision."""
+
+    class PromoteAll:
+        @staticmethod
+        def is_promoted_signal(_source, _ticker, _features):
+            return True
+
+    ledger = AutonomyLedger(db_path=tmp_path / "sports-families.db")
+    try:
+        market = MarketView(
+            ticker="KXNFLGAME-25SEP10AAABBB-AAA", title="AAA vs BBB",
+            vertical=Vertical.SPORTS, status="open",
+            close_time="2026-07-22T00:00:00+00:00",
+            yes_bid=58, yes_ask=60, no_bid=40, no_ask=42,
+            volume=100, liquidity=1000, raw={},
+        )
+
+        def opinion(source: str, *, challenger: bool = True) -> Signal:
+            features = {"market_type": "winner"}
+            if challenger:
+                features["challenger_only"] = True
+            return Signal(
+                source=source, market_ticker=market.ticker,
+                probability_yes=0.6, uncertainty=0.1,
+                rationale="sports family-pooling fixture", features=features,
+            )
+
+        prior = opinion("market_prior", challenger=False)
+        ratings = [
+            opinion("sports_glicko"),
+            opinion("sports_pythagorean"),
+            opinion("sports_mov_elo"),
+        ]
+        scoring_boxscore = [
+            opinion("sports_four_factors"),
+            opinion("sports_scoring"),
+        ]
+        epa = opinion("sports_epa")
+        forecaster = EnsembleForecaster(ledger, promotion=PromoteAll())
+
+        fused = forecaster.fuse(
+            market, [prior, *ratings, *scoring_boxscore, epa],
+        )
+        representatives = forecaster.fuse(
+            market, [prior, ratings[0], scoring_boxscore[0], epa],
+        )
+
+        assert fused is not None and representatives is not None
+        weights = fused.sources_used
+        assert weights["market_prior"] == pytest.approx(1 / 4, abs=1e-4)
+        assert sum(weights[item.source] for item in ratings) == pytest.approx(
+            1 / 4, abs=1e-4,
+        )
+        assert sum(weights[item.source] for item in scoring_boxscore) == pytest.approx(
+            1 / 4, abs=1e-4,
+        )
+        assert weights["sports_epa"] == pytest.approx(1 / 4, abs=1e-4)
+        assert fused.uncertainty == pytest.approx(0.05, abs=1e-9)
+        assert fused.uncertainty == pytest.approx(
+            representatives.uncertainty, abs=1e-9,
+        )
+    finally:
+        ledger.close()
+
+
+@pytest.mark.parametrize(
+    "source,ticker,subject,market_type",
+    [
+        pytest.param(
+            "sports_glicko", "KXNFLGAME-25SEP10AAABBB-AAA", "nfl", "winner",
+            id="glicko-winner",
+        ),
+        pytest.param(
+            "sports_pythagorean", "KXNFLGAME-25SEP10AAABBB-AAA", "nfl", "winner",
+            id="pythagorean-winner",
+        ),
+        pytest.param(
+            "sports_mov_elo", "KXNFLGAME-25SEP10AAABBB-AAA", "nfl", "winner",
+            id="mov-elo-winner",
+        ),
+        pytest.param(
+            "sports_four_factors", "KXWNBAGAME-25SEP10AAABBB-AAA", "wnba", "winner",
+            id="four-factors-winner",
+        ),
+        pytest.param(
+            "sports_scoring", "KXNBATOTAL-25JAN15AAABBB-180", "nba", "total",
+            id="scoring-total",
+        ),
+        pytest.param(
+            "sports_epa", "KXNFLGAME-25SEP10AAABBB-AAA", "nfl", "winner",
+            id="epa-winner",
+        ),
+    ],
+)
+def test_sports_challenger_is_logged_gradeable_and_gated_until_exact_promotion(
+    tmp_path, source, ticker, subject, market_type,
+):
+    ledger = AutonomyLedger(db_path=tmp_path / "sports-gating.db")
+    try:
+        market = MarketView(
+            ticker=ticker, title="sports fixture", vertical=Vertical.SPORTS,
+            status="open", close_time="2026-07-22T00:00:00+00:00",
+            yes_bid=48, yes_ask=50, no_bid=50, no_ask=52,
+            volume=100, liquidity=1000, raw={},
+        )
+        prior = Signal(
+            source="market_prior", market_ticker=ticker,
+            probability_yes=0.5, uncertainty=0.1, rationale="prior",
+        )
+        challenger = Signal(
+            source=source, market_ticker=ticker,
+            probability_yes=0.8, uncertainty=0.1, rationale="shadow candidate",
+            features={
+                "challenger_only": True,
+                "promotion_eligible": True,
+                "point_in_time": True,
+                "public_read_only": True,
+                "sport": subject,
+                "market_type": market_type,
+            },
+        )
+
+        expected_scope = f"{source}|{subject}|{market_type}|pre"
+        assert grading_scope(source, ticker, challenger.features) == expected_scope
+        assert ledger.record_signal(challenger, mode="live") is True
+        assert any(
+            row["source"] == source for row in ledger.signals_for_market(ticker)
+        )
+
+        empty = PromotionRegistry(tmp_path / "promotions.json", tmp_path / "demotions.json")
+        excluded = EnsembleForecaster(ledger, promotion=empty).fuse(
+            market, [prior, challenger],
+        )
+        assert excluded is not None
+        assert excluded.probability_yes == pytest.approx(0.5, abs=1e-9)
+        assert source not in excluded.sources_used
+
+        _write(tmp_path / "promotions.json", {"promotions": [{
+            "source": source, "subject": subject,
+            "market_type": market_type, "horizon": "pre",
+        }]})
+        promoted = PromotionRegistry(
+            tmp_path / "promotions.json", tmp_path / "demotions.json",
+        )
+        included = EnsembleForecaster(ledger, promotion=promoted).fuse(
+            market, [prior, challenger],
+        )
+        assert included is not None
+        assert included.probability_yes > 0.5
+        assert source in included.sources_used
     finally:
         ledger.close()

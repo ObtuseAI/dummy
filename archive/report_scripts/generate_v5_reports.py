@@ -189,27 +189,54 @@ async def generate_strategy_scan_report_v2() -> dict:
 
 
 async def generate_firewall_rehearsal_report_v2() -> dict:
+    import inspect
+    from datetime import timedelta
+    from decimal import Decimal
+    from unittest.mock import patch
+
     from core import state as state_module
     from core.config_loader import load_caps
-    from core.ontology import AccountMode
-    from execution.autonomous_path import AutonomousExecutionPath
+    from core.ontology import (
+        AccountMode,
+        Forecast,
+        LiveOrderRequest,
+        OrderBook,
+        OrderBookLevel,
+        Position,
+    )
+    from core.state import DummyState
+    from forecasting.model_influence_attestation import (
+        build_model_influence_attestation,
+    )
     from live_firewall.firewall import LiveBrokerFirewall
     from live_firewall.exposure_tracker import ExposureTracker
+    import live_firewall.firewall as firewall_module
 
-    state_module.STATE.set_mode(AccountMode.AUTONOMOUS_LIVE_CAPPED)
-    os.environ["KALSHI_API_KEY_ID"] = "report_test_key"
-
-    path = AutonomousExecutionPath()
-    result = await path.rehearse_live_cap("MARKET", "MARKET-YES")
-
-    blocked_cases = []
-    if result.get("status") in ("blocked", "no_trade", "rehearsal"):
-        blocked_cases.append({"reason": result.get("reason", result.get("status")), "source": result.get("rejected_by", "live_submit")})
-
-    # Test specific blockers with a fresh path
     caps = load_caps()
     caps.allowed_markets = ["MARKET"]
-    fw = LiveBrokerFirewall(None, ExposureTracker())
+
+    class _BrokerTripwire:
+        def __init__(self) -> None:
+            self.calls: list[str] = []
+
+        def __getattr__(self, name: str):
+            async def unexpected_call(*_args, **_kwargs):
+                self.calls.append(name)
+                raise AssertionError(f"broker method reached during local rehearsal: {name}")
+
+            return unexpected_call
+
+    tripwire = _BrokerTripwire()
+    # A directory can never deserialize as a risk-state document.  Binding the
+    # local rehearsal to it makes the mandatory submit-authority rejection
+    # deterministic without creating a fixture file or consulting live state.
+    fw = LiveBrokerFirewall(
+        tripwire,
+        ExposureTracker(),
+        autonomy_risk_state_path=ROOT,
+    )
+    report_state = DummyState()
+    report_state.set_mode(AccountMode.AUTONOMOUS_LIVE_CAPPED)
 
     block_tests = {
         "oversized": False,
@@ -220,44 +247,48 @@ async def generate_firewall_rehearsal_report_v2() -> dict:
         "emergency_stop": False,
         "stale_data": False,
         "missing_proof": False,
+        "missing_model_influence_attestation": False,
         "cap_violation": False,
     }
+    block_reasons: dict[str, str | None] = {}
 
-    # oversized / cap violation
-    from core.ontology import LiveOrderRequest, OrderBook, OrderBookLevel, Forecast, Position
-    from decimal import Decimal
-    from datetime import datetime, timezone
-    from unittest.mock import patch
-
-    def _req(**overrides):
+    def _req(forecast: Forecast, **overrides):
         defaults = dict(
             proposal_id="p1",
             market_ticker="MARKET",
-            contract_ticker="MARKET-YES",
+            contract_ticker="MARKET",
             side="yes",
             price_cents=50,
             size=1,
             strategy_proof_reference="sp1",
-            forecast_proof_reference="fp1",
+            forecast_proof_reference="forecast_1",
             adapter_name="kalshi_live_firewall_adapter",
         )
         defaults.update(overrides)
-        return LiveOrderRequest(**defaults)
+        attestation = None
+        if defaults["forecast_proof_reference"] == forecast.proof_reference:
+            attestation = build_model_influence_attestation(forecast, defaults)
+        return LiveOrderRequest(
+            **defaults,
+            model_influence_attestation=attestation,
+        )
 
     def _book(stale=False):
         ts = datetime.now(timezone.utc) - __import__("datetime").timedelta(seconds=120 if stale else 0)
         return OrderBook(
             market_ticker="MARKET",
-            contract_ticker="MARKET-YES",
+            contract_ticker="MARKET",
             bids=[OrderBookLevel(price=48, size=100)],
             asks=[OrderBookLevel(price=52, size=100)],
             timestamp=ts,
+            received_at=ts,
+            source_ts=ts,
         )
 
     def _forecast():
         return Forecast(
             market_ticker="MARKET",
-            contract_ticker="MARKET-YES",
+            contract_ticker="MARKET",
             event_title="Event",
             contract_title="Yes",
             market_implied_probability=Decimal("0.5"),
@@ -276,71 +307,183 @@ async def generate_firewall_rehearsal_report_v2() -> dict:
             model_summary="test",
             calibration_notes="test",
             timestamp=datetime.now(timezone.utc),
-            expiration=datetime.now(timezone.utc),
+            expiration=datetime.now(timezone.utc) + timedelta(hours=1),
             strategy_references=["test"],
             proof_reference="forecast_1",
         )
 
-    with patch("live_firewall.firewall.load_caps", return_value=caps):
-        # oversized
-        v = await fw.submit_rehearsal(_req(price_cents=200, size=1), _book(), _forecast())
+    rehearsal_forecast = _forecast()
+
+    submit_source = inspect.getsource(LiveBrokerFirewall.submit)
+    trusted_book_source = inspect.getsource(LiveBrokerFirewall._trusted_sink_orderbook)
+    fresh_sink_checks_required = (
+        "_trusted_sink_orderbook" in submit_source
+        and "final_verdict = await self.evaluate" in submit_source
+        and "depth=100" in trusted_book_source
+    )
+
+    with (
+        patch.object(state_module, "STATE", report_state),
+        patch.object(firewall_module, "STATE", report_state),
+        patch.dict(os.environ, {"KALSHI_API_KEY_ID": "report_test_key"}),
+        patch("live_firewall.firewall.load_caps", return_value=caps),
+    ):
+        valid_request = _req(rehearsal_forecast)
+        direct_result = await fw.submit(
+            valid_request,
+            _book(),
+            rehearsal_forecast,
+        )
+
+        oversized_size = max(1, int(caps.max_single_order_cents) // 50 + 1)
+        v = await fw.submit_rehearsal(
+            _req(rehearsal_forecast, price_cents=50, size=oversized_size),
+            _book(),
+            rehearsal_forecast,
+        )
+        block_reasons["oversized"] = v.blocked_reason
         block_tests["oversized"] = not v.would_submit and "cap" in (v.blocked_reason or "").lower()
-        # missing proof
-        v = await fw.submit_rehearsal(_req(strategy_proof_reference="", forecast_proof_reference=""), _book(), _forecast())
+
+        v = await fw.submit_rehearsal(
+            _req(
+                rehearsal_forecast,
+                strategy_proof_reference="",
+                forecast_proof_reference="",
+            ),
+            _book(),
+            rehearsal_forecast,
+        )
+        block_reasons["missing_proof"] = v.blocked_reason
         block_tests["missing_proof"] = not v.would_submit and "proof" in (v.blocked_reason or "").lower()
-        # stale data
-        v = await fw.submit_rehearsal(_req(), _book(stale=True), _forecast())
+
+        v = await fw.submit_rehearsal(
+            valid_request,
+            _book(stale=True),
+            rehearsal_forecast,
+        )
+        block_reasons["stale_data"] = v.blocked_reason
         block_tests["stale_data"] = not v.would_submit and "stale" in (v.blocked_reason or "").lower()
-        # unknown adapter
-        v = await fw.submit_rehearsal(_req(adapter_name="unknown"), _book(), _forecast())
+
+        v = await fw.submit_rehearsal(
+            _req(rehearsal_forecast, adapter_name="unknown"),
+            _book(),
+            rehearsal_forecast,
+        )
+        block_reasons["unknown_adapter"] = v.blocked_reason
         block_tests["unknown_adapter"] = not v.would_submit and "unknown" in (v.blocked_reason or "").lower()
-        # rejected repo
+
         from live_firewall.firewall import mark_adapter_rejected
         mark_adapter_rejected("rejected_adapter")
-        v = await fw.submit_rehearsal(_req(adapter_name="rejected_adapter"), _book(), _forecast())
+        v = await fw.submit_rehearsal(
+            _req(rehearsal_forecast, adapter_name="rejected_adapter"),
+            _book(),
+            rehearsal_forecast,
+        )
+        block_reasons["rejected_repo"] = v.blocked_reason
         block_tests["rejected_repo"] = not v.would_submit and "rejected" in (v.blocked_reason or "").lower()
-        # kill switch
+
         state_module.STATE.enable_kill_switch("report")
-        v = await fw.submit_rehearsal(_req(), _book(), _forecast())
+        v = await fw.submit_rehearsal(valid_request, _book(), rehearsal_forecast)
+        block_reasons["kill_switch"] = v.blocked_reason
         block_tests["kill_switch"] = not v.would_submit and "kill" in (v.blocked_reason or "").lower()
         state_module.STATE.disable_kill_switch()
-        # emergency stop
+
         state_module.STATE.trigger_emergency_stop()
-        v = await fw.submit_rehearsal(_req(), _book(), _forecast())
+        v = await fw.submit_rehearsal(valid_request, _book(), rehearsal_forecast)
+        block_reasons["emergency_stop"] = v.blocked_reason
         block_tests["emergency_stop"] = not v.would_submit and "emergency" in (v.blocked_reason or "").lower()
-        state_module.STATE = state_module.DummyState()
-        state_module.STATE.set_mode(AccountMode.AUTONOMOUS_LIVE_CAPPED)
-        import live_firewall.firewall as firewall_module
-        firewall_module.STATE = state_module.STATE
+        state_module.STATE.clear_emergency_stop()
 
-        # market order blocked structurally (firewall builds only limit orders)
-        order = fw._build_order(_req())
+        order = fw._build_order(valid_request)
         block_tests["market_order"] = order.get("type") == "limit"
+        block_reasons["market_order"] = "limit-only order builder"
 
-        # cap violation: market exposure cap
+        unattested_request = valid_request.model_copy(
+            update={"model_influence_attestation": None}
+        )
+        v = await fw.submit_rehearsal(
+            unattested_request,
+            _book(),
+            rehearsal_forecast,
+        )
+        block_reasons["missing_model_influence_attestation"] = v.blocked_reason
+        block_tests["missing_model_influence_attestation"] = (
+            not v.would_submit
+            and v.blocked_reason == "model_influence_attestation_missing"
+        )
+
         capped_exposure = ExposureTracker()
         capped_exposure.update_position(Position(
             market_ticker="MARKET",
-            contract_ticker="MARKET-YES",
+            contract_ticker="MARKET",
             side="yes",
-            quantity=5,
-            avg_price_cents=100,
+            quantity=max(1, int(caps.max_market_exposure_cents) // 99 + 1),
+            avg_price_cents=99,
             unrealized_pnl_cents=0,
         ))
-        cap_fw = LiveBrokerFirewall(None, capped_exposure)
-        v = await cap_fw.submit_rehearsal(_req(price_cents=50, size=1), _book(), _forecast())
-        block_tests["cap_violation"] = not v.would_submit and "cap" in (v.blocked_reason or "").lower()
+        cap_fw = LiveBrokerFirewall(
+            tripwire,
+            capped_exposure,
+            autonomy_risk_state_path=ROOT,
+        )
+        v = await cap_fw.submit_rehearsal(
+            _req(rehearsal_forecast, price_cents=50, size=1),
+            _book(),
+            rehearsal_forecast,
+        )
+        block_reasons["cap_violation"] = v.blocked_reason
+        block_tests["cap_violation"] = not v.would_submit and "exposure" in (v.blocked_reason or "").lower()
+
+        live_submit_enabled = fw._live_submit_enabled()
+
+    broker_contacted = bool(direct_result.broker_contacted)
+    no_adapter_or_broker_call = not tripwire.calls and not broker_contacted
+    mandatory_authority = fw._mandatory_submit_authority(valid_request)
+    mandatory_submit_gate_blocked = (
+        not direct_result.success
+        and not mandatory_authority.allow
+        and mandatory_authority.rejected_by == "autonomy_risk_state"
+        and direct_result.error == mandatory_authority.reason
+    )
+    model_influence_verdict = fw._model_influence_verdict(
+        valid_request,
+        rehearsal_forecast,
+    )
+    model_influence_attestation_verified = (
+        model_influence_verdict.allow
+        and model_influence_verdict.reason == "quant_only_probability_attested"
+    )
+    all_block_tests_passed = all(block_tests.values())
+    passed = (
+        all_block_tests_passed
+        and mandatory_submit_gate_blocked
+        and model_influence_attestation_verified
+        and no_adapter_or_broker_call
+        and not live_submit_enabled
+        and fresh_sink_checks_required
+    )
 
     return {
         "generated_at": now_iso(),
         "workstream": "V5: AUTONOMOUS_LIVE_CAPPED Firewall Rehearsal",
         "credentials_present": _credentials_present(),
-        "live_submit_enabled": fw._live_submit_enabled(),
-        "rehearsal_status": result.get("status"),
-        "rehearsal_blocked_reason": result.get("reason"),
+        "verdict_scope": "LOCAL_SAFETY_REHEARSAL_ONLY",
+        "execution_ready": False,
+        "live_submit_enabled": live_submit_enabled,
+        "rehearsal_status": "blocked" if not direct_result.success else "unexpected_submit",
+        "rehearsal_blocked_reason": direct_result.error,
+        "mandatory_submit_gate_blocked": mandatory_submit_gate_blocked,
+        "mandatory_submit_rejected_by": mandatory_authority.rejected_by,
+        "model_influence_attestation_verified": model_influence_attestation_verified,
+        "model_influence_attestation_reason": model_influence_verdict.reason,
+        "broker_contacted": broker_contacted,
+        "client_methods_called": tripwire.calls,
+        "no_adapter_or_broker_call": no_adapter_or_broker_call,
+        "fresh_sink_checks_required": fresh_sink_checks_required,
         "block_tests": block_tests,
-        "all_block_tests_passed": all(block_tests.values()),
-        "verdict": "PASS" if all(block_tests.values()) and result.get("status") in ("rehearsal", "no_trade", "blocked") else "FAIL",
+        "block_reasons": block_reasons,
+        "all_block_tests_passed": all_block_tests_passed,
+        "verdict": "PASS" if passed else "FAIL",
     }
 
 
@@ -384,7 +527,7 @@ def generate_no_secret_leak_report_v4() -> dict:
 
 
 def generate_firewall_rehearsal_regression_report_v2() -> dict:
-    allowed = {"live_firewall/firewall.py", "kalshi/submitter.py"}
+    allowed = {"live_firewall/firewall.py"}
     offenders = []
     excluded = {"archive", ".git", "__pycache__", ".pytest_cache", ".venv", "venv", "node_modules", "dist", "build", "tests"}
     call_re = re.compile(r'(?<![\w"\'])create_order\s*\(')

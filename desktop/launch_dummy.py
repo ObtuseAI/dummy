@@ -34,20 +34,35 @@ def _serving(timeout: float = 1.5) -> bool:
         return False
 
 
-def ensure_server() -> None:
-    """Best-effort: make sure the board server answers before we open it."""
+def ensure_server(max_wait_seconds: float = 30.0) -> bool:
+    """Start the board task and retry with bounded backoff until it answers."""
     if _serving():
-        return
+        return True
     # Canonical path: run the fleet-managed dashboard task (its own interpreter).
     try:
         subprocess.run(["schtasks", "/Run", "/TN", "DummyDashboard"],
                        creationflags=_NO_WINDOW, capture_output=True, timeout=20)
     except Exception:  # noqa: BLE001
         pass
-    for _ in range(24):        # up to ~12s for uvicorn to bind
+    deadline = time.monotonic() + max(0.0, max_wait_seconds)
+    delay = 0.25
+    while time.monotonic() < deadline:
         if _serving():
-            return
-        time.sleep(0.5)
+            return True
+        time.sleep(min(delay, max(0.0, deadline - time.monotonic())))
+        delay = min(2.0, delay * 1.5)
+    return _serving()
+
+
+def show_startup_error() -> None:
+    """Show a windowless-launch-friendly error without opening a dead URL."""
+    message = "Dummy Dashboard did not become ready within 30 seconds. Check the DummyDashboard scheduled task."
+    try:
+        import ctypes
+
+        ctypes.windll.user32.MessageBoxW(0, message, "Dummy Tote", 0x10)
+    except Exception:  # noqa: BLE001 -- last-ditch user notification
+        print(message)
 
 
 def open_board() -> None:
@@ -66,7 +81,9 @@ def open_board() -> None:
 
 
 def main() -> int:
-    ensure_server()
+    if not ensure_server():
+        show_startup_error()
+        return 1
     open_board()
     return 0
 

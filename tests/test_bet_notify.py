@@ -26,6 +26,8 @@ def test_format_event_opened_settled_and_ignored():
     # gate-blocked / never-filled are silent
     assert bet_notify.format_event("BLOCKED_LOCAL", "X", None) is None
     assert bet_notify.format_event("EXPIRED", "X", None) is None
+    titled = bet_notify.format_event("SETTLED_LOSS", "KXMLB-C", -80, "Royals at Cubs")
+    assert titled["body"] == "Royals at Cubs"
 
 
 def test_collect_events_incremental_and_filtered(tmp_path):

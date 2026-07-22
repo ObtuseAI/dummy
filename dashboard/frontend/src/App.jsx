@@ -1,5 +1,8 @@
-import { BrowserRouter, Routes, Route, Link } from 'react-router-dom';
+import { useState } from 'react';
+import { BrowserRouter, Routes, Route, Link, NavLink } from 'react-router-dom';
+import { useStatus } from './hooks/useStatus';
 import Home from './screens/Home';
+import ModelPanel from './screens/ModelPanel';
 import OperatorControl from './screens/OperatorControl';
 import Markets from './screens/Markets';
 import Forecasts from './screens/Forecasts';
@@ -21,26 +24,92 @@ import CapsExposure from './screens/CapsExposure';
 import StrategyScan from './screens/StrategyScan';
 import FirewallRehearsal from './screens/FirewallRehearsal';
 import LiveSubmit from './screens/LiveSubmit';
-import V6Dashboard from './screens/V6Dashboard';
-import V7Dashboard from './screens/V7Dashboard';
-import LegacyDashboardRoute from './LegacyDashboardRoute';
+import ArchivedStageView from '@dummy-archive-route';
 import VNextObservatory from './VNextObservatory';
 
-const links = ['Home','Operator Control','Markets','Forecasts','Strategies','Orders','Positions','Risk','Logs','Proof','Repo Harvester','Adapters','Kalshi','Kalshi Real','Strategy Candidates','Strategy Scan','Proposed Trades','Blocked Orders','Firewall','Firewall Rehearsal','Caps & Exposure','Live Submit','V6 Dashboard','V7 Dashboard','V8 Dashboard','V10 Dashboard','V11 Dashboard','V12 Dashboard','V13 Dashboard','V14 Dashboard','V15 Dashboard','V16 Dashboard','V17 Dashboard','V18 Dashboard','V19 Dashboard','V20 Dashboard','V21 Dashboard','V22 Dashboard','V23 Dashboard','V24 Dashboard','V25 Dashboard','V26 Dashboard','V27 Dashboard','V28 Dashboard','V29 Dashboard','V30 Dashboard','V31 Dashboard','V32 Dashboard','V33 Dashboard','V37 Dashboard','V38 Dashboard','V39 Dashboard','V40 Dashboard','V41 Dashboard','V42 Dashboard','V43 Dashboard','V44 Dashboard','V45 Dashboard','V46 Dashboard','V47 Dashboard','V48 Dashboard','V49 Dashboard','V50 Dashboard','V51 Dashboard','V52 Dashboard','V53 Dashboard','V54 Dashboard','V55 Dashboard','V56 Dashboard','V57 Dashboard','V58 Dashboard','V59 Dashboard','V60 Dashboard','V61 Dashboard','V62 Dashboard','V63 Dashboard','V64 Dashboard','V65 Dashboard','V66 Dashboard','V67 Dashboard','V68 Dashboard','V69 Dashboard','V70 Dashboard','V71 Dashboard','V72 Dashboard','V73 Dashboard','V74 Dashboard','V75 Dashboard','V76 Dashboard','V77 Dashboard','V78 Dashboard','V79 Dashboard','V80 Dashboard','V81 Dashboard','V82 Dashboard','V83 Dashboard','V84 Dashboard','V85 Dashboard','V86 Dashboard','V87 Dashboard','V88 Dashboard','V89 Dashboard','V90 Dashboard','V91 Dashboard','V92 Dashboard','V93 Dashboard','V94 Dashboard','V95 Dashboard','V96 Dashboard','V97 Dashboard','V98 Dashboard','V99 Dashboard','V100 Dashboard','V101 Dashboard','V102 Dashboard','V103 Dashboard','V104 Dashboard','V105 Dashboard','V106 Dashboard','V107 Dashboard','V108 Dashboard','V109 Dashboard','V110 Dashboard','V111 Dashboard','V112 Dashboard','V113 Dashboard','V114 Dashboard','V115 Dashboard','V116 Dashboard','V117 Dashboard','V118 Dashboard','V119 Dashboard','V120 Dashboard','V121 Dashboard','V122 Dashboard','V123 Dashboard','V124 Dashboard','V125 Dashboard','V126 Dashboard','V127 Dashboard','V128 Dashboard','V129 Dashboard','V130 Dashboard','V131 Dashboard','V132 Dashboard','V133 Dashboard','V134 Dashboard','V135 Dashboard','V136 Dashboard','V137 Dashboard','V138 Dashboard','V139 Dashboard','V140 Dashboard','V141 Dashboard','V142 Dashboard','V143 Dashboard','V144 Dashboard','V145 Dashboard','V146 Dashboard','V147 Dashboard','V148 Dashboard','V149 Dashboard','V150 Dashboard','V151 Dashboard','V152 Dashboard','V153 Dashboard','V154 Dashboard','V155 Dashboard','V156 Dashboard','V157 Dashboard','V158 Dashboard','V159 Dashboard','V160 Dashboard','V161 Dashboard','V162 Dashboard','V163 Dashboard','V164 Dashboard','V165 Dashboard','V166 Dashboard','V167 Dashboard','V168 Dashboard','V169 Dashboard','V170 Dashboard','V171 Dashboard','V172 Dashboard','V173 Dashboard','V174 Dashboard','V175 Dashboard','V176 Dashboard','V177 Dashboard','V178 Dashboard','V179 Dashboard','V180 Dashboard','V181 Dashboard','V182 Dashboard','V183 Dashboard','V184 Dashboard','V185 Dashboard','V186 Dashboard','V187 Dashboard','V188 Dashboard','V189 Dashboard','V190 Dashboard','V191 Dashboard','V192 Dashboard','V193 Dashboard','V194 Dashboard','V195 Dashboard','V196 Dashboard','V197 Dashboard','V198 Dashboard','V199 Dashboard','V200 Dashboard','V201 Dashboard','V202 Dashboard','V203 Dashboard','V204 Dashboard','V205 Dashboard','V206 Dashboard','V207 Dashboard','V208 Dashboard','V209 Dashboard','V210 Dashboard','V211 Dashboard','V212 Dashboard','V213 Dashboard','V214 Dashboard','V215 Dashboard','V216 Dashboard','V217 Dashboard','V218 Dashboard','V219 Dashboard','V220 Dashboard','V221 Dashboard','V222 Dashboard','V223 Dashboard','V224 Dashboard','V225 Dashboard','V226 Dashboard','V227 Dashboard','V228 Dashboard','V229 Dashboard','V230 Dashboard','V231 Dashboard','V232 Dashboard','V233 Dashboard','V234 Dashboard','V235 Dashboard','V236 Dashboard','V237 Dashboard','V238 Dashboard','V239 Dashboard','V240 Dashboard','V241 Dashboard','V242 Dashboard','V243 Dashboard','V244 Dashboard','V245 Dashboard','V246 Dashboard','V247 Dashboard','V248 Dashboard','V249 Dashboard','V250 Dashboard','V251 Dashboard','V252 Dashboard','V253 Dashboard','V254 Dashboard','V255 Dashboard','V256 Dashboard','V257 Dashboard','V258 Dashboard','V259 Dashboard','V260 Dashboard','V261 Dashboard','V262 Dashboard','V263 Dashboard','V264 Dashboard','V265 Dashboard','V266 Dashboard','V267 Dashboard','V268 Dashboard','V269 Dashboard','V270 Dashboard','V271 Dashboard','V272 Dashboard','V273 Dashboard','V274 Dashboard','V275 Dashboard','V276 Dashboard','V277 Dashboard','V278 Dashboard','V279 Dashboard','V280 Dashboard','V281 Dashboard','V282 Dashboard','V283 Dashboard','V284 Dashboard','V285 Dashboard','V286 Dashboard','V287 Dashboard','V288 Dashboard','V289 Dashboard','V290 Dashboard','V291 Dashboard','V292 Dashboard','V293 Dashboard','V294 Dashboard','V295 Dashboard','V296 Dashboard','V297 Dashboard','V298 Dashboard','V299 Dashboard','V300 Dashboard','V301 Dashboard','V302 Dashboard','V303 Dashboard','V304 Dashboard'];
+const ARCHIVE_SURFACE_ENABLED = import.meta.env.VITE_DUMMY_ARCHIVE_SURFACE === 'offline-dev';
+const ARCHIVE_ONLY_LABELS = new Set(['Adapters', 'Strategy Scan', 'Proposed Trades']);
+const links = ['Home','Model Panel','Operator Control','Markets','Forecasts','Strategies','Orders','Positions','Risk','Logs','Proof','Repo Harvester','Adapters','Kalshi','Kalshi Real','Strategy Candidates','Strategy Scan','Proposed Trades','Blocked Orders','Firewall','Firewall Rehearsal','Caps & Exposure','Live Submit','V6 Dashboard','V7 Dashboard','V8 Dashboard','V10 Dashboard','V11 Dashboard','V12 Dashboard','V13 Dashboard','V14 Dashboard','V15 Dashboard','V16 Dashboard','V17 Dashboard','V18 Dashboard','V19 Dashboard','V20 Dashboard','V21 Dashboard','V22 Dashboard','V23 Dashboard','V24 Dashboard','V25 Dashboard','V26 Dashboard','V27 Dashboard','V28 Dashboard','V29 Dashboard','V30 Dashboard','V31 Dashboard','V32 Dashboard','V33 Dashboard','V37 Dashboard','V38 Dashboard','V39 Dashboard','V40 Dashboard','V41 Dashboard','V42 Dashboard','V43 Dashboard','V44 Dashboard','V45 Dashboard','V46 Dashboard','V47 Dashboard','V48 Dashboard','V49 Dashboard','V50 Dashboard','V51 Dashboard','V52 Dashboard','V53 Dashboard','V54 Dashboard','V55 Dashboard','V56 Dashboard','V57 Dashboard','V58 Dashboard','V59 Dashboard','V60 Dashboard','V61 Dashboard','V62 Dashboard','V63 Dashboard','V64 Dashboard','V65 Dashboard','V66 Dashboard','V67 Dashboard','V68 Dashboard','V69 Dashboard','V70 Dashboard','V71 Dashboard','V72 Dashboard','V73 Dashboard','V74 Dashboard','V75 Dashboard','V76 Dashboard','V77 Dashboard','V78 Dashboard','V79 Dashboard','V80 Dashboard','V81 Dashboard','V82 Dashboard','V83 Dashboard','V84 Dashboard','V85 Dashboard','V86 Dashboard','V87 Dashboard','V88 Dashboard','V89 Dashboard','V90 Dashboard','V91 Dashboard','V92 Dashboard','V93 Dashboard','V94 Dashboard','V95 Dashboard','V96 Dashboard','V97 Dashboard','V98 Dashboard','V99 Dashboard','V100 Dashboard','V101 Dashboard','V102 Dashboard','V103 Dashboard','V104 Dashboard','V105 Dashboard','V106 Dashboard','V107 Dashboard','V108 Dashboard','V109 Dashboard','V110 Dashboard','V111 Dashboard','V112 Dashboard','V113 Dashboard','V114 Dashboard','V115 Dashboard','V116 Dashboard','V117 Dashboard','V118 Dashboard','V119 Dashboard','V120 Dashboard','V121 Dashboard','V122 Dashboard','V123 Dashboard','V124 Dashboard','V125 Dashboard','V126 Dashboard','V127 Dashboard','V128 Dashboard','V129 Dashboard','V130 Dashboard','V131 Dashboard','V132 Dashboard','V133 Dashboard','V134 Dashboard','V135 Dashboard','V136 Dashboard','V137 Dashboard','V138 Dashboard','V139 Dashboard','V140 Dashboard','V141 Dashboard','V142 Dashboard','V143 Dashboard','V144 Dashboard','V145 Dashboard','V146 Dashboard','V147 Dashboard','V148 Dashboard','V149 Dashboard','V150 Dashboard','V151 Dashboard','V152 Dashboard','V153 Dashboard','V154 Dashboard','V155 Dashboard','V156 Dashboard','V157 Dashboard','V158 Dashboard','V159 Dashboard','V160 Dashboard','V161 Dashboard','V162 Dashboard','V163 Dashboard','V164 Dashboard','V165 Dashboard','V166 Dashboard','V167 Dashboard','V168 Dashboard','V169 Dashboard','V170 Dashboard','V171 Dashboard','V172 Dashboard','V173 Dashboard','V174 Dashboard','V175 Dashboard','V176 Dashboard','V177 Dashboard','V178 Dashboard','V179 Dashboard','V180 Dashboard','V181 Dashboard','V182 Dashboard','V183 Dashboard','V184 Dashboard','V185 Dashboard','V186 Dashboard','V187 Dashboard','V188 Dashboard','V189 Dashboard','V190 Dashboard','V191 Dashboard','V192 Dashboard','V193 Dashboard','V194 Dashboard','V195 Dashboard','V196 Dashboard','V197 Dashboard','V198 Dashboard','V199 Dashboard','V200 Dashboard','V201 Dashboard','V202 Dashboard','V203 Dashboard','V204 Dashboard','V205 Dashboard','V206 Dashboard','V207 Dashboard','V208 Dashboard','V209 Dashboard','V210 Dashboard','V211 Dashboard','V212 Dashboard','V213 Dashboard','V214 Dashboard','V215 Dashboard','V216 Dashboard','V217 Dashboard','V218 Dashboard','V219 Dashboard','V220 Dashboard','V221 Dashboard','V222 Dashboard','V223 Dashboard','V224 Dashboard','V225 Dashboard','V226 Dashboard','V227 Dashboard','V228 Dashboard','V229 Dashboard','V230 Dashboard','V231 Dashboard','V232 Dashboard','V233 Dashboard','V234 Dashboard','V235 Dashboard','V236 Dashboard','V237 Dashboard','V238 Dashboard','V239 Dashboard','V240 Dashboard','V241 Dashboard','V242 Dashboard','V243 Dashboard','V244 Dashboard','V245 Dashboard','V246 Dashboard','V247 Dashboard','V248 Dashboard','V249 Dashboard','V250 Dashboard','V251 Dashboard','V252 Dashboard','V253 Dashboard','V254 Dashboard','V255 Dashboard','V256 Dashboard','V257 Dashboard','V258 Dashboard','V259 Dashboard','V260 Dashboard','V261 Dashboard','V262 Dashboard','V263 Dashboard','V264 Dashboard','V265 Dashboard','V266 Dashboard','V267 Dashboard','V268 Dashboard','V269 Dashboard','V270 Dashboard','V271 Dashboard','V272 Dashboard','V273 Dashboard','V274 Dashboard','V275 Dashboard','V276 Dashboard','V277 Dashboard','V278 Dashboard','V279 Dashboard','V280 Dashboard','V281 Dashboard','V282 Dashboard','V283 Dashboard','V284 Dashboard','V285 Dashboard','V286 Dashboard','V287 Dashboard','V288 Dashboard','V289 Dashboard','V290 Dashboard','V291 Dashboard','V292 Dashboard','V293 Dashboard','V294 Dashboard','V295 Dashboard','V296 Dashboard','V297 Dashboard','V298 Dashboard','V299 Dashboard','V300 Dashboard','V301 Dashboard','V302 Dashboard','V303 Dashboard','V304 Dashboard'];
+
+function linkPath(label) {
+  if (label === 'Home') return '/';
+  if (label === 'Caps & Exposure') return '/caps-exposure';
+  return `/${label.toLowerCase().replace(/ /g, '-')}`;
+}
+
+function NotFound() {
+  return <div className="rounded bg-gray-800 p-6"><h1 className="text-2xl font-bold">Page not found</h1><p className="mt-2 text-gray-400">This dashboard route does not exist.</p><Link className="mt-4 inline-block text-blue-400" to="/">Return home</Link></div>;
+}
+
+function ArchiveDisabled() {
+  return (
+    <div className="rounded border border-amber-800 bg-amber-950/30 p-6">
+      <h1 className="text-2xl font-bold text-amber-200">Historical stage archive is offline</h1>
+      <p className="mt-2 text-sm text-gray-300">
+        Production does not mount the V3–V304 archive. Use the explicit loopback-only
+        offline development launcher when historical reports need to be inspected.
+      </p>
+    </div>
+  );
+}
+
+function LegacyDashboardRoute(props) {
+  return ARCHIVE_SURFACE_ENABLED ? <ArchivedStageView {...props} /> : <ArchiveDisabled />;
+}
+
+function ArchiveOnly({ children }) {
+  return ARCHIVE_SURFACE_ENABLED ? children : <ArchiveDisabled />;
+}
+
+function DashboardNavigation({ mode }) {
+  const [query, setQuery] = useState('');
+  const isArchiveLink = label => /^V\d+ Dashboard$/.test(label) || ARCHIVE_ONLY_LABELS.has(label);
+  const archiveLinks = links.filter(isArchiveLink);
+  const primaryLinks = links.filter(label => !isArchiveLink(label));
+  const filteredArchiveLinks = archiveLinks.filter(label => label.toLowerCase().includes(query.toLowerCase()));
+  const navClass = ({ isActive }) => isActive
+    ? 'rounded bg-blue-900 px-2 py-1 text-blue-100'
+    : 'rounded px-2 py-1 hover:bg-gray-800 hover:text-blue-300';
+
+  return (
+    <header className="border-b border-gray-700 bg-gray-950">
+      <div className="flex items-center justify-between gap-4 border-b border-gray-800 px-4 py-2 text-sm">
+        <span className="font-semibold text-cyan-300">Dummy operator dashboard</span>
+        <span className={`rounded px-3 py-1 font-semibold ${mode === 'AUTONOMOUS_LIVE_CAPPED' ? 'bg-red-900 text-red-100' : 'bg-gray-800 text-amber-200'}`}>
+          Mode: {mode}
+        </span>
+      </div>
+      <nav className="flex flex-wrap gap-1 p-3 text-sm">
+        <NavLink to="/vnext-observatory" className={navClass}>vNext Observatory</NavLink>
+        {primaryLinks.map(label => <NavLink key={label} to={linkPath(label)} className={navClass}>{label}</NavLink>)}
+      </nav>
+      {ARCHIVE_SURFACE_ENABLED && <details className="border-t border-gray-800 px-4 py-2">
+        <summary className="cursor-pointer text-sm font-semibold text-gray-300">Stage Archive ({archiveLinks.length})</summary>
+        <input
+          className="my-3 w-full max-w-sm rounded border border-gray-700 bg-gray-900 px-3 py-2 text-sm"
+          placeholder="Search archived stage dashboards"
+          value={query}
+          onChange={event => setQuery(event.target.value)}
+        />
+        <div className="flex max-h-48 flex-wrap gap-1 overflow-y-auto pb-2 text-xs">
+          {filteredArchiveLinks.map(label => <NavLink key={label} to={linkPath(label)} className={navClass}>{label}</NavLink>)}
+        </div>
+      </details>}
+    </header>
+  );
+}
 
 export default function App() {
+  const status = useStatus();
+  const mode = status?.account_mode || status?.mode || 'UNKNOWN';
   return (
     <BrowserRouter>
       <div className="min-h-screen bg-gray-900 text-gray-100">
-        <nav className="p-4 border-b border-gray-700 flex gap-4 flex-wrap">
-          <Link to="/vnext-observatory" className="font-semibold text-cyan-300 hover:text-cyan-100">vNext Observatory</Link>
-          {links.map(l => (
-            <Link key={l} to={l === 'Home' ? '/' : `/${l.toLowerCase().replace(/ /g, '-')}`} className="hover:text-blue-400">{l}</Link>
-          ))}
-        </nav>
+        <DashboardNavigation mode={mode} />
         <main className="p-4">
           <Routes>
             <Route path="/" element={<Home />} />
+            <Route path="/model-panel" element={<ModelPanel />} />
             <Route path="/operator-control" element={<OperatorControl />} />
             <Route path="/markets" element={<Markets />} />
             <Route path="/forecasts" element={<Forecasts />} />
@@ -51,20 +120,20 @@ export default function App() {
             <Route path="/logs" element={<Logs />} />
             <Route path="/proof" element={<Proof />} />
             <Route path="/repo-harvester" element={<RepoHarvester />} />
-            <Route path="/adapters" element={<Adapters />} />
+            <Route path="/adapters" element={<ArchiveOnly><Adapters /></ArchiveOnly>} />
             <Route path="/kalshi" element={<Kalshi />} />
             <Route path="/kalshi-real" element={<KalshiReal />} />
             <Route path="/strategy-candidates" element={<StrategyCandidates />} />
-            <Route path="/strategy-scan" element={<StrategyScan />} />
-            <Route path="/proposed-trades" element={<ProposedTrades />} />
+            <Route path="/strategy-scan" element={<ArchiveOnly><StrategyScan /></ArchiveOnly>} />
+            <Route path="/proposed-trades" element={<ArchiveOnly><ProposedTrades /></ArchiveOnly>} />
             <Route path="/blocked-orders" element={<BlockedOrders />} />
             <Route path="/firewall" element={<Firewall />} />
             <Route path="/firewall-rehearsal" element={<FirewallRehearsal />} />
             <Route path="/caps-exposure" element={<CapsExposure />} />
             <Route path="/live-submit" element={<LiveSubmit />} />
             <Route path="/vnext-observatory" element={<VNextObservatory />} />
-            <Route path="/v6-dashboard" element={<V6Dashboard />} />
-            <Route path="/v7-dashboard" element={<V7Dashboard />} />
+            <Route path="/v6-dashboard" element={<LegacyDashboardRoute version={6} />} />
+            <Route path="/v7-dashboard" element={<LegacyDashboardRoute version={7} />} />
             <Route path="/v8-dashboard" element={<LegacyDashboardRoute version={8} />} />
             <Route path="/v10-dashboard" element={<LegacyDashboardRoute version={10} />} />
             <Route path="/v11-dashboard" element={<LegacyDashboardRoute version={11} />} />
@@ -358,6 +427,7 @@ export default function App() {
             <Route path="/v302-dashboard" element={<LegacyDashboardRoute version={302} />} />
             <Route path="/v303-dashboard" element={<LegacyDashboardRoute version={303} />} />
             <Route path="/v304-dashboard" element={<LegacyDashboardRoute version={304} />} />
+            <Route path="*" element={<NotFound />} />
           </Routes>
         </main>
       </div>

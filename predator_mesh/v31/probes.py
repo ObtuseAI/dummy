@@ -12,11 +12,16 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Protocol
 
+from core.caps_authority import (
+    LEGACY_CAPS_SHA256,
+    PROTECTED_CAPS_SHA256,
+    evaluate_caps_authority,
+)
 from predator_mesh.v30.adapters import AdapterEvidencePacketV1, build_default_v30_context
 
 ROOT = Path(__file__).resolve().parents[2]
 LIVE_SUBMIT_HASH = "3875B81E90B636147CC5BCE5F247B71AD25877C165F4773C98D5C2AD61DB515E"
-CAPS_HASH = "F7D91453FECCB3A216B733589D69F1C21B5A8CEF753096360630B0B973CAE5B5"
+CAPS_HASH = PROTECTED_CAPS_SHA256
 
 
 def now_iso() -> str:
@@ -95,6 +100,11 @@ class PublicProbeGateConfigDiffProofV1:
     live_submit_modified: bool
     caps_modified: bool
     live_submit_enabled: bool = False
+    caps_authority_state: str = "REVIEW_REQUIRED"
+    caps_authority_registration_valid: bool = False
+    legacy_caps_hash: str = LEGACY_CAPS_SHA256
+    legacy_caps_authority_invalidated: bool = True
+    execution_authority: bool = False
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -133,12 +143,17 @@ class ExplicitPublicProbeOperatorGateV3:
         enabled = flag_value == "1" and ack_value == "READ_ONLY_PUBLIC_PROBES_ONLY"
         flag = PublicProbeEnvironmentFlagV1(value_present=flag_value is not None, enabled=flag_value == "1")
         ack = PublicProbeOperatorAcknowledgementV1(value_present=ack_value is not None, confirmed=ack_value == "READ_ONLY_PUBLIC_PROBES_ONLY")
+        caps_authority = evaluate_caps_authority()
+        live_submit_hash = _sha256(ROOT / "configs" / "live_submit.json") or LIVE_SUBMIT_HASH
         config_proof = PublicProbeGateConfigDiffProofV1(
-            live_submit_hash=_sha256(ROOT / "configs" / "live_submit.json") or LIVE_SUBMIT_HASH,
-            caps_hash=_sha256(ROOT / "configs" / "caps.json") or CAPS_HASH,
-            live_submit_modified=(_sha256(ROOT / "configs" / "live_submit.json") or LIVE_SUBMIT_HASH) != LIVE_SUBMIT_HASH,
-            caps_modified=(_sha256(ROOT / "configs" / "caps.json") or CAPS_HASH) != CAPS_HASH,
+            live_submit_hash=live_submit_hash,
+            caps_hash=caps_authority.current_caps_sha256 or CAPS_HASH,
+            live_submit_modified=live_submit_hash != LIVE_SUBMIT_HASH,
+            caps_modified=not caps_authority.config_integrity_valid,
             live_submit_enabled=False,
+            caps_authority_state=caps_authority.state,
+            caps_authority_registration_valid=caps_authority.authority_registration_valid,
+            legacy_caps_authority_invalidated=caps_authority.legacy_authority_invalidated,
         )
         return PublicProbeGateDecisionV1(
             enabled=enabled,

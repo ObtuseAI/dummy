@@ -173,9 +173,9 @@ def presubmit_validate(
         report.checks["orderbook_yes_levels"] = len(yes_levels)
         report.checks["orderbook_no_levels"] = len(no_levels)
         if not yes_levels and not no_levels:
-            report.warnings.append("orderbook_empty_zero_liquidity_fill_unlikely")
+            report.blockers.append("orderbook_empty")
     except Exception as exc:
-        report.warnings.append(f"orderbook_fetch_failed:{type(exc).__name__}")
+        report.blockers.append(f"orderbook_fetch_failed:{type(exc).__name__}")
 
     if order_body is not None:
         schema_errors = validate_order_body_schema(order_body)

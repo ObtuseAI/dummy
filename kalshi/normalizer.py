@@ -129,6 +129,14 @@ class KalshiNormalizer:
         if not raw.get("ticker"):
             raise DataNormalizationError("Contract missing ticker")
         ts = self._source_ts(raw, fallback=source_ts)
+        expiration = None
+        for key in ("expiration_time", "close_time", "expected_expiration_time"):
+            if raw.get(key):
+                try:
+                    expiration = self._parse_ts(raw[key])
+                    break
+                except Exception:
+                    continue
         return Contract(
             ticker=str(raw["ticker"]),
             title=str(raw.get("title", "")),
@@ -137,6 +145,7 @@ class KalshiNormalizer:
             yes_ask=self._to_int_optional(raw.get("yes_ask")),
             last_price=self._to_int_optional(raw.get("last_price")),
             source_ts=ts,
+            expiration=expiration,
         )
 
     @staticmethod
@@ -158,17 +167,27 @@ class KalshiNormalizer:
             "best_bid_cents": best_bid,
             "best_ask_cents": best_ask,
             "spread_cents": spread,
+            "crossed": bool(best_bid is not None and best_ask is not None and best_bid >= best_ask),
             "total_bid_size": sum(level.size for level in orderbook.bids),
             "total_ask_size": sum(level.size for level in orderbook.asks),
         }
 
     def normalize_orderbook(self, ticker: str, raw: Any) -> OrderBook:
         if isinstance(raw, OrderBook):
+            raw.bids.sort(key=lambda level: level.price)
+            raw.asks.sort(key=lambda level: level.price)
+            if not raw.bids or not raw.asks:
+                raise DataNormalizationError(f"Orderbook for {ticker} missing bids or asks")
+            if raw.bids[-1].price >= raw.asks[0].price:
+                raise DataNormalizationError(f"Orderbook for {ticker} is crossed")
+            raw.depth_summary = self._depth_summary(raw)
             return raw
         if not isinstance(raw, dict):
             raise DataNormalizationError("Orderbook raw data must be a dict or OrderBook")
 
-        ts = raw.get("timestamp", raw.get("updated_at", self._now_utc().isoformat()))
+        ts = raw.get("timestamp", raw.get("updated_at"))
+        if ts is None:
+            raise DataNormalizationError(f"Orderbook for {ticker} missing source timestamp")
         if self._is_stale(ts):
             raise DataNormalizationError(f"Orderbook for {ticker} is stale (timestamp {ts})")
 
@@ -177,8 +196,12 @@ class KalshiNormalizer:
 
         bids = self._parse_levels(raw.get("bids", []))
         asks = self._parse_levels(raw.get("asks", []))
+        bids.sort(key=lambda level: level.price)
+        asks.sort(key=lambda level: level.price)
         if not bids or not asks:
             raise DataNormalizationError(f"Orderbook for {ticker} missing bids or asks")
+        if bids[-1].price >= asks[0].price:
+            raise DataNormalizationError(f"Orderbook for {ticker} is crossed")
 
         parsed_ts = self._parse_ts(ts)
         book = OrderBook(

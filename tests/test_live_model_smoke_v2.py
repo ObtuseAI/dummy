@@ -63,13 +63,17 @@ async def test_smoke_v2_live_proven_with_resolution(monkeypatch, smoke_v2_runner
             {"provider": "minimax", "model": "test-model", "latency_ms": 10.0, "attempts": 1, "prompt_digest": "def"},
         )
 
+    live_runner = LiveModelSmokeV2(
+        artifacts_dir=smoke_v2_runner.artifacts_dir,
+        allow_live=True,
+    )
     with patch("model_router.smoke.ModelProviderResolver.resolve", new=_fake_resolve):
-        with patch.object(smoke_v2_runner, "_build_resolved_provider") as mock_build:
+        with patch.object(live_runner, "_build_resolved_provider") as mock_build:
             fake_provider = AsyncMock()
             fake_provider.complete = _fake_complete
             fake_provider.name = "test_provider"
             mock_build.return_value = fake_provider
-            report = await smoke_v2_runner.run()
+            report = await live_runner.run()
 
     assert report["live_model_status"] == "LIVE_PROVEN"
     assert report["model_mode"] == "LIVE_PROVEN"
@@ -94,8 +98,12 @@ async def test_smoke_v2_operator_config_required_on_404(monkeypatch, smoke_v2_ru
             error_detail="all aliases unresolved",
         )
 
+    live_runner = LiveModelSmokeV2(
+        artifacts_dir=smoke_v2_runner.artifacts_dir,
+        allow_live=True,
+    )
     with patch("model_router.smoke.ModelProviderResolver.resolve", new=_fake_resolve):
-        report = await smoke_v2_runner.run()
+        report = await live_runner.run()
 
     assert report["live_model_status"] == "OPERATOR_MODEL_CONFIG_REQUIRED"
     assert report["verdict"] == "PASS"

@@ -11,7 +11,11 @@ from model_router.envelope import ModelResponseEnvelope, ModelRouteDecision
 from model_router.tasks import ModelTask
 from predator_mesh.budget import build_default_budget
 from predator_mesh.hybrid_router import HybridModelResult, MeshHybridRouter
-from predator_mesh.lanes.forecast_update import ForecastUpdateLane
+from predator_mesh.lanes.forecast_update import (
+    ForecastUpdateLane,
+    _synthetic_forecast,
+    _synthetic_orderbook,
+)
 from predator_mesh.models import LaneState, MeshBudget, MeshContext, MeshTimeout
 
 
@@ -54,7 +58,12 @@ async def test_router_exception_degrades() -> None:
 
 @pytest.mark.asyncio
 async def test_forecast_lane_degraded_on_model_failure() -> None:
-    lane = ForecastUpdateLane(hybrid_router=FailingHybridRouter())
+    forecast = _synthetic_forecast()
+    lane = ForecastUpdateLane(
+        hybrid_router=FailingHybridRouter(),
+        base_forecast=forecast,
+        orderbook=_synthetic_orderbook(forecast.market_ticker, forecast.contract_ticker),
+    )
     budget = build_default_budget()
     ctx = MeshContext(
         run_id="failure-test",
@@ -73,7 +82,11 @@ async def test_forecast_lane_degraded_on_model_failure() -> None:
 
 @pytest.mark.asyncio
 async def test_forecast_lane_blocked_when_budget_exhausted() -> None:
-    lane = ForecastUpdateLane()
+    forecast = _synthetic_forecast()
+    lane = ForecastUpdateLane(
+        base_forecast=forecast,
+        orderbook=_synthetic_orderbook(forecast.market_ticker, forecast.contract_ticker),
+    )
     budget = MeshBudget(max_provider_calls=0, max_kalshi_calls=0)
     ctx = MeshContext(
         run_id="budget-test",
@@ -110,8 +123,11 @@ class SlowInternalRouter:
 
 @pytest.mark.asyncio
 async def test_forecast_lane_times_out_on_hanging_router() -> None:
+    forecast = _synthetic_forecast()
     lane = ForecastUpdateLane(
-        hybrid_router=MeshHybridRouter(router=SlowInternalRouter())
+        hybrid_router=MeshHybridRouter(router=SlowInternalRouter()),
+        base_forecast=forecast,
+        orderbook=_synthetic_orderbook(forecast.market_ticker, forecast.contract_ticker),
     )
     budget = build_default_budget()
     ctx = MeshContext(
@@ -154,14 +170,28 @@ async def test_forecast_lane_success_consumes_provider_budget() -> None:
             )
             return ModelResponseEnvelope(
                 task=task,
-                decision=ModelRouteDecision(task=task, provider_name="mock", model_name="mock", reason="test"),
+                decision=ModelRouteDecision(
+                    task=task,
+                    provider_name=(
+                        "gemini_3_6_flash"
+                        if task == ModelTask.FORECAST_OPINION
+                        else "claude_sonnet_5"
+                    ),
+                    model_name="test-model",
+                    reason="test",
+                ),
                 prompt=prompt,
                 content=content,
                 latency_ms=1.0,
             )
 
     router = CountingRouter()
-    lane = ForecastUpdateLane(hybrid_router=MeshHybridRouter(router=router))
+    forecast = _synthetic_forecast()
+    lane = ForecastUpdateLane(
+        hybrid_router=MeshHybridRouter(router=router),
+        base_forecast=forecast,
+        orderbook=_synthetic_orderbook(forecast.market_ticker, forecast.contract_ticker),
+    )
     budget = build_default_budget()
     ctx = MeshContext(
         run_id="budget-test",

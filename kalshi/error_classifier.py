@@ -11,6 +11,11 @@ class KalshiErrorCategory(str, Enum):
     UNKNOWN = "UNKNOWN"
 
 def classify(status: int, body: dict | str) -> KalshiErrorCategory:
+    text = str(body).lower()
+    if "market" in text and "closed" in text:
+        return KalshiErrorCategory.MARKET_CLOSED
+    if "insufficient" in text and ("fund" in text or "balance" in text):
+        return KalshiErrorCategory.INSUFFICIENT_FUNDS
     if status == 401 or status == 403:
         return KalshiErrorCategory.AUTH
     if status == 429:
@@ -21,9 +26,4 @@ def classify(status: int, body: dict | str) -> KalshiErrorCategory:
         return KalshiErrorCategory.VALIDATION
     if status >= 500:
         return KalshiErrorCategory.NETWORK
-    text = str(body).lower()
-    if "market" in text and "closed" in text:
-        return KalshiErrorCategory.MARKET_CLOSED
-    if "insufficient" in text or "funds" in text:
-        return KalshiErrorCategory.INSUFFICIENT_FUNDS
     return KalshiErrorCategory.UNKNOWN

@@ -102,12 +102,15 @@ def test_calibration_flows_into_signal_probability(tmp_path):
         yes_bid=40, yes_ask=50, no_bid=50, no_ask=60, volume=100, liquidity=100,
         raw={"strike_type": "greater", "floor_strike": 84.0},
     )
-    # Raw forecast 86 would say ">=84.5" very likely YES; the 5F hot bias
-    # correction pulls the effective mean to ~81, flipping it toward NO.
+    # Calibration remains usable as contextual data, but the legacy direct
+    # weather-contract signal has no prediction authority.
     biased = OpenMeteoWeatherSignal(
         fetch_daily_temps=lambda *a: [86.0, 86.0, 86.0],
         sigma_overrides=load_sigma_overrides(out),
         bias_corrections=load_bias_corrections(out),
     )
     uncorrected = OpenMeteoWeatherSignal(fetch_daily_temps=lambda *a: [86.0, 86.0, 86.0])
-    assert biased.generate(market).probability_yes < uncorrected.generate(market).probability_yes
+    assert load_bias_corrections(out)["NY"] == 5.0
+    assert biased.prediction_authority is False
+    assert biased.generate(market) is None
+    assert uncorrected.generate(market) is None

@@ -1,7 +1,8 @@
 param(
     [string]$TaskName = "DummyCryptoPaperTwin",
     [int]$IntervalMinutes = 5,
-    [int]$StartDelayMinutes = 1
+    [int]$StartDelayMinutes = 1,
+    [int]$ExecutionTimeLimitMinutes = 10
 )
 
 $ErrorActionPreference = "Stop"
@@ -16,7 +17,7 @@ if (-not (Test-Path -LiteralPath $script)) {
 
 $start = (Get-Date).AddMinutes([Math]::Max(1, $StartDelayMinutes)).ToString("HH:mm")
 $cadence = [Math]::Max(2, $IntervalMinutes)
-$timeoutMinutes = [Math]::Max(1, $cadence - 1)
+$timeoutMinutes = [Math]::Max($cadence, $ExecutionTimeLimitMinutes)
 $lockStaleSeconds = $timeoutMinutes * 60
 $arguments = "`"$script`" --summary --log `"$log`" --lock-stale-seconds $lockStaleSeconds"
 $bootstrapAction = "cmd /c cd /d $repo && $python $arguments"

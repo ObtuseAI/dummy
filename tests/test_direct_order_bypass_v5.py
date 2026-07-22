@@ -4,8 +4,8 @@ import re
 ROOT = Path(__file__).parent.parent
 
 
-def test_only_firewall_and_submitter_call_create_order():
-    allowed = {"live_firewall/firewall.py", "kalshi/submitter.py"}
+def test_only_central_firewall_calls_create_order():
+    allowed = {"live_firewall/firewall.py"}
     offenders = []
     excluded = {".git", "__pycache__", ".pytest_cache", ".venv", "venv", "node_modules", "dist", "build", "tests"}
     call_re = re.compile(r'(?<![\w"\'])create_order\s*\(')

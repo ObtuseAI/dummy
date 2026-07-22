@@ -1,15 +1,74 @@
 {
   "default_provider": {
-    "forecast_opinion": "glm_5_2",
-    "strategy_critique": "minimax_m3",
-    "risk_critique": "minimax_m3",
-    "no_trade_reason": "minimax_m3",
-    "trade_draft": "glm_5_2",
-    "calibration_note": "minimax_m3",
-    "market_thesis": "glm_5_2",
+    "forecast_opinion": "gemini_3_6_flash",
+    "rapid_forecast": "gpt_5_6_luna",
+    "strategy_critique": "claude_sonnet_5",
+    "risk_critique": "glm_5_2",
+    "no_trade_reason": "glm_5_2",
+    "trade_draft": "gpt_5_6_luna",
+    "calibration_note": "glm_5_2",
+    "market_thesis": "claude_sonnet_5",
+    "reflection_lessons": "claude_sonnet_5",
     "hybrid_review": "hybrid"
   },
+  "hybrid_providers": [
+    "gemini_3_6_flash",
+    "gpt_5_6_luna",
+    "claude_sonnet_5",
+    "glm_5_2"
+  ],
   "provider_configs": {
+    "gemini_3_6_flash": {
+      "api_base": "https://openrouter.ai/api",
+      "api_key_env": "OPENROUTER_API_KEY",
+      "model_name": "google/gemini-3.6-flash",
+      "model_aliases": [
+        "gemini-3.6-flash",
+        "google/gemini-3.6-flash"
+      ],
+      "rpm": 60,
+      "tpm": 100000,
+      "timeout_seconds": 20.0,
+      "route_mode": "openrouter",
+      "reasoning_effort": "low",
+      "prompt_cost_per_million": 1.5,
+      "completion_cost_per_million": 7.5,
+      "max_retries": 0
+    },
+    "claude_sonnet_5": {
+      "api_base": "https://openrouter.ai/api",
+      "api_key_env": "OPENROUTER_API_KEY",
+      "model_name": "anthropic/claude-sonnet-5",
+      "model_aliases": [
+        "claude-sonnet-5",
+        "anthropic/claude-sonnet-5"
+      ],
+      "rpm": 60,
+      "tpm": 100000,
+      "timeout_seconds": 20.0,
+      "route_mode": "openrouter",
+      "reasoning_effort": "high",
+      "prompt_cost_per_million": 2.0,
+      "completion_cost_per_million": 10.0,
+      "max_retries": 0
+    },
+    "gpt_5_6_luna": {
+      "api_base": "https://openrouter.ai/api",
+      "api_key_env": "OPENROUTER_API_KEY",
+      "model_name": "openai/gpt-5.6-luna",
+      "model_aliases": [
+        "gpt-5.6-luna",
+        "openai/gpt-5.6-luna"
+      ],
+      "rpm": 60,
+      "tpm": 100000,
+      "timeout_seconds": 20.0,
+      "route_mode": "openrouter",
+      "reasoning_effort": "medium",
+      "prompt_cost_per_million": 1.0,
+      "completion_cost_per_million": 6.0,
+      "max_retries": 0
+    },
     "glm_5_2": {
       "api_base": "https://openrouter.ai/api",
       "api_key_env": "OPENROUTER_API_KEY",
@@ -22,7 +81,11 @@
       "rpm": 60,
       "tpm": 100000,
       "timeout_seconds": 20.0,
-      "route_mode": "openrouter"
+      "route_mode": "openrouter",
+      "reasoning_effort": "high",
+      "prompt_cost_per_million": 0.798,
+      "completion_cost_per_million": 2.508,
+      "max_retries": 0
     },
     "minimax_m3": {
       "api_base": "https://openrouter.ai/api",

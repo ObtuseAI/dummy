@@ -10,6 +10,7 @@ from typing import Any, Callable
 
 from autonomy.ontology import MarketView, Vertical
 from autonomy.sports_markets import discovery_series
+from autonomy.target_policy import is_prediction_quarantined_target
 
 _VERTICAL_PREFIXES: list[tuple[str, Vertical]] = [
     ("KXHIGH", Vertical.WEATHER),
@@ -100,13 +101,17 @@ def _public_base() -> str:
     return f"{base}/{version}"
 
 
-def default_fetch_series_markets(series_ticker: str) -> dict[str, Any]:
+def default_fetch_series_markets(
+    series_ticker: str,
+    *,
+    timeout_seconds: float = 20.0,
+) -> dict[str, Any]:
     import httpx
 
     response = httpx.get(
         f"{_public_base()}/markets",
         params={"series_ticker": series_ticker, "status": "open", "limit": 1000},
-        timeout=20,
+        timeout=max(0.1, float(timeout_seconds)),
     )
     response.raise_for_status()
     return response.json()
@@ -215,6 +220,12 @@ class MarketScanner:
             for raw in page.get("markets", []):
                 view = to_market_view(raw, fetched_at=fetched_at)
                 if view.ticker in seen or view.status not in ("active", "open"):
+                    continue
+                if is_prediction_quarantined_target(
+                    view.ticker,
+                    category=(view.raw or {}).get("category"),
+                    vertical=view.vertical,
+                ):
                     continue
                 if view.vertical not in self.verticals:
                     continue

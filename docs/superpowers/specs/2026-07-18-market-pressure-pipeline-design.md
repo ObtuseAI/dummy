@@ -65,7 +65,7 @@ scraped splits (when armed) → splits provider ──────────�
 ## Error handling & discipline
 
 - Every external read **fail-open** (a scrape/archive error never breaks a cycle); every **opinion** fail-closed (missing/degenerate inputs → no signal, no adjustment).
-- All new probability influence is **challenger-only** and **capped**; promotion to trusted weight stays on dummy's existing evidence/ROI doors (human-only to capital). Preregister the `market_pressure` challenger (hypothesis, mechanism, falsification incl. an abstention-rate floor) via the Wave-7 machinery before it can earn trust.
+- All new probability influence is **challenger-only** and **capped**; promotion to trusted weight stays behind Dummy's predictive and forward witnessed-fill evidence gates (human-only to capital). Preregister the `market_pressure` challenger (hypothesis, mechanism, falsification incl. an abstention-rate floor) via the Wave-7 machinery before it can earn trust.
 - The pipeline never places or sizes a bet; it informs the forecast and shows the operator the sharp/public picture.
 
 ## Governance change — scraping (operator-directed 2026-07-18)

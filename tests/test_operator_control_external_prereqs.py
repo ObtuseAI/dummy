@@ -15,6 +15,8 @@ from unittest import mock
 
 import pytest
 
+from tests.caps_authority_test_helpers import registered_caps_status
+
 MOD_PATH = Path(__file__).resolve().parents[1] / "dashboard" / "backend" / "operator_control_routes.py"
 _spec = importlib.util.spec_from_file_location("operator_control_routes", MOD_PATH)
 ocr = importlib.util.module_from_spec(_spec)
@@ -42,6 +44,10 @@ def paths(tmp_path, monkeypatch):
     )
     monkeypatch.setattr(ocr, "LIVE_SUBMIT_PATH", root / "configs" / "live_submit.json")
     monkeypatch.setattr(ocr, "CAPS_PATH", root / "configs" / "caps.json")
+    caps_authority = registered_caps_status()
+    monkeypatch.setattr(
+        ocr, "_current_caps_authority_status", lambda: caps_authority
+    )
     monkeypatch.setattr(
         ocr,
         "APPROVAL_PATH",
@@ -55,7 +61,18 @@ def paths(tmp_path, monkeypatch):
 @pytest.fixture
 def no_subprocess():
     """Mock subprocess.run so no real CLI is ever invoked."""
-    with mock.patch.object(ocr.subprocess, "run", return_value=FakeProc(0, "ready")) as m:
+    evidence = json.dumps({
+        "verdict": "COMMAND_SEAL_READY_ENV_GATE_REQUIRED",
+        "command_seal_status": ocr.COMMAND_SEAL_READY_STATUS,
+        "live_submit_valid": True,
+        "caps_strict": True,
+        "descriptor_staged": True,
+        "credential_refs": {
+            "KALSHI_API_KEY_ID": {"present": True, "file_exists": None},
+            "KALSHI_API_PRIVATE_KEY_PEM": {"present": True, "file_exists": None},
+        },
+    })
+    with mock.patch.object(ocr.subprocess, "run", return_value=FakeProc(0, evidence)) as m:
         yield m
 
 
@@ -79,10 +96,18 @@ def write_real_adapter_module(root, rel_path="predator_mesh/brokers/kalshi_liveb
     path = root / rel_path
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(
-        "class KalshiLiveBrokerFirewallAdapter:\n"
-        "    @staticmethod\n"
-        "    def validate_environment():\n"
-        "        return True\n"
+        "from predator_mesh.brokers.livebrokerfirewall_adapter import (\n"
+        "    AdapterHealth, LiveBrokerFirewallAdapter, OrderStatusResult, SubmitResult\n"
+        ")\n"
+        "class KalshiLiveBrokerFirewallAdapter(LiveBrokerFirewallAdapter):\n"
+        "    def validate_environment(self):\n"
+        "        return AdapterHealth(ready=True, ok=True)\n"
+        "    def redact_diagnostics(self):\n"
+        "        return {}\n"
+        "    async def submit_limit_order(self, order):\n"
+        "        raise RuntimeError('no broker contact in contract test')\n"
+        "    async def get_order_status(self, order_id):\n"
+        "        raise RuntimeError('no broker contact in contract test')\n"
     )
 
 
@@ -249,7 +274,53 @@ async def test_adapter_register_writes_descriptor_under_safe_path(paths):
     assert written["broker"] == "KALSHI"
     assert written["credential_reference_names"] == ["KALSHI_API_KEY_ID", "KALSHI_API_PRIVATE_KEY_PEM"]
     assert "api_key" not in written
+    assert written["registration_contract"]["version"] == ocr.ADAPTER_CONTRACT_VERSION
+    assert written["registration_contract"]["class_name"] == "KalshiLiveBrokerFirewallAdapter"
+    assert written["registration_contract"]["module_sha256"]
+    assert written["registration_contract"]["network_contacted"] is False
     assert res["hash_after"] is not None
+
+
+@pytest.mark.asyncio
+async def test_adapter_register_rejects_skeleton_even_if_operator_confirms(paths):
+    descriptor = valid_descriptor()
+    descriptor["adapter_module_path"] = "adapters/live_broker_firewall_adapter_skeleton.py"
+    body = ocr.AdapterRegisterBody(
+        descriptor=descriptor,
+        operator_confirm_adapter_real=True,
+        operator_confirm_not_stub=True,
+        operator_confirm_limit_only=True,
+        typed_confirmation=ocr.ADAPTER_TYPED_CONFIRMATION,
+    )
+    result = await ocr.adapter_register(body)
+    assert result["ok"] is False
+    assert not ocr.ADAPTER_DESCRIPTOR_PATH.exists()
+    assert any("banned" in error.lower() or "allowed" in error.lower() for error in result["errors"])
+
+
+@pytest.mark.asyncio
+async def test_adapter_status_blocks_module_changed_after_registration(paths, monkeypatch):
+    descriptor = valid_descriptor()
+    result = await ocr.adapter_register(
+        ocr.AdapterRegisterBody(
+            descriptor=descriptor,
+            operator_confirm_adapter_real=True,
+            operator_confirm_not_stub=True,
+            operator_confirm_limit_only=True,
+            typed_confirmation=ocr.ADAPTER_TYPED_CONFIRMATION,
+        )
+    )
+    assert result["ok"] is True
+    module_path = paths / descriptor["adapter_module_path"]
+    module_path.write_text(module_path.read_text() + "\n# changed after registration\n")
+    for ref in descriptor["credential_reference_names"]:
+        monkeypatch.setenv(ref, "present")
+    monkeypatch.setenv("KALSHI_API_BASE", "present")
+
+    status = ocr._adapter_status()
+
+    assert status["valid"] is False
+    assert any("hash changed" in error for error in status["errors"])
 
 
 @pytest.mark.asyncio
@@ -271,6 +342,32 @@ async def test_live_submit_preview_does_not_write(paths):
     assert res["ok"] is True
     assert res["will_write"] is False
     assert not ocr.LIVE_SUBMIT_PATH.exists()
+
+
+@pytest.mark.asyncio
+async def test_live_submit_preview_blocks_without_fresh_caps_registration(
+    paths, monkeypatch
+):
+    status = registered_caps_status()
+    monkeypatch.setattr(
+        ocr,
+        "_current_caps_authority_status",
+        lambda: type(status)(
+            **{
+                **status.to_dict(),
+                "state": "REVIEW_REQUIRED",
+                "authority_registration_present": False,
+                "authority_registration_valid": False,
+                "authority_registration_sha256": None,
+                "errors": ("CAPS_AUTHORITY_REGISTRATION_MISSING",),
+            }
+        ),
+    )
+    result = await ocr.live_submit_preview(
+        ocr.LiveSubmitBody(**valid_live_submit_body())
+    )
+    assert result["ok"] is False
+    assert any("fresh caps-v2 authority registration" in error for error in result["errors"])
 
 
 @pytest.mark.asyncio
@@ -389,6 +486,44 @@ async def test_caps_relock_resets_safe_state(paths):
     assert written["max_order_size"] == 0
     assert written["market_orders_allowed"] is False
     assert written["kill_switch_enabled"] is True
+    assert written["max_single_order_cents"] == 0
+    assert written["max_market_exposure_cents"] == 0
+    assert written["max_daily_loss_cents"] == 0
+    assert written["max_total_live_exposure_cents"] == 0
+
+
+def test_caps_status_accepts_canonical_runtime_schema(paths):
+    ocr.CAPS_PATH.parent.mkdir(parents=True, exist_ok=True)
+    ocr.CAPS_PATH.write_text(json.dumps({
+        "max_single_order_cents": 100,
+        "max_daily_loss_cents": 500,
+        "max_total_live_exposure_cents": 1000,
+        "allow_market_orders": False,
+        "limit_orders_only": True,
+        "kill_switch_required": True,
+    }))
+    status = ocr._caps_status()
+    assert status["valid"] is True
+    assert status["errors"] == []
+
+
+def test_credential_aliases_are_alternatives(monkeypatch):
+    refs = [
+        "KALSHI_API_KEY_ID",
+        "KALSHI_API_PRIVATE_KEY_PEM",
+        "KALSHI_PRIVATE_KEY",
+        "KALSHI_API_PRIVATE_KEY_PEM_PATH",
+        "KALSHI_PRIVATE_KEY_PATH",
+        "KALSHI_API_BASE",
+    ]
+    monkeypatch.setenv("KALSHI_API_KEY_ID", "present")
+    monkeypatch.setenv("KALSHI_API_PRIVATE_KEY_PEM_PATH", "present")
+    monkeypatch.setenv("KALSHI_API_BASE", "present")
+    present, missing = ocr._credential_env_status(refs)
+    assert set(present) == {
+        "KALSHI_API_KEY_ID", "KALSHI_API_PRIVATE_KEY_PEM_PATH", "KALSHI_API_BASE"
+    }
+    assert missing == []
 
 
 # ---------------------------------------------------------------------------
@@ -435,6 +570,35 @@ async def test_check_all_reports_ready_when_all_valid(paths, no_subprocess, monk
     assert res["blockers"] == []
     assert res["adapter"]["contract"]["contract_satisfied"] is True
     assert res["adapter"]["credentials_missing"] == []
+
+
+def test_command_seal_rejects_unstructured_success_output(monkeypatch):
+    monkeypatch.setattr(
+        ocr,
+        "_run_script",
+        lambda *args, **kwargs: {"ok": True, "stdout": "ready", "stderr": "", "returncode": 0},
+    )
+    result = ocr._command_seal_status()
+    assert result["ready"] is False
+    assert result["blocked"] is True
+    assert result["evidence_schema_valid"] is False
+    assert result["schema_errors"]
+
+
+def test_command_seal_rejects_seal_string_without_structured_gate_bools(monkeypatch):
+    evidence = json.dumps({
+        "verdict": "COMMAND_SEAL_READY_ENV_GATE_REQUIRED",
+        "command_seal_status": ocr.COMMAND_SEAL_READY_STATUS,
+    })
+    monkeypatch.setattr(
+        ocr,
+        "_run_script",
+        lambda *args, **kwargs: {"ok": True, "stdout": evidence, "stderr": "", "returncode": 0},
+    )
+    result = ocr._command_seal_status()
+    assert result["ready"] is False
+    assert result["structured_gates_ready"] is False
+    assert any("must be a boolean" in error for error in result["schema_errors"])
 
 
 @pytest.mark.asyncio

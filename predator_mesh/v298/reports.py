@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import asyncio
 import hashlib
 import json
 import os
@@ -13,8 +12,6 @@ from typing import Any
 from core.env_loader import kalshi_credential_status
 from core.ontology import LiveOrderResult
 from core.proof_lock import proof_lock_clear as _proof_lock_clear
-from live_firewall.exposure_tracker import ExposureTracker
-from live_firewall.firewall import LiveBrokerFirewall
 from predator_mesh import final_console_common as fcc
 from predator_mesh.brokers import LimitOrderRequest
 from predator_mesh.v298 import MILESTONE
@@ -259,18 +256,18 @@ def _controller(baseline_status: str, arm: dict[str, Any] | None = None, **kw: A
     # Real one-proof live attempt.
     proof_id = f"v298-{MILESTONE}-{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%S')}"
     market_ticker = "KXBTC-26DEC25000-C"  # smallest-proof conservative default
-
     req = _build_limit_order_request(proof_id, market_ticker, nonce=proof_id)
-    firewall = LiveBrokerFirewall(kalshi_client=None, exposure_tracker=ExposureTracker())
-    try:
-        result = asyncio.run(firewall.submit_limit_order_adapter(req))
-    except Exception as exc:
-        result = LiveOrderResult(success=False, error=f"RUNNER_EXCEPTION:{type(exc).__name__}", proof_reference=proof_id)
 
-    # Any structured broker error returned by the adapter counts as real broker contact.
-    real_broker_contacted = bool(result.success or (not result.success and result.error and result.error != "RUNNER_EXCEPTION"))
+    result = LiveOrderResult(
+        success=False,
+        error="LEGACY_V298_RUNNER_RETIRED_USE_CENTRAL_FIREWALL",
+        proof_reference=proof_id,
+        broker_contacted=False,
+    )
+
+    real_broker_contacted = bool(result.broker_contacted)
     real_live_orders_submitted_count = 1 if (result.success and result.order_id) else 0
-    broker_rejection_captured = bool(not result.success and result.error and result.error != "RUNNER_EXCEPTION")
+    broker_rejection_captured = bool(not result.success and real_broker_contacted)
     broker_order_id = result.order_id if result.success else None
     broker_rejection_reason = result.error if broker_rejection_captured else None
     proof_is_real = real_broker_contacted
@@ -286,14 +283,14 @@ def _controller(baseline_status: str, arm: dict[str, Any] | None = None, **kw: A
         broker_rejection_code = result.error
 
     return {
-        "status": "PASS_EXECUTE_ONCE_FINAL_PROOF_RUNNER_SUBMITTED_AUTOLOCKED",
-        "verdict": "PASS",
+        "status": "PARTIAL_EXECUTE_ONCE_FINAL_PROOF_RUNNER_RETIRED_CENTRAL_FIREWALL_REQUIRED",
+        "verdict": "PARTIAL",
         "fields": {
-            "arm_state": "SUBMITTED_AUTOLOCKED_REAL_BROKER_ATTEMPT",
+            "arm_state": "BLOCKED_LEGACY_RUNNER_RETIRED",
             "fixture_only": False,
             "uses_non_broker_double": False,
             "non_broker_double_used": False,
-            "submitted_autolocked": True,
+            "submitted_autolocked": False,
             "real_live_orders": real_live_orders_submitted_count,
             "real_live_orders_submitted_count": real_live_orders_submitted_count,
             "real_broker_contacted": real_broker_contacted,
@@ -317,8 +314,8 @@ def _controller(baseline_status: str, arm: dict[str, Any] | None = None, **kw: A
             "proof_id": proof_id,
             "market_ticker": market_ticker,
         },
-        "blockers": [],
-        "next_action": "EXECUTE_ONCE_FINAL_PROOF_RUNNER_SUBMITTED_AUTOLOCKED_REAL_PROOF_NEXT_RUN_POST_PROOF_AUTO_INTAKE_NO_NEW_ORDER",
+        "blockers": ["LEGACY_V298_RUNNER_RETIRED_USE_CENTRAL_FIREWALL"],
+        "next_action": "ROUTE_ANY_SEPARATELY_AUTHORIZED_PROPOSAL_THROUGH_CENTRAL_FIREWALL_NO_LEGACY_SUBMIT",
     }
 
 

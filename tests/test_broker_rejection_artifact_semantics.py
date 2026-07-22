@@ -6,10 +6,14 @@ import json
 from unittest.mock import AsyncMock
 
 
-from core.ontology import LiveOrderResult
+from core.live_submit_state import build_caps_authority_binding
 from predator_mesh.v298.reports import full_authority_arm
 from archive.report_scripts.generate_v298_reports import generate_all_v298_reports_for_tests
 from tests._real_proof_test_helpers import BACKUP_DIR_NAME
+from tests.caps_authority_test_helpers import registered_caps_status
+
+
+CAPS_AUTHORITY = registered_caps_status()
 
 
 def _patch_live_mode(monkeypatch):
@@ -31,7 +35,12 @@ def _patch_live_mode(monkeypatch):
         "order_type_policy": "LIMIT_ONLY",
         "max_order_count": 1,
         "explicit_acknowledgement": "I approve real live Kalshi order submission through Dummy LiveBrokerFirewall only",
+        **build_caps_authority_binding(CAPS_AUTHORITY),
     }
+    monkeypatch.setattr(
+        "core.live_submit_state.evaluate_caps_authority",
+        lambda: CAPS_AUTHORITY,
+    )
     monkeypatch.setattr("predator_mesh.v298.reports._load_live_submit_config", lambda: cfg)
     monkeypatch.setattr("predator_mesh.v298.reports._caps_strict", lambda: True)
     monkeypatch.setattr("predator_mesh.v298.reports._descriptor_staged", lambda: True)
@@ -43,53 +52,39 @@ def _patch_live_mode(monkeypatch):
 
 
 def test_broker_rejection_artifact_semantics(monkeypatch, tmp_path):
-    """A structured broker rejection is recorded safely and never treated as an accepted order."""
+    """A retired runner cannot fabricate broker-contact evidence from a mock."""
     _patch_live_mode(monkeypatch)
 
-    submit_mock = AsyncMock(
-        return_value=LiveOrderResult(
-            success=False,
-            order_id=None,
-            error="BROKER_REJECTED",
-            proof_reference="",
-            broker_rejection_code="BROKER_REJECTED",
-            broker_rejection_safe_message="price too low",
-            broker_rejection_http_status=400,
-            broker_rejection_adapter_error_type="httpx.HTTPStatusError",
-            broker_rejection_stage="broker_transport",
-            broker_rejection_raw_redacted={
-                "status_code": 400,
-                "error_preview": "price too low",
-                "adapter_error_type": "httpx.HTTPStatusError",
-                "stage": "broker_transport",
-            },
-        )
-    )
+    submit_mock = AsyncMock(side_effect=AssertionError("retired runner must not submit"))
     monkeypatch.setattr("live_firewall.firewall.LiveBrokerFirewall.submit_limit_order_adapter", submit_mock)
 
     d = generate_all_v298_reports_for_tests(arm=full_authority_arm())[
         "v298_execute_once_final_proof_runner_v7_controller_report.json"
     ]
 
-    # Core rejection semantics.
-    assert d["real_broker_contacted"] is True
+    # Core no-contact semantics.
+    assert d["execute_once_final_proof_runner_v7_controller_status"] == (
+        "PARTIAL_EXECUTE_ONCE_FINAL_PROOF_RUNNER_RETIRED_CENTRAL_FIREWALL_REQUIRED"
+    )
+    assert d["arm_state"] == "BLOCKED_LEGACY_RUNNER_RETIRED"
+    assert d["real_broker_contacted"] is False
     assert d["real_live_orders_submitted_count"] == 0
     assert d.get("submitted_live_order", False) is False
     assert d.get("accepted_by_broker", d["real_live_orders_submitted_count"] > 0) is False
-    assert d.get("rejected_by_broker", d["broker_rejection_captured"]) is True
-    assert d["broker_rejection_captured"] is True
-    assert d["proof_is_real"] is True
+    assert d.get("rejected_by_broker", d["broker_rejection_captured"]) is False
+    assert d["broker_rejection_captured"] is False
+    assert d["proof_is_real"] is False
 
-    # Structured diagnostics are preserved and safe.
-    assert d["broker_rejection_code"] == "BROKER_REJECTED"
-    assert d["broker_rejection_safe_message"] == "price too low"
-    assert d["broker_rejection_http_status"] == 400
-    assert d["broker_rejection_adapter_error_type"] == "httpx.HTTPStatusError"
-    assert d["broker_rejection_stage"] == "broker_transport"
+    # No mock-provided diagnostics may masquerade as broker evidence.
+    assert d["broker_rejection_code"] is None
+    assert d["broker_rejection_safe_message"] is None
+    assert d["broker_rejection_http_status"] is None
+    assert d["broker_rejection_adapter_error_type"] is None
+    assert d["broker_rejection_stage"] is None
 
-    # No retry: exactly one attempt and one adapter call.
+    # No retry and no adapter call.
     assert d["max_attempts"] == 1
-    assert submit_mock.await_count == 1
+    assert submit_mock.await_count == 0
 
     # Persist the report to a historical backup location and verify it reads back correctly.
     backup_dir = tmp_path / "artifacts" / "dummy" / BACKUP_DIR_NAME
@@ -98,5 +93,5 @@ def test_broker_rejection_artifact_semantics(monkeypatch, tmp_path):
     backup_path.write_text(json.dumps(d, indent=2), encoding="utf-8")
 
     historical = json.loads(backup_path.read_text(encoding="utf-8"))
-    assert historical["broker_rejection_captured"] is True
-    assert historical["real_broker_contacted"] is True
+    assert historical["broker_rejection_captured"] is False
+    assert historical["real_broker_contacted"] is False

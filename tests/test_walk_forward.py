@@ -13,7 +13,10 @@ from autonomy.sports.walk_forward import walk_forward_glicko
 def _game(gid, start, home, away, hs, as_):
     return {"game_id": gid, "league": "nfl", "season": 2025, "start_time": start,
             "home": home, "away": away, "home_score": hs, "away_score": as_,
-            "status": "final", "source": "test"}
+            "status": "final", "source": "test",
+            "result_available_at": start.replace("T00:00:00Z", "T03:00:00Z"),
+            "received_at": start.replace("T00:00:00Z", "T03:05:00Z"),
+            "provenance_quality": "source_reported"}
 
 
 def test_walk_forward_grades_a_predictable_league(tmp_path):

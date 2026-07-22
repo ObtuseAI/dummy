@@ -65,7 +65,11 @@ CREATE TABLE IF NOT EXISTS decisions (
     market_implied_yes REAL,
     sources_used TEXT NOT NULL,
     abstain_reason TEXT NOT NULL DEFAULT '',
-    created_at TEXT NOT NULL
+    created_at TEXT NOT NULL,
+    tier_label TEXT,
+    tier_policy_version TEXT,
+    tier_score REAL,
+    tier_reason TEXT NOT NULL DEFAULT ''
 );
 CREATE TABLE IF NOT EXISTS outcomes (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -79,6 +83,22 @@ CREATE TABLE IF NOT EXISTS outcomes (
     broker_contacted INTEGER NOT NULL DEFAULT 0,
     detail TEXT NOT NULL DEFAULT '{}',
     created_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS decision_tier_attribution (
+    decision_id TEXT PRIMARY KEY,
+    policy_version TEXT NOT NULL,
+    tier_label TEXT,
+    tier_score REAL,
+    tier_reason TEXT NOT NULL DEFAULT '',
+    assigned_at TEXT NOT NULL,
+    recorded_at TEXT NOT NULL,
+    snapshot_json TEXT NOT NULL,
+    snapshot_sha256 TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS tier_policy_epochs (
+    policy_version TEXT PRIMARY KEY,
+    first_signal_id INTEGER NOT NULL,
+    started_at TEXT NOT NULL
 );
 CREATE TABLE IF NOT EXISTS signals (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -108,6 +128,11 @@ CREATE TABLE IF NOT EXISTS settlements (
     market_ticker TEXT PRIMARY KEY,
     result_yes INTEGER NOT NULL,
     settled_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS settlement_provenance (
+    market_ticker TEXT PRIMARY KEY,
+    source TEXT NOT NULL DEFAULT '',
+    evidence TEXT NOT NULL DEFAULT '{}'
 );
 CREATE TABLE IF NOT EXISTS source_trust (
     source TEXT PRIMARY KEY,
@@ -155,6 +180,32 @@ CREATE INDEX IF NOT EXISTS idx_external_observations_source_time
 
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
+
+
+def _canonical_tier_score(value: Any) -> float | None:
+    """Match the six-decimal precision frozen in tier feature snapshots."""
+    if value is None:
+        return None
+    parsed = float(value)
+    if not math.isfinite(parsed):
+        raise ValueError("tier score must be finite")
+    return round(parsed, 6)
+
+
+def _rows_match_with_canonical_score(
+    stored: Iterable[Any], candidate: Iterable[Any], *, score_index: int,
+) -> bool:
+    """Compare immutable rows while normalizing historical float tails."""
+    left = list(stored)
+    right = list(candidate)
+    if len(left) != len(right):
+        return False
+    try:
+        left[score_index] = _canonical_tier_score(left[score_index])
+        right[score_index] = _canonical_tier_score(right[score_index])
+    except (IndexError, TypeError, ValueError):
+        return False
+    return left == right
 
 
 def _loads_features(raw: Any) -> dict[str, Any]:
@@ -249,6 +300,11 @@ class AutonomyLedger:
         self._migrate()
         self._retry_on_locked(self._conn.commit)
         install_signal_history(self._conn)
+        self._tier_policy_epochs_seen = {
+            str(row[0]) for row in self._conn.execute(
+                "SELECT policy_version FROM tier_policy_epochs"
+            )
+        }
 
     def _apply_perf_pragmas(self) -> None:
         """Tune the connection for a multi-GB ledger (env-overridable).
@@ -353,6 +409,27 @@ class AutonomyLedger:
         if "forecast_uncertainty" not in decision_columns:
             self._conn.execute(
                 "ALTER TABLE decisions ADD COLUMN forecast_uncertainty REAL NOT NULL DEFAULT 0.5"
+            )
+        if "tier_label" not in decision_columns:
+            self._conn.execute("ALTER TABLE decisions ADD COLUMN tier_label TEXT")
+        if "tier_policy_version" not in decision_columns:
+            self._conn.execute("ALTER TABLE decisions ADD COLUMN tier_policy_version TEXT")
+        if "tier_score" not in decision_columns:
+            self._conn.execute("ALTER TABLE decisions ADD COLUMN tier_score REAL")
+        if "tier_reason" not in decision_columns:
+            self._conn.execute(
+                "ALTER TABLE decisions ADD COLUMN tier_reason TEXT NOT NULL DEFAULT ''"
+            )
+        attribution_columns = {
+            row[1] for row in self._conn.execute(
+                "PRAGMA table_info(decision_tier_attribution)"
+            )
+        }
+        if attribution_columns and "recorded_at" not in attribution_columns:
+            # Existing rows predate durable receipt time.  Leave them NULL so
+            # forward performance excludes them instead of inventing receipt.
+            self._conn.execute(
+                "ALTER TABLE decision_tier_attribution ADD COLUMN recorded_at TEXT"
             )
         external_columns = {
             row[1] for row in self._conn.execute("PRAGMA table_info(external_observations)")
@@ -507,7 +584,7 @@ class AutonomyLedger:
             features = json.dumps(
                 signal.features, sort_keys=True, separators=(",", ":"), allow_nan=False,
             )
-            self._conn.execute(
+            cursor = self._conn.execute(
                 "INSERT INTO signals(source, market_ticker, probability_yes, uncertainty,"
                 " rationale, features, created_at, mode, ingested_at, ingest_version)"
                 " VALUES (?,?,?,?,?,?,?,?,?,2)",
@@ -517,6 +594,19 @@ class AutonomyLedger:
                     signal.rationale[:500], features, signal.created_at, mode, ingested_at,
                 ),
             )
+            policy_version = signal.features.get("tier_policy_version")
+            if (
+                signal.source.strip() == "fused_forecast"
+                and isinstance(policy_version, str)
+                and policy_version
+                and policy_version not in self._tier_policy_epochs_seen
+            ):
+                self._conn.execute(
+                    "INSERT OR IGNORE INTO tier_policy_epochs("
+                    "policy_version,first_signal_id,started_at) VALUES (?,?,?)",
+                    (policy_version, int(cursor.lastrowid), ingested_at),
+                )
+                self._tier_policy_epochs_seen.add(policy_version)
             accepted.append(True)
         self._retry_on_locked(self._conn.commit)
         return accepted
@@ -525,22 +615,230 @@ class AutonomyLedger:
         return self.record_signals([signal], mode=mode)[0]
 
     def record_decision(self, decision: Decision) -> None:
-        self._conn.execute(
-            "INSERT OR REPLACE INTO decisions(decision_id, market_ticker, action, side, price_cents, count,"
-            " ev_cents, kelly, notional_cents, probability_yes, forecast_uncertainty, market_implied_yes,"
-            " sources_used, abstain_reason, created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
-            (
-                decision.decision_id, decision.market_ticker, decision.action.value, decision.side,
-                decision.price_cents, decision.count, decision.ev_cents_per_contract, decision.kelly_fraction,
-                decision.notional_cents, decision.forecast.probability_yes,
-                decision.forecast.uncertainty, decision.forecast.market_implied_yes,
-                json.dumps(decision.forecast.sources_used, sort_keys=True),
-                decision.abstain_reason, decision.created_at,
-            ),
+        canonical_tier_score = decision.tier_score
+        current_tier_policy = False
+        if str(decision.forecast.market_ticker) != str(decision.market_ticker):
+            raise ValueError(
+                "decision and forecast market identity must match for "
+                f"{decision.decision_id}"
+            )
+        if decision.tier_policy_version:
+            from autonomy.tier_policy import (
+                TIER_POLICY_VERSION,
+                tier_snapshot_is_valid,
+            )
+
+            if decision.tier_policy_version == TIER_POLICY_VERSION:
+                current_tier_policy = True
+                snapshot = decision.tier_snapshot or {}
+                snapshot_score = snapshot.get("tier_score")
+                score_matches = (
+                    snapshot_score is None and decision.tier_score is None
+                ) or (
+                    snapshot_score is not None
+                    and decision.tier_score is not None
+                    and math.isclose(
+                        float(snapshot_score),
+                        float(decision.tier_score),
+                        abs_tol=1e-6,
+                    )
+                )
+                if (
+                    not tier_snapshot_is_valid(
+                        snapshot, ticker=decision.market_ticker
+                    )
+                    or snapshot.get("tier") != decision.tier_label
+                    or not score_matches
+                    or str(snapshot.get("tier_reason") or "")
+                    != str(decision.tier_reason or "")
+                ):
+                    raise ValueError(
+                        "decision tier attribution is not a valid current-policy "
+                        f"snapshot for {decision.decision_id}"
+                    )
+                snapshot_side = str(snapshot["tier_side"])
+                win_probability = (
+                    float(decision.forecast.probability_yes)
+                    if snapshot_side == "yes"
+                    else 1.0 - float(decision.forecast.probability_yes)
+                )
+                expected_gross = (
+                    win_probability
+                    - float(snapshot["tier_entry_price_cents"]) / 100.0
+                )
+                if (
+                    not math.isclose(
+                        float(snapshot["tier_uncertainty"]),
+                        float(decision.forecast.uncertainty),
+                        abs_tol=1e-6,
+                    )
+                    or not math.isclose(
+                        float(snapshot["tier_gross_executable_edge"]),
+                        expected_gross,
+                        abs_tol=1e-6,
+                    )
+                ):
+                    raise ValueError(
+                        "decision forecast does not match its frozen tier snapshot for "
+                        f"{decision.decision_id}"
+                    )
+                canonical_tier_score = _canonical_tier_score(snapshot_score)
+                if (
+                    decision.tier_label in {"A", "B", "C"}
+                    and decision.action.value != "ABSTAIN"
+                ):
+                    expected_action = (
+                        "BUY_YES"
+                        if snapshot.get("tier_side") == "yes"
+                        else "BUY_NO"
+                    )
+                    if (
+                        decision.side != snapshot.get("tier_side")
+                        or decision.action.value != expected_action
+                    ):
+                        raise ValueError(
+                            "decision action does not match its tier value side for "
+                            f"{decision.decision_id}"
+                        )
+        recorded_at = _now()
+        tier_snapshot = json.dumps(
+            decision.tier_snapshot or {},
+            sort_keys=True,
+            separators=(",", ":"),
+            allow_nan=False,
         )
+        tier_digest = hashlib.sha256(tier_snapshot.encode("utf-8")).hexdigest()
+        sources_used = json.dumps(decision.forecast.sources_used, sort_keys=True)
+        abstain_reason = decision.abstain_reason or ""
+        tier_reason = decision.tier_reason or ""
+        decision_row = (
+            decision.decision_id,
+            decision.market_ticker,
+            decision.action.value,
+            decision.side,
+            decision.price_cents,
+            decision.count,
+            decision.ev_cents_per_contract,
+            decision.kelly_fraction,
+            decision.notional_cents,
+            decision.forecast.probability_yes,
+            decision.forecast.uncertainty,
+            decision.forecast.market_implied_yes,
+            sources_used,
+            abstain_reason,
+            decision.created_at,
+            decision.tier_label,
+            decision.tier_policy_version,
+            canonical_tier_score,
+            tier_reason,
+        )
+        existing_decision = self._conn.execute(
+            "SELECT decision_id,market_ticker,action,side,price_cents,count,"
+            "ev_cents,kelly,notional_cents,probability_yes,forecast_uncertainty,"
+            "market_implied_yes,sources_used,abstain_reason,created_at,tier_label,"
+            "tier_policy_version,tier_score,tier_reason FROM decisions WHERE decision_id=?",
+            (decision.decision_id,),
+        ).fetchone()
+        existing = self._conn.execute(
+            "SELECT policy_version,tier_label,tier_score,tier_reason,assigned_at,"
+            " snapshot_json,snapshot_sha256 FROM decision_tier_attribution"
+            " WHERE decision_id=?",
+            (decision.decision_id,),
+        ).fetchone()
+        if existing is not None and not decision.tier_policy_version:
+            raise ValueError(
+                "decision tier attribution cannot be removed for "
+                f"{decision.decision_id}"
+            )
+        if (
+            existing_decision is not None
+            and existing is None
+            and decision.tier_policy_version
+        ):
+            raise ValueError(
+                "decision tier attribution cannot be added retroactively for "
+                f"{decision.decision_id}"
+            )
+        if decision.tier_policy_version:
+            candidate = (
+                decision.tier_policy_version,
+                decision.tier_label,
+                canonical_tier_score,
+                tier_reason,
+                decision.created_at,
+                tier_snapshot,
+                tier_digest,
+            )
+            attribution_matches = (
+                _rows_match_with_canonical_score(
+                    existing, candidate, score_index=2
+                )
+                if existing is not None and current_tier_policy
+                else tuple(existing) == candidate
+                if existing is not None
+                else True
+            )
+            if not attribution_matches:
+                raise ValueError(
+                    "decision tier attribution is immutable for "
+                    f"{decision.decision_id}"
+                )
+        if existing_decision is not None:
+            decision_matches = (
+                _rows_match_with_canonical_score(
+                    existing_decision, decision_row, score_index=17
+                )
+                if current_tier_policy
+                else tuple(existing_decision) == decision_row
+            )
+            if not decision_matches:
+                raise ValueError(
+                    "decision record is immutable for "
+                    f"{decision.decision_id}"
+                )
+            # Exact replay is idempotent.  Do not use REPLACE here: even an
+            # equivalent replacement deletes and reinserts the physical row,
+            # which changes its rowid and can break audit/foreign-key identity.
+            return
+        self._conn.execute(
+            "INSERT INTO decisions(decision_id, market_ticker, action, side, price_cents, count,"
+            " ev_cents, kelly, notional_cents, probability_yes, forecast_uncertainty, market_implied_yes,"
+            " sources_used, abstain_reason, created_at, tier_label, tier_policy_version, tier_score, tier_reason)"
+            " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            decision_row,
+        )
+        if decision.tier_policy_version and existing is None:
+            self._conn.execute(
+                "INSERT INTO decision_tier_attribution("
+                "decision_id,policy_version,tier_label,tier_score,tier_reason,assigned_at,"
+                "recorded_at,snapshot_json,snapshot_sha256) VALUES (?,?,?,?,?,?,?,?,?)",
+                (
+                    decision.decision_id,
+                    decision.tier_policy_version,
+                    decision.tier_label,
+                    canonical_tier_score,
+                    tier_reason,
+                    decision.created_at,
+                    recorded_at,
+                    tier_snapshot,
+                    tier_digest,
+                ),
+            )
         self._retry_on_locked(self._conn.commit)
 
     def record_outcome(self, outcome: TradeOutcome) -> None:
+        decision_market = self._conn.execute(
+            "SELECT market_ticker FROM decisions WHERE decision_id=?",
+            (outcome.decision_id,),
+        ).fetchone()
+        if (
+            decision_market is not None
+            and str(decision_market[0]) != str(outcome.market_ticker)
+        ):
+            raise ValueError(
+                "outcome and decision market identity must match for "
+                f"{outcome.decision_id}"
+            )
         self._conn.execute(
             "INSERT INTO outcomes(decision_id, market_ticker, kind, order_id, fill_count, fill_price_cents,"
             " pnl_cents, broker_contacted, detail, created_at) VALUES (?,?,?,?,?,?,?,?,?,?)",
@@ -559,10 +857,78 @@ class AutonomyLedger:
         ).fetchone()
         return None if row is None else bool(row[0])
 
-    def record_settlement(self, market_ticker: str, result_yes: bool) -> None:
+    def record_settlement(
+        self,
+        market_ticker: str,
+        result_yes: bool,
+        *,
+        settled_at: str | None = None,
+        source: str | None = None,
+        evidence: dict[str, Any] | None = None,
+    ) -> None:
+        """Record one immutable canonical settlement fact.
+
+        An exact replay is a no-op rather than a physical row replacement.
+        Optional provenance omitted on a replay means "use the already frozen
+        value"; an explicitly supplied conflicting result, timestamp, source,
+        or evidence packet is rejected.  This preserves compatibility with the
+        legacy two-argument callers without allowing them to mutate richer
+        canonical evidence written by a provenance-aware caller.
+        """
+        ticker = str(market_ticker)
+        result = 1 if result_yes else 0
+        if settled_at is not None and not str(settled_at).strip():
+            raise ValueError("settled_at must be a non-empty timestamp")
+        if source is not None and not isinstance(source, str):
+            raise TypeError("settlement source must be a string")
+        if evidence is not None and not isinstance(evidence, dict):
+            raise TypeError("settlement evidence must be a mapping")
+        evidence_json = (
+            None
+            if evidence is None
+            else json.dumps(
+                evidence,
+                sort_keys=True,
+                separators=(",", ":"),
+                allow_nan=False,
+            )
+        )
+
+        existing = self._conn.execute(
+            "SELECT s.result_yes,s.settled_at,COALESCE(p.source,''),"
+            " COALESCE(p.evidence,'{}') FROM settlements s"
+            " LEFT JOIN settlement_provenance p USING(market_ticker)"
+            " WHERE s.market_ticker=?",
+            (ticker,),
+        ).fetchone()
+        if existing is not None:
+            candidate = (
+                result,
+                str(existing[1]) if settled_at is None else str(settled_at),
+                str(existing[2]) if source is None else source,
+                str(existing[3]) if evidence_json is None else evidence_json,
+            )
+            if tuple(existing) != candidate:
+                raise ValueError(f"settlement record is immutable for {ticker}")
+            return
+
         self._conn.execute(
-            "INSERT OR REPLACE INTO settlements(market_ticker, result_yes, settled_at) VALUES (?,?,?)",
-            (market_ticker, 1 if result_yes else 0, _now()),
+            "INSERT INTO settlements(market_ticker,result_yes,settled_at)"
+            " VALUES (?,?,?)",
+            (
+                ticker,
+                result,
+                str(settled_at) if settled_at is not None else _now(),
+            ),
+        )
+        self._conn.execute(
+            "INSERT INTO settlement_provenance(market_ticker,source,evidence)"
+            " VALUES (?,?,?)",
+            (
+                ticker,
+                source or "",
+                evidence_json if evidence_json is not None else "{}",
+            ),
         )
         self._retry_on_locked(self._conn.commit)
 
@@ -691,6 +1057,14 @@ class AutonomyLedger:
     def all_weights(self) -> dict[str, float]:
         return {r[0]: float(r[1]) for r in self._conn.execute("SELECT source, weight FROM source_trust")}
 
+    def trust_rows(self) -> list[dict[str, Any]]:
+        return [
+            {"source": str(source), "weight": float(weight), "updated_at": str(updated_at)}
+            for source, weight, updated_at in self._conn.execute(
+                "SELECT source,weight,updated_at FROM source_trust"
+            )
+        ]
+
     def update_weight(self, source: str, weight: float, brier: float | None = None) -> None:
         row = self._conn.execute(
             "SELECT brier_sum, brier_count FROM source_trust WHERE source=?", (source,)
@@ -714,10 +1088,10 @@ class AutonomyLedger:
         """Active orders plus filled, unsettled positions.
 
         ``filled_count`` is the largest transport/simulator-confirmed fill seen
-        for the decision. ``reserved_count`` is the full order size while an
-        order remains active, otherwise the filled position size. Keeping
-        these separate prevents an accepted-but-unfilled maker quote from
-        becoming fictional settlement P&L while still reserving its risk.
+        for the decision. Active orders reserve their submitted size and limit;
+        filled positions use the witnessed cumulative fill size and weighted
+        price. The original decision terms remain available under explicit
+        ``decision_*`` keys for audit, never as execution truth.
         """
         scope_clause = ""
         if scope == "shadow":
@@ -745,19 +1119,33 @@ class AutonomyLedger:
                        MAX(CASE WHEN kind IN ('SETTLED_WIN','SETTLED_LOSS') THEN 1 ELSE 0 END)
                            AS is_settled
                 FROM outcomes GROUP BY decision_id
+            ), witnessed_fill AS (
+                SELECT o.* FROM outcomes o
+                WHERE o.fill_count > 0 AND o.fill_price_cents IS NOT NULL
+                  AND o.id = (
+                      SELECT o2.id FROM outcomes o2
+                      WHERE o2.decision_id = o.decision_id
+                        AND o2.fill_count > 0
+                        AND o2.fill_price_cents IS NOT NULL
+                      ORDER BY o2.fill_count DESC, o2.id DESC
+                      LIMIT 1
+                  )
             )
-            SELECT d.decision_id, d.market_ticker, d.side, d.price_cents, d.count,
+            SELECT d.decision_id, d.market_ticker, d.side,
+                   d.price_cents, d.count,
                    l.kind, l.order_id, a.filled_count,
                    CASE WHEN l.kind IN ('ACCEPTED','PARTIALLY_FILLED','SHADOW')
                         THEN 1 ELSE 0 END AS order_active,
                    CASE WHEN l.kind IN ('ACCEPTED','PARTIALLY_FILLED','SHADOW')
                         THEN d.count ELSE a.filled_count END AS reserved_count,
-                   d.created_at,
-                   CASE WHEN a.is_shadow = 1 THEN 'shadow' ELSE 'live' END AS book_scope,
-                   i.detail
+                    d.created_at,
+                    CASE WHEN a.is_shadow = 1 THEN 'shadow' ELSE 'live' END AS book_scope,
+                    i.fill_price_cents, i.detail,
+                    w.fill_price_cents, w.detail
             FROM decisions d
             JOIN latest l ON l.decision_id = d.decision_id
             LEFT JOIN initial i ON i.decision_id = d.decision_id
+            LEFT JOIN witnessed_fill w ON w.decision_id = d.decision_id
             JOIN aggregate_state a ON a.decision_id = d.decision_id
             WHERE a.is_settled = 0
               AND (l.kind IN ('ACCEPTED','PARTIALLY_FILLED','SHADOW') OR a.filled_count > 0)
@@ -765,9 +1153,11 @@ class AutonomyLedger:
             """
         ).fetchall()
         keys = [
-            "decision_id", "market_ticker", "side", "price_cents", "count", "kind",
+            "decision_id", "market_ticker", "side", "decision_price_cents",
+            "decision_count", "kind",
             "order_id", "filled_count", "order_active", "reserved_count", "created_at",
-            "book_scope", "submission_detail",
+            "book_scope", "initial_outcome_price_cents", "submission_detail",
+            "witnessed_fill_price_cents", "witnessed_fill_detail",
         ]
         records = [dict(zip(keys, r)) for r in rows]
         for record in records:
@@ -775,6 +1165,95 @@ class AutonomyLedger:
                 record["submission_detail"] = json.loads(record["submission_detail"] or "{}")
             except Exception:
                 record["submission_detail"] = {}
+            try:
+                record["witnessed_fill_detail"] = json.loads(
+                    record["witnessed_fill_detail"] or "{}"
+                )
+            except Exception:
+                record["witnessed_fill_detail"] = {}
+
+            submission = record["submission_detail"]
+            witnessed = record["witnessed_fill_detail"]
+            try:
+                submitted_price = int(submission.get("submitted_price_cents"))
+            except (TypeError, ValueError):
+                submitted_price = int(
+                    record["initial_outcome_price_cents"]
+                    if record["initial_outcome_price_cents"] is not None
+                    else record["decision_price_cents"]
+                )
+            if not (1 <= submitted_price <= 99):
+                submitted_price = int(record["decision_price_cents"])
+            try:
+                submitted_count = int(submission.get("submitted_count"))
+            except (TypeError, ValueError):
+                submitted_count = int(record["decision_count"])
+            if submitted_count < 1:
+                submitted_count = int(record["decision_count"])
+
+            filled_count = int(record["filled_count"] or 0)
+            witnessed_price = record["witnessed_fill_price_cents"]
+            if filled_count > 0 and witnessed_price is not None:
+                effective_price = int(witnessed_price)
+                fill_price: int | None = effective_price
+            elif filled_count > 0:
+                # A positive fill count is the position witness. Older rows may
+                # lack an independent broker price, so use the submitted limit
+                # rather than the stale forecasting decision.
+                effective_price = submitted_price
+                fill_price = submitted_price
+            else:
+                effective_price = submitted_price
+                fill_price = None
+
+            role = str(
+                witnessed.get("liquidity_role")
+                or submission.get("liquidity_role")
+                or submission.get("submitted_liquidity_role")
+                or ""
+            ).lower()
+            if role not in {"maker", "taker", "mixed"}:
+                note = str(submission.get("note") or "").lower()
+                role = "taker" if "taker" in note else "maker"
+
+            try:
+                submitted_notional = int(submission.get("submitted_notional_cents"))
+            except (TypeError, ValueError):
+                submitted_notional = submitted_price * submitted_count
+            if submitted_notional < 1:
+                submitted_notional = submitted_price * submitted_count
+
+            # Active partially filled orders reserve the witnessed cost of the
+            # filled slice plus the submitted LIMIT for every unfilled contract.
+            # Multiplying the improved fill price by the full order count would
+            # under-reserve the remainder exactly when the book moves.
+            remaining_count = max(0, submitted_count - filled_count)
+            try:
+                witnessed_fill_cost = int(witnessed.get("fill_cost_cents"))
+            except (TypeError, ValueError):
+                witnessed_fill_cost = effective_price * filled_count
+            if witnessed_fill_cost < 0:
+                witnessed_fill_cost = effective_price * filled_count
+            if record["order_active"]:
+                reserved_notional = witnessed_fill_cost + submitted_price * remaining_count
+            else:
+                reserved_notional = witnessed_fill_cost
+
+            record.update({
+                "price_cents": effective_price,
+                "count": submitted_count,
+                "submitted_price_cents": submitted_price,
+                "submitted_count": submitted_count,
+                "submitted_notional_cents": submitted_notional,
+                "fill_price_cents": fill_price,
+                "liquidity_role": role,
+                "reserved_count": (
+                    submitted_count if record["order_active"] else filled_count
+                ),
+                "reserved_notional_cents": reserved_notional,
+                "execution_fee_cents": witnessed.get("execution_fee_cents"),
+                "fill_cost_cents": witnessed.get("fill_cost_cents"),
+            })
         return records
 
     def signals_for_market(self, market_ticker: str) -> list[dict[str, Any]]:
@@ -787,107 +1266,224 @@ class AutonomyLedger:
             {"source": r[0], "probability_yes": r[1], "uncertainty": r[2], "created_at": r[3]} for r in rows
         ]
 
-    def calibration_signals_for_market(self, market_ticker: str) -> list[dict[str, Any]]:
-        """Source opinions aligned to the market's evidence decision point.
+    def calibration_signals_for_market(
+        self, market_ticker: str, *, evidence_mode: str = "live",
+    ) -> list[dict[str, Any]]:
+        """Return point-in-time source opinions from one provenance lane.
 
-        If Dummy evaluated the market, use each source's latest opinion at or
-        before the earliest recorded decision. For phantom-only markets use
-        each source's earliest opinion. This prevents near-resolution market
-        updates from being compared with model opinions from the earlier time
-        at which Dummy actually chose whether to trade.
+        ``evidence_mode='live'`` is the authoritative trust/readiness lane. A
+        row is eligible only when *both* its claimed creation time and its
+        durable ledger receipt time were no later than Dummy's earliest
+        decision (or the settlement time for a phantom-only forecast). This
+        receipt-time bound prevents a backdated or late-arriving row from
+        acquiring hindsight authority.
+
+        ``evidence_mode='retro'`` is historical-replay evidence. It remains
+        separately queryable for research, but callers must never mix it into
+        live trust or readiness. Retro rows retain the model-time cutoff while
+        intentionally omitting the receipt cutoff because replay is ingested
+        after the historical event by construction.
         """
-        decision_time = self._conn.execute(
-            "SELECT MIN(created_at) FROM decisions WHERE market_ticker=?",
-            (market_ticker,),
-        ).fetchone()[0]
-        if decision_time:
-            rows = self._conn.execute(
-                """
-                SELECT source, probability_yes, uncertainty, created_at, features
-                FROM signal_history WHERE market_ticker=? AND created_at<=?
-                ORDER BY id
-                """,
-                (market_ticker, decision_time),
-            ).fetchall()
-            chosen: dict[str, tuple[Any, ...]] = {}
-            for row in rows:
-                chosen[str(row[0])] = row  # latest at/before decision
-        else:
-            rows = self._conn.execute(
-                """
-                SELECT source, probability_yes, uncertainty, created_at, features
-                FROM signal_history WHERE market_ticker=? ORDER BY id
-                """,
-                (market_ticker,),
-            ).fetchall()
-            chosen = {}
-            for row in rows:
-                chosen.setdefault(str(row[0]), row)  # earliest phantom opinion
+        if evidence_mode not in {"live", "retro"}:
+            raise ValueError("evidence_mode must be 'live' or 'retro'")
+        decision_time, settled_at = self._conn.execute(
+            """
+            SELECT
+                (SELECT MIN(created_at) FROM decisions WHERE market_ticker=?),
+                (SELECT settled_at FROM settlements WHERE market_ticker=?)
+            """,
+            (market_ticker, market_ticker),
+        ).fetchone()
+        # An unsettled phantom has no outcome to grade. ``now`` preserves the
+        # method's historical inspection utility without granting future rows.
+        cutoff = decision_time or settled_at or _now()
+        receipt_clause = (
+            " AND julianday(ingested_at)<=julianday(?)"
+            if evidence_mode == "live" else ""
+        )
+        params: list[Any] = [market_ticker, evidence_mode, cutoff]
+        if evidence_mode == "live":
+            params.append(cutoff)
+        rows = self._conn.execute(
+            """
+            SELECT source, probability_yes, uncertainty, created_at, features,
+                   mode, ingested_at, id
+            FROM signal_history
+            WHERE market_ticker=? AND mode=?
+              AND julianday(created_at)<=julianday(?)
+            """ + receipt_clause + " ORDER BY id",
+            params,
+        ).fetchall()
+        chosen: dict[str, tuple[Any, ...]] = {}
+        for row in rows:
+            source = str(row[0])
+            if decision_time:
+                chosen[source] = row  # latest available at/before decision
+            else:
+                chosen.setdefault(source, row)  # earliest phantom opinion
         return [
             {"source": row[0], "probability_yes": row[1], "uncertainty": row[2],
-             "created_at": row[3], "features": _loads_features(row[4])}
+             "created_at": row[3], "features": _loads_features(row[4]),
+             "mode": row[5], "ingested_at": row[6]}
             for row in chosen.values()
         ]
 
     def calibration_signals_for_settled(
-        self, tickers: Iterable[str]
+        self, tickers: Iterable[str], *, evidence_mode: str = "live",
     ) -> dict[str, list[dict[str, Any]]]:
-        """Batched :meth:`calibration_signals_for_market` for many markets.
+        """Return one point-in-time provenance lane for settled markets.
+
+        The implementation delegates to the multi-lane batch so callers that
+        need both live and retro evidence can scan ``signal_history`` once.
+        """
+        return self.calibration_signals_for_settled_by_mode(
+            tickers, evidence_modes=(evidence_mode,),
+        )[evidence_mode]
+
+    def calibration_signals_for_settled_by_mode(
+        self,
+        tickers: Iterable[str],
+        *,
+        evidence_modes: Iterable[str] = ("live", "retro"),
+    ) -> dict[str, dict[str, list[dict[str, Any]]]]:
+        """Batch point-in-time source opinions for multiple provenance lanes.
 
         The backtester called the per-market version once per settled market:
         with ~177k settlements that is ~354k round-trips (a decision-time probe
         plus a signal_history scan each) against the 12M-row union view -- the
-        6-hourly recalibration's dominant cost. This returns the identical
-        selection (per source: the latest opinion at/before the market's earliest
-        decision if it was traded, else the earliest phantom opinion) for every
-        ticker in ONE decisions group-by and ONE signal_history scan, grouped in
-        Python. Ordering by ``id`` in the per-market SQL is reproduced by keeping
-        the max id (traded window) or min id (phantom) per source.
+        6-hourly recalibration's dominant cost. A full report then called the
+        one-lane batch twice, scanning the same hot/archive union once for live
+        evidence and again for retro evidence. This method returns the identical
+        selection for every requested lane in one joined scan.
+
+        Live rows are bounded by both model time and durable receipt time;
+        retro rows are model-time bounded and remain research-only. Ordering by
+        ``id`` in the per-market SQL is reproduced by keeping the max id
+        (traded window) or min id (phantom) per source.
         """
-        want = set(tickers)
+        modes = tuple(dict.fromkeys(str(mode) for mode in evidence_modes))
+        if not modes or any(mode not in {"live", "retro"} for mode in modes):
+            raise ValueError("evidence_modes must contain 'live' and/or 'retro'")
+        want = {str(ticker) for ticker in tickers}
         if not want:
-            return {}
-        decision_times: dict[str, str] = {}
-        for mt, dt in self._conn.execute(
-            "SELECT market_ticker, MIN(created_at) FROM decisions GROUP BY market_ticker"
-        ):
-            if dt is not None and mt in want:
-                decision_times[str(mt)] = str(dt)
-        # ticker -> source -> (id, row-tuple); traded keeps max id in-window,
-        # phantom keeps min id -- matching the per-market ORDER BY id semantics.
-        acc: dict[str, dict[str, tuple[int, tuple[Any, ...]]]] = {}
-        for mt, rid, source, prob, unc, ca, feat in self._conn.execute(
-            """
-            SELECT sh.market_ticker, sh.id, sh.source, sh.probability_yes,
-                   sh.uncertainty, sh.created_at, sh.features
-            FROM signal_history sh
-            JOIN main.settlements s ON s.market_ticker = sh.market_ticker
-            """
+            return {mode: {} for mode in modes}
+        # First pass carries keys only. Pulling probability, uncertainty, and
+        # especially the JSON features blob for every one of ~10M eligible rows
+        # made the Python/SQLite boundary the dominant full-report cost even
+        # after the old N+1 was removed. Keep only the chosen physical row id,
+        # then fetch full payloads by INTEGER PRIMARY KEY below.
+        #
+        # mode -> ticker -> source -> (id, physical_store); traded keeps max id
+        # in-window, phantom keeps min id -- matching the per-market ORDER BY id
+        # semantics without ever merging provenance lanes.
+        acc: dict[
+            str, dict[str, dict[str, tuple[int, str]]]
+        ] = {mode: {} for mode in modes}
+        placeholders = ",".join("?" for _mode in modes)
+        attached = {
+            str(row[1]) for row in self._conn.execute("PRAGMA database_list")
+        }
+        stores = ["main"]
+        if "signal_archive" in attached:
+            stores.append("signal_archive")
+
+        branch_sql: list[str] = []
+        query_params: list[Any] = []
+        for store in stores:
+            receipt_clause = (
+                " AND (sh.mode!='live' OR julianday(sh.ingested_at)"
+                " <=julianday(COALESCE(ed.decision_time,s.settled_at)))"
+                if "live" in modes else ""
+            )
+            branch_sql.append(
+                f"""
+                SELECT '{store}' AS physical_store,sh.market_ticker,sh.id,
+                       sh.source,sh.mode,ed.decision_time
+                FROM {store}.signals sh
+                JOIN main.settlements s ON s.market_ticker=sh.market_ticker
+                LEFT JOIN earliest_decision ed
+                  ON ed.market_ticker=sh.market_ticker
+                WHERE sh.mode IN ({placeholders})
+                  AND julianday(sh.created_at)
+                      <=julianday(COALESCE(ed.decision_time,s.settled_at))
+                """ + receipt_clause
+            )
+            query_params.extend(modes)
+        query = """
+            WITH earliest_decision AS (
+                SELECT market_ticker, MIN(created_at) AS decision_time
+                FROM decisions GROUP BY market_ticker
+            )
+            """ + " UNION ALL ".join(branch_sql)
+        for store, mt, rid, source, mode, dt in self._conn.execute(
+            query, query_params,
         ):
             mt = str(mt)
             if mt not in want:
                 continue
+            mode = str(mode)
             src = str(source)
-            row = (source, prob, unc, ca, feat)
-            bucket = acc.setdefault(mt, {})
+            bucket = acc[mode].setdefault(mt, {})
             prev = bucket.get(src)
-            dt = decision_times.get(mt)
             if dt is not None:
-                # latest opinion at/before the decision point (max id, ca <= dt)
-                if ca is not None and str(ca) <= dt and (prev is None or rid > prev[0]):
-                    bucket[src] = (rid, row)
+                # SQL already enforced model/receipt availability at decision.
+                if prev is None or rid > prev[0]:
+                    bucket[src] = (int(rid), str(store))
             else:
                 # earliest phantom opinion (min id)
                 if prev is None or rid < prev[0]:
-                    bucket[src] = (rid, row)
-        return {
-            mt: [
-                {"source": r[0], "probability_yes": r[1], "uncertainty": r[2],
-                 "created_at": r[3], "features": _loads_features(r[4])}
-                for _rid, r in bucket.values()
-            ]
-            for mt, bucket in acc.items()
+                    bucket[src] = (int(rid), str(store))
+
+        chosen = {
+            (store, rid)
+            for mode_buckets in acc.values()
+            for source_buckets in mode_buckets.values()
+            for rid, store in source_buckets.values()
         }
+        results: dict[str, dict[str, list[dict[str, Any]]]] = {
+            mode: {} for mode in modes
+        }
+        if not chosen:
+            return results
+
+        table = "temp.backtest_chosen_signal_ids"
+        self._conn.execute(
+            f"CREATE TEMP TABLE IF NOT EXISTS {table}("
+            "physical_store TEXT NOT NULL,id INTEGER NOT NULL,"
+            "PRIMARY KEY(physical_store,id)) WITHOUT ROWID"
+        )
+        self._conn.execute(f"DELETE FROM {table}")
+        try:
+            self._conn.executemany(
+                f"INSERT INTO {table}(physical_store,id) VALUES (?,?)",
+                sorted(chosen),
+            )
+            detail_branches = [
+                f"""
+                SELECT sh.source,sh.market_ticker,sh.probability_yes,
+                       sh.uncertainty,sh.created_at,sh.features,sh.mode,
+                       sh.ingested_at
+                FROM {table} chosen
+                CROSS JOIN {store}.signals sh
+                WHERE chosen.physical_store=? AND sh.id=chosen.id
+                """
+                for store in stores
+            ]
+            for source, mt, prob, unc, created, feat, mode, ingested in self._conn.execute(
+                " UNION ALL ".join(detail_branches), stores,
+            ):
+                results[str(mode)].setdefault(str(mt), []).append({
+                    "source": source,
+                    "probability_yes": prob,
+                    "uncertainty": unc,
+                    "created_at": created,
+                    "features": _loads_features(feat),
+                    "mode": mode,
+                    "ingested_at": ingested,
+                })
+        finally:
+            self._conn.execute(f"DELETE FROM {table}")
+        return results
 
     def unsettled_traded_markets(self) -> list[str]:
         rows = self._conn.execute(
@@ -947,29 +1543,37 @@ class AutonomyLedger:
         totals = self._conn.execute(
             "SELECT COUNT(*), COUNT(DISTINCT market_ticker), COUNT(DISTINCT source),"
             " SUM(CASE WHEN ingest_version>=2 THEN 1 ELSE 0 END),"
-            " SUM(CASE WHEN ingest_version>=2 AND features!='{}' THEN 1 ELSE 0 END)"
+            " SUM(CASE WHEN ingest_version>=2 AND features!='{}' THEN 1 ELSE 0 END),"
+            " SUM(CASE WHEN probability_yes<0 OR probability_yes>1"
+            "               OR uncertainty<0 OR uncertainty>0.5 THEN 1 ELSE 0 END),"
+            " SUM(CASE WHEN julianday(created_at)>julianday('now','+5 minutes')"
+            "          THEN 1 ELSE 0 END),"
+            " AVG(CASE WHEN ingest_version>=2 AND mode='live'"
+            "          THEN MAX(0,(julianday(ingested_at)-julianday(created_at))*86400.0)"
+            "     END),"
+            " MAX(CASE WHEN ingest_version>=2 AND mode='live'"
+            "          THEN MAX(0,(julianday(ingested_at)-julianday(created_at))*86400.0)"
+            "     END),"
+            " SUM(CASE WHEN ingest_version>=2 AND mode='live' THEN 1 ELSE 0 END)"
             " FROM signal_history"
         ).fetchone()
-        invalid_stored = int(self._conn.execute(
-            "SELECT COUNT(*) FROM signal_history WHERE probability_yes<0 OR probability_yes>1"
-            " OR uncertainty<0 OR uncertainty>0.5"
-        ).fetchone()[0])
+        invalid_stored = int(totals[5] or 0)
         duplicate_groups = int(self._conn.execute(
             "SELECT COUNT(*) FROM (SELECT source,market_ticker,created_at,mode,COUNT(*) n"
             " FROM signal_history GROUP BY source,market_ticker,created_at,mode HAVING n>1)"
         ).fetchone()[0])
-        future_rows = int(self._conn.execute(
-            "SELECT COUNT(*) FROM signal_history"
-            " WHERE julianday(created_at)>julianday('now','+5 minutes')"
-        ).fetchone()[0])
+        future_rows = int(totals[6] or 0)
         post_settlement_rows = int(self._conn.execute(
             "SELECT COUNT(*) FROM signal_history s JOIN settlements st USING(market_ticker)"
             " WHERE julianday(s.created_at)>julianday(st.settled_at)"
         ).fetchone()[0])
         decisions_without_prior_signal = int(self._conn.execute(
-            "SELECT COUNT(*) FROM decisions d WHERE NOT EXISTS"
-            " (SELECT 1 FROM signal_history s WHERE s.market_ticker=d.market_ticker"
-            " AND s.created_at<=d.created_at)"
+            "SELECT COUNT(*) FROM decisions d LEFT JOIN ("
+            " SELECT market_ticker,MIN(created_at) AS first_signal_at"
+            " FROM signal_history GROUP BY market_ticker"
+            ") first_signal ON first_signal.market_ticker=d.market_ticker"
+            " WHERE first_signal.first_signal_at IS NULL"
+            " OR first_signal.first_signal_at>d.created_at"
         ).fetchone()[0])
         rejection_total = int(self._conn.execute(
             "SELECT COUNT(*) FROM signal_rejections"
@@ -979,21 +1583,21 @@ class AutonomyLedger:
                 "SELECT reason,COUNT(*) FROM signal_rejections GROUP BY reason ORDER BY COUNT(*) DESC"
             )
         }
-        by_mode = {
-            str(mode): int(count) for mode, count in self._conn.execute(
-                "SELECT mode,COUNT(*) FROM signal_history GROUP BY mode ORDER BY mode"
-            )
-        }
-        by_source = {
-            str(source): int(count) for source, count in self._conn.execute(
-                "SELECT source,COUNT(*) FROM signal_history GROUP BY source ORDER BY COUNT(*) DESC"
-            )
-        }
-        receipt = self._conn.execute(
-            "SELECT AVG(MAX(0,(julianday(ingested_at)-julianday(created_at))*86400.0)),"
-            " MAX(MAX(0,(julianday(ingested_at)-julianday(created_at))*86400.0)), COUNT(*)"
-            " FROM signal_history WHERE ingest_version>=2 AND mode='live'"
-        ).fetchone()
+        by_mode_counts: dict[str, int] = {}
+        by_source_counts: dict[str, int] = {}
+        for source, mode, count in self._conn.execute(
+            "SELECT source,mode,COUNT(*) FROM signal_history GROUP BY source,mode"
+        ):
+            source = str(source)
+            mode = str(mode)
+            count = int(count)
+            by_mode_counts[mode] = by_mode_counts.get(mode, 0) + count
+            by_source_counts[source] = by_source_counts.get(source, 0) + count
+        by_mode = dict(sorted(by_mode_counts.items()))
+        by_source = dict(
+            sorted(by_source_counts.items(), key=lambda item: (-item[1], item[0]))
+        )
+        receipt = totals[7:10]
 
         blocking_issues: list[str] = []
         if invalid_stored:

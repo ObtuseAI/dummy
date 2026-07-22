@@ -34,7 +34,7 @@ async def test_alias_resolution_report_lists_configured_aliases_and_resolution(m
     with patch("httpx.AsyncClient.get", new=_fake_model_list):
         from archive.report_scripts.generate_v8_1_reports import generate_model_alias_resolution_report_v1
 
-        report = await generate_model_alias_resolution_report_v1()
+        report = await generate_model_alias_resolution_report_v1(allow_live=True)
 
     assert report["verdict"] == "PASS"
     for provider in ("deepseek_v4_flash", "minimax_m3"):

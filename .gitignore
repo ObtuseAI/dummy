@@ -31,3 +31,8 @@ data/*.db
 full_test_suite.log
 *.log
 !docs/**/*.log
+
+# session/browser artifacts (2026-07-22)
+output/
+.playwright-cli/
+*.orig

@@ -9,9 +9,8 @@ structured JSON.
 Safety invariants enforced here:
   * subprocess.run(shell=False) always.
   * cwd pinned to the repo root.
-  * stdout/stderr captured and tail-trimmed (no secret redaction needed here
-    because no credentials are ever injected; the appliance handles its own
-    secret hygiene).
+  * stdout/stderr captured, tail-trimmed, and redacted against secret-bearing
+    environment values before the dashboard can return them.
   * The only "danger" endpoint is one-shot-live, and it fails closed unless the
     caller supplies the exact env-gate acks AND the exact typed risk sentence.
     Even armed, it can only invoke `operator_full_completion.py one-shot-live`;
@@ -20,29 +19,51 @@ Safety invariants enforced here:
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import importlib.util
+import inspect
 import json
 import os
 import re
 import subprocess
 import sys
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 
+from core.caps_authority import (
+    CAPS_AUTHORITY_REGISTRATION_PATH as DEFAULT_CAPS_AUTHORITY_REGISTRATION_PATH,
+    evaluate_caps_authority,
+)
 from core.live_submit_state import (
     LIVE_SUBMIT_REQUIRED_ACK,
     LIVE_SUBMIT_TYPED_CONFIRMATION,
+    build_caps_authority_binding,
     validate_operator_one_proof_enabled,
 )
 from core import proof_lock
+from core.state import STATE
+from core.secret_guard import redact_text
 from core.proof_authority import REQUIRED_CONFIRMATION as SECOND_PROOF_REQUIRED_CONFIRMATION
+from dashboard.backend.operator_auth import require_operator
 
-router = APIRouter(prefix="/api/operator-control", tags=["operator-control"])
+router = APIRouter(
+    prefix="/api/operator-control",
+    tags=["operator-control"],
+    dependencies=[Depends(require_operator)],
+)
+
+COMMAND_SEAL_READY_STATUS = "PASS_EXECUTE_ONCE_COMMAND_SEAL_READY_NO_SUBMIT"
+COMMAND_SEAL_READY_VERDICTS = frozenset({
+    "COMMAND_SEAL_READY_ENV_GATE_REQUIRED",
+    "SECOND_PROOF_READY_ENV_GATE_REQUIRED",
+    "READY_FOR_LIVE_PROOF",
+})
 
 DUMMY_ROOT = Path(__file__).resolve().parents[2]
 PY = sys.executable
@@ -86,8 +107,8 @@ def _result(
         "ok": returncode == 0,
         "command": label,
         "returncode": returncode,
-        "stdout": stdout[-8000:],
-        "stderr": stderr[-3000:],
+        "stdout": redact_text(stdout[-8000:]),
+        "stderr": redact_text(stderr[-3000:]),
         "safety_notes": safety_notes or [],
     }
     if extra:
@@ -132,7 +153,7 @@ def _run_script(
             args,
             label=label,
             returncode=-1,
-            stdout=e.stdout or "" if isinstance(e.stdout, str) else "",
+            stdout=e.stdout if isinstance(e.stdout, str) else "",
             stderr=f"[TIMEOUT after {timeout}s] {e.stderr or ''}",
             safety_notes=(safety_notes or []) + ["timeout-reached"],
         )
@@ -145,6 +166,25 @@ def _run_script(
             stderr=f"[runner-error] {type(e).__name__}: {e}",
             safety_notes=(safety_notes or []) + ["runner-error"],
         )
+
+
+async def _run_script_async(
+    script: str,
+    args: list[str],
+    *,
+    extra_env: dict[str, str] | None = None,
+    timeout: int = DEFAULT_TIMEOUT,
+    safety_notes: list[str] | None = None,
+) -> dict[str, Any]:
+    """Async wrapper: run the blocking subprocess off the event loop."""
+    return await asyncio.to_thread(
+        _run_script,
+        script,
+        args,
+        extra_env=extra_env,
+        timeout=timeout,
+        safety_notes=safety_notes,
+    )
 
 
 def _live_submit_state() -> dict[str, Any]:
@@ -192,72 +232,115 @@ def _parse_status_stdout(stdout: str) -> dict[str, Any]:
     }
 
 
-@router.get("/status")
+# Brief cache for /status: a poll must not stack up 3x~120s subprocesses.
+STATUS_CACHE_TTL_S = 30.0
+_status_cache: dict[str, Any] = {"expires_at": 0.0, "payload": None}
+_status_cache_lock: asyncio.Lock | None = None
+_status_cache_loop: asyncio.AbstractEventLoop | None = None
+
+
+def _get_status_cache_lock() -> asyncio.Lock:
+    """Return a lock bound to the current app/test event loop."""
+    global _status_cache_lock, _status_cache_loop
+    loop = asyncio.get_running_loop()
+    if _status_cache_lock is None or _status_cache_loop is not loop:
+        _status_cache_lock = asyncio.Lock()
+        _status_cache_loop = loop
+    return _status_cache_lock
+
+
+@router.get("/status", dependencies=[Depends(require_operator)])
 async def status() -> dict[str, Any]:
     """Read-only: runs status, doctor, and the proof-starvation stop rule."""
-    safety = [
-        "read-only",
-        "no broker contact",
-        "no order placement",
-        "shell=False",
-    ]
-    status_r = _run_script(FULL_COMPLETION, ["status"], safety_notes=safety)
-    doctor_r = _run_script(FULL_COMPLETION, ["doctor"], safety_notes=safety)
-    starvation_r = _run_script(STARVATION_STOP, [], safety_notes=safety)
+    now = time.monotonic()
+    cached = _status_cache["payload"]
+    if cached is not None and now < _status_cache["expires_at"]:
+        return cached
 
-    live_submit = _live_submit_state()
-    approvals = _approvals_state()
-    parsed = _parse_status_stdout(status_r.get("stdout", ""))
+    # Collapse concurrent cache misses into one refresh. Without this lock,
+    # several browser polls can still launch duplicate 3-process batches.
+    async with _get_status_cache_lock():
+        now = time.monotonic()
+        cached = _status_cache["payload"]
+        if cached is not None and now < _status_cache["expires_at"]:
+            return cached
 
-    # Completion percent heuristic from status stdout: look for "X%" or
-    # "complete" markers. Conservative — never claims 100%.
-    pct = None
-    import re
-    m = re.search(r"(\d{1,3})\s*%", status_r.get("stdout", ""))
-    if m:
-        pct = min(99, int(m.group(1)))
+        safety = [
+            "read-only",
+            "no broker contact",
+            "no order placement",
+            "shell=False",
+        ]
+        status_r, doctor_r, starvation_r = await asyncio.gather(
+            _run_script_async(FULL_COMPLETION, ["status"], safety_notes=safety),
+            _run_script_async(FULL_COMPLETION, ["doctor"], safety_notes=safety),
+            _run_script_async(STARVATION_STOP, [], safety_notes=safety),
+        )
 
-    registry = _load_real_proof_registry()
-    if registry and registry.get("latest_real_broker_contacted") is True:
-        proof_lock_status = "consumed_by_real_broker_attempt"
-    elif registry:
-        proof_lock_status = "registry_present_no_broker_contact"
-    else:
-        proof_lock_status = "no_registry"
+        live_submit = _live_submit_state()
+        approvals = _approvals_state()
+        parsed = _parse_status_stdout(status_r.get("stdout", ""))
 
-    preserved_real_proof: dict[str, Any] = {
-        "latest_real_broker_proof_attempt_status": registry.get("latest_real_broker_attempt_status") if registry else None,
-        "broker_contacted": bool(registry.get("latest_real_broker_contacted")) if registry else False,
-        "live_order_accepted": False,
-        "evidence_directory": registry.get("latest_real_broker_proof_evidence_dir") if registry else None,
-        "current_live_submit_disabled_default": bool(live_submit.get("enabled")) is False,
-        "proof_lock_status": proof_lock_status,
-        "next_action_recommendation": "investigate broker rejection/order payload validity",
-    }
+        # Only accept an explicitly labeled completion percentage. An
+        # unrelated risk/utilization percentage must never become progress.
+        pct = None
+        stdout_text = status_r.get("stdout", "")
+        patterns = (
+            r"completion[^\d%]{0,20}(\d{1,3})\s*%",
+            r"(\d{1,3})\s*%[^\n]{0,20}complete",
+        )
+        for pattern in patterns:
+            match = re.search(pattern, stdout_text, re.IGNORECASE)
+            if match:
+                pct = min(99, int(match.group(1)))
+                break
 
-    return {
-        "ok": status_r["ok"] and doctor_r["ok"],
-        "live_orders": 0,
-        "broker_contact": False,
-        "market_order": False,
-        "scale": False,
-        "autonomy": False,
-        "live_submit_config": live_submit,
-        "approvals": approvals,
-        "runtime_approvals_mutated": False,
-        "caps_mutated": False,
-        "live_submit_mutated": False,
-        "command_seal_mentioned": parsed["mentions_command_seal"],
-        "route_proof_state": parsed,
-        "completion_percent": pct,
-        "preserved_real_proof": preserved_real_proof,
-        "safety_notes": safety,
-        "results": {
-            "status": status_r,
-            "doctor": doctor_r,
-            "proof_starvation_stop": starvation_r,
-        },
-    }
+        registry = _load_real_proof_registry()
+        if registry and registry.get("latest_real_broker_contacted") is True:
+            proof_lock_status = "consumed_by_real_broker_attempt"
+        elif registry:
+            proof_lock_status = "registry_present_no_broker_contact"
+        else:
+            proof_lock_status = "no_registry"
+
+        preserved_real_proof: dict[str, Any] = {
+            "latest_real_broker_proof_attempt_status": registry.get("latest_real_broker_attempt_status") if registry else None,
+            "broker_contacted": bool(registry.get("latest_real_broker_contacted")) if registry else False,
+            "live_order_accepted": False,
+            "evidence_directory": registry.get("latest_real_broker_proof_evidence_dir") if registry else None,
+            "current_live_submit_disabled_default": bool(live_submit.get("enabled")) is False,
+            "proof_lock_status": proof_lock_status,
+            "next_action_recommendation": "investigate broker rejection/order payload validity",
+        }
+
+        payload = {
+            "ok": status_r["ok"] and doctor_r["ok"],
+            "live_orders": 0,
+            "broker_contact": False,
+            "market_order": False,
+            "scale": False,
+            "autonomy": False,
+            "kill_switch_active": STATE.kill_switch.active,
+            "emergency_stop_active": STATE.emergency_stop.active,
+            "live_submit_config": live_submit,
+            "approvals": approvals,
+            "runtime_approvals_mutated": False,
+            "caps_mutated": False,
+            "live_submit_mutated": False,
+            "command_seal_mentioned": parsed["mentions_command_seal"],
+            "route_proof_state": parsed,
+            "completion_percent": pct,
+            "preserved_real_proof": preserved_real_proof,
+            "safety_notes": safety,
+            "results": {
+                "status": status_r,
+                "doctor": doctor_r,
+                "proof_starvation_stop": starvation_r,
+            },
+        }
+        _status_cache["payload"] = payload
+        _status_cache["expires_at"] = time.monotonic() + STATUS_CACHE_TTL_S
+        return payload
 
 
 def _load_v1_status() -> dict[str, Any] | None:
@@ -492,7 +575,7 @@ async def second_proof_authority_status() -> dict[str, Any]:
     return _load_second_proof_authority_status()
 
 
-@router.post("/second-proof-authority/prepare")
+@router.post("/second-proof-authority/prepare", dependencies=[Depends(require_operator)])
 async def second_proof_authority_prepare() -> dict[str, Any]:
     """Create a draft second-proof authority from the validated V3 candidate.
 
@@ -507,7 +590,7 @@ async def second_proof_authority_prepare() -> dict[str, Any]:
         "no order placement",
         "shell=False",
     ]
-    return _run_script(
+    return await _run_script_async(
         FULL_COMPLETION,
         ["prepare-second-proof-authority"],
         safety_notes=safety,
@@ -521,7 +604,7 @@ class SecondProofAuthorityActivateBody(BaseModel):
     confirm: str = ""
 
 
-@router.post("/second-proof-authority/activate")
+@router.post("/second-proof-authority/activate", dependencies=[Depends(require_operator)])
 async def second_proof_authority_activate(body: SecondProofAuthorityActivateBody) -> dict[str, Any]:
     """Activate the draft second-proof authority after exact typed confirmation.
 
@@ -552,7 +635,7 @@ async def second_proof_authority_activate(body: SecondProofAuthorityActivateBody
         "no order placement",
         "shell=False",
     ]
-    return _run_script(
+    return await _run_script_async(
         FULL_COMPLETION,
         [
             "activate-second-proof-authority",
@@ -565,7 +648,7 @@ async def second_proof_authority_activate(body: SecondProofAuthorityActivateBody
     )
 
 
-@router.post("/dry-run")
+@router.post("/dry-run", dependencies=[Depends(require_operator)])
 async def dry_run() -> dict[str, Any]:
     safety = [
         "dry-run only",
@@ -574,14 +657,14 @@ async def dry_run() -> dict[str, Any]:
         "no order placement",
         "shell=False",
     ]
-    return _run_script(
+    return await _run_script_async(
         AUTHORITY_APPLIANCE,
         ["dry-run-all"],
         safety_notes=safety,
     )
 
 
-@router.post("/max-progress")
+@router.post("/max-progress", dependencies=[Depends(require_operator)])
 async def max_progress() -> dict[str, Any]:
     """Runs `operator_bootstrap.py max-progress`. Fails closed by the CLI's own
     env-gate; this wrapper does not bypass it."""
@@ -591,14 +674,14 @@ async def max_progress() -> dict[str, Any]:
         "no market/scale/autonomy flags injected",
         "shell=False",
     ]
-    return _run_script(
+    return await _run_script_async(
         BOOTSTRAP,
         ["max-progress"],
         safety_notes=safety,
     )
 
 
-@router.post("/one-shot-check")
+@router.post("/one-shot-check", dependencies=[Depends(require_operator)])
 async def one_shot_check() -> dict[str, Any]:
     safety = [
         "read-only check",
@@ -606,7 +689,7 @@ async def one_shot_check() -> dict[str, Any]:
         "no order placement",
         "shell=False",
     ]
-    return _run_script(
+    return await _run_script_async(
         FULL_COMPLETION,
         ["one-shot-check"],
         safety_notes=safety,
@@ -642,7 +725,7 @@ def _live_refusal(reason: str, hint: str) -> dict[str, Any]:
     }
 
 
-@router.post("/one-shot-live")
+@router.post("/one-shot-live", dependencies=[Depends(require_operator)])
 async def one_shot_live(body: OneShotLiveBody) -> dict[str, Any]:
     """The ONLY endpoint that can reach a real order path — and only by
     invoking `operator_full_completion.py one-shot-live`, exactly like the
@@ -675,7 +758,7 @@ async def one_shot_live(body: OneShotLiveBody) -> dict[str, Any]:
         "shell=False",
         "env vars scoped to this subprocess only",
     ]
-    return _run_script(
+    return await _run_script_async(
         FULL_COMPLETION,
         ["one-shot-live"],
         extra_env={
@@ -694,6 +777,7 @@ OPERATOR_EXTERNAL_DIR = DUMMY_ROOT / "runtime" / "operator_external"
 ADAPTER_DESCRIPTOR_PATH = OPERATOR_EXTERNAL_DIR / "livebrokerfirewall_adapter_descriptor.json"
 LIVE_SUBMIT_PATH = DUMMY_ROOT / "configs" / "live_submit.json"
 CAPS_PATH = DUMMY_ROOT / "configs" / "caps.json"
+CAPS_AUTHORITY_REGISTRATION_PATH = DEFAULT_CAPS_AUTHORITY_REGISTRATION_PATH
 APPROVAL_PATH = (
     DUMMY_ROOT / "runtime" / "approvals" / "dummy_controlled_production_pilot_approval.json"
 )
@@ -719,9 +803,15 @@ SECRET_KEYWORDS = {"api_key", "apikey", "api_secret", "secret", "private_key", "
 
 ALLOWED_ADAPTER_MODULES = {
     "predator_mesh/brokers/kalshi_livebrokerfirewall_adapter.py",
-    "adapters/live_broker_firewall_adapter_skeleton.py",
 }
-ALLOWED_ADAPTER_CLASS_NAMES = {"KalshiLiveBrokerFirewallAdapter", "LiveBrokerFirewallAdapter"}
+ALLOWED_ADAPTER_CLASS_NAMES = ("KalshiLiveBrokerFirewallAdapter",)
+ADAPTER_CONTRACT_VERSION = "livebrokerfirewall_adapter_contract_v1"
+REQUIRED_ADAPTER_METHODS = (
+    "validate_environment",
+    "redact_diagnostics",
+    "submit_limit_order",
+    "get_order_status",
+)
 
 KALSHI_KEY_ID_REFS = {"KALSHI_API_KEY_ID"}
 KALSHI_PRIVATE_KEY_REFS = {
@@ -1029,45 +1119,83 @@ def _validate_adapter_descriptor(data: Any) -> list[str]:
 
 def _validate_live_submit(data: dict[str, Any]) -> list[str]:
     """Delegate to the shared live-submit state model validator."""
-    return validate_operator_one_proof_enabled(data).errors
+    return validate_operator_one_proof_enabled(
+        data,
+        caps_authority_status=_current_caps_authority_status(),
+    ).errors
+
+
+def _current_caps_authority_status():
+    return evaluate_caps_authority(
+        caps_path=CAPS_PATH,
+        registration_path=CAPS_AUTHORITY_REGISTRATION_PATH,
+    )
 
 
 def _validate_strict_caps(data: dict[str, Any]) -> list[str]:
     errors: list[str] = []
-    if data.get("order_type_policy") != "LIMIT_ONLY":
+    has_limit_policy = (
+        data.get("order_type_policy") == "LIMIT_ONLY"
+        or data.get("limit_orders_only") is True
+    )
+    if not has_limit_policy:
+        errors.append("limit-order-only policy is required")
+    if "order_type_policy" in data and data["order_type_policy"] != "LIMIT_ONLY":
         errors.append("order_type_policy must be 'LIMIT_ONLY'")
-    if data.get("market_orders_allowed") is not False:
+    if "limit_orders_only" in data and data["limit_orders_only"] is not True:
+        errors.append("limit_orders_only must be true")
+
+    has_market_block = (
+        data.get("market_orders_allowed") is False
+        or data.get("allow_market_orders") is False
+    )
+    if not has_market_block:
+        errors.append("market orders must be disabled")
+    if "market_orders_allowed" in data and data["market_orders_allowed"] is not False:
         errors.append("market_orders_allowed must be false")
-    if data.get("kill_switch_enabled") is not True:
+    if "allow_market_orders" in data and data["allow_market_orders"] is not False:
+        errors.append("allow_market_orders must be false")
+
+    has_kill_requirement = (
+        data.get("kill_switch_enabled") is True
+        or data.get("kill_switch_required") is True
+    )
+    if not has_kill_requirement:
+        errors.append("kill switch protection is required")
+    if "kill_switch_enabled" in data and data["kill_switch_enabled"] is not True:
         errors.append("kill_switch_enabled must be true")
-    count = data.get("max_order_count")
-    if not isinstance(count, int) or count > 1 or count < 1:
+    if "kill_switch_required" in data and data["kill_switch_required"] is not True:
+        errors.append("kill_switch_required must be true")
+
+    count = data.get("max_order_count", 1)
+    if not isinstance(count, int) or count != 1:
         errors.append("max_order_count must be 1 for the first proof")
-    size = data.get("max_order_size")
+    size = data.get("max_order_size", data.get("max_single_order_cents"))
     if not isinstance(size, int) or size > STRICT_MAX_ORDER_SIZE_CENTS or size < 1:
-        errors.append(f"max_order_size must be between 1 and {STRICT_MAX_ORDER_SIZE_CENTS} cents")
-    daily = data.get("max_daily_loss")
+        errors.append(
+            f"single-order cap must be between 1 and {STRICT_MAX_ORDER_SIZE_CENTS} cents"
+        )
+    daily = data.get("max_daily_loss", data.get("max_daily_loss_cents"))
     if not isinstance(daily, int) or daily > STRICT_MAX_DAILY_LOSS_CENTS or daily < 1:
-        errors.append(f"max_daily_loss must be between 1 and {STRICT_MAX_DAILY_LOSS_CENTS} cents")
-    exposure = data.get("max_open_exposure")
+        errors.append(
+            f"daily-loss cap must be between 1 and {STRICT_MAX_DAILY_LOSS_CENTS} cents"
+        )
+    exposure = data.get(
+        "max_open_exposure", data.get("max_total_live_exposure_cents")
+    )
     if not isinstance(exposure, int) or exposure > STRICT_MAX_OPEN_EXPOSURE_CENTS or exposure < 1:
         errors.append(
-            f"max_open_exposure must be between 1 and {STRICT_MAX_OPEN_EXPOSURE_CENTS} cents"
+            f"total-exposure cap must be between 1 and {STRICT_MAX_OPEN_EXPOSURE_CENTS} cents"
         )
 
-    # Legacy fields must stay aligned if present.
-    if "allow_market_orders" in data and data["allow_market_orders"] is not False:
-        errors.append("legacy allow_market_orders must be false")
-    if "limit_orders_only" in data and data["limit_orders_only"] is not True:
-        errors.append("legacy limit_orders_only must be true")
-    if "kill_switch_required" in data and data["kill_switch_required"] is not True:
-        errors.append("legacy kill_switch_required must be true")
-
-    for key in ("operator", "reason", "expiry"):
-        if not isinstance(data.get(key), str) or not data[key].strip():
-            errors.append(f"{key} must be a non-empty string")
-    if not _is_iso_timestamp(data.get("expiry", "")):
-        errors.append("expiry must be a valid ISO-8601 timestamp")
+    # Permanent runtime caps do not need proof metadata.  When a one-shot
+    # proof scope is present, its operator/reason/expiry remain mandatory.
+    if data.get("proof_scope") == "one_controlled_proof":
+        for key in ("operator", "reason", "expiry"):
+            if not isinstance(data.get(key), str) or not data[key].strip():
+                errors.append(f"{key} must be a non-empty string")
+        if not _is_iso_timestamp(data.get("expiry", "")):
+            errors.append("expiry must be a valid ISO-8601 timestamp")
     return errors
 
 
@@ -1093,12 +1221,17 @@ def _load_adapter_contract(module_path: str) -> dict[str, Any]:
         "importable": False,
         "class_present": False,
         "class_name": None,
-        "validate_environment_ok": False,
+        "module_sha256": None,
+        "interface_subclass": False,
+        "required_methods": {},
         "contract_satisfied": False,
         "errors": [],
     }
     if not module_path:
         result["errors"].append("empty adapter_module_path")
+        return result
+    if module_path not in ALLOWED_ADAPTER_MODULES:
+        result["errors"].append("adapter module is not the registered concrete production adapter")
         return result
 
     try:
@@ -1112,9 +1245,10 @@ def _load_adapter_contract(module_path: str) -> dict[str, Any]:
         return result
 
     result["exists"] = True
+    result["module_sha256"] = _sha256_file(resolved)
 
     try:
-        mod_name = module_path.replace("\\", "/").replace("/", ".").rstrip(".py")
+        mod_name = module_path.replace("\\", "/").replace("/", ".").removesuffix(".py")
         spec = importlib.util.spec_from_file_location(mod_name, resolved)
         if spec is None or spec.loader is None:
             raise ImportError("could not create module spec")
@@ -1128,9 +1262,15 @@ def _load_adapter_contract(module_path: str) -> dict[str, Any]:
 
     class_name: str | None = None
     for name in ALLOWED_ADAPTER_CLASS_NAMES:
-        if hasattr(module, name):
-            class_name = name
-            break
+        candidate = getattr(module, name, None)
+        if candidate is None or not inspect.isclass(candidate):
+            continue
+        # Do not mistake an imported abstract interface for the module's
+        # concrete adapter implementation.
+        if inspect.isabstract(candidate):
+            continue
+        class_name = name
+        break
     if class_name is None:
         result["errors"].append(
             f"adapter module must expose one of {sorted(ALLOWED_ADAPTER_CLASS_NAMES)}"
@@ -1141,26 +1281,38 @@ def _load_adapter_contract(module_path: str) -> dict[str, Any]:
     result["class_name"] = class_name
     adapter_class = getattr(module, class_name)
 
-    if hasattr(adapter_class, "validate_environment"):
-        try:
-            adapter_class.validate_environment()
-            result["validate_environment_ok"] = True
-        except TypeError:
-            # Possibly an instance method; try a no-arg instantiation.
-            try:
-                inst = adapter_class()
-                inst.validate_environment()
-                result["validate_environment_ok"] = True
-            except Exception as e2:
-                result["errors"].append(
-                    f"adapter validate_environment() failed: {type(e2).__name__}: {e2}"
-                )
-                return result
-        except Exception as e:
-            result["errors"].append(
-                f"adapter validate_environment() failed: {type(e).__name__}: {e}"
-            )
-            return result
+    if adapter_class.__module__ != mod_name:
+        result["errors"].append("adapter class must be defined by the registered module, not imported")
+        return result
+
+    from predator_mesh.brokers.livebrokerfirewall_adapter import (
+        LiveBrokerFirewallAdapter as RequiredAdapterContract,
+    )
+
+    if not issubclass(adapter_class, RequiredAdapterContract):
+        result["errors"].append(
+            "adapter class must subclass predator_mesh.brokers."
+            "livebrokerfirewall_adapter.LiveBrokerFirewallAdapter"
+        )
+        return result
+    result["interface_subclass"] = True
+
+    for method_name in REQUIRED_ADAPTER_METHODS:
+        method = getattr(adapter_class, method_name, None)
+        present = callable(method)
+        async_required = method_name in {"submit_limit_order", "get_order_status"}
+        async_valid = inspect.iscoroutinefunction(method) if present and async_required else True
+        result["required_methods"][method_name] = {
+            "present": present,
+            "async": inspect.iscoroutinefunction(method) if present else False,
+            "valid": bool(present and async_valid),
+        }
+        if not present:
+            result["errors"].append(f"adapter contract method missing: {method_name}")
+        elif not async_valid:
+            result["errors"].append(f"adapter contract method must be async: {method_name}")
+    if result["errors"]:
+        return result
 
     result["contract_satisfied"] = True
     return result
@@ -1172,13 +1324,41 @@ def _env_refs_present(refs: list[str]) -> list[str]:
 
 
 def _credential_env_status(refs: list[str]) -> tuple[list[str], list[str]]:
-    """Return (present, missing) env ref names without exposing values."""
+    """Return (present, missing requirements) without exposing values.
+
+    Private-key reference names are alternatives, not cumulative
+    requirements.  A descriptor may list canonical and legacy PEM/PATH names
+    so installations can migrate safely; requiring every alias made an
+    otherwise valid credential setup impossible to satisfy.
+    """
     present = [ref for ref in refs if ref in os.environ]
-    missing = [ref for ref in refs if ref not in os.environ]
+    missing: list[str] = []
+    unique_refs = list(dict.fromkeys(refs))
+    key_id_refs = [ref for ref in unique_refs if ref in KALSHI_KEY_ID_REFS]
+    private_key_refs = [ref for ref in unique_refs if ref in KALSHI_PRIVATE_KEY_REFS]
+    alternative_refs = set(key_id_refs) | set(private_key_refs)
+
+    if key_id_refs and not any(ref in os.environ for ref in key_id_refs):
+        missing.extend(key_id_refs)
+    if private_key_refs and not any(ref in os.environ for ref in private_key_refs):
+        missing.extend(private_key_refs)
+    missing.extend(
+        ref for ref in unique_refs
+        if ref not in alternative_refs and ref not in os.environ
+    )
     return present, missing
 
 
 def _adapter_status() -> dict[str, Any]:
+    # The scheduled/operator processes inherit a sparse environment.  Load the
+    # same allowlisted local references used by the broker client before the
+    # no-contact credential check; values are never returned or logged.
+    try:
+        from core.env_loader import load_whitelisted_env
+
+        load_whitelisted_env()
+    except Exception:
+        pass
     data = _read_json(ADAPTER_DESCRIPTOR_PATH)
     errors = _validate_adapter_descriptor(data) if isinstance(data, dict) else ["descriptor not staged"]
     module_path = data.get("adapter_module_path") if isinstance(data, dict) else ""
@@ -1189,6 +1369,17 @@ def _adapter_status() -> dict[str, Any]:
     )
     if isinstance(data, dict) and not contract["contract_satisfied"]:
         errors.extend(contract["errors"])
+    registered_contract = data.get("registration_contract") if isinstance(data, dict) else None
+    if isinstance(data, dict):
+        if not isinstance(registered_contract, dict):
+            errors.append("adapter descriptor lacks a validated registration contract; re-register it")
+        else:
+            if registered_contract.get("version") != ADAPTER_CONTRACT_VERSION:
+                errors.append("adapter registration contract version is unsupported")
+            if registered_contract.get("module_sha256") != contract.get("module_sha256"):
+                errors.append("adapter module hash changed after registration")
+            if registered_contract.get("class_name") != contract.get("class_name"):
+                errors.append("adapter class changed after registration")
 
     refs: list[str] = []
     if isinstance(data, dict):
@@ -1235,6 +1426,11 @@ def _live_submit_status() -> dict[str, Any]:
 def _caps_status() -> dict[str, Any]:
     data = _read_json(CAPS_PATH)
     errors = _validate_strict_caps(data) if isinstance(data, dict) else ["caps.json not found"]
+    authority = _current_caps_authority_status()
+    if not authority.config_integrity_valid:
+        errors.append("caps-v2 protected configuration integrity is invalid")
+    if not authority.authority_registration_valid:
+        errors.append("fresh caps-v2 authority registration is not valid")
     return {
         "path": str(CAPS_PATH),
         "exists": CAPS_PATH.exists(),
@@ -1242,6 +1438,8 @@ def _caps_status() -> dict[str, Any]:
         "strict": isinstance(data, dict) and not errors,
         "valid": isinstance(data, dict) and not errors,
         "errors": errors if isinstance(data, dict) else [],
+        "authority": authority.to_dict(),
+        "execution_authority": False,
     }
 
 
@@ -1265,24 +1463,69 @@ def _command_seal_status() -> dict[str, Any]:
         ["one-shot-check"],
         safety_notes=safety,
     )
-    text = (result.get("stdout") or "").lower()
-    ready = result["ok"] and ("ready" in text or "armable" in text or "command seal" in text)
-    blocked = "blocked" in text or not ready
+    evidence: dict[str, Any] | None = None
+    stdout = result.get("stdout")
+    if isinstance(stdout, str):
+        try:
+            candidate = json.loads(stdout)
+        except (json.JSONDecodeError, TypeError):
+            candidate = None
+        if isinstance(candidate, dict):
+            evidence = candidate
+
+    seal_status = evidence.get("command_seal_status") if evidence is not None else None
+    verdict = evidence.get("verdict") if evidence is not None else None
+    schema_errors: list[str] = []
+    if not isinstance(evidence, dict):
+        schema_errors.append("stdout must be one JSON object")
+    else:
+        if not isinstance(seal_status, str) or not seal_status:
+            schema_errors.append("command_seal_status must be a non-empty string")
+        if not isinstance(verdict, str) or not verdict:
+            schema_errors.append("verdict must be a non-empty string")
+        for field in ("live_submit_valid", "caps_strict", "descriptor_staged"):
+            if not isinstance(evidence.get(field), bool):
+                schema_errors.append(f"{field} must be a boolean")
+        credential_refs = evidence.get("credential_refs")
+        if not isinstance(credential_refs, dict):
+            schema_errors.append("credential_refs must be an object")
+        elif any(not isinstance(value, dict) for value in credential_refs.values()):
+            schema_errors.append("credential_refs values must be objects")
+    evidence_schema_valid = not schema_errors
+    structured_gates_ready = bool(
+        evidence_schema_valid
+        and evidence.get("live_submit_valid") is True
+        and evidence.get("caps_strict") is True
+        and evidence.get("descriptor_staged") is True
+        and verdict in COMMAND_SEAL_READY_VERDICTS
+    )
+    ready = bool(
+        result.get("ok")
+        and structured_gates_ready
+        and seal_status == COMMAND_SEAL_READY_STATUS
+    )
+    blocked = not ready
     return {
-        "ok": result["ok"],
+        "ok": bool(result.get("ok")) and evidence_schema_valid,
         "ready": ready,
         "blocked": blocked,
+        "evidence_schema_valid": evidence_schema_valid,
+        "schema_errors": schema_errors,
+        "structured_gates_ready": structured_gates_ready,
+        "command_seal_status": seal_status,
+        "verdict": verdict,
+        "evidence": evidence,
         "result": result,
     }
 
 
-@router.get("/external-prereqs/status")
+@router.get("/external-prereqs/status", dependencies=[Depends(require_operator)])
 async def external_prereqs_status() -> dict[str, Any]:
     adapter = _adapter_status()
     live_submit = _live_submit_status()
     caps = _caps_status()
     approval = _approval_status()
-    seal = _command_seal_status()
+    seal = await asyncio.to_thread(_command_seal_status)
     blockers = [
         *(["adapter descriptor not valid"] if not adapter["valid"] else []),
         *(["live-submit not enabled/valid"] if not live_submit["valid"] else []),
@@ -1321,7 +1564,7 @@ async def adapter_validate(body: AdapterDescriptorBody) -> dict[str, Any]:
     }
 
 
-@router.post("/external-prereqs/adapter/register")
+@router.post("/external-prereqs/adapter/register", dependencies=[Depends(require_operator)])
 async def adapter_register(body: AdapterRegisterBody) -> dict[str, Any]:
     # Fail closed on missing confirmations.
     missing_checks = []
@@ -1352,14 +1595,37 @@ async def adapter_register(body: AdapterRegisterBody) -> dict[str, Any]:
             "safety_notes": ["registration blocked: adapter module not found"],
         }
 
+    contract = _load_adapter_contract(str(body.descriptor["adapter_module_path"]))
+    if not contract["contract_satisfied"]:
+        return {
+            "ok": False,
+            "errors": contract["errors"],
+            "contract": contract,
+            "safety_notes": ["registration blocked: adapter contract invalid"],
+        }
+
+    registered_descriptor = {
+        **body.descriptor,
+        "registration_contract": {
+            "version": ADAPTER_CONTRACT_VERSION,
+            "class_name": contract["class_name"],
+            "module_sha256": contract["module_sha256"],
+            "required_methods": list(REQUIRED_ADAPTER_METHODS),
+            "validated_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+            "network_contacted": False,
+            "broker_contacted": False,
+        },
+    }
+
     hash_before = _sha256_file(ADAPTER_DESCRIPTOR_PATH)
-    backup = _atomic_write_json(ADAPTER_DESCRIPTOR_PATH, body.descriptor)
+    backup = _atomic_write_json(ADAPTER_DESCRIPTOR_PATH, registered_descriptor)
     hash_after = _sha256_file(ADAPTER_DESCRIPTOR_PATH)
     return {
         "ok": True,
         "path": str(ADAPTER_DESCRIPTOR_PATH),
         "hash_before": hash_before,
         "hash_after": hash_after,
+        "contract": contract,
         "backup_path": str(backup) if backup else None,
         "safety_notes": [
             "descriptor staged",
@@ -1387,6 +1653,7 @@ async def adapter_smoke(body: AdapterDescriptorBody) -> dict[str, Any]:
 
 
 def _build_live_submit_config(body: LiveSubmitBody) -> dict[str, Any]:
+    caps_authority = _current_caps_authority_status()
     return {
         "enabled": body.enabled,
         "operator": body.operator,
@@ -1405,6 +1672,7 @@ def _build_live_submit_config(body: LiveSubmitBody) -> dict[str, Any]:
         "scale_enabled": False,
         "autonomy_enabled": False,
         "explicit_acknowledgement": LIVE_SUBMIT_REQUIRED_ACK,
+        **build_caps_authority_binding(caps_authority),
     }
 
 
@@ -1422,7 +1690,7 @@ async def live_submit_preview(body: LiveSubmitBody) -> dict[str, Any]:
     }
 
 
-@router.post("/external-prereqs/live-submit/write")
+@router.post("/external-prereqs/live-submit/write", dependencies=[Depends(require_operator)])
 async def live_submit_write(body: LiveSubmitBody) -> dict[str, Any]:
     if body.typed_confirmation != LIVE_SUBMIT_TYPED_CONFIRMATION:
         return {
@@ -1453,7 +1721,7 @@ async def live_submit_write(body: LiveSubmitBody) -> dict[str, Any]:
     }
 
 
-@router.post("/external-prereqs/live-submit/disable")
+@router.post("/external-prereqs/live-submit/disable", dependencies=[Depends(require_operator)])
 async def live_submit_disable() -> dict[str, Any]:
     existing = _read_json(LIVE_SUBMIT_PATH) or {}
     if not isinstance(existing, dict):
@@ -1524,7 +1792,7 @@ async def caps_preview(body: CapsBody) -> dict[str, Any]:
     }
 
 
-@router.post("/external-prereqs/caps/write")
+@router.post("/external-prereqs/caps/write", dependencies=[Depends(require_operator)])
 async def caps_write(body: CapsBody) -> dict[str, Any]:
     if body.typed_confirmation != CAPS_TYPED_CONFIRMATION:
         return {
@@ -1555,7 +1823,7 @@ async def caps_write(body: CapsBody) -> dict[str, Any]:
     }
 
 
-@router.post("/external-prereqs/caps/relock")
+@router.post("/external-prereqs/caps/relock", dependencies=[Depends(require_operator)])
 async def caps_relock() -> dict[str, Any]:
     existing = _read_json(CAPS_PATH)
     if not isinstance(existing, dict):
@@ -1577,6 +1845,16 @@ async def caps_relock() -> dict[str, Any]:
         "allow_market_orders": False,
         "limit_orders_only": True,
         "kill_switch_required": True,
+        # Canonical CapConfig fields must also be zeroed.  The previous relock
+        # only changed dashboard aliases, while the actual firewall continued
+        # loading the old non-zero limits.
+        "max_single_order_cents": 0,
+        "max_market_exposure_cents": 0,
+        "max_correlated_exposure_cents": 0,
+        "max_daily_loss_cents": 0,
+        "max_total_live_exposure_cents": 0,
+        "max_open_markets": 0,
+        "max_orders_per_hour": 0,
     }
     hash_before = _sha256_file(CAPS_PATH)
     backup = _atomic_write_json(CAPS_PATH, safe)
@@ -1591,13 +1869,13 @@ async def caps_relock() -> dict[str, Any]:
     }
 
 
-@router.post("/external-prereqs/check-all")
+@router.post("/external-prereqs/check-all", dependencies=[Depends(require_operator)])
 async def external_prereqs_check_all() -> dict[str, Any]:
     adapter = _adapter_status()
     live_submit = _live_submit_status()
     caps = _caps_status()
     approval = _approval_status()
-    seal = _command_seal_status()
+    seal = await asyncio.to_thread(_command_seal_status)
 
     blockers: list[str] = []
     if not adapter["valid"]:
@@ -1632,12 +1910,3 @@ AdapterRegisterBody.model_rebuild()
 LiveSubmitBody.model_rebuild()
 CapsBody.model_rebuild()
 SecondProofAuthorityActivateBody.model_rebuild()
-
-
-def _sha256_file(path: str) -> str | None:
-    from pathlib import Path
-    import hashlib
-    p = Path(path)
-    if not p.exists():
-        return None
-    return hashlib.sha256(p.read_bytes()).hexdigest().upper()

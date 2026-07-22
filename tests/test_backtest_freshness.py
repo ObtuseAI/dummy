@@ -112,7 +112,16 @@ def test_summarize_backtest_carries_the_evidence_keys():
         "created_at": NOW.isoformat(),
         "weights_written": True,
         "weights_rejected_reasons": [],
-        "decision_policy": {"settled_markets": 7, "ensemble_metrics": {}},
+        "sources": {"sharp": {"contested_n": 20}},
+        "evidence_split": {"live_settled": 7, "retro_settled": 0},
+        "bootstrapped_weights": {"sharp": 1.2},
+        "decision_policy": {
+            "settled_markets": 7,
+            "ensemble_metrics": {"forecast_brier": 0.1},
+            "walk_forward_threshold_selection": {
+                "aggregate_out_of_sample": {"trades": 100}
+            },
+        },
     }
     summary = summarize_backtest(report)
     assert summary["report_name"] == "AUTONOMY_BACKTEST"
@@ -120,3 +129,12 @@ def test_summarize_backtest_carries_the_evidence_keys():
     assert summary["weights_written"] is True
     assert summary["weights_rejected_reasons"] == []
     assert "decision_policy" in summary
+    assert summary["sources"] == report["sources"]
+    assert summary["evidence_split"] == report["evidence_split"]
+    assert summary["bootstrapped_weights"] == {"sharp": 1.2}
+    assert summary["decision_policy"]["ensemble_metrics"] == {
+        "forecast_brier": 0.1
+    }
+    assert summary["decision_policy"]["walk_forward_threshold_selection"] == {
+        "aggregate_out_of_sample": {"trades": 100}
+    }

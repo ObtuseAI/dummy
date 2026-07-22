@@ -18,14 +18,12 @@ from cryptography.hazmat.primitives import serialization
 
 import kalshi.signer
 from kalshi.client import KalshiClient
-from kalshi.submitter import KalshiSubmitter
 
 from predator_mesh.brokers.kalshi_errors import (
     BrokerErrorCode,
     map_http_exception,
 )
 from predator_mesh.brokers.kalshi_types import (
-    kalshi_create_order_payload,
     normalize_kalshi_status,
 )
 from predator_mesh.brokers.livebrokerfirewall_adapter import (
@@ -53,7 +51,12 @@ def _env(name: str) -> str:
 
 
 class KalshiLiveBrokerFirewallAdapter(LiveBrokerFirewallAdapter):
-    """Real Kalshi limit-order adapter with fail-closed gates."""
+    """Retired legacy adapter; authenticated status reads remain available.
+
+    Real order creation moved to the central ``LiveBrokerFirewall.submit``
+    boundary. This class cannot submit even when all historical booleans are
+    asserted and credentials are present.
+    """
 
     def __init__(
         self,
@@ -91,10 +94,6 @@ class KalshiLiveBrokerFirewallAdapter(LiveBrokerFirewallAdapter):
                 base_url=f"{self._base}/{self._version}".rstrip("/"),
                 timeout=10,
             )
-        # The actual broker create_order call must go through the existing
-        # KalshiSubmitter so the repo's security invariant (only firewall.py
-        # and submitter.py may call create_order) remains intact.
-        self._submitter = KalshiSubmitter(self._kalshi)
 
     # ------------------------------------------------------------------
     # Environment / credentials
@@ -288,30 +287,15 @@ class KalshiLiveBrokerFirewallAdapter(LiveBrokerFirewallAdapter):
                 errors=credential_errors,
             )
 
-        self._attempted = True
-
-        payload = kalshi_create_order_payload(order)
-        try:
-            with self._resolved_key_env():
-                raw = await self._submitter.submit_limit_order(payload)
-        except Exception as exc:
-            summary = map_http_exception(exc)
-            return SubmitResult(
-                submitted=False,
-                order_id=None,
-                state=OrderState.REJECTED,
-                raw=_redact_submit_raw(summary.raw),
-                errors=[summary.code],
-            )
-
-        order_id = str(raw.get("order_id") or raw.get("id") or "")
-        state = normalize_kalshi_status(raw.get("status"))
+        # Do not set the one-attempt bit: no broker attempt occurred. Keeping
+        # this adapter importable makes legacy tooling report a truthful local
+        # block instead of silently finding another write route.
         return SubmitResult(
-            submitted=True,
-            order_id=order_id,
-            state=state,
-            raw=raw,
-            errors=[],
+            submitted=False,
+            order_id=None,
+            state=OrderState.REJECTED,
+            raw={},
+            errors=[BrokerErrorCode.LEGACY_SUBMIT_PATH_RETIRED],
         )
 
     async def get_order_status(self, order_id: str) -> OrderStatusResult:

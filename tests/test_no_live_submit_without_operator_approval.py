@@ -26,6 +26,12 @@ def reset_state():
     firewall_module.STATE = fresh
     firewall_module.REJECTED_ADAPTERS.clear()
     original_key = os.environ.get("KALSHI_API_KEY_ID")
+    private_names = (
+        "KALSHI_API_PRIVATE_KEY_PEM",
+        "KALSHI_API_PRIVATE_KEY_PEM_PATH",
+        "KALSHI_API_PRIVATE_KEY",
+    )
+    original_private = {name: os.environ.pop(name, None) for name in private_names}
     os.environ["KALSHI_API_KEY_ID"] = "test"
     try:
         yield
@@ -35,23 +41,27 @@ def reset_state():
             os.environ.pop("KALSHI_API_KEY_ID", None)
         else:
             os.environ["KALSHI_API_KEY_ID"] = original_key
+        for name, value in original_private.items():
+            if value is not None:
+                os.environ[name] = value
 
 
 @pytest.mark.asyncio
 async def test_v2_rehearsal_does_not_submit_without_operator_approval():
     state_module.STATE.set_mode(AccountMode.AUTONOMOUS_LIVE_CAPPED)
     caps = load_caps()
-    caps.allowed_markets = ["SPX-ABOVE-5000"]
+    caps.allowed_markets = ["BTC-ABOVE-100K"]
     with patch("live_firewall.firewall.load_caps", return_value=caps), patch(
         "execution.hybrid_path.load_caps", return_value=caps
     ):
         rehearsal = HybridLiveCapRehearsalV2()
-        result = await rehearsal.rehearse("SPX-ABOVE-5000", "SPX-ABOVE-5000-YES")
+        result = await rehearsal.rehearse("BTC-ABOVE-100K", "BTC-ABOVE-100K-YES")
 
-    assert result["would_submit"] is False
-    assert result["blocked_reason"] == "live_submit_disabled"
+    assert result["status"] == "no_trade"
+    assert result["rejected_by"] == "market_data_source"
+    assert "Non-live market data" in result["reason"]
     assert result["live_submitted"] is False
-    assert result["order_result"] is None
+    assert "order_result" not in result
 
 
 def test_live_submit_config_is_disabled_by_default():
@@ -66,10 +76,15 @@ def test_valid_operator_one_proof_config_would_enable_firewall():
     This does NOT mutate the repo config and does NOT submit an order.
     """
     from datetime import datetime, timezone, timedelta
-    from core.live_submit_state import validate_operator_one_proof_enabled
+    from core.live_submit_state import (
+        build_caps_authority_binding,
+        validate_operator_one_proof_enabled,
+    )
+    from tests.caps_authority_test_helpers import registered_caps_status
 
     future = (datetime.now(timezone.utc) + timedelta(days=1)).strftime("%Y-%m-%dT%H:%M:%SZ")
     now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    caps_authority = registered_caps_status()
     config = {
         "enabled": True,
         "operator": "chris",
@@ -88,8 +103,11 @@ def test_valid_operator_one_proof_config_would_enable_firewall():
         "explicit_acknowledgement": (
             "I approve real live Kalshi order submission through Dummy LiveBrokerFirewall only"
         ),
+        **build_caps_authority_binding(caps_authority),
     }
-    result = validate_operator_one_proof_enabled(config)
+    result = validate_operator_one_proof_enabled(
+        config, caps_authority_status=caps_authority
+    )
     assert result.ok is True, result.errors
 
 

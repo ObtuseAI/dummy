@@ -395,11 +395,9 @@ def generate_no_live_submit_still_disabled_report_v16() -> dict[str, Any]:
 
 
 def generate_no_caps_config_modification_report_v16() -> dict[str, Any]:
-    from archive.report_scripts.generate_v15_reports import generate_no_caps_config_modification_report_v15
+    from archive.report_scripts.caps_integrity import generate_historical_caps_phase_report
 
-    report = generate_no_caps_config_modification_report_v15()
-    report.update({"generated_at": now_iso(), "workstream": "V16: No Caps Config Modification"})
-    return report
+    return generate_historical_caps_phase_report("V16")
 
 
 def generate_readonly_only_kalshi_terrain_report_v16(snapshot: RealOrderbookSnapshotResultV2 | None = None) -> dict[str, Any]:

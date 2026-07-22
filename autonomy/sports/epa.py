@@ -19,16 +19,21 @@ from autonomy.sports.history_store import SportsHistoryStore
 
 class LakeEpa:
     def __init__(self, store: SportsHistoryStore, league: str = "nfl", *,
-                 home_edge_epa: float = 0.06, min_plays: int = 120, min_games: int = 3) -> None:
+                 home_edge_epa: float = 0.06, min_plays: int = 120, min_games: int = 3,
+                 require_known_availability: bool = False) -> None:
         self.store = store
         self.league = league
         self.home_edge_epa = home_edge_epa
         self.min_plays = min_plays
         self.min_games = min_games
+        self.require_known_availability = require_known_availability
 
     def strength(self, team: str, as_of: str) -> float | None:
         """Net EPA/play = offensive EPA/play minus defensive EPA/play allowed."""
-        agg = self.store.team_stat_sums_before(team, as_of, self.league)
+        agg = self.store.team_stat_sums_before(
+            team, as_of, self.league,
+            require_known_availability=self.require_known_availability,
+        )
         if not agg or agg["games"] < self.min_games:
             return None
         s = agg["sums"]
@@ -40,7 +45,10 @@ class LakeEpa:
         return off_epa - def_epa
 
     def games_seen(self, team: str, as_of: str) -> int:
-        agg = self.store.team_stat_sums_before(team, as_of, self.league)
+        agg = self.store.team_stat_sums_before(
+            team, as_of, self.league,
+            require_known_availability=self.require_known_availability,
+        )
         return int(agg["games"]) if agg else 0
 
     def matchup_prob(self, home: str, away: str, as_of: str, *, scale: float = 8.0,

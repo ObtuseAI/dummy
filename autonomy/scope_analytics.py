@@ -9,8 +9,10 @@ paper trades ever fill), so per-scope *trade* P&L is a tiny sample. The dense,
 honest signal is **forecast accuracy** -- how well the model's probability graded
 against settlement -- over tens of thousands of settled markets. So the per-scope
 metrics lead with graded-forecast quality (Brier, hit-rate, edge vs the market's
-own implied price), using the LAST decision per settled market as the pick of
-record (never counting a market's intra-cycle re-pricings more than once).
+own implied price), using the last pre-settlement fused forecast per market as
+the pick of record. Older decision-only history is used only when no fused
+forecast exists, so a market is never counted twice and post-settlement data is
+never allowed to leak into the grade.
 
 All reads run in the snapshot writer (which already holds the ledger), never on
 the dashboard's request path -- the dashboard serves the persisted artifact and
@@ -25,6 +27,7 @@ from typing import Any
 
 from autonomy.ontology import Vertical
 from autonomy.scanner import classify_vertical
+from autonomy.sports_markets import SPORTS_LEAGUES
 
 # Crypto coin resolved by ticker prefix (longest/most-specific first).
 _CRYPTO_COIN_PREFIXES: tuple[tuple[str, str], ...] = (
@@ -41,7 +44,9 @@ SPORTS = "SPORTS"
 # (MLB + the team-sport specialist leagues; UFC/F1 retired). A league with no
 # graded markets in the current window still appears -- flagged in/out of
 # season, with last-season grades filled in from a widened lookback.
-SPORTS_ROSTER: tuple[str, ...] = ("MLB", "WNBA", "NBA", "NFL", "NHL", "NCAAF", "NCAAMB")
+# Backwards-compatible public name used by the snapshot builder and tests.  The
+# canonical roster lives next to the sports series registry.
+SPORTS_ROSTER: tuple[str, ...] = SPORTS_LEAGUES
 # How far back "last season" reaches for an out-of-season / dormant league.
 # One scan at this window costs ~the same as the 120d one (the expensive
 # per-market de-dup over decisions is window-independent), so the wider read
@@ -123,40 +128,70 @@ def _settled_records(conn: sqlite3.Connection, window_days: float) -> list[dict[
     grading) is the honest per-scope accuracy: a league we forecast but never
     take an actionable side on (e.g. WNBA, priced but below the trade bar) still
     gets counted, instead of vanishing because it produced no BUY decision. The
-    final fused emission per market is the pick of record (so a market re-priced
-    every cycle counts once); a LEFT JOIN to the last decision marks which were
-    actually traded, and ``market_implied_yes`` rides in the fused features JSON.
+    final *pre-settlement* fused emission per market is the pick of record (so a
+    market re-priced every cycle counts once); the last pre-settlement decision
+    marks which were actually traded. Ledgers from before fused emissions were
+    introduced fall back to that decision as their forecast-of-record. A fused
+    row always wins when both exist, and post-settlement rows are excluded to
+    prevent look-ahead leakage. ``market_implied_yes`` rides in fused features
+    JSON and is stored directly on a decision fallback.
     """
     rows = conn.execute(
         """
-        SELECT sig.market_ticker   AS ticker,
-               sig.probability_yes AS prob,
-               sig.features        AS features,
-               s.result_yes        AS result,
-               s.settled_at        AS settled_at,
-               d.action            AS action
-        FROM signals sig
-        JOIN settlements s ON s.market_ticker = sig.market_ticker
-        JOIN (
-            SELECT market_ticker, MAX(created_at) AS mx
-            FROM signals WHERE source = 'fused_forecast'
-            GROUP BY market_ticker
-        ) last ON last.market_ticker = sig.market_ticker AND last.mx = sig.created_at
-        LEFT JOIN (
-            SELECT d1.market_ticker AS market_ticker, d1.action AS action
-            FROM decisions d1
-            JOIN (
-                SELECT market_ticker, MAX(created_at) AS mx
-                FROM decisions GROUP BY market_ticker
-            ) dl ON dl.market_ticker = d1.market_ticker AND dl.mx = d1.created_at
-        ) d ON d.market_ticker = sig.market_ticker
-        WHERE sig.source = 'fused_forecast'
-          AND s.settled_at >= datetime('now', ?)
+        WITH signal_candidates AS (
+            SELECT sig.market_ticker AS ticker,
+                   sig.probability_yes AS prob,
+                   sig.features AS features,
+                   s.result_yes AS result,
+                   s.settled_at AS settled_at,
+                   ROW_NUMBER() OVER (
+                       PARTITION BY sig.market_ticker
+                       ORDER BY datetime(sig.created_at) DESC, sig.rowid DESC
+                   ) AS recency
+            FROM signals sig
+            JOIN settlements s ON s.market_ticker = sig.market_ticker
+            WHERE sig.source = 'fused_forecast'
+              AND datetime(sig.created_at) <= datetime(s.settled_at)
+              AND datetime(s.settled_at) >= datetime('now', ?)
+        ),
+        decision_candidates AS (
+            SELECT d.market_ticker AS ticker,
+                   d.probability_yes AS prob,
+                   d.market_implied_yes AS market,
+                   d.action AS action,
+                   s.result_yes AS result,
+                   s.settled_at AS settled_at,
+                   ROW_NUMBER() OVER (
+                       PARTITION BY d.market_ticker
+                       ORDER BY datetime(d.created_at) DESC, d.rowid DESC
+                   ) AS recency
+            FROM decisions d
+            JOIN settlements s ON s.market_ticker = d.market_ticker
+            WHERE datetime(d.created_at) <= datetime(s.settled_at)
+              AND datetime(s.settled_at) >= datetime('now', ?)
+        )
+        SELECT sig.ticker, sig.prob, sig.features, sig.result, sig.settled_at,
+               dec.action, NULL AS decision_market, 'fused_forecast' AS record_source
+        FROM signal_candidates sig
+        LEFT JOIN decision_candidates dec
+          ON dec.ticker = sig.ticker AND dec.recency = 1
+        WHERE sig.recency = 1
+
+        UNION ALL
+
+        SELECT dec.ticker, dec.prob, NULL AS features, dec.result, dec.settled_at,
+               dec.action, dec.market AS decision_market, 'decision_fallback' AS record_source
+        FROM decision_candidates dec
+        WHERE dec.recency = 1
+          AND NOT EXISTS (
+              SELECT 1 FROM signal_candidates sig
+              WHERE sig.ticker = dec.ticker AND sig.recency = 1
+          )
         """,
-        (f"-{float(window_days)} days",),
+        (f"-{float(window_days)} days", f"-{float(window_days)} days"),
     ).fetchall()
     out: list[dict[str, Any]] = []
-    for ticker, prob, features, result, settled_at, action in rows:
+    for ticker, prob, features, result, settled_at, action, decision_market, record_source in rows:
         try:
             prob_f = float(prob)
             result_i = 1 if int(result) else 0
@@ -168,6 +203,11 @@ def _settled_records(conn: sqlite3.Connection, window_days: float) -> list[dict[
                 mv = json.loads(features).get("market_implied_yes")
                 market = float(mv) if mv is not None else None
             except (ValueError, TypeError, AttributeError):
+                market = None
+        elif decision_market is not None:
+            try:
+                market = float(decision_market)
+            except (TypeError, ValueError):
                 market = None
         vertical, label = scope_key(str(ticker))
         out.append({
@@ -181,6 +221,7 @@ def _settled_records(conn: sqlite3.Connection, window_days: float) -> list[dict[
             "ev_cents": 0.0,
             "result": result_i,
             "settled_at": str(settled_at),
+            "record_source": str(record_source),
         })
     return out
 
@@ -245,7 +286,7 @@ def _progression(records: list[dict[str, Any]], buckets: int = 24) -> list[dict[
     return out
 
 
-_IMPROVE_MIN_HALF = 4          # min records per half before a trend is honest
+_IMPROVE_MIN_HALF = 30         # min records per half before a trend is honest
 _IMPROVE_BRIER_EPS = 0.005     # Brier move smaller than this reads as flat
 
 
@@ -306,14 +347,14 @@ def _pick_board(picks: list[dict[str, Any]]) -> dict[str, list[dict[str, Any]]]:
 def _settled_today(records: list[dict[str, Any]], cutoff: str) -> list[dict[str, Any]]:
     """Markets settled since ``cutoff`` (recent day), each with whether the
     model's directional call was correct -- the day's scoreboard."""
-    from autonomy.market_labels import humanize_ticker
+    from autonomy.market_labels import humanize_market
 
     out: list[dict[str, Any]] = []
     for rec in records:
         if rec.get("settled_at", "") < cutoff:
             continue
         prob, result = rec["prob"], rec["result"]
-        hl = humanize_ticker(rec["ticker"])
+        hl = humanize_market(rec["ticker"])
         out.append({
             "ticker": rec["ticker"], "bet_type": rec.get("bet_type", "other"),
             "label": hl["label"], "matchup": hl["matchup"],
@@ -344,12 +385,12 @@ def _rankings(conn: sqlite3.Connection, limit: int = 12) -> dict[tuple[str, str]
           AND d.action IN ('BUY_YES', 'BUY_NO')
         """
     ).fetchall()
-    from autonomy.market_labels import humanize_ticker
+    from autonomy.market_labels import humanize_market
 
     by_scope: dict[tuple[str, str], list[dict[str, Any]]] = {}
     for ticker, action, side, prob, market, ev_cents, price_cents, created_at in rows:
         key = scope_key(str(ticker))
-        hl = humanize_ticker(str(ticker))
+        hl = humanize_market(str(ticker))
         by_scope.setdefault(key, []).append({
             "ticker": str(ticker),
             "label": hl["label"],
@@ -399,8 +440,13 @@ def build_scope_analytics(
         "SELECT datetime('now', ?)", (f"-{float(window_days)} days",)
     ).fetchone()[0]
     today_cutoff = conn.execute("SELECT datetime('now', '-30 hours')").fetchone()[0]
+    active_verticals = {CRYPTO, SPORTS}
+    wide = [r for r in wide if r.get("vertical") in active_verticals]
     records = [r for r in wide if r["settled_at"] >= cutoff]
-    rankings = _rankings(conn)
+    rankings = {
+        key: value for key, value in _rankings(conn).items()
+        if key[0] in active_verticals
+    }
 
     verticals: dict[str, dict[str, Any]] = {}
     # Group current-window settled records by (vertical, label).
@@ -435,8 +481,12 @@ def build_scope_analytics(
         active = season_active.get(league.lower())
         in_season = True if active is None else active
         scope = sports["scopes"].get(league)
-        if scope is None:
-            # No current-window grade -> fall back to last season's slate.
+        current_grades = by_key.get((SPORTS, league), [])
+        if scope is None or not current_grades:
+            # An open forecast can create a scope without a single current
+            # grade.  That is not proof the season is underway: preserve the
+            # current picks, but source diagnostics from the last-season
+            # window and label the basis honestly.
             ls = last_season.get(league, [])
             league_picks = rankings.get((SPORTS, league), [])
             scope = {
@@ -591,53 +641,15 @@ def _downsample(rows: list[Any], target: int = 140) -> list[Any]:
 
 
 def build_overview(conn: sqlite3.Connection, report: dict[str, Any] | None) -> dict[str, Any]:
-    """The overview block: the paper account, its balance curve, realized paper
-    P&L / ROI, the actively-promoted challengers, and the ones closest to
-    promotion. The account is the shadow PAPER bankroll -- live capital is
-    human-gated -- and is labelled as such so nothing implies real money.
-    """
-    report = report or {}
-    curve_rows = conn.execute(
-        "SELECT bankroll_cents, open_exposure_cents, stage, created_at "
-        "FROM bankroll_curve ORDER BY id"
-    ).fetchall()
-    balance_curve = [
-        {"t": str(created_at), "bankroll_cents": int(bankroll), "exposure_cents": int(exposure)}
-        for bankroll, exposure, _stage, created_at in curve_rows
-    ]
-    base = int(curve_rows[0][0]) if curve_rows else 10_000   # first recorded bankroll
-    latest = curve_rows[-1] if curve_rows else None
-    bankroll = int(latest[0]) if latest else base
-    exposure = int(latest[1]) if latest else 0
-    stage = int(latest[2]) if latest else 0
-    account_roi = (bankroll - base) / base if base else 0.0
+    """Build the primary overview without paper-result authority.
 
-    rts = report.get("realized_trade_statistics") or {}
-    gates = report.get("crypto_challenger_gates") or {}
-    promoted: list[dict[str, Any]] = []
-    close: list[dict[str, Any]] = []
-    for name, gate in gates.items():
-        if not isinstance(gate, dict):
-            continue
-        evidence = gate.get("evidence") or {}
-        lower95 = evidence.get("contested_brier_advantage_lower95")
-        entry = {
-            "name": name,
-            "lower95": lower95,
-            "contested_markets": evidence.get("contested_markets"),
-            "settled_markets": evidence.get("settled_markets"),
-            "blocker": (gate.get("blockers") or [None])[0],
-            "auto_promote": bool(gate.get("auto_promote")),
-            "execution_authority": bool(gate.get("execution_authority")),
-            "ready": bool(gate.get("ready_for_explicit_fusion_review")),
-        }
-        if entry["auto_promote"] or entry["execution_authority"] or entry["ready"]:
-            promoted.append(entry)
-        elif lower95 is not None:
-            close.append(entry)
-    # Closest to promotion first: the least-negative contested-Brier lower bound
-    # (nearest to clearing the > 0 threshold).
-    close.sort(key=lambda e: e["lower95"] if e["lower95"] is not None else -9.0, reverse=True)
+    The raw shadow ledger and historical backtest remain untouched for audit,
+    but paper bankroll, P&L, and paper-result promotions are intentionally not
+    copied into the operator overview.  A cached Kalshi live-account block is
+    attached later at the artifact-only HTTP boundary.
+    """
+    _ = conn  # Signature retained for snapshot-builder compatibility.
+    report = report or {}
 
     derived_weights = report.get("derived_weights") or {}
     active_sources = sorted(
@@ -646,22 +658,13 @@ def build_overview(conn: sqlite3.Connection, report: dict[str, Any] | None) -> d
     )
 
     return {
-        "paper": True,
-        "bankroll_cents": bankroll,
-        "base_bankroll_cents": base,
-        "exposure_cents": exposure,
-        "stage": stage,
-        "account_roi": round(account_roi, 4),
-        "realized_pnl_cents": report.get("realized_decision_pnl_cents"),
-        "realized_trade_statistics": {
-            k: rts.get(k) for k in (
-                "net_pnl_cents", "roi_on_entry_cost", "win_rate",
-                "trades", "profit_factor", "max_drawdown_cents",
-            )
-        },
-        "balance_curve": _downsample(balance_curve),
-        "promoted": promoted,
-        "close_to_promotion": close[:8],
+        "overview_schema_version": 2,
+        "primary_account": "live_kalshi",
+        "paper_results_status": "RETIRED_NON_AUTHORITATIVE",
+        "paper_results_can_enable_live": False,
+        "paper_results_can_block_live": False,
+        "paper_history_preserved_for_audit": True,
+        "live_authority_source": "explicit_live_control_contracts_only",
         "active_sources": active_sources[:12],
     }
 
@@ -724,7 +727,7 @@ def build_scope_extras(
             "n_entries": scope.get("n_entries"),
         })
 
-    from autonomy.market_labels import market_label
+    from autonomy.market_labels import humanize_market
 
     misp_by_scope: dict[tuple[str, str], list[dict[str, Any]]] = {}
     ejections_by_scope: dict[tuple[str, str], list[Any]] = {}
@@ -733,7 +736,7 @@ def build_scope_extras(
             continue
         key = scope_key(str(row["ticker"]))
         enriched = {f: row.get(f) for f in _MISPRICING_FIELDS}
-        enriched["label"] = market_label(str(row["ticker"]))
+        enriched["label"] = humanize_market(str(row["ticker"]))["label"]
         misp_by_scope.setdefault(key, []).append(enriched)
         for ev in (row.get("ejection_events") or []):
             ejections_by_scope.setdefault(key, []).append(ev)

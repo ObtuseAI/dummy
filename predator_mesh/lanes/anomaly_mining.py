@@ -21,6 +21,7 @@ class AnomalyMiningLane(BaseLane):
     """Mine edge candidates from normalized signals and market terrain."""
 
     name = "anomaly_mining"
+    dependencies = ("signal_normalization",)
     priority = MeshPriority(level=LanePriority.HIGH_VALUE_SIGNAL)
     timeout = MeshTimeout(per_lane_timeout_s=10.0)
 

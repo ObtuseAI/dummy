@@ -1,51 +1,28 @@
 from pathlib import Path
-from unittest.mock import patch
-
 from fastapi.testclient import TestClient
 
 from dashboard.backend.main import app
 
-
-async def _mock_forecast_opinions(*args, **kwargs):
-    return {
-        "source": "mock",
-        "model_mode": "MOCK_ONLY",
-        "kalshi_credentials_present": False,
-        "opinions": [],
-        "count": 0,
-    }
-
-
-async def _mock_live_smoke(*args, **kwargs):
-    return {
-        "live_model_status": "MOCK_ONLY",
-        "model_mode": "MOCK_ONLY",
-        "verdict": "PASS",
-        "credential_status": {"all_ready": False},
-        "call_results": [],
-    }
-
-
 def test_v8_routes_return_200():
     client = TestClient(app)
-    endpoints = [
-        "/v8/status",
-        "/v8/model-providers",
-        "/v8/live-smoke",
-        "/v8/prompt-firewall",
-        "/v8/output-firewall",
-        "/v8/forecast-opinions",
-        "/v8/calibration",
-        "/v8/strategy-governor",
-        "/v8/disagreement",
-        "/v8/firewall-rehearsal",
-        "/v8/proof-reports",
-    ]
-    with patch("archive.routes.v8_routes.RealMarketForecastLoopV2.run", new=_mock_forecast_opinions):
-        with patch("archive.routes.v8_routes.LiveModelSmoke.run", new=_mock_live_smoke):
-            for ep in endpoints:
-                r = client.get(ep)
-                assert r.status_code == 200, f"{ep} failed: {r.text}"
+    expected_statuses = {
+        "/v8/status": 200,
+        "/v8/model-providers": 200,
+        "/v8/live-smoke": 200,
+        "/v8/prompt-firewall": 200,
+        "/v8/output-firewall": 200,
+        "/v8/forecast-opinions": 200,
+        "/v8/calibration": 200,
+        "/v8/strategy-governor": 200,
+        "/v8/disagreement": 200,
+        # Rehearsal executes a firewall path and stays operator-authenticated,
+        # including on the explicit test-only archive surface.
+        "/v8/firewall-rehearsal": 503,
+        "/v8/proof-reports": 200,
+    }
+    for ep, expected in expected_statuses.items():
+        r = client.get(ep)
+        assert r.status_code == expected, f"{ep} failed: {r.text}"
 
 
 def test_v8_status_has_no_secrets():

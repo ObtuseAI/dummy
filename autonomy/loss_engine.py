@@ -316,6 +316,8 @@ def build_fill_loss_attribution(
 
 # -- narration (commentary only, fail-closed) ------------------------------------
 
+MAX_NARRATION_SCOPES_PER_RUN = 5
+
 
 def narrate_losses(attribution: dict[str, Any], router: Any) -> dict[str, Any]:
     """Per-scope 'what went wrong + a hypothesis' commentary for a human
@@ -361,7 +363,9 @@ def narrate_losses(attribution: dict[str, Any], router: Any) -> dict[str, Any]:
         return {}
 
     narration: dict[str, str] = {}
-    for entry in bleeding:
+    # A human-readable report never justifies unbounded paid fan-out. Rank
+    # order is already worst-first, so narrate only the bounded leading slice.
+    for entry in bleeding[:MAX_NARRATION_SCOPES_PER_RUN]:
         scope = str(entry.get("scope"))
         prompt = (
             f"Grading scope: {scope}\n"

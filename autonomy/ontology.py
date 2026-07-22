@@ -115,6 +115,14 @@ class Decision:
     risk_snapshot: dict[str, Any]
     abstain_reason: str = ""
     created_at: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
+    # Immutable display/research classification captured when the decision was
+    # produced.  It grants no execution authority and is intentionally
+    # versioned so historical definitions are never silently relabelled.
+    tier_label: str | None = None
+    tier_policy_version: str | None = None
+    tier_score: float | None = None
+    tier_reason: str = ""
+    tier_snapshot: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)

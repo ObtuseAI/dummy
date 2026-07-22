@@ -1,7 +1,8 @@
 from __future__ import annotations
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 from core.state import STATE
 from core.ontology import AccountMode, OrderBook, OrderBookLevel
+from dashboard.backend.operator_auth import require_operator
 from forecasting.hybrid_engine import HybridForecastEngine
 from strategies.intelligence import StrategyIntelligence
 from execution.hybrid_path import HybridAutonomousExecutionPath
@@ -58,7 +59,7 @@ async def strategies_intelligence(market_ticker: str = "MKT", contract_ticker: s
     results = await intel.evaluate(forecast, book)
     return {"results": [r.scan_result.family for r in results], "source": "mock"}
 
-@router.get("/hybrid/rehearsal")
+@router.get("/hybrid/rehearsal", dependencies=[Depends(require_operator)])
 async def hybrid_rehearsal(market_ticker: str = "MKT", contract_ticker: str = "MKT-YES"):
     if STATE.mode != AccountMode.AUTONOMOUS_LIVE_CAPPED:
         return {"status": "blocked", "reason": "Mode is not AUTONOMOUS_LIVE_CAPPED"}

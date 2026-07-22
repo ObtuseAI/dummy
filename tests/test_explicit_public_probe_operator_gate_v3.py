@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from core.caps_authority import LEGACY_CAPS_SHA256, PROTECTED_CAPS_SHA256
 from predator_mesh.v31.probes import ExplicitPublicProbeOperatorGateV3
 from tests.v31_test_helpers import assert_v31_report_named
 
@@ -18,7 +19,12 @@ def test_public_probe_gate_is_disabled_by_default_and_preserves_config_hashes() 
     assert decision.config_diff_proof.live_submit_modified is False
     assert decision.config_diff_proof.caps_modified is False
     assert decision.config_diff_proof.live_submit_hash == "3875B81E90B636147CC5BCE5F247B71AD25877C165F4773C98D5C2AD61DB515E"
-    assert decision.config_diff_proof.caps_hash == "F7D91453FECCB3A216B733589D69F1C21B5A8CEF753096360630B0B973CAE5B5"
+    assert decision.config_diff_proof.caps_hash == PROTECTED_CAPS_SHA256
+    assert decision.config_diff_proof.caps_authority_state == "REVIEW_REQUIRED"
+    assert decision.config_diff_proof.caps_authority_registration_valid is False
+    assert decision.config_diff_proof.legacy_caps_hash == LEGACY_CAPS_SHA256
+    assert decision.config_diff_proof.legacy_caps_authority_invalidated is True
+    assert decision.config_diff_proof.execution_authority is False
 
 
 def test_public_probe_gate_enables_only_with_explicit_readonly_ack() -> None:

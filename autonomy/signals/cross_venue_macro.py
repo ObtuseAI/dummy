@@ -16,8 +16,8 @@ registration -- they do NOT inherit the sports scope's earned champion status:
 Every emission is stamped ``challenger_only=True`` and deliberately does NOT
 stamp ``promotion_eligible``: promotion is evidence-driven -- the base's
 AutoPromotionEngine (docs/AUTO_PROMOTION.md) earns each exact scope its place
-from settled proof-of-profit, and inheriting the sports champion's status would
-be unearned. Matching is exact: any asset / strike / date / outcome mismatch or
+from forward witnessed-fill evidence, and inheriting the sports champion's
+status would be unearned. Matching is exact: any asset / strike / date / outcome mismatch or
 ambiguity yields NO match and the source abstains, so a wrong cross-venue map
 can never inject a phantom edge. Public Gamma + CLOB endpoints, read-only; no
 Polymarket execution, ever.

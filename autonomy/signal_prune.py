@@ -26,56 +26,85 @@ from autonomy.ledger import AutonomyLedger
 
 
 def plan_prune(ledger: AutonomyLedger, settled_before_days: float = 7.0) -> dict[str, Any]:
-    """Compute the prunable signal ids without deleting anything.
+    """Compute prunable ids without crossing point-in-time evidence lanes.
 
-    Returns counts + the sorted prunable id list. Keep-selection mirrors
-    ledger.calibration_signals_for_market EXACTLY (min id for phantom, max id
-    with created_at<=first-decision for traded), so deleting the rest cannot move
-    a weight.
+    Keep-selection mirrors calibration_signals_for_market independently for
+    live and retro. Live rows must satisfy both model-time and durable
+    receipt-time cutoffs; retro rows satisfy model time only. Unknown provenance
+    is protected from deletion.
     """
     conn = ledger._conn
     cutoff = (datetime.now(timezone.utc) - timedelta(days=settled_before_days)).isoformat()
-    old_settled = {str(r[0]) for r in conn.execute(
-        "SELECT market_ticker FROM settlements WHERE settled_at < ?", (cutoff,))}
-    if not old_settled:
-        return {"old_settled_markets": 0, "kept": 0, "prunable_ids": [], "prunable": 0, "total_scanned": 0}
+    old_settled_count = int(conn.execute(
+        "SELECT COUNT(*) FROM settlements WHERE settled_at < ?", (cutoff,)
+    ).fetchone()[0])
+    if old_settled_count == 0:
+        return {
+            "old_settled_markets": 0, "kept": 0, "prunable_ids": [],
+            "prunable": 0, "total_scanned": 0,
+        }
 
-    decision_times: dict[str, str] = {}
-    for mt, dt in conn.execute("SELECT market_ticker, MIN(created_at) FROM decisions GROUP BY market_ticker"):
-        if dt is not None and str(mt) in old_settled:
-            decision_times[str(mt)] = str(dt)
-
-    keep: dict[tuple[str, str], int] = {}   # (market, source) -> selected id
+    # (market, source, provenance lane) -> selected id. Keeping lanes distinct
+    # is essential: a later retro replay may never replace live evidence.
+    keep: dict[tuple[str, str, str], int] = {}
+    protected_unknown = 0
     prunable: list[int] = []
     total = 0
-    # id is the PK, so ORDER BY id is index-ordered (no sort). Ascending order
-    # makes "first seen" == min id (phantom) and "last qualifying" == max id (traded).
-    for mt, sid, source, ca in conn.execute(
-        "SELECT market_ticker, id, source, created_at FROM signals ORDER BY id"
+    for mt, sid, source, mode, decision_time, created_ok, receipt_ok in conn.execute(
+        """
+        WITH earliest_decision AS (
+            SELECT market_ticker, MIN(created_at) AS decision_time
+            FROM decisions GROUP BY market_ticker
+        )
+        SELECT sig.market_ticker, sig.id, sig.source, sig.mode,
+               ed.decision_time,
+               CASE
+                   WHEN julianday(sig.created_at) <=
+                        julianday(COALESCE(ed.decision_time, st.settled_at))
+                   THEN 1 ELSE 0
+               END AS created_in_window,
+               CASE
+                   WHEN sig.mode = 'retro' THEN 1
+                   WHEN sig.mode = 'live'
+                        AND julianday(sig.ingested_at) <=
+                            julianday(COALESCE(ed.decision_time, st.settled_at))
+                   THEN 1 ELSE 0
+               END AS receipt_in_window
+        FROM signals sig
+        JOIN settlements st ON st.market_ticker = sig.market_ticker
+        LEFT JOIN earliest_decision ed ON ed.market_ticker = sig.market_ticker
+        WHERE st.settled_at < ?
+        ORDER BY sig.id
+        """,
+        (cutoff,),
     ):
-        mt = str(mt)
-        if mt not in old_settled:
-            continue
         total += 1
-        key = (mt, str(source))
-        dt = decision_times.get(mt)
+        mt = str(mt)
+        lane = str(mode)
+        sid = int(sid)
+        if lane not in {"live", "retro"}:
+            # Fail closed on destructive maintenance for unknown provenance.
+            protected_unknown += 1
+            continue
+        key = (mt, str(source), lane)
+        if not bool(created_ok) or not bool(receipt_ok):
+            prunable.append(sid)
+            continue
         selected_before = keep.get(key)
-        if dt is None:
+        if decision_time is None:
             if selected_before is None:
-                keep[key] = int(sid)        # earliest phantom opinion
+                keep[key] = sid  # earliest eligible phantom opinion
             else:
-                prunable.append(int(sid))
+                prunable.append(sid)
         else:
-            if ca is not None and str(ca) <= dt:
-                if selected_before is not None:
-                    prunable.append(selected_before)  # older in-window loses to this later one
-                keep[key] = int(sid)         # latest opinion at/before the decision
-            else:
-                prunable.append(int(sid))    # after the decision -> never selected
+            if selected_before is not None:
+                prunable.append(selected_before)
+            keep[key] = sid  # latest eligible opinion at/before decision
+
     prunable.sort()
     return {
-        "old_settled_markets": len(old_settled),
-        "kept": len(keep),
+        "old_settled_markets": old_settled_count,
+        "kept": len(keep) + protected_unknown,
         "prunable_ids": prunable,
         "prunable": len(prunable),
         "total_scanned": total,

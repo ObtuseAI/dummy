@@ -245,22 +245,63 @@ def generate_provider_route_config_recommendations_v1() -> dict[str, Any]:
 # -----------------------------------------------------------------------------
 
 
-async def generate_model_id_validation_report_v1() -> dict[str, Any]:
+def _model_id_preflight(name: str) -> dict[str, Any]:
+    """Return configured identity without constructing the live resolver."""
+    from model_router.config import load_model_routing_config
+
+    provider = load_model_routing_config().provider_configs.get(name)
+    return {
+        "configured_model": provider.model_name if provider is not None else "",
+        "resolved_model": None,
+        "resolved_by": None,
+        "status": "PREFLIGHT_ONLY",
+        "error_category": None if provider is not None else "PROVIDER_CONFIG_MISSING",
+        "error_detail": "live model validation requires explicit allow_live=True",
+        "contact_mode": "PREFLIGHT_ONLY",
+        "network_contacted": False,
+    }
+
+
+async def generate_model_id_validation_report_v1(
+    *,
+    allow_live: bool = False,
+) -> dict[str, Any]:
+    if allow_live is not True:
+        ds_entry = _model_id_preflight("deepseek_v4_flash")
+        mm_entry = _model_id_preflight("minimax_m3")
+        return {
+            "generated_at": now_iso(),
+            "workstream": "V8.2: Model ID Validation",
+            "deepseek_v4_flash": ds_entry,
+            "minimax_m3": mm_entry,
+            "live_contact_authorized": False,
+            "verdict": "PARTIAL",
+        }
+
     from model_router.resolver import ModelProviderResolver, _DEFAULT_ALIASES, _DEFAULT_BASE_URLS
     from model_router.smoke import _DEEPSEEK_SMOKE_PROMPT, _MINIMAX_SMOKE_PROMPT
+    from model_router.network_capability import issue_model_network_capability
 
     resolver = ModelProviderResolver()
+    network_capability = issue_model_network_capability(
+        allow_live=allow_live,
+        source="archive.v8_2.manual_model_id_validation",
+    )
     ds = await resolver.resolve(
         "deepseek_v4_flash",
         default_base=_DEFAULT_BASE_URLS["deepseek_v4_flash"],
         default_aliases=_DEFAULT_ALIASES["deepseek_v4_flash"],
         smoke_prompt=_DEEPSEEK_SMOKE_PROMPT,
+        allow_live=True,
+        network_capability=network_capability,
     )
     mm = await resolver.resolve(
         "minimax_m3",
         default_base=_DEFAULT_BASE_URLS["minimax_m3"],
         default_aliases=_DEFAULT_ALIASES["minimax_m3"],
         smoke_prompt=_MINIMAX_SMOKE_PROMPT,
+        allow_live=True,
+        network_capability=network_capability,
     )
     return {
         "generated_at": now_iso(),
@@ -312,10 +353,13 @@ async def generate_provider_alias_probe_report_v1() -> dict[str, Any]:
 # -----------------------------------------------------------------------------
 
 
-async def generate_live_model_smoke_report_v3() -> dict[str, Any]:
+async def generate_live_model_smoke_report_v3(
+    *,
+    allow_live: bool = False,
+) -> dict[str, Any]:
     from model_router.smoke import generate_live_model_smoke_report_v3 as _run
 
-    return await _run()
+    return await _run(allow_live=allow_live)
 
 
 def generate_live_model_prompt_safety_report_v3() -> dict[str, Any]:
@@ -511,7 +555,7 @@ def generate_direct_order_bypass_report_v8_2() -> dict[str, Any]:
 # -----------------------------------------------------------------------------
 
 
-async def main() -> dict[str, Any]:
+async def main(*, allow_live: bool = False) -> dict[str, Any]:
     reports: dict[str, dict[str, Any]] = {}
     paths: dict[str, Path] = {}
 
@@ -525,10 +569,14 @@ async def main() -> dict[str, Any]:
     reports["provider_route_config_recommendations_v1.json"] = (
         generate_provider_route_config_recommendations_v1()
     )
-    reports["model_id_validation_report_v1.json"] = await generate_model_id_validation_report_v1()
+    reports["model_id_validation_report_v1.json"] = (
+        await generate_model_id_validation_report_v1(allow_live=allow_live)
+    )
     reports["provider_alias_probe_report_v1.json"] = await generate_provider_alias_probe_report_v1()
 
-    reports["live_model_smoke_report_v3.json"] = await generate_live_model_smoke_report_v3()
+    reports["live_model_smoke_report_v3.json"] = (
+        await generate_live_model_smoke_report_v3(allow_live=allow_live)
+    )
     reports["live_model_prompt_safety_report_v3.json"] = generate_live_model_prompt_safety_report_v3()
     reports["live_model_output_safety_report_v2.json"] = await generate_live_model_output_safety_report_v2()
 

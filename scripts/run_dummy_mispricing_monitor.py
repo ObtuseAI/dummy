@@ -8,7 +8,7 @@ drives the patience/opportunist engine across passes. Writes
 
 This is a monitor, not a trader: it has no session, execution, or capital
 authority and never places an order. It surfaces the mispricing shortlist and
-the opportunist strikes as challenger/paper evidence for review.
+the opportunist strikes as non-authoritative research evidence for review.
 """
 from __future__ import annotations
 
@@ -25,7 +25,6 @@ from autonomy.council_snapshot import build_council_snapshot  # noqa: E402
 from autonomy.forecaster import EnsembleForecaster  # noqa: E402
 from autonomy.mispricing_monitor import (  # noqa: E402
     persist_book_tape,
-    persist_paper_entries,
     run_mispricing_sweep,
 )
 from autonomy.opportunist import OpportunistEngine  # noqa: E402
@@ -33,10 +32,9 @@ from autonomy.session import SessionMode, build_brain  # noqa: E402
 from autonomy.signals.sportsbook import SportsbookConsensusSignal  # noqa: E402
 
 OUT_PATH = Path("runtime/autonomy/mispricing_monitor_latest.json")
-# WS-8 (spec section 3.2): evidence artifacts the CLV grader
+# WS-8 (spec section 3.2): point-in-time book evidence the CLV grader
 # (scripts/run_dummy_clv_grader.py) reads. Appended, never overwritten.
 BOOK_TAPE_PATH = Path("runtime/autonomy/book_tape.jsonl")
-PAPER_ENTRIES_PATH = Path("runtime/autonomy/paper_entries.jsonl")
 # WS-13: council health + open-opportunities snapshot for the dashboard's
 # read-only council panel. Read-only reporting artifact -- see
 # autonomy/council_snapshot.py for the fail-closed contract.
@@ -45,6 +43,9 @@ COUNCIL_SNAPSHOT_PATH = Path("runtime/autonomy/council_snapshot.json")
 # so a monitor restart does not drop in-flight close candidates for games that
 # have not yet reached first pitch. Best-effort (see _load/_save helpers).
 SPORTS_CLOSE_STATE_PATH = Path("runtime/autonomy/sports_close_state.json")
+SPORTS_MODEL_SEED_STATUS_PATH = Path(
+    "runtime/autonomy/sports_model_seed_status.json"
+)
 
 
 def _atomic_json(path: Path, value: dict) -> None:
@@ -69,6 +70,11 @@ def _build():
     forecaster = EnsembleForecaster(brain.ledger)
     council = build_specialist_registry(brain.registry)
     fallback_book = SportsbookConsensusSignal()
+    # Full governed forecasts for the display-only sports board.  The
+    # mispricing surface consumes a scalar probability, but tier issuance also
+    # requires the ensemble's governed uncertainty and source-weight record.
+    # This dict is cleared per pass and never contains specialist live scalars.
+    governed_forecasts: dict[str, tuple[object, str]] = {}
 
     def forecast_fn(market):
         try:
@@ -82,9 +88,19 @@ def _build():
                     return live.probability_yes
             signals = list(brain.registry.signals_for(market))
             forecast = forecaster.fuse(market, signals)
+            if forecast is not None:
+                governed_forecasts[market.ticker] = (
+                    forecast,
+                    datetime.now(timezone.utc).isoformat(),
+                )
             return forecast.probability_yes if forecast else None
         except Exception:
             return None
+
+    # Function attributes keep the established _build() return contract stable
+    # for tests/callers while making the full forecasts available to _one_pass.
+    setattr(forecast_fn, "governed_forecasts", governed_forecasts)
+    setattr(forecast_fn, "clear_governed_forecasts", governed_forecasts.clear)
 
     def book_fn(market):
         # The specialist's book (live ESPN-summary de-vig in play, sportsbook
@@ -173,17 +189,17 @@ FAST_OUT_PATH = Path("runtime/autonomy/mispricing_monitor_fast_latest.json")
 
 
 def _persist_evidence(report: dict, tape_state: dict) -> None:
-    """WS-8: append this pass's book-tape rows + paper entries (best-effort).
+    """WS-8: append point-in-time book-tape rows (best-effort).
 
     ``tape_state`` is a single mutable dict the caller carries across passes
     (avoids re-reading the whole tape file every 90 seconds); a persistence
     failure is printed as a status line and swallowed -- evidence capture
-    must never take the monitor down.
+    must never take the monitor down. The retired ``paper_entries.jsonl``
+    history is deliberately never appended here.
     """
     try:
         updated = persist_book_tape(BOOK_TAPE_PATH, report, last_by_ticker=tape_state.get("last"))
         tape_state["last"] = updated
-        persist_paper_entries(PAPER_ENTRIES_PATH, report)
     except Exception as exc:
         print(json.dumps({"status": f"WS8_PERSIST_ERROR:{type(exc).__name__}", "error": str(exc)[:200]}))
 
@@ -232,6 +248,9 @@ def _one_pass(
     brain, council, forecast_fn, book_fn, specialist_fn, divergence_fn,
     ejection_fn, opportunist, tape_state, game_start_fn=None, sports_close=None,
 ) -> dict:
+    clear_forecasts = getattr(forecast_fn, "clear_governed_forecasts", None)
+    if callable(clear_forecasts):
+        clear_forecasts()
     brain.registry.on_cycle_start()  # warm/refresh source caches for this pass
     council.on_cycle_start()  # per-specialist warmup (isolated; failures skip)
     markets = brain.scanner.scan()
@@ -251,6 +270,52 @@ def _one_pass(
         specialist_fn=specialist_fn, divergence_fn=divergence_fn,
         ejection_fn=ejection_fn, game_start_fn=game_start_fn, sports_close=sports_close,
     )
+    # Independent public betting-guide freshness.  This reuses the scan and
+    # promoted-only full EnsembleForecaster results already paid for by this
+    # monitor pass.  It writes a separate display artifact; execution keeps
+    # reading the cycle board and cannot consume these rows.
+    try:
+        from autonomy.sports_board_refresh import (
+            MODEL_SEED_ARTIFACT_SOURCE,
+            MODEL_SEED_PATH,
+            publish_fresh_sports_display_board,
+        )
+
+        governed = getattr(forecast_fn, "governed_forecasts", {})
+        sports_board = publish_fresh_sports_display_board(
+            markets,
+            governed if isinstance(governed, dict) else {},
+            output_path=MODEL_SEED_PATH,
+            now=datetime.now(timezone.utc),
+            artifact_source=MODEL_SEED_ARTIFACT_SOURCE,
+        )
+        board_status = {
+            "status": "REFRESH_OK",
+            "at": sports_board.get("generated_at"),
+            "producer": "DummyMispricingMonitor.model_seed",
+            "current_market_count": sports_board.get("current_market_count"),
+            "refreshed_tier_count": sports_board.get("refreshed_tier_count"),
+            "unattributed_current_market_count": sports_board.get(
+                "unattributed_current_market_count"
+            ),
+            "execution_authority": False,
+            "no_broker_or_order_calls": True,
+        }
+        _atomic_json(SPORTS_MODEL_SEED_STATUS_PATH, board_status)
+        report["sports_model_seed"] = board_status
+    except Exception as exc:
+        board_status = {
+            "status": f"REFRESH_FAILED:{type(exc).__name__}",
+            "error": str(exc)[:200],
+            "at": datetime.now(timezone.utc).isoformat(),
+            "producer": "DummyMispricingMonitor.model_seed",
+            "execution_authority": False,
+        }
+        try:
+            _atomic_json(SPORTS_MODEL_SEED_STATUS_PATH, board_status)
+        except Exception:
+            pass
+        report["sports_model_seed"] = board_status
     _persist_evidence(report, tape_state)
     if sports_close is not None:
         _save_sports_close_tracker(sports_close)  # Wave-2 D1: survive restarts

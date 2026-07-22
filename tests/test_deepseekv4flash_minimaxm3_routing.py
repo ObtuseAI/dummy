@@ -1,7 +1,7 @@
-"""LLM routing: GLM-5.2 + MiniMax-M3 hybrid (operator directive 2026-07-17).
+"""LLM routing: exact four-voice OpenRouter panel.
 
-Every role routes to one of the two directed models (or the hybrid panel);
-deepseek remains configured only as a fallback alias target.
+Fast structured work routes to Gemini/Luna, deep synthesis to Claude, and
+adversarial calibration to GLM. Legacy providers remain fallback-only.
 """
 import pytest
 
@@ -10,28 +10,50 @@ from model_router.tasks import ModelTask
 
 
 @pytest.mark.asyncio
-async def test_glm52_routes_thesis_and_drafts_when_key_present(monkeypatch):
+async def test_gemini_routes_primary_forecast_when_key_present(monkeypatch):
+    monkeypatch.setenv("DUMMY_LLM_OPENROUTER_ENABLED", "1")
     monkeypatch.setenv("OPENROUTER_API_KEY", "sk-openrouter-routing-test")
     router = ModelRouter()
-    for task in (ModelTask.FORECAST_OPINION, ModelTask.TRADE_DRAFT, ModelTask.MARKET_THESIS):
-        decision = router.route(task)
-        assert decision.provider_name == "glm_5_2"
-        assert decision.model_name == "z-ai/glm-5.2"
+    decision = router.route(ModelTask.FORECAST_OPINION)
+    assert decision.provider_name == "gemini_3_6_flash"
+    assert decision.model_name == "google/gemini-3.6-flash"
 
 
 @pytest.mark.asyncio
-async def test_minimaxm3_routes_critiques_when_key_present(monkeypatch):
+async def test_luna_routes_rapid_forecasts_and_drafts_when_key_present(monkeypatch):
+    monkeypatch.setenv("DUMMY_LLM_OPENROUTER_ENABLED", "1")
+    monkeypatch.setenv("OPENROUTER_API_KEY", "sk-openrouter-routing-test")
+    router = ModelRouter()
+    for task in (ModelTask.RAPID_FORECAST, ModelTask.TRADE_DRAFT):
+        decision = router.route(task)
+        assert decision.provider_name == "gpt_5_6_luna"
+        assert decision.model_name == "openai/gpt-5.6-luna"
+
+
+@pytest.mark.asyncio
+async def test_claude_routes_deep_strategy_and_synthesis_when_key_present(monkeypatch):
+    monkeypatch.setenv("DUMMY_LLM_OPENROUTER_ENABLED", "1")
+    monkeypatch.setenv("OPENROUTER_API_KEY", "sk-openrouter-routing-test")
+    router = ModelRouter()
+    for task in (ModelTask.STRATEGY_CRITIQUE, ModelTask.MARKET_THESIS):
+        decision = router.route(task)
+        assert decision.provider_name == "claude_sonnet_5"
+        assert decision.model_name == "anthropic/claude-sonnet-5"
+
+
+@pytest.mark.asyncio
+async def test_glm_routes_adversarial_risk_no_trade_and_calibration_when_key_present(monkeypatch):
+    monkeypatch.setenv("DUMMY_LLM_OPENROUTER_ENABLED", "1")
     monkeypatch.setenv("OPENROUTER_API_KEY", "sk-openrouter-routing-test")
     router = ModelRouter()
     for task in (
-        ModelTask.STRATEGY_CRITIQUE,
         ModelTask.RISK_CRITIQUE,
         ModelTask.NO_TRADE_REASON,
         ModelTask.CALIBRATION_NOTE,
     ):
         decision = router.route(task)
-        assert decision.provider_name == "minimax_m3"
-        assert decision.model_name == "minimax/minimax-m3"
+        assert decision.provider_name == "glm_5_2"
+        assert decision.model_name == "z-ai/glm-5.2"
 
 
 @pytest.mark.asyncio

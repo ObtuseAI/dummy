@@ -48,6 +48,12 @@ def test_prices_the_dominant_team(tmp_path):
     assert s is not None and s.source == "sports_pythagorean"
     assert s.probability_yes > 0.6
     assert s.features["subject_strength"] > s.features["opponent_strength"]
+    assert s.features["challenger_only"] is True
+    assert s.features["promotion_eligible"] is True
+    assert s.features["point_in_time"] is True
+    assert s.features["public_read_only"] is True
+    assert s.features["sport"] == "nfl"
+    assert s.features["market_type"] == "winner"
 
 
 def test_abstains_mid_game(tmp_path):

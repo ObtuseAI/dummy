@@ -15,11 +15,24 @@ from core.live_submit_state import (
     LIVE_SUBMIT_REQUIRED_ACK,
     LIVE_SUBMIT_TYPED_CONFIRMATION,
     LiveSubmitState,
+    build_caps_authority_binding,
     classify_live_submit_state,
     load_live_submit_config,
     validate_default_disabled,
     validate_operator_one_proof_enabled,
 )
+from tests.caps_authority_test_helpers import registered_caps_status_dict
+
+
+REGISTERED_CAPS_STATUS = registered_caps_status_dict()
+
+
+@pytest.fixture(autouse=True)
+def registered_caps_authority(monkeypatch):
+    monkeypatch.setattr(
+        "core.live_submit_state.evaluate_caps_authority",
+        lambda: REGISTERED_CAPS_STATUS,
+    )
 
 
 def _future_expiry(days: int = 1) -> str:
@@ -43,6 +56,7 @@ def _valid_one_proof_config(**overrides):
         "order_type_policy": "LIMIT_ONLY",
         "max_order_count": 1,
         "explicit_acknowledgement": LIVE_SUBMIT_REQUIRED_ACK,
+        **build_caps_authority_binding(REGISTERED_CAPS_STATUS),
     }
     config.update(overrides)
     return config
@@ -102,6 +116,30 @@ def test_validate_operator_one_proof_accepts_valid_config():
 def test_classify_operator_one_proof_state():
     state = classify_live_submit_state(_valid_one_proof_config())
     assert state is LiveSubmitState.OPERATOR_ONE_PROOF_ENABLED_VALID
+
+
+def test_enabled_state_rejects_missing_caps_authority_registration():
+    status = {
+        **REGISTERED_CAPS_STATUS,
+        "state": "REVIEW_REQUIRED",
+        "authority_registration_present": False,
+        "authority_registration_valid": False,
+        "authority_registration_sha256": None,
+    }
+    result = validate_operator_one_proof_enabled(
+        _valid_one_proof_config(), caps_authority_status=status
+    )
+    assert result.ok is False
+    assert any("fresh caps-v2 authority registration" in error for error in result.errors)
+
+
+def test_enabled_state_rejects_legacy_or_wrong_caps_hash_binding():
+    result = validate_operator_one_proof_enabled(
+        _valid_one_proof_config(caps_hashes=["F7D91453"]),
+        caps_authority_status=REGISTERED_CAPS_STATUS,
+    )
+    assert result.ok is False
+    assert any("caps_hashes must bind exactly" in error for error in result.errors)
 
 
 def test_validate_operator_one_proof_rejects_market_orders():

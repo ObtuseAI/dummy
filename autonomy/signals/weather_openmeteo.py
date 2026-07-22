@@ -1,11 +1,8 @@
-"""Weather signal: multi-model Open-Meteo ensemble vs Kalshi temperature markets.
+"""Weather-data helpers retained for contextual sports features.
 
-Kalshi daily temperature markets (KXHIGH*/KXLOW* series) settle on official
-station readings. Open-Meteo exposes several independent NWP models free of
-charge; the ensemble mean gives the point forecast and the cross-model spread
-(plus a station error prior) gives the uncertainty. Probability of YES for a
-threshold market is then a normal CDF — a real, measurable edge source that
-self-calibrates per city via the learner.
+Direct weather-contract prediction is retired. Open-Meteo parsing and station
+metadata remain available as data plumbing, while the compatibility signal
+class is permanently non-applicable and emits no forecast.
 """
 from __future__ import annotations
 
@@ -13,7 +10,7 @@ import math
 import re
 from typing import Any, Callable
 
-from autonomy.ontology import MarketView, Signal, Vertical
+from autonomy.ontology import MarketView, Signal
 
 # Station coordinates for Kalshi temperature series (city code -> lat/lon and
 # a conservative model-error prior in deg F, tightened by the learner later).
@@ -93,7 +90,11 @@ def parse_temp_ticker(ticker: str) -> dict[str, Any] | None:
 
 
 class OpenMeteoWeatherSignal:
+    """Retired compatibility shell; weather is contextual sports data only."""
+
     name = "weather_openmeteo"
+    data_only = True
+    prediction_authority = False
 
     def __init__(
         self,
@@ -121,63 +122,7 @@ class OpenMeteoWeatherSignal:
         )
 
     def applicable(self, market: MarketView) -> bool:
-        return market.vertical is Vertical.WEATHER and parse_temp_ticker(market.ticker) is not None
+        return False
 
     def generate(self, market: MarketView) -> Signal | None:
-        parsed = parse_temp_ticker(market.ticker)
-        if parsed is None:
-            return None
-        city = CITY_TABLE[parsed["city"]]
-        temps = self.fetch_daily_temps(city["lat"], city["lon"], parsed["date_iso"], parsed["kind"])
-        if not temps:
-            return None
-        mean = sum(temps) / len(temps)
-        # Subtract the station's measured forecast bias (forecast minus actual).
-        mean -= self.bias_corrections.get(parsed["city"], 0.0)
-        spread = (max(temps) - min(temps)) if len(temps) > 1 else 0.0
-        sigma = max(
-            self.sigma_overrides.get(parsed["city"], float(city["sigma_prior_f"])),
-            spread / 2.0,
-            0.8,
-        )
-        # Settlement semantics come from market metadata, never the ticker
-        # string. Station readings are integers, so half-degree continuity
-        # corrections translate the discrete rule into the continuous model:
-        #   greater: YES iff value > floor  -> P(X >= floor + 0.5)
-        #   less:    YES iff value < cap    -> P(X <  cap  - 0.5)
-        #   between: YES iff floor<=v<=cap  -> P(floor-0.5 <= X < cap+0.5)
-        strike_type = str(market.raw.get("strike_type", "")).lower()
-        floor = market.raw.get("floor_strike")
-        cap = market.raw.get("cap_strike")
-        if strike_type == "greater" and floor is not None:
-            p_yes = 1.0 - _normal_cdf(float(floor) + 0.5, mean, sigma)
-        elif strike_type == "less" and cap is not None:
-            p_yes = _normal_cdf(float(cap) - 0.5, mean, sigma)
-        elif strike_type == "between" and floor is not None and cap is not None:
-            p_yes = _normal_cdf(float(cap) + 0.5, mean, sigma) - _normal_cdf(float(floor) - 0.5, mean, sigma)
-        elif parsed["style"] == "T":
-            # Metadata absent: fall back to the ticker's threshold read as >=.
-            p_yes = 1.0 - _normal_cdf(parsed["threshold"], mean, sigma)
-        else:
-            low, high = parsed["threshold"] - 0.5, parsed["threshold"] + 0.5
-            p_yes = _normal_cdf(high, mean, sigma) - _normal_cdf(low, mean, sigma)
-        p_yes = min(0.995, max(0.005, p_yes))
-        return Signal(
-            source=self.name,
-            market_ticker=market.ticker,
-            probability_yes=p_yes,
-            uncertainty=min(0.5, sigma / 10.0),
-            rationale=(
-                f"{len(temps)}-model ensemble {parsed['kind']} for {city['name']} {parsed['date_iso']}: "
-                f"mean={mean:.1f}F spread={spread:.1f}F sigma={sigma:.1f}F vs threshold {parsed['threshold']}"
-            ),
-            # Weather was retired as an execution-grade source on 2026-07-11
-            # (contested edge -0.050, CI95 upper -0.024 — a significant net
-            # loser when contested). The signal keeps emitting for evidence
-            # continuity, but challenger-only: it re-enters fusion only if the
-            # promotion ladder ever re-earns it a place.
-            features={
-                "mean_f": mean, "sigma_f": sigma, "models": len(temps),
-                "city": parsed["city"], "challenger_only": True,
-            },
-        )
+        return None

@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import json
+from dataclasses import replace
 
 import pytest
 
+from tests.caps_authority_test_helpers import install_registered_caps_authority
 from core.proof_authority import (
     REQUIRED_CONFIRMATION,
     SecondProofAuthorityStatus,
@@ -70,6 +72,7 @@ def valid_context(tmp_path, monkeypatch):
     (tmp_path / "approvals" / "dummy_controlled_production_pilot_approval.json").write_text(
         json.dumps({"scope": "one_controlled_production_pilot_via_firewall_only"}, sort_keys=True), encoding="utf-8"
     )
+    install_registered_caps_authority(monkeypatch, tmp_path / "caps.json")
     return tmp_path
 
 
@@ -95,6 +98,30 @@ def test_draft_candidate_hash_matches_file(valid_context):
     authority = build_second_proof_authority_draft()
     from core.proof_authority import _sha256_file, V3_CANDIDATE_PATH
     assert authority.candidate_hash == _sha256_file(V3_CANDIDATE_PATH)
+
+
+def test_draft_blocks_without_fresh_caps_authority_registration(
+    valid_context, monkeypatch
+):
+    from core import proof_authority as pa
+
+    status = pa.evaluate_caps_authority()
+    monkeypatch.setattr(
+        pa,
+        "evaluate_caps_authority",
+        lambda **kwargs: replace(
+            status,
+            state="REVIEW_REQUIRED",
+            authority_registration_present=False,
+            authority_registration_valid=False,
+            authority_registration_sha256=None,
+            errors=("CAPS_AUTHORITY_REGISTRATION_MISSING",),
+        ),
+    )
+    with pytest.raises(
+        ValueError, match="BLOCKED_CAPS_AUTHORITY_REGISTRATION_REQUIRED"
+    ):
+        build_second_proof_authority_draft()
 
 
 def test_blocks_candidate_not_found(valid_context):
@@ -234,6 +261,28 @@ def test_activation_detects_registry_hash_change(valid_context):
         activate_second_proof_authority(draft, "chris", "test", "2099-01-01T00:00:00Z", REQUIRED_CONFIRMATION)
 
 
+def test_activation_detects_caps_registration_change(valid_context, monkeypatch):
+    from core import proof_authority as pa
+
+    draft = build_second_proof_authority_draft()
+    status = pa.evaluate_caps_authority()
+    monkeypatch.setattr(
+        pa,
+        "evaluate_caps_authority",
+        lambda **kwargs: replace(
+            status, authority_registration_sha256="C" * 64
+        ),
+    )
+    with pytest.raises(ValueError, match="CAPS_AUTHORITY_REGISTRATION_CHANGED"):
+        activate_second_proof_authority(
+            draft,
+            "chris",
+            "test",
+            "2099-01-01T00:00:00Z",
+            REQUIRED_CONFIRMATION,
+        )
+
+
 def test_activation_success(valid_context):
     draft = build_second_proof_authority_draft()
     active = activate_second_proof_authority(draft, "chris", "second controlled proof", "2099-01-01T00:00:00Z", REQUIRED_CONFIRMATION)
@@ -249,6 +298,14 @@ def test_authority_dict_roundtrip(valid_context):
     data = authority_to_dict(draft)
     restored = authority_from_dict(data)
     assert restored == draft
+
+
+def test_legacy_second_proof_draft_schema_is_rejected(valid_context):
+    draft = build_second_proof_authority_draft()
+    data = authority_to_dict(draft)
+    data["schema_version"] = 1
+    with pytest.raises(ValueError, match="AUTHORITY_SCHEMA_VERSION_MISMATCH"):
+        authority_from_dict(data)
 
 
 def test_authority_status_secret_free(valid_context):

@@ -8,6 +8,7 @@ from model_router.cli_providers import ClaudeCliProvider, CodexCliProvider
 from model_router.prompt_firewall import PromptFirewall
 from model_router.tasks import ModelTask
 from model_router.cost_tracker import CostTracker
+from model_router.network_capability import issue_model_network_capability
 
 _PROVIDER_CLASSES = {
     "deepseek_v4_flash": DeepSeekV4FlashProvider,
@@ -45,10 +46,9 @@ class ModelRouter:
     def route(self, task: ModelTask) -> ModelRouteDecision:
         default = self.config.default_provider.get(task.value, "mock")
         if default == "hybrid":
-            # The hybrid panel's primary reviewer is GLM-5.2 (operator
-            # directive 2026-07-17: GLM-5.2 + MiniMax-M3 hybrid); the M3
-            # counter-view is requested by the panel caller, not the router.
-            default = "glm_5_2"
+            # Hybrid callers request both configured voices. A direct HYBRID_REVIEW
+            # call routes to the first voice; the panel caller adds the skeptic.
+            default = next(iter(self.config.hybrid_providers), "mock")
         pc = self.config.provider_configs.get(default)
         model = pc.model_name if pc else "mock"
         if not self.providers[default].available:
@@ -70,6 +70,13 @@ class ModelRouter:
         """Names of configured non-mock providers with usable credentials."""
         return [name for name, p in self.providers.items()
                 if name != "mock" and getattr(p, "available", False)]
+
+    def hybrid_provider_names(self) -> list[str]:
+        """Configured hybrid voices that are real and currently available."""
+        return [
+            name for name in self.config.hybrid_providers
+            if name in self.providers and getattr(self.providers[name], "available", False)
+        ]
 
     async def call(self, task: ModelTask, prompt: str, context: dict | None = None, max_tokens: int = 512, temperature: float = 0.2, provider_override: str | None = None) -> ModelResponseEnvelope:
         blocked = self.prompt_firewall.block_check(prompt)
@@ -96,9 +103,21 @@ class ModelRouter:
         provider = self.providers[decision.provider_name]
         started = time.monotonic()
         try:
-            if not self.config.live_model_calls_enabled:
+            if self.config.live_model_calls_enabled is not True:
                 raise RuntimeError("live_model_calls_enabled is false")
-            content_text, metadata = await provider.complete(sanitized, task, max_tokens, temperature)
+            # Mint the opaque provider-network capability only after the strict
+            # checked config gate.  The provider sink independently verifies it.
+            network_capability = issue_model_network_capability(
+                allow_live=True,
+                source="model_router.checked_live_config",
+            )
+            content_text, metadata = await provider.complete(
+                sanitized,
+                task,
+                max_tokens,
+                temperature,
+                network_capability=network_capability,
+            )
         except Exception:
             if not self.config.mock_fallback_enabled:
                 raise

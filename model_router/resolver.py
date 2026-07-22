@@ -17,6 +17,13 @@ import httpx
 from model_router.config import ProviderConfig, load_model_routing_config
 from model_router.credential_source import ProviderCredentialSourceResolver
 from model_router.error_classifier import classify_provider_error_v2
+from model_router.network_capability import (
+    ModelNetworkCapability,
+    ProviderEndpointNotApproved,
+    model_network_capability_valid,
+    require_model_network_capability,
+    validate_model_provider_endpoint,
+)
 from model_router.prompt_firewall import PromptFirewallV2
 from model_router.route_mode import ProviderRouteModeResolver
 
@@ -39,6 +46,10 @@ _DEFAULT_ALIASES: dict[str, list[str]] = {
         "minimax/minimax-01",
     ],
 }
+
+# A failed model-list lookup may fall back to paid chat probes, but never to an
+# operator-controlled, unbounded alias fan-out.
+MAX_ALIAS_PROBES = 8
 
 
 def _provider_env_prefix(provider_name: str) -> str:
@@ -194,8 +205,13 @@ class ModelProviderResolver:
         return aliases
 
     async def _probe_model_list(
-        self, candidate: ProviderEndpointCandidate
+        self,
+        candidate: ProviderEndpointCandidate,
+        *,
+        network_capability: ModelNetworkCapability,
     ) -> tuple[bool, list[str]]:
+        require_model_network_capability(network_capability)
+        validate_model_provider_endpoint(candidate.api_base, candidate.api_key_env)
         key = self._credential_resolver.get_value(candidate.api_key_env)
         if not key:
             return False, []
@@ -223,7 +239,11 @@ class ModelProviderResolver:
         candidate: ProviderEndpointCandidate,
         alias: ModelAliasCandidate,
         prompt: str,
+        *,
+        network_capability: ModelNetworkCapability,
     ) -> tuple[bool, str | None]:
+        require_model_network_capability(network_capability)
+        validate_model_provider_endpoint(candidate.api_base, candidate.api_key_env)
         key = self._credential_resolver.get_value(candidate.api_key_env)
         if not key:
             return False, "PROVIDER_AUTH_FAILED"
@@ -262,13 +282,39 @@ class ModelProviderResolver:
         default_base: str | None = None,
         default_aliases: list[str] | None = None,
         smoke_prompt: str | None = None,
+        *,
+        allow_live: bool = False,
+        network_capability: ModelNetworkCapability | None = None,
     ) -> ProviderResolutionResult:
-        """Resolve provider endpoint and model."""
+        """Resolve provider endpoint and model.
+
+        Credential/config inspection is local.  Provider contact occurs only
+        when ``allow_live is True`` and a valid process-local network
+        capability is supplied.
+        """
         default_base = default_base or _DEFAULT_BASE_URLS.get(name, "")
         default_aliases = default_aliases or _DEFAULT_ALIASES.get(name, [])
         candidate = self._endpoint_candidate(name, default_base)
         configured = self._configured_model(name)
         aliases = self._aliases(name, default_aliases)
+
+        try:
+            validate_model_provider_endpoint(
+                candidate.api_base,
+                candidate.api_key_env,
+            )
+        except ProviderEndpointNotApproved:
+            return ProviderResolutionResult(
+                provider_name=name,
+                status="OPERATOR_MODEL_CONFIG_REQUIRED",
+                api_base=candidate.api_base,
+                api_key_env=candidate.api_key_env,
+                configured_model=configured,
+                error_category="PROVIDER_ENDPOINT_NOT_APPROVED",
+                error_detail=(
+                    "provider endpoint or credential-to-host binding is not approved"
+                ),
+            )
 
         credential_resolution = self._credential_resolver.resolve(candidate.api_key_env)
         if not credential_resolution.present:
@@ -285,8 +331,29 @@ class ModelProviderResolver:
                 route_mode=route_result.route_mode.value,
             )
 
+        if allow_live is not True or not model_network_capability_valid(
+            network_capability
+        ):
+            route_result = self._route_resolver.resolve(
+                name, candidate.api_base, configured
+            )
+            return ProviderResolutionResult(
+                provider_name=name,
+                status="PREFLIGHT_ONLY",
+                api_base=candidate.api_base,
+                api_key_env=candidate.api_key_env,
+                configured_model=configured,
+                credential_source=credential_resolution.source.value,
+                route_mode=route_result.route_mode.value,
+                error_category="LIVE_AUTHORIZATION_REQUIRED",
+                error_detail="provider contact requires explicit strict live authorization",
+            )
+
         # 1. Try model list
-        list_ok, models = await self._probe_model_list(candidate)
+        list_ok, models = await self._probe_model_list(
+            candidate,
+            network_capability=network_capability,
+        )
         if list_ok:
             if configured and configured in models:
                 return ProviderResolutionResult(
@@ -315,8 +382,13 @@ class ModelProviderResolver:
         prompt = smoke_prompt or _harmless_prompt_for(name)
         last_error: str | None = None
         auth_failed = False
-        for alias in aliases:
-            ok, err = await self._probe_alias(candidate, alias, prompt)
+        for alias in aliases[:MAX_ALIAS_PROBES]:
+            ok, err = await self._probe_alias(
+                candidate,
+                alias,
+                prompt,
+                network_capability=network_capability,
+            )
             if ok:
                 return ProviderResolutionResult(
                     provider_name=name,

@@ -3,6 +3,7 @@ weather challenger retirement, runtime env whitelist."""
 from __future__ import annotations
 
 import asyncio
+from datetime import datetime, timedelta, timezone
 
 
 from autonomy.execution_policy import ENV_EXECUTION_POLICY_VAR, ExecutionPolicy
@@ -11,8 +12,10 @@ from autonomy.ontology import (
     Decision,
     DecisionAction,
     Forecast,
+    MarketView,
     OutcomeKind,
     SessionMode,
+    Vertical,
 )
 
 
@@ -26,6 +29,23 @@ def _decision(price=40, count=2, side="yes", p_yes=0.80):
         action=DecisionAction.BUY_YES, side=side, price_cents=price, count=count,
         ev_cents_per_contract=10.0, kelly_fraction=0.05, notional_cents=price * count,
         forecast=forecast, risk_snapshot={},
+    )
+
+
+def _market() -> MarketView:
+    return MarketView(
+        ticker="KXBTC-26JUL17-B64000",
+        title="BTC test",
+        vertical=Vertical.CRYPTO,
+        status="active",
+        close_time=(datetime.now(timezone.utc) + timedelta(hours=1)).isoformat(),
+        yes_bid=40,
+        yes_ask=45,
+        no_bid=55,
+        no_ask=60,
+        volume=100,
+        liquidity=100,
+        raw={"category": "Crypto"},
     )
 
 
@@ -59,10 +79,19 @@ def _run(coro):
 def test_taker_reprices_shadow_order_to_the_ask():
     executor = Executor(
         SessionMode.SHADOW,
-        quote_fn=lambda ticker: {"yes_ask": 45, "yes_bid": 40, "no_ask": 60, "no_bid": 55},
+        quote_fn=lambda ticker: {
+            "yes_ask": 45,
+            "yes_bid": 40,
+            "no_ask": 60,
+            "no_bid": 55,
+            "yes_ask_levels": [[45, 10]],
+            "book_received_at": datetime.now(timezone.utc).isoformat(),
+        },
         execution_policy=ExecutionPolicy.taker_only(taker_min_ev_cents=3.0),
     )
-    outcome = _run(executor.execute(_decision(price=40, p_yes=0.80)))
+    outcome = _run(
+        executor.execute(_decision(price=40, p_yes=0.80), market=_market())
+    )
     assert outcome.kind is OutcomeKind.SHADOW
     assert outcome.fill_price_cents == 45          # crossed the ask, not the maker 40
     assert "taker" in outcome.detail["note"]
@@ -71,11 +100,18 @@ def test_taker_reprices_shadow_order_to_the_ask():
 def test_taker_blocks_when_ev_below_min():
     executor = Executor(
         SessionMode.SHADOW,
-        quote_fn=lambda ticker: {"yes_ask": 79, "yes_bid": 74},
+        quote_fn=lambda ticker: {
+            "yes_ask": 79,
+            "yes_bid": 74,
+            "yes_ask_levels": [[79, 10]],
+            "book_received_at": datetime.now(timezone.utc).isoformat(),
+        },
         execution_policy=ExecutionPolicy.taker_only(taker_min_ev_cents=3.0),
     )
     # p=0.80 vs ask 79: EV ~= 80 - 79 - fee < 3c minimum -> refuse to cross.
-    outcome = _run(executor.execute(_decision(price=70, p_yes=0.80)))
+    outcome = _run(
+        executor.execute(_decision(price=70, p_yes=0.80), market=_market())
+    )
     assert outcome.kind is OutcomeKind.BLOCKED_LOCAL
     assert outcome.detail["reason"] == "taker_ev_below_min"
 
@@ -86,7 +122,7 @@ def test_taker_blocks_without_fresh_book():
         quote_fn=None,
         execution_policy=ExecutionPolicy.taker_only(),
     )
-    outcome = _run(executor.execute(_decision()))
+    outcome = _run(executor.execute(_decision(), market=_market()))
     assert outcome.kind is OutcomeKind.BLOCKED_LOCAL
     assert outcome.detail["reason"] == "taker_no_fresh_book"
 
@@ -97,7 +133,9 @@ def test_control_policy_path_unchanged_maker():
         quote_fn=lambda ticker: {"yes_ask": 45, "yes_bid": 40},
         execution_policy=ExecutionPolicy.maker_only_control(),
     )
-    outcome = _run(executor.execute(_decision(price=40, p_yes=0.80)))
+    outcome = _run(
+        executor.execute(_decision(price=40, p_yes=0.80), market=_market())
+    )
     assert outcome.kind is OutcomeKind.SHADOW
     assert outcome.fill_price_cents == 40          # resting maker price, untouched
     assert "maker" in outcome.detail["note"]
@@ -137,13 +175,15 @@ def test_sports_scope_fits_at_lower_cluster_bar():
 
 # ---- weather retirement -------------------------------------------------------
 
-def test_weather_emits_challenger_only():
+def test_weather_signal_is_data_only_and_has_no_prediction_authority():
     import inspect
 
     from autonomy.signals import weather_openmeteo
 
     src = inspect.getsource(weather_openmeteo)
-    assert '"challenger_only": True' in src
+    assert "data_only = True" in src
+    assert "prediction_authority = False" in src
+    assert "def applicable" in src and "return False" in src
 
 
 # ---- runtime env whitelist ----------------------------------------------------
@@ -162,8 +202,34 @@ def test_every_role_routes_to_directed_models():
     from pathlib import Path
 
     config = json.loads(Path("configs/model_routing.json").read_text())
-    allowed = {"glm_5_2", "minimax_m3", "hybrid"}
+    panel = [
+        "gemini_3_6_flash",
+        "gpt_5_6_luna",
+        "claude_sonnet_5",
+        "glm_5_2",
+    ]
+    allowed = {*panel, "hybrid"}
     for role, provider in config["default_provider"].items():
         assert provider in allowed, f"{role} routed to {provider}"
-    assert config["provider_configs"]["glm_5_2"]["model_name"] == "z-ai/glm-5.2"
-    assert config["provider_configs"]["minimax_m3"]["model_name"] == "minimax/minimax-m3"
+    assert config["hybrid_providers"] == panel
+    assert {
+        name: config["provider_configs"][name]["model_name"] for name in panel
+    } == {
+        "gemini_3_6_flash": "google/gemini-3.6-flash",
+        "gpt_5_6_luna": "openai/gpt-5.6-luna",
+        "claude_sonnet_5": "anthropic/claude-sonnet-5",
+        "glm_5_2": "z-ai/glm-5.2",
+    }
+    assert config["default_provider"] == {
+        "forecast_opinion": "gemini_3_6_flash",
+        "rapid_forecast": "gpt_5_6_luna",
+        "strategy_critique": "claude_sonnet_5",
+        "risk_critique": "glm_5_2",
+        "no_trade_reason": "glm_5_2",
+        "trade_draft": "gpt_5_6_luna",
+        "calibration_note": "glm_5_2",
+        "market_thesis": "claude_sonnet_5",
+        "reflection_lessons": "claude_sonnet_5",
+        "hybrid_review": "hybrid",
+    }
+    assert config["live_model_calls_enabled"] is False

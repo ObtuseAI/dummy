@@ -1,4 +1,7 @@
 {
+  "schema_version": 2,
+  "authority_epoch": "caps-v2-kalshi-category-metadata-20260722",
+  "authority_registration_required": true,
   "max_single_order_cents": 100,
   "max_market_exposure_cents": 500,
   "max_daily_loss_cents": 500,
@@ -10,7 +13,7 @@
   "auto_cancel_stale_orders": true,
   "kill_switch_required": true,
   "allowed_markets": [],
-  "blocked_categories": ["politics-elections-us", "sensitive-geo"],
+  "blocked_categories": ["Elections", "Politics"],
   "max_spread_cents": 5,
   "min_liquidity": 10,
   "min_edge_bps": 50

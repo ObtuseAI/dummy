@@ -262,6 +262,8 @@ def generate_v21_report_bundle(*, enable_network: bool = False) -> dict[str, dic
 
 
 def _build_final(reports: dict[str, dict[str, Any]], paths: dict[str, Path] | None = None) -> dict[str, Any]:
+    from archive.report_scripts.caps_integrity import reconcile_v17_truth_loop_evidence
+
     paths = paths or {}
     failures = sorted(name for name, data in reports.items() if data.get("verdict") == "FAIL")
     partials = sorted(name for name, data in reports.items() if data.get("verdict") == "PARTIAL")
@@ -273,6 +275,7 @@ def _build_final(reports: dict[str, dict[str, Any]], paths: dict[str, Path] | No
     final_v18 = _load_report("final_report_v18.json", {})
     final_v19 = _load_report("final_report_v19.json", {})
     final_v20 = _load_report("final_report_v20.json", {})
+    v17_evidence = reconcile_v17_truth_loop_evidence(final_v17)
     report_paths = {name: str(paths.get(name, ARTIFACTS / name)) for name in reports}
     return {
         "generated_at": now_iso(),
@@ -284,7 +287,11 @@ def _build_final(reports: dict[str, dict[str, Any]], paths: dict[str, Path] | No
         "report_paths": report_paths,
         "failures": failures,
         "partials": partials,
-        "v17_truth_loop_status": final_v17.get("verdict", mission["v17_truth_loop_status"]),
+        "v17_truth_loop_status": v17_evidence["historical_truth_loop_status"],
+        "v17_truth_loop_status_scope": v17_evidence["historical_truth_loop_scope"],
+        "v17_archived_aggregate_status": v17_evidence["archived_aggregate_verdict"],
+        "v17_current_runtime_caps_status": v17_evidence["current_runtime_caps_status"],
+        "v17_retroactive_caps_failure_reconciled": v17_evidence["retroactive_caps_failure_reconciled"],
         "v18_domain_foundation_status": final_v18.get("verdict", mission["v18_domain_foundation_status"]),
         "v19_activation_architecture_status": final_v19.get("verdict", mission["v19_activation_architecture_status"]),
         "v20_source_universe_status": final_v20.get("verdict", mission["v20_source_universe_status"]),

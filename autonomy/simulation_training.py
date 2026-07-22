@@ -15,6 +15,7 @@ All SQLite access is read-only.  The only writes are atomic JSON reports.
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import math
 import random
@@ -24,6 +25,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterable, Sequence
 
+from autonomy.capability_matrix import build_research_capability_matrix
 from autonomy.correlation import group_key
 from autonomy.fees import kalshi_taker_fee_cents
 from autonomy.retention import install_signal_history
@@ -47,6 +49,21 @@ INCUMBENT_POLICY = ForecastPolicy(1.0, 3, 0.35)
 RISK_FRACTIONS = (0.0025, 0.005, 0.01, 0.02)
 
 
+EXECUTION_EXPERIMENT_PROTOCOL_VERSION = "execution_policy_three_way_holdout_v1"
+EXECUTION_SELECTION_MINIMUMS = {
+    "known_orders": 15,
+    "settled_fills": 10,
+    "positive_net_pnl": True,
+    "positive_mean_pnl_lower95": True,
+}
+_LIVENESS_REQUIRED_TABLES = frozenset({
+    "signals",
+    "decisions",
+    "settlements",
+    "outcomes",
+})
+
+
 def connect_readonly(db_path: Path | str) -> sqlite3.Connection:
     path = Path(db_path).resolve()
     connection = sqlite3.connect(
@@ -56,6 +73,49 @@ def connect_readonly(db_path: Path | str) -> sqlite3.Connection:
     install_signal_history(connection)
     connection.execute("PRAGMA query_only=ON")
     return connection
+
+
+def bounded_database_liveness(connection: sqlite3.Connection) -> dict[str, Any]:
+    """Prove only bounded read access and required-schema presence.
+
+    This deliberately does *not* run ``quick_check`` or ``integrity_check``.
+    Both walk a healthy database and can hold a shared lock long enough to
+    starve the ten-minute SHADOW writer on the multi-gigabyte DELETE-journal
+    ledger.  Structural and index consistency therefore require a separately
+    scheduled offline attestation; this hourly report makes no such claim.
+    """
+    scalar_row = connection.execute("SELECT 1").fetchone()
+    schema_row = connection.execute("PRAGMA schema_version").fetchone()
+    data_row = connection.execute("PRAGMA data_version").fetchone()
+    present = {
+        str(row[0])
+        for row in connection.execute(
+            "SELECT name FROM sqlite_schema "
+            "WHERE type='table' AND name IN (?,?,?,?)",
+            tuple(sorted(_LIVENESS_REQUIRED_TABLES)),
+        )
+    }
+    missing = sorted(_LIVENESS_REQUIRED_TABLES - present)
+    if (
+        scalar_row is None
+        or int(scalar_row[0]) != 1
+        or schema_row is None
+        or data_row is None
+        or missing
+    ):
+        raise RuntimeError(
+            "bounded database liveness probe failed"
+            + (f"; missing tables: {','.join(missing)}" if missing else "")
+        )
+    return {
+        "status": "PASS",
+        "method": "bounded_readonly_scalar_schema_probe",
+        "schema_version": int(schema_row[0]),
+        "data_version": int(data_row[0]),
+        "required_tables": sorted(_LIVENESS_REQUIRED_TABLES),
+        "global_integrity_scan_performed": False,
+        "structural_integrity_verified": False,
+    }
 
 
 def _parse_time(value: Any) -> datetime:
@@ -305,6 +365,7 @@ def load_order_rows(connection: sqlite3.Connection) -> list[dict[str, Any]]:
         item = grouped.setdefault(decision_id, {
             "decision_id": decision_id,
             "ticker": str(record["market_ticker"]),
+            "cluster": group_key(str(record["market_ticker"])),
             "price_cents": int(record["price_cents"]),
             "ev_cents": float(record["ev_cents"]),
             "uncertainty": float(record["forecast_uncertainty"]),
@@ -312,6 +373,9 @@ def load_order_rows(connection: sqlite3.Connection) -> list[dict[str, Any]]:
             "queue_ahead": None,
             "filled": False,
             "known": False,
+            "known_at": None,
+            "fill_at": None,
+            "settled_at": None,
             "settled_pnl_cents": None,
         })
         try:
@@ -319,6 +383,7 @@ def load_order_rows(connection: sqlite3.Connection) -> list[dict[str, Any]]:
         except (TypeError, json.JSONDecodeError):
             detail = {}
         kind = str(record["kind"])
+        event_at = str(record["created_at"])
         if kind == "SHADOW" and item["submitted_at"] is None:
             item["submitted_at"] = str(record["created_at"])
             if detail.get("queue_snapshot_available"):
@@ -329,11 +394,15 @@ def load_order_rows(connection: sqlite3.Connection) -> list[dict[str, Any]]:
         if kind in {"FILLED", "PARTIALLY_FILLED"} and int(record["fill_count"] or 0) > 0:
             item["filled"] = True
             item["known"] = True
+            item["fill_at"] = item["fill_at"] or event_at
+            item["known_at"] = item["known_at"] or event_at
         if kind in {"CANCELED", "EXPIRED", "REJECTED"}:
             item["known"] = True
+            item["known_at"] = item["known_at"] or event_at
         if (kind in {"SETTLED_WIN", "SETTLED_LOSS"} and item["filled"]
                 and record["pnl_cents"] is not None):
             item["settled_pnl_cents"] = int(record["pnl_cents"])
+            item["settled_at"] = event_at
     return [row for row in grouped.values() if row["submitted_at"] is not None]
 
 
@@ -350,52 +419,391 @@ def _execution_summary(rows: Sequence[dict[str, Any]]) -> dict[str, Any]:
     }
 
 
-def execution_curriculum(rows: Sequence[dict[str, Any]]) -> dict[str, Any]:
-    """Search observable execution filters but refuse low-evidence promotion."""
-    candidates = []
+def _canonical_hash(value: Any) -> str:
+    encoded = json.dumps(
+        value, sort_keys=True, separators=(",", ":"), default=str,
+    ).encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest()
+
+
+def _optional_time(value: Any) -> datetime | None:
+    try:
+        return _parse_time(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _execution_policy_rows(
+    rows: Sequence[dict[str, Any]], policy: dict[str, Any],
+) -> list[dict[str, Any]]:
+    return [
+        row for row in rows
+        if float(row["uncertainty"]) <= float(policy["max_uncertainty"])
+        and float(row["ev_cents"]) >= float(policy["min_ev_cents"])
+        and int(row["price_cents"]) <= int(policy["max_price_cents"])
+        and row.get("queue_ahead") is not None
+        and float(row["queue_ahead"]) <= float(policy["max_queue_ahead"])
+    ]
+
+
+def _execution_candidates(rows: Sequence[dict[str, Any]]) -> list[dict[str, Any]]:
+    candidates: list[dict[str, Any]] = []
     for max_uncertainty in (0.15, 0.25, 0.35):
         for min_ev in (3.0, 5.0, 8.0, 12.0):
             for max_queue in (0.0, 10.0, 25.0, 50.0):
                 for max_price in (25, 50, 75, 90):
-                    selected = [row for row in rows if row["uncertainty"] <= max_uncertainty
-                                and row["ev_cents"] >= min_ev
-                                and row["price_cents"] <= max_price
-                                and row["queue_ahead"] is not None
-                                and row["queue_ahead"] <= max_queue]
-                    summary = _execution_summary(selected)
+                    policy = {
+                        "max_uncertainty": max_uncertainty,
+                        "min_ev_cents": min_ev,
+                        "max_queue_ahead": max_queue,
+                        "max_price_cents": max_price,
+                    }
+                    summary = _execution_summary(
+                        _execution_policy_rows(rows, policy)
+                    )
                     if summary["known_outcomes"] < 10 or summary["fills"] < 3:
                         continue
                     interval = summary["fill_rate_ci95"] or {}
-                    pnl_lower = (summary["settled_mean_pnl_ci95"] or {}).get("lower")
+                    pnl_lower = (
+                        summary["settled_mean_pnl_ci95"] or {}
+                    ).get("lower")
                     candidates.append({
-                        "policy": {"max_uncertainty": max_uncertainty, "min_ev_cents": min_ev,
-                                   "max_queue_ahead": max_queue, "max_price_cents": max_price},
+                        "policy": policy,
                         "summary": summary,
-                        "rank": [pnl_lower if pnl_lower is not None else -1e9,
-                                 interval.get("lower") or 0.0, summary["fills"]],
+                        "rank": [
+                            pnl_lower if pnl_lower is not None else -1e9,
+                            interval.get("lower") or 0.0,
+                            summary["fills"],
+                        ],
                     })
     candidates.sort(key=lambda row: tuple(row["rank"]), reverse=True)
-    overall = _execution_summary(rows)
-    best = candidates[0] if candidates else None
-    eligible = bool(
-        best
-        and best["summary"]["known_outcomes"] >= 30
-        and best["summary"]["settled_fills"] >= 20
-        and best["summary"]["settled_net_pnl_cents"] > 0
-        and (best["summary"]["settled_mean_pnl_ci95"] or {}).get("lower", -1) > 0
+    return candidates
+
+
+def _execution_partitions(
+    rows: Sequence[dict[str, Any]],
+) -> dict[str, Any]:
+    """Assign whole event clusters to 60/20/20 chronological partitions."""
+    valid: list[dict[str, Any]] = []
+    invalid_timestamps = 0
+    for row in rows:
+        submitted = _optional_time(row.get("submitted_at"))
+        if submitted is None:
+            invalid_timestamps += 1
+            continue
+        cluster = str(row.get("cluster") or group_key(str(row.get("ticker") or "")))
+        item = dict(row)
+        item["cluster"] = cluster
+        item["_submitted_time"] = submitted
+        valid.append(item)
+
+    cluster_starts: dict[str, datetime] = {}
+    for row in valid:
+        cluster = str(row["cluster"])
+        started = row["_submitted_time"]
+        cluster_starts[cluster] = min(cluster_starts.get(cluster, started), started)
+    ordered_clusters = sorted(cluster_starts, key=lambda key: (cluster_starts[key], key))
+    if len(ordered_clusters) < 3:
+        return {
+            "available": False,
+            "reason": "need at least three timestamped event clusters",
+            "valid_rows": len(valid),
+            "invalid_timestamp_rows": invalid_timestamps,
+            "event_clusters": len(ordered_clusters),
+        }
+
+    training_count = max(1, math.floor(len(ordered_clusters) * 0.60))
+    selection_count = max(1, math.floor(len(ordered_clusters) * 0.20))
+    if training_count + selection_count >= len(ordered_clusters):
+        selection_count = 1
+        training_count = len(ordered_clusters) - 2
+    training_clusters = set(ordered_clusters[:training_count])
+    selection_clusters = set(
+        ordered_clusters[training_count:training_count + selection_count]
     )
+    holdout_clusters = set(ordered_clusters[training_count + selection_count:])
+
+    def assigned(clusters: set[str]) -> list[dict[str, Any]]:
+        return sorted(
+            (row for row in valid if row["cluster"] in clusters),
+            key=lambda row: (row["_submitted_time"], str(row.get("decision_id") or "")),
+        )
+
     return {
-        "method": "observed_shadow_order_feature_grid",
+        "available": True,
+        "training": assigned(training_clusters),
+        "selection": assigned(selection_clusters),
+        "holdout": assigned(holdout_clusters),
+        "invalid_timestamp_rows": invalid_timestamps,
+    }
+
+
+def _execution_rows_as_of(
+    rows: Sequence[dict[str, Any]], cutoff: datetime,
+) -> list[dict[str, Any]]:
+    """Reconstruct only order truth received strictly before ``cutoff``."""
+    snapshot: list[dict[str, Any]] = []
+    for raw in rows:
+        submitted = raw.get("_submitted_time") or _optional_time(raw.get("submitted_at"))
+        if submitted is None or submitted >= cutoff:
+            continue
+        known_at = _optional_time(raw.get("known_at"))
+        fill_at = _optional_time(raw.get("fill_at"))
+        settled_at = _optional_time(raw.get("settled_at"))
+        row = dict(raw)
+        row["known"] = bool(raw.get("known") and known_at and known_at < cutoff)
+        row["filled"] = bool(
+            row["known"] and raw.get("filled") and fill_at and fill_at < cutoff
+        )
+        if not (
+            row["filled"]
+            and settled_at
+            and settled_at < cutoff
+            and raw.get("settled_pnl_cents") is not None
+        ):
+            row["settled_pnl_cents"] = None
+        snapshot.append(row)
+    return snapshot
+
+
+def _execution_manifest(rows: Sequence[dict[str, Any]]) -> dict[str, Any]:
+    clusters = sorted({str(row.get("cluster") or "") for row in rows})
+    submitted = [
+        row.get("_submitted_time") or _optional_time(row.get("submitted_at"))
+        for row in rows
+    ]
+    submitted = [value for value in submitted if value is not None]
+    return {
+        "orders": len(rows),
+        "event_clusters": len(clusters),
+        "cluster_set_sha256": _canonical_hash(clusters),
+        "submitted_start": min(submitted).isoformat() if submitted else None,
+        "submitted_end": max(submitted).isoformat() if submitted else None,
+    }
+
+
+def _execution_gate(
+    summary: dict[str, Any], *, min_known: int, min_settled: int,
+) -> bool:
+    lower = (summary.get("settled_mean_pnl_ci95") or {}).get("lower")
+    return bool(
+        int(summary.get("known_outcomes") or 0) >= min_known
+        and int(summary.get("settled_fills") or 0) >= min_settled
+        and int(summary.get("settled_net_pnl_cents") or 0) > 0
+        and lower is not None
+        and float(lower) > 0.0
+    )
+
+
+def execution_curriculum(rows: Sequence[dict[str, Any]]) -> dict[str, Any]:
+    """Discover, validate, and close execution-filter experiments safely.
+
+    Candidate search sees only the training partition. The selected policy
+    must pass a later validation partition before the final holdout is even
+    inspected. Whole event clusters are assigned to exactly one partition,
+    and outcome truth is receipt-bounded at both selection boundaries.
+    """
+    overall = _execution_summary(rows)
+    protocol = {
+        "version": EXECUTION_EXPERIMENT_PROTOCOL_VERSION,
+        "partition_rule": "chronological_whole_event_clusters_60_20_20",
+        "training_truth_cutoff": "strictly_before_validation_start",
+        "validation_truth_cutoff": "strictly_before_holdout_start",
+        "candidate_grid_size": 3 * 4 * 4 * 4,
+        "validation_minimums": EXECUTION_SELECTION_MINIMUMS,
+        "holdout_minimums": EXECUTION_SELECTION_MINIMUMS,
+        "combined_minimums": {
+            "known_orders": 30,
+            "settled_fills": 20,
+            "positive_net_pnl": True,
+            "positive_mean_pnl_lower95": True,
+        },
+        "holdout_access_rule": "inspect_only_after_validation_gate_passes",
+    }
+    protocol_hash = _canonical_hash(protocol)
+    partitions = _execution_partitions(rows)
+    base = {
+        "method": "preregistered_three_way_event_cluster_execution_filter_grid",
         "overall": overall,
         "candidate_policies_evaluated": 3 * 4 * 4 * 4,
-        "qualified_candidates": len(candidates),
-        "top_candidates": [{"policy": row["policy"], "summary": row["summary"]}
-                           for row in candidates[:10]],
-        "promotion_minimums": {"known_orders": 30, "settled_fills": 20,
-                               "positive_net_pnl": True, "positive_mean_pnl_lower95": True},
-        "eligible_for_shadow_experiment": eligible,
+        "promotion_minimums": protocol["combined_minimums"],
         "auto_apply": False,
-        "status": "SHADOW_EXPERIMENT_ELIGIBLE" if eligible else "HOLD",
+        "authority": {
+            "research_retirement": True,
+            "promotion": False,
+            "weight_write": False,
+            "execution": False,
+            "capital": False,
+        },
+    }
+    if not partitions.get("available"):
+        return {
+            **base,
+            "qualified_candidates": 0,
+            "top_candidates": [],
+            "eligible_for_shadow_experiment": False,
+            "status": "HOLD",
+            "experiment": {
+                "protocol_version": EXECUTION_EXPERIMENT_PROTOCOL_VERSION,
+                "protocol_sha256": protocol_hash,
+                "registration_state": "NOT_REGISTERED_INSUFFICIENT_EVIDENCE",
+                "lifecycle_state": "OPEN_ACCUMULATING_TRAINING",
+                "candidate_state": "CHALLENGER_ONLY_ACCUMULATING",
+                "closed": False,
+                "reason": partitions.get("reason"),
+                "partition_diagnostics": partitions,
+                "holdout_evaluated": False,
+                "execution_authority": False,
+                "capital_authority": False,
+            },
+        }
+
+    training_raw = partitions["training"]
+    selection_raw = partitions["selection"]
+    holdout_raw = partitions["holdout"]
+    selection_start = min(row["_submitted_time"] for row in selection_raw)
+    holdout_start = min(row["_submitted_time"] for row in holdout_raw)
+    training = _execution_rows_as_of(training_raw, selection_start)
+    selection = _execution_rows_as_of(selection_raw, holdout_start)
+
+    training_clusters = {str(row["cluster"]) for row in training}
+    selection_clusters = {str(row["cluster"]) for row in selection}
+    holdout_clusters = {str(row["cluster"]) for row in holdout_raw}
+    intersections = {
+        "training_validation": len(training_clusters & selection_clusters),
+        "training_holdout": len(training_clusters & holdout_clusters),
+        "validation_holdout": len(selection_clusters & holdout_clusters),
+    }
+    ordered_truth = bool(
+        all(row["_submitted_time"] < selection_start for row in training)
+        and all(row["_submitted_time"] < holdout_start for row in selection)
+    )
+    evidence_separation = {
+        "verified": ordered_truth and not any(intersections.values()),
+        "whole_event_cluster_assignment": True,
+        "strict_receipt_bounded_outcome_truth": True,
+        "cluster_intersections": intersections,
+        "training": _execution_manifest(training),
+        "validation": _execution_manifest(selection),
+        "holdout": _execution_manifest(holdout_raw),
+        "validation_start": selection_start.isoformat(),
+        "holdout_start": holdout_start.isoformat(),
+        "invalid_timestamp_rows_excluded": partitions["invalid_timestamp_rows"],
+    }
+
+    candidates = _execution_candidates(training)
+    best = candidates[0] if candidates else None
+    selected_policy = best["policy"] if best else None
+    experiment_id = "exec-" + _canonical_hash({
+        "protocol_sha256": protocol_hash,
+        "selected_policy": selected_policy,
+        "evidence_separation": evidence_separation,
+    })[:20]
+    lifecycle_state = "OPEN_ACCUMULATING_TRAINING"
+    candidate_state = "CHALLENGER_ONLY_ACCUMULATING"
+    reason = "no training policy has enough point-in-time outcomes"
+    validation_summary: dict[str, Any] | None = None
+    holdout_summary: dict[str, Any] | None = None
+    combined_summary: dict[str, Any] | None = None
+    holdout_evaluated = False
+    eligible = False
+
+    if best is not None and evidence_separation["verified"]:
+        validation_rows = _execution_policy_rows(selection, selected_policy)
+        validation_summary = _execution_summary(validation_rows)
+        validation_has_minimums = bool(
+            validation_summary["known_outcomes"]
+            >= EXECUTION_SELECTION_MINIMUMS["known_orders"]
+            and validation_summary["settled_fills"]
+            >= EXECUTION_SELECTION_MINIMUMS["settled_fills"]
+        )
+        if not validation_has_minimums:
+            lifecycle_state = "OPEN_ACCUMULATING_VALIDATION"
+            reason = "validation partition has not reached fixed evidence minimums"
+        elif not _execution_gate(
+            validation_summary,
+            min_known=EXECUTION_SELECTION_MINIMUMS["known_orders"],
+            min_settled=EXECUTION_SELECTION_MINIMUMS["settled_fills"],
+        ):
+            lifecycle_state = "CLOSED_RETIRED_VALIDATION_FAILURE"
+            candidate_state = "RETIRED"
+            reason = "selected policy failed the preregistered validation gate"
+        else:
+            holdout_evaluated = True
+            holdout_rows = _execution_policy_rows(holdout_raw, selected_policy)
+            holdout_summary = _execution_summary(holdout_rows)
+            holdout_has_minimums = bool(
+                holdout_summary["known_outcomes"]
+                >= EXECUTION_SELECTION_MINIMUMS["known_orders"]
+                and holdout_summary["settled_fills"]
+                >= EXECUTION_SELECTION_MINIMUMS["settled_fills"]
+            )
+            if not holdout_has_minimums:
+                lifecycle_state = "OPEN_ACCUMULATING_HOLDOUT"
+                reason = "untouched holdout has not reached fixed evidence minimums"
+            elif not _execution_gate(
+                holdout_summary,
+                min_known=EXECUTION_SELECTION_MINIMUMS["known_orders"],
+                min_settled=EXECUTION_SELECTION_MINIMUMS["settled_fills"],
+            ):
+                lifecycle_state = "CLOSED_RETIRED_HOLDOUT_FAILURE"
+                candidate_state = "RETIRED"
+                reason = "selected policy failed the untouched holdout gate"
+            else:
+                combined_rows = validation_rows + holdout_rows
+                combined_summary = _execution_summary(combined_rows)
+                eligible = _execution_gate(
+                    combined_summary, min_known=30, min_settled=20,
+                )
+                if eligible:
+                    lifecycle_state = "CLOSED_PASSED_SHADOW_REVIEW_ELIGIBLE"
+                    candidate_state = "SHADOW_CHALLENGER_ONLY"
+                    reason = (
+                        "validation and untouched holdout passed; candidate remains "
+                        "research-only pending a separate shadow experiment review"
+                    )
+                else:
+                    lifecycle_state = "CLOSED_RETIRED_COMBINED_GATE_FAILURE"
+                    candidate_state = "RETIRED"
+                    reason = "combined validation and holdout evidence failed"
+
+    closed = lifecycle_state.startswith("CLOSED_")
+    status = "SHADOW_EXPERIMENT_ELIGIBLE" if eligible else (
+        "RETIRED" if candidate_state == "RETIRED" else "HOLD"
+    )
+    return {
+        **base,
+        "qualified_candidates": len(candidates),
+        "top_candidates": [
+            {"policy": row["policy"], "summary": row["summary"]}
+            for row in candidates[:10]
+        ],
+        "eligible_for_shadow_experiment": eligible,
+        "status": status,
+        "experiment": {
+            "experiment_id": experiment_id,
+            "protocol_version": EXECUTION_EXPERIMENT_PROTOCOL_VERSION,
+            "protocol_sha256": protocol_hash,
+            "registration_state": "PROTOCOL_PRECOMMITTED_IN_CODE",
+            "lifecycle_state": lifecycle_state,
+            "candidate_state": candidate_state,
+            "closed": closed,
+            "reason": reason,
+            "selected_policy": selected_policy,
+            "training_result": best["summary"] if best else None,
+            "validation_result": validation_summary,
+            "holdout_result": holdout_summary,
+            "combined_confirmation_result": combined_summary,
+            "holdout_evaluated": holdout_evaluated,
+            "evidence_separation": evidence_separation,
+            "multiple_testing_control": (
+                "candidate grid is searched on training only; one frozen policy "
+                "faces validation, then a conditionally sealed holdout"
+            ),
+            "automatic_production_change": False,
+            "execution_authority": False,
+            "capital_authority": False,
+        },
     }
 
 
@@ -659,7 +1067,7 @@ def run_simulation_training(
     created_at = datetime.now(timezone.utc)
     connection = connect_readonly(db_path)
     try:
-        integrity = str(connection.execute("PRAGMA integrity_check").fetchone()[0])
+        database_liveness = bounded_database_liveness(connection)
         forecast_rows = load_forecast_rows(connection)
         order_rows = load_order_rows(connection)
         forecast, oos_trades = forecast_curriculum(forecast_rows)
@@ -684,6 +1092,11 @@ def run_simulation_training(
             trace_replay=trace_replay,
             evolution=evolution,
         )
+        capability_matrix = build_research_capability_matrix(
+            forecast=forecast,
+            execution=execution,
+            evolution=evolution,
+        )
         latest = {
             "signals": int(connection.execute("SELECT COUNT(*) FROM signal_history").fetchone()[0]),
             "decisions": int(connection.execute("SELECT COUNT(*) FROM decisions").fetchone()[0]),
@@ -697,7 +1110,18 @@ def run_simulation_training(
         "created_at": created_at.isoformat(),
         "source_database": str(Path(db_path).resolve()),
         "sqlite_access": "mode=ro; PRAGMA query_only=ON",
-        "integrity_check": integrity,
+        "database_liveness": database_liveness,
+        # Backward-compatible fields are explicit that this hourly path did
+        # not perform a database-wide structural/index scan.
+        "integrity_check": "NOT_RUN",
+        "integrity_check_method": "offline_maintenance_only",
+        "offline_integrity_attestation": {
+            "status": "NOT_VERIFIED_BY_HOURLY_TRAINER",
+            "full_scan_performed": False,
+            "evidence_path": None,
+            "required_for_structural_integrity_claim": True,
+            "counts_toward_readiness": False,
+        },
         "execution_authority": False,
         "weights_written": False,
         "risk_caps_written": False,
@@ -710,6 +1134,7 @@ def run_simulation_training(
         "execution_trace_replay": trace_replay,
         "evolution_lab": evolution,
         "improvement_queue": improvement_queue,
+        "research_capability_matrix": capability_matrix,
         "evidence_quarantine": {
             "tier": "simulation_challenger_only",
             "counts_toward_canary": False,

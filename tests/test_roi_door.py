@@ -1,4 +1,4 @@
-"""Wave-21: the ROI proof-of-profit door -- a second, independent promotion route."""
+"""Counterfactual ROI remains visible but has no promotion authority."""
 from __future__ import annotations
 
 from dataclasses import replace
@@ -36,7 +36,7 @@ def _rows(n=240, win_rate=0.45):
     return [_Row(i, win=(i % 20) < int(win_rate * 20)) for i in range(n)]
 
 
-# Evidence door slammed shut so only the ROI door can admit the scope.
+# Predictive gate is shut; positive ROI can only nominate human review.
 _ROI_ONLY = replace(DEFAULT_CONFIG, min_beat_rate=1.01)
 
 
@@ -80,14 +80,17 @@ def _decide(rows, config):
     )
 
 
-def test_engine_promotes_through_the_roi_door():
+def test_engine_reports_positive_roi_for_human_review_only():
     result = _decide(_rows(), _ROI_ONLY)
-    assert len(result.promotions) == 1
-    decision = result.promotions[0]
-    assert decision.scope == SCOPE and decision.stage == 1
-    assert decision.dossier["promotion_path"] == "roi_proof_of_profit"
-    assert decision.dossier["roi_door"]["pass"] is True
-    assert decision.weight_fraction == DEFAULT_CONFIG.stage1_weight_fraction
+    assert result.promotions == []
+    assert len(result.human_review_candidates) == 1
+    decision = result.human_review_candidates[0]
+    assert decision.scope == SCOPE and decision.stage == 0
+    diagnostic = decision.dossier["counterfactual_roi_diagnostic"]
+    assert diagnostic["pass"] is True
+    assert diagnostic["research_only"] is True
+    assert diagnostic["automatic_promotion_authority"] is False
+    assert decision.weight_fraction == 0.0
     assert result.declined == []
 
 
@@ -96,8 +99,7 @@ def test_engine_declines_carry_the_roi_door_verdict():
     assert result.promotions == []
     assert len(result.declined) == 1
     declined = result.declined[0]
-    assert declined.dossier["roi_door"]["pass"] is False
-    assert "roi door" in declined.reason
+    assert declined.dossier["counterfactual_roi_diagnostic"]["pass"] is False
 
 
 def test_roi_thresholds_ride_the_config_dict():

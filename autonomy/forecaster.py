@@ -12,6 +12,7 @@ from typing import Any
 
 from autonomy.ledger import AutonomyLedger
 from autonomy.ontology import Forecast, MarketView, Signal, Vertical
+from autonomy.target_policy import is_prediction_quarantined_target
 
 MARKET_PRIOR_MIN_SHARE = 0.05
 CRYPTO_MARKET_PRIOR_MIN_SHARE = 0.25
@@ -43,6 +44,19 @@ SOURCE_FAMILIES = {
     # their precision so approving both cannot manufacture certainty.
     "crypto_macro_regime": "crypto_cross_asset_drift",
     "crypto_equities_flow": "crypto_cross_asset_drift",
+    # These challengers all transform the same settled-score history into a
+    # team rating. Promotion may let them contribute, but agreement among the
+    # transforms is not three independent observations.
+    "sports_glicko": "sports_history_ratings",
+    "sports_pythagorean": "sports_history_ratings",
+    "sports_mov_elo": "sports_history_ratings",
+    # Final-score and box-score models are a distinct evidence lane from team
+    # ratings, while still sharing one capped precision budget with each other.
+    "sports_four_factors": "sports_history_scoring_boxscore",
+    "sports_scoring": "sports_history_scoring_boxscore",
+    # EPA/play data remains meaningfully independent of the rating and scoring
+    # lanes. Naming the family explicitly keeps calibrated variants in it.
+    "sports_epa": "sports_history_epa",
 }
 
 
@@ -86,11 +100,27 @@ class EnsembleForecaster:
         return scope in self._negative_scopes
 
     def fuse(self, market: MarketView, signals: list[Signal]) -> Forecast | None:
+        if is_prediction_quarantined_target(
+            market.ticker,
+            category=(market.raw or {}).get("category"),
+            vertical=market.vertical,
+        ):
+            return None
         active_signals = [
             signal for signal in signals
-            if (not bool((signal.features or {}).get("challenger_only"))
-                or self.promotion.is_promoted_signal(
-                    signal.source, market.ticker, signal.features or {}))
+            if (
+                # Model observations are governed by the dedicated exact-scope
+                # authority dossier, not the generic strategy-promotion file.
+                # No autonomy Signal currently carries an authorized dossier
+                # weight, so these rows remain gradeable but cannot enter an
+                # executable ensemble through a hand-written promotion row.
+                not str((signal.features or {}).get("llm_probability_authority", "")).startswith(
+                    ("quarantined_", "zero_")
+                )
+            )
+            and (not bool((signal.features or {}).get("challenger_only"))
+                 or self.promotion.is_promoted_signal(
+                     signal.source, market.ticker, signal.features or {}))
             and not self._floor_excluded(signal, market)
         ]
         if not active_signals:

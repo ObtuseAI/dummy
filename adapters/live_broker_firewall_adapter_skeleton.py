@@ -1,11 +1,8 @@
-"""Operator-fill skeleton for a REAL LiveBrokerFirewall order adapter.
+"""Retired compatibility skeleton with no real-order capability.
 
-THIS IS A SKELETON. It intentionally does NOT place any real order. The single
-live network call is left as an explicit, guarded TODO that raises until the
-operator wires it. Everything around that call — credential loading, fail-closed
-gates, limit-only enforcement, kill-switch, single-attempt lock — is implemented
-so the operator only has to (a) supply credentials via environment and (b) fill
-the one marked method with the broker's real limit-order endpoint call.
+This module remains importable for historical operator documentation, but it
+must never be completed or subclassed into a second broker sink. All real-order
+traffic belongs to ``live_firewall.firewall.LiveBrokerFirewall.submit``.
 
 Boundaries baked in (do not remove):
   * limit orders only — market orders are rejected before any network activity.
@@ -32,7 +29,11 @@ class LiveBrokerFirewallError(RuntimeError):
 
 # Credential env var names. The operator sets these in their own shell/secret
 # store. They are never written to disk or logged.
-CREDENTIAL_ENV_VARS = ("KALSHI_API_KEY_ID", "KALSHI_API_PRIVATE_KEY")
+CREDENTIAL_ENV_VARS = (
+    "KALSHI_API_KEY_ID",
+    "KALSHI_API_PRIVATE_KEY_PEM",
+    "KALSHI_API_PRIVATE_KEY_PEM_PATH",
+)
 
 
 @dataclass(frozen=True)
@@ -133,13 +134,7 @@ class LiveBrokerFirewallAdapter:
     # ---------------- public entry ----------------
 
     def submit_limit_order(self, req: LimitOrderRequest) -> SubmitResult:
-        self._assert_armable(req)
-        creds = self._load_credentials()
-        self._attempted = True  # lock before the call: one attempt, win or lose
-        raw = self._place_limit_order_live(req, creds)
-        return SubmitResult(
-            submitted=True,
-            order_id=str(raw.get("order_id") or raw.get("id") or ""),
-            state=str(raw.get("status") or raw.get("state") or "UNKNOWN").upper(),
-            raw=raw,
+        del req
+        raise LiveBrokerFirewallError(
+            "LEGACY_ADAPTER_RETIRED_USE_CENTRAL_LIVE_FIREWALL"
         )

@@ -17,6 +17,7 @@ from autonomy.risk_brain import (
     RiskBrain,
     RiskState,
     kalshi_maker_fee_cents,
+    kalshi_taker_fee_cents,
     kelly_fraction_yes,
 )
 
@@ -74,10 +75,28 @@ class Allocator:
         risk_brain: RiskBrain,
         min_ev_cents: float = MIN_EV_CENTS,
         performance_guard=None,
+        execution_policy=None,
     ):
         self.risk_brain = risk_brain
         self.min_ev_cents = min_ev_cents
         self.performance_guard = performance_guard
+        self.execution_policy = execution_policy
+
+    @property
+    def _immediate_taker(self) -> bool:
+        return getattr(self.execution_policy, "mode", None) == "taker"
+
+    def _entry_price(
+        self, best_bid: int | None, best_ask: int | None, fair_cents: float,
+    ) -> int | None:
+        if self._immediate_taker:
+            return int(best_ask) if best_ask is not None and 1 <= int(best_ask) <= 99 else None
+        return self._maker_price(best_bid, best_ask, fair_cents)
+
+    def _entry_fee(self, price: int, ticker: str) -> int:
+        if self._immediate_taker:
+            return kalshi_taker_fee_cents(price, 1, ticker)
+        return kalshi_maker_fee_cents(price, 1, ticker)
 
     def _maker_price(self, best_bid: int | None, best_ask: int | None, fair_cents: float) -> int | None:
         """Rest one tick inside the current bid, never above our fair value."""
@@ -139,29 +158,45 @@ class Allocator:
         # a YES-frame bet at probability (1 - q).
         candidates = []
         q = forecast.probability_yes
-        yes_price = self._maker_price(market.yes_bid, market.yes_ask, q * 100.0)
+        yes_price = self._entry_price(market.yes_bid, market.yes_ask, q * 100.0)
         max_price = CRYPTO_MAX_PRICE_CENTS if market.vertical.value == "CRYPTO" else MAX_PRICE_CENTS
         if yes_price is not None and yes_price <= max_price:
             conservative_q = max(0.005, q - CONFIDENCE_HAIRCUT_SIGMAS * forecast.uncertainty)
             ev = (conservative_q * 100.0 - yes_price
-                  - kalshi_maker_fee_cents(yes_price, 1, market.ticker))
+                  - self._entry_fee(yes_price, market.ticker))
             candidates.append(("yes", yes_price, conservative_q, ev))
         no_fair = (1.0 - q) * 100.0
-        no_price = self._maker_price(market.no_bid, market.no_ask, no_fair)
+        no_price = self._entry_price(market.no_bid, market.no_ask, no_fair)
         if no_price is not None and no_price <= max_price:
             conservative_no = max(
                 0.005, (1.0 - q) - CONFIDENCE_HAIRCUT_SIGMAS * forecast.uncertainty
             )
             ev = (conservative_no * 100.0 - no_price
-                  - kalshi_maker_fee_cents(no_price, 1, market.ticker))
+                  - self._entry_fee(no_price, market.ticker))
             candidates.append(("no", no_price, conservative_no, ev))
 
         if not candidates:
-            return _abstain(market, forecast, "no viable maker price", snapshot)
+            entry_style = "taker" if self._immediate_taker else "maker"
+            return _abstain(market, forecast, f"no viable {entry_style} price", snapshot)
         side, price, win_prob, ev = max(candidates, key=lambda c: c[3])
         kelly = kelly_fraction_yes(win_prob, price)
         min_ev = max(self.min_ev_cents, CRYPTO_MIN_EV_CENTS) \
             if market.vertical.value == "CRYPTO" else self.min_ev_cents
+        if self._immediate_taker:
+            min_ev = max(
+                min_ev,
+                float(getattr(self.execution_policy, "taker_min_ev_cents", 0.0) or 0.0),
+            )
+            edge_floor = float(
+                getattr(self.execution_policy, "taker_min_edge_cents", 0.0) or 0.0
+            )
+            gross_edge = win_prob * 100.0 - price
+            if gross_edge < edge_floor:
+                return _abstain(
+                    market, forecast,
+                    f"gross edge {gross_edge:.1f}c below taker threshold {edge_floor:.1f}c",
+                    snapshot, side=side, price_cents=price, ev_cents=ev, kelly=kelly,
+                )
         if ev < min_ev:
             return _abstain(
                 market, forecast, f"ev {ev:.1f}c below threshold {min_ev:.1f}c", snapshot,

@@ -45,8 +45,12 @@ async def test_smoke_v3_operator_config_required_on_404(monkeypatch, smoke_v3_ru
             error_detail="all aliases unresolved",
         )
 
+    live_runner = LiveModelSmokeV3(
+        artifacts_dir=smoke_v3_runner.artifacts_dir,
+        allow_live=True,
+    )
     with patch("model_router.smoke.ModelProviderResolver.resolve", new=_fake_resolve):
-        report = await smoke_v3_runner.run()
+        report = await live_runner.run()
 
     assert report["live_model_status"] == "OPERATOR_MODEL_CONFIG_REQUIRED"
     assert report["verdict"] == "PASS"

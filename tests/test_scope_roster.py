@@ -146,3 +146,30 @@ def test_unknown_season_defaults_in_season():
     sports = out["verticals"]["SPORTS"]["scopes"]
     assert set(SPORTS_ROSTER) <= set(sports)
     assert all(sports[lg]["in_season"] is True for lg in SPORTS_ROSTER)
+
+
+def test_open_nfl_pick_without_current_grade_is_upcoming_not_in_season():
+    conn = _mk_conn()
+    conn.execute(
+        "INSERT INTO decisions VALUES(?,?,?,?,?,?,?, datetime('now'))",
+        (
+            "KXNFLGAME-26SEP07KCBAL-KC",
+            "BUY_YES",
+            "YES",
+            0.61,
+            0.55,
+            4.0,
+            55,
+        ),
+    )
+    conn.commit()
+
+    nfl = build_scope_analytics(
+        conn,
+        season_active={"nfl": True},
+    )["verticals"]["SPORTS"]["scopes"]["NFL"]
+
+    assert len(nfl["picks"]) == 1
+    assert nfl["summary"]["n"] == 0
+    assert nfl["basis"] == "none"
+    assert nfl["season_status"] == "upcoming"

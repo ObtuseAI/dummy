@@ -49,7 +49,18 @@ foreach ($task in Get-ScheduledTask -TaskName "Dummy*") {
             -WorkingDirectory $action.WorkingDirectory
     }
     elseif ($action.Execute -ieq $pythonw) {
-        Write-Host "OK   $name (already hidden)"; continue
+        if ([string]::IsNullOrWhiteSpace($action.WorkingDirectory)) {
+            # Older migrations copied a blank cwd from legacy schtasks.exe
+            # actions.  The scripts use repo-relative runtime/config paths, so
+            # a hidden task with no cwd launches successfully but exits 1 after
+            # resolving those paths under System32.  Repair that state on
+            # reruns instead of treating pythonw.exe alone as sufficient.
+            $new = New-ScheduledTaskAction -Execute $pythonw -Argument $action.Arguments `
+                -WorkingDirectory $repo
+        }
+        else {
+            Write-Host "OK   $name (already hidden)"; continue
+        }
     }
     else {
         Write-Host "SKIP $name (unrecognized action: $($action.Execute))"; continue

@@ -75,6 +75,41 @@ def test_rate_based_edge_is_noted_not_flagged():
     assert result["controls"]["row_discrimination"] <= 0
 
 
+def test_incremental_skill_over_strong_market_is_not_a_placebo_failure():
+    """Beating a coin by much more than an efficient market is expected."""
+    rows = []
+    for i in range(800):
+        outcome = _det(i, "incremental") < 0.5
+        rows.append({
+            "probability_yes": 0.75 if outcome else 0.25,
+            "market_probability": 0.69 if outcome else 0.31,
+            "result_yes": int(outcome),
+            "event_cluster": f"C{i}",
+            "created_at": f"2026-07-{(i % 28) + 1:02d}T12:00:00+00:00",
+        })
+    result = run_battery_for_source("incremental", rows)
+    assert result["real_edge"]["lower"] > 0
+    assert result["controls"]["placebo_prior"]["lower"] > 0
+    assert result["status"] == "clean"
+    assert result["controls"]["flat_prior_vs_recorded_market"]["upper"] < 0
+
+
+def test_flat_prior_beating_recorded_market_is_flagged():
+    rows = []
+    for i in range(500):
+        outcome = _det(i, "broken-market") < 0.5
+        rows.append({
+            "probability_yes": 0.65 if outcome else 0.35,
+            "market_probability": 0.20 if outcome else 0.80,
+            "result_yes": int(outcome),
+            "event_cluster": f"C{i}",
+            "created_at": f"2026-07-{(i % 28) + 1:02d}T12:00:00+00:00",
+        })
+    result = run_battery_for_source("broken_market", rows)
+    assert "flat_prior_beats_recorded_market" in result["flags"]
+    assert result["controls"]["flat_prior_vs_recorded_market"]["lower"] > 0
+
+
 def test_fabricated_prior_source_is_flagged():
     """The 2026-07-17 bug signature: the 'edge' lives in a fabricated prior.
 
@@ -100,6 +135,17 @@ def test_fabricated_prior_source_is_flagged():
 def test_underpowered_source_reports_insufficient():
     result = run_battery_for_source("thin", _skilled_rows(20))
     assert result["status"] == "insufficient_rows"
+
+
+def test_repeated_rows_from_one_event_do_not_fake_negative_control_power():
+    rows = _skilled_rows(200)
+    for row in rows:
+        row["event_cluster"] = "ONE-EVENT"
+        row["market_probability"] = 0.20 if row["result_yes"] else 0.80
+    result = run_battery_for_source("repeated_one_event", rows)
+    assert result["status"] == "insufficient_clusters"
+    assert result["real_edge"]["clusters"] == 1
+    assert result["flags"] == []
 
 
 # ---- preregistration ----------------------------------------------------------

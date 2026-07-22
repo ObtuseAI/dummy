@@ -82,6 +82,9 @@ def test_available_is_gated_by_env_and_executable(tmp_path, monkeypatch):
     exe = tmp_path / "claude.exe"
     exe.write_text("")
     monkeypatch.setenv("DUMMY_CLAUDE_CLI_PATH", str(exe))
+    # Isolate the legacy master-gate contract from the persisted operator
+    # switch, which may legitimately be enabled on the machine running tests.
+    monkeypatch.setenv("DUMMY_LLM_CLAUDE_ENABLED", "0")
     p = ClaudeCliProvider(_cfg())
     monkeypatch.delenv("DUMMY_CLI_PROVIDERS", raising=False)
     assert p.available is False                         # executable present but not armed

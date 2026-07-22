@@ -1,9 +1,8 @@
 """Wave-51: per-scope analytics + overview builder for the redesigned dashboard.
 
 Pins the honest-accuracy contract: forecasts graded once per market (pick of
-record), coins/leagues resolved correctly, and the overview account rendered as
-the paper bankroll it is -- with the promotion ladder split into promoted vs
-close-to-promotion.
+record), coins/leagues resolved correctly, and retired paper results omitted
+from the primary live-account overview without rewriting raw history.
 """
 from __future__ import annotations
 
@@ -94,6 +93,42 @@ def test_scope_edge_vs_market_and_progression(tmp_path):
     led.close()
 
 
+def test_fused_forecast_wins_and_post_settlement_rows_never_grade(tmp_path):
+    led = _ledger(tmp_path)
+    conn = led._conn
+    ticker = "KXBTCD-POINT-IN-TIME"
+    settled_at = _iso(1.0)
+    conn.execute(
+        "INSERT INTO decisions(decision_id,market_ticker,action,side,price_cents,count,"
+        "ev_cents,kelly,notional_cents,probability_yes,market_implied_yes,sources_used,created_at)"
+        " VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)",
+        ("before", ticker, "BUY_YES", "YES", 50, 1, 5.0, 0.1, 100,
+         0.40, 0.50, "[]", _iso(2.0)),
+    )
+    conn.execute(
+        "INSERT INTO signals(source,market_ticker,probability_yes,uncertainty,rationale,"
+        "features,created_at,mode,ingested_at) VALUES(?,?,?,?,?,?,?,?,?)",
+        ("fused_forecast", ticker, 0.80, 0.1, "pre-settlement",
+         '{"market_implied_yes": 0.5}', _iso(1.5), "live", _iso(1.5)),
+    )
+    conn.execute(
+        "INSERT INTO signals(source,market_ticker,probability_yes,uncertainty,rationale,"
+        "features,created_at,mode,ingested_at) VALUES(?,?,?,?,?,?,?,?,?)",
+        ("fused_forecast", ticker, 0.01, 0.1, "too late",
+         '{"market_implied_yes": 0.5}', _iso(0.5), "live", _iso(0.5)),
+    )
+    conn.execute(
+        "INSERT INTO settlements(market_ticker,result_yes,settled_at) VALUES(?,?,?)",
+        (ticker, 1, settled_at),
+    )
+    conn.commit()
+
+    btc = build_scope_analytics(conn)["verticals"][CRYPTO]["scopes"]["BTC"]["summary"]
+    assert btc["n"] == 1
+    assert btc["brier"] == 0.04       # pre-settlement fused 0.80, never leaked 0.01
+    led.close()
+
+
 def test_current_picks_are_unsettled_and_ranked(tmp_path):
     led = _ledger(tmp_path)
     # open (unsettled) BTC picks with different edges, plus a settled one to ignore
@@ -124,14 +159,15 @@ def test_empty_ledger_is_safe(tmp_path):
         assert sports[lg]["basis"] == "none"
         assert sports[lg]["in_season"] is True
     ov = build_overview(led._conn, {})
-    assert ov["bankroll_cents"] == 10_000            # falls back to base
-    assert ov["promoted"] == [] and ov["close_to_promotion"] == []
+    assert ov["primary_account"] == "live_kalshi"
+    assert ov["paper_results_status"] == "RETIRED_NON_AUTHORITATIVE"
+    assert "bankroll_cents" not in ov and "promoted" not in ov
     led.close()
 
 
 # ---- overview --------------------------------------------------------------
 
-def test_overview_paper_account_and_promotion_split(tmp_path):
+def test_overview_omits_paper_results_and_preserves_raw_rows(tmp_path):
     led = _ledger(tmp_path)
     conn = led._conn
     for i, (bank, exp) in enumerate([(10_000, 0), (9_800, 120), (9_500, 0)]):
@@ -157,15 +193,26 @@ def test_overview_paper_account_and_promotion_split(tmp_path):
                                                      "contested_markets": 90}},
         },
     }
+    raw_before = conn.execute(
+        "SELECT bankroll_cents,open_exposure_cents,stage,created_at "
+        "FROM bankroll_curve ORDER BY id"
+    ).fetchall()
     ov = build_overview(conn, report)
-    assert ov["paper"] is True
-    assert ov["bankroll_cents"] == 9_500 and ov["base_bankroll_cents"] == 10_000
-    assert ov["account_roi"] == round((9_500 - 10_000) / 10_000, 4)   # -0.05
-    assert [p["name"] for p in ov["promoted"]] == ["promoted_one"]
-    # close-to-promotion sorted nearest-first (least-negative lower95)
-    assert [c["name"] for c in ov["close_to_promotion"]] == ["near", "far"]
+    for retired in (
+        "paper", "paper_account_as_of", "bankroll_cents",
+        "base_bankroll_cents", "account_roi", "realized_pnl_cents",
+        "realized_trade_statistics", "balance_curve", "promoted",
+        "close_to_promotion",
+    ):
+        assert retired not in ov
+    assert ov["paper_results_status"] == "RETIRED_NON_AUTHORITATIVE"
+    assert ov["paper_results_can_enable_live"] is False
+    assert ov["paper_results_can_block_live"] is False
     assert ov["active_sources"][0]["source"] == "market_prior"        # sorted by weight
-    assert len(ov["balance_curve"]) == 3
+    assert conn.execute(
+        "SELECT bankroll_cents,open_exposure_cents,stage,created_at "
+        "FROM bankroll_curve ORDER BY id"
+    ).fetchall() == raw_before
     led.close()
 
 
@@ -181,17 +228,45 @@ def test_dashboard_serves_overview_and_scopes_from_snapshot(tmp_path, monkeypatc
     (tmp_path / "latest_dashboard_snapshot.json").write_text(json.dumps({
         "generated_at": "2026-07-19T18:00:00+00:00",
         "backtest_generated_at": "2026-07-19T12:00:00+00:00",
+        "overview_generated_at": "2026-07-19T17:55:00+00:00",
+        "scopes_generated_at": "2026-07-19T12:00:00+00:00",
+        "block_status": {"overview": "REFRESHED", "scopes": "CARRIED_LIGHT_REFRESH"},
         "overview": {"bankroll_cents": 9500, "paper": True},
-        "scopes": {"verticals": {"CRYPTO": {"scopes": {"BTC": {"summary": {"n": 5}}}}}},
+        "scopes": {"verticals": {
+            "CRYPTO": {"scopes": {"BTC": {"summary": {"n": 5}}}},
+            "SPORTS": {"scopes": {"NFL": {
+                "summary": {"n": 0},
+                "picks": [{"ticker": "KXNFLGAME-26SEP07KCBAL-KC"}],
+                "in_season": True,
+                "season_status": "in",
+                "basis": "current",
+            }}},
+        }},
     }), encoding="utf-8")
     monkeypatch.setattr(dash, "RUNTIME_DIR", tmp_path)
 
     client = TestClient(dash.build_app())
     ov = client.get("/api/overview").json()
-    assert ov["bankroll_cents"] == 9500 and ov["paper"] is True
-    assert ov["generated_at"] == "2026-07-19T18:00:00+00:00"
+    assert "bankroll_cents" not in ov and "paper" not in ov
+    assert ov["paper_results_status"] == "RETIRED_NON_AUTHORITATIVE"
+    assert ov["paper_results_can_enable_live"] is False
+    assert ov["paper_results_can_block_live"] is False
+    assert ov["live_account"]["status"] == "UNAVAILABLE"
+    assert ov["live_account"]["execution_authority"] is False
+    assert ov["live_account"]["broker_contacted_by_dashboard"] is False
+    assert ov["generated_at"] == "2026-07-19T17:55:00+00:00"
+    assert ov["snapshot_generated_at"] == "2026-07-19T18:00:00+00:00"
+    assert ov["data_status"] == "REFRESHED"
     sc = client.get("/api/scopes").json()
     assert sc["verticals"]["CRYPTO"]["scopes"]["BTC"]["summary"]["n"] == 5
+    assert sc["generated_at"] == "2026-07-19T12:00:00+00:00"
+    assert sc["data_status"] == "CARRIED_LIGHT_REFRESH"
+    assert "NFL" in sc["sports_leagues"]
+    assert sc["sports_league_roster_kind"] == (
+        "year_round_navigation_not_current_listings"
+    )
+    assert sc["verticals"]["SPORTS"]["scopes"]["NFL"]["season_status"] == "upcoming"
+    assert sc["verticals"]["SPORTS"]["scopes"]["NFL"]["basis"] == "none"
 
 
 def test_dashboard_index_serves_redesigned_page():

@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import asyncio
 import json
 import os
 from datetime import datetime, timezone
@@ -8,24 +7,19 @@ from decimal import Decimal
 from pathlib import Path
 from typing import Any
 
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, Depends
 
 from core.ontology import ForecastOpinion
 from core.secret_guard import redact
 from core.state import STATE
+from dashboard.backend.operator_auth import require_operator
 from calibration.spine import CalibrationSpine
 from calibration.schema import ForecastRecordV2, SettlementRecord
-from forecasting.real_market_loop import RealMarketForecastLoopV2
 from model_router.credential_readiness import CredentialReadiness
 from model_router.output_firewall import ModelOutputFirewall
 from model_router.prompt_firewall import PromptFirewallV2
-from model_router.smoke import LiveModelSmoke
-from strategies.disagreement import HybridDisagreementEngineV2
-from strategies.governor import generate_strategy_governor_reports
 
 router = APIRouter(prefix="/v8", tags=["v8"])
-
-DASHBOARD_HANDLER_TIMEOUT_SECONDS = 25
 
 PROJECT_ROOT = Path("C:/src/engine/dummy")
 ARTIFACTS = PROJECT_ROOT / "artifacts" / "dummy"
@@ -39,19 +33,17 @@ REQUIRED_ACKNOWLEDGEMENT = (
 # Helpers
 # ---------------------------------------------------------------------------
 
-async def _with_timeout(coro, timeout: float = DASHBOARD_HANDLER_TIMEOUT_SECONDS):
-    """Await *coro* with a hard timeout; callers map timeout to a 503 response."""
-    return await asyncio.wait_for(coro, timeout=timeout)
-
-
-def _raise_timeout():
-    raise HTTPException(
-        status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-        detail={
-            "error": "timeout",
-            "message": f"Request exceeded {DASHBOARD_HANDLER_TIMEOUT_SECONDS}s timeout",
-        },
-    )
+def _read_json_artifact(path: Path) -> tuple[dict[str, Any] | None, str | None]:
+    """Read a stored archive artifact without creating or refreshing it."""
+    if not path.is_file():
+        return None, "missing"
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, json.JSONDecodeError):
+        return None, "unreadable"
+    if not isinstance(payload, dict):
+        return None, "invalid_shape"
+    return payload, None
 
 def _live_submit_status() -> dict[str, Any]:
     path = CONFIGS / "live_submit.json"
@@ -156,11 +148,23 @@ async def model_providers() -> dict[str, Any]:
 
 @router.get("/live-smoke")
 async def live_smoke() -> dict[str, Any]:
-    smoke = LiveModelSmoke()
-    try:
-        return await _with_timeout(smoke.run())
-    except asyncio.TimeoutError:
-        _raise_timeout()
+    # Never import or execute provider-capable smoke code from an archive GET.
+    # The retired DeepSeek/Minimax runner remains available only to a direct
+    # manual caller that supplies its explicit ``allow_live=True`` keyword.
+    report_path = ARTIFACTS / "live_model_smoke_report_v1.json"
+    return {
+        "archive_surface": "OFFLINE_READ_ONLY",
+        "mode": "PREFLIGHT_ONLY",
+        "live_model_status": "UNKNOWN",
+        "legacy_smoke_status": "RETIRED_LEGACY_SMOKE",
+        "live_contact_authorized": False,
+        "contact_mode": "PREFLIGHT_ONLY",
+        "network_contacted": False,
+        "execution_authority": False,
+        "stored_artifact_present": report_path.is_file(),
+        "stored_artifact_path": str(report_path),
+        "note": "Archive GET cannot refresh or execute the retired legacy model smoke.",
+    }
 
 
 @router.get("/prompt-firewall")
@@ -215,12 +219,37 @@ async def output_firewall() -> dict[str, Any]:
 
 @router.get("/forecast-opinions")
 async def forecast_opinions(max_markets: int = 5) -> dict[str, Any]:
-    loop = RealMarketForecastLoopV2(artifact_dir=ARTIFACTS)
-    try:
-        result = await _with_timeout(loop.run(max_markets=max_markets))
-        return redact(result)
-    except asyncio.TimeoutError:
-        _raise_timeout()
+    report_path = ARTIFACTS / "real_market_forecast_loop_report_v2.json"
+    report, read_error = _read_json_artifact(report_path)
+    if report is None:
+        return {
+            "archive_surface": "OFFLINE_READ_ONLY",
+            "mode": "PREFLIGHT_ONLY",
+            "network_contacted": False,
+            "artifact_present": report_path.is_file(),
+            "artifact_path": str(report_path),
+            "artifact_error": read_error,
+            "markets": [],
+            "opinions": [],
+        }
+
+    limit = max(0, min(int(max_markets), 100))
+    snapshot = dict(report)
+    for field in ("markets", "opinions", "reviews"):
+        values = snapshot.get(field)
+        if isinstance(values, list):
+            snapshot[field] = values[:limit]
+    snapshot.update(
+        {
+            "archive_surface": "OFFLINE_READ_ONLY",
+            "mode": "STORED_ARTIFACT_ONLY",
+            "network_contacted": False,
+            "artifact_present": True,
+            "artifact_path": str(report_path),
+            "max_markets_requested": limit,
+        }
+    )
+    return redact(snapshot)
 
 
 @router.get("/calibration")
@@ -272,15 +301,23 @@ async def calibration() -> dict[str, Any]:
 
 @router.get("/strategy-governor")
 async def strategy_governor() -> dict[str, Any]:
-    # Ensure deterministic reports exist and return their summaries.
-    paths = generate_strategy_governor_reports(artifact_dir=ARTIFACTS)
-    report_path = paths["report"]
-    manifest_path = paths["manifest"]
-    report = json.loads(report_path.read_text())
-    json.loads(manifest_path.read_text())
+    # A GET may inspect existing evidence, but must not generate/overwrite it.
+    report_path = ARTIFACTS / "strategy_governor_report_v1.json"
+    manifest_path = ARTIFACTS / "strategy_governor_decision_manifest_v1.json"
+    report, report_error = _read_json_artifact(report_path)
+    manifest, manifest_error = _read_json_artifact(manifest_path)
+    if report is None:
+        report = {}
     return {
+        "archive_surface": "OFFLINE_READ_ONLY",
+        "mode": "STORED_ARTIFACT_ONLY",
+        "network_contacted": False,
         "report_present": report_path.exists(),
         "manifest_present": manifest_path.exists(),
+        "report_readable": report_error is None,
+        "manifest_readable": manifest_error is None and manifest is not None,
+        "report_error": report_error,
+        "manifest_error": manifest_error,
         "decision_count": report.get("decision_count", 0),
         "decision_summary": report.get("decision_summary", {}),
         "decisions": report.get("decisions", []),
@@ -294,30 +331,31 @@ async def strategy_governor() -> dict[str, Any]:
 
 @router.get("/disagreement")
 async def disagreement() -> dict[str, Any]:
-    engine = HybridDisagreementEngineV2()
     opinion = _synthetic_opinion()
-    try:
-        result = await _with_timeout(engine.review(
-            opinion=opinion,
-            strategy_signal={"verdict": "proceed"},
-            risk_governor_value={"risk_level": "low"},
-            calibration_confidence=opinion.confidence_score,
-            context={"market_ticker": opinion.market_ticker, "contract_ticker": opinion.contract_ticker},
-        ))
-        return redact(result)
-    except asyncio.TimeoutError:
-        _raise_timeout()
+    return {
+        "archive_surface": "OFFLINE_READ_ONLY",
+        "mode": "PREFLIGHT_ONLY",
+        "network_contacted": False,
+        "review_executed": False,
+        "market_ticker": opinion.market_ticker,
+        "contract_ticker": opinion.contract_ticker,
+        "note": "Archived GET does not invoke the model disagreement engine.",
+    }
 
 
-@router.get("/firewall-rehearsal")
+@router.get("/firewall-rehearsal", dependencies=[Depends(require_operator)])
 async def firewall_rehearsal(market_ticker: str = "MKT", contract_ticker: str = "MKT-YES") -> dict[str, Any]:
-    from execution.hybrid_path import HybridLiveCapRehearsalV2
-    rehearsal = HybridLiveCapRehearsalV2()
-    try:
-        result = await _with_timeout(rehearsal.rehearse(market_ticker, contract_ticker))
-        return redact(result)
-    except asyncio.TimeoutError:
-        _raise_timeout()
+    return redact(
+        {
+            "archive_surface": "OFFLINE_READ_ONLY",
+            "mode": "PREFLIGHT_ONLY",
+            "network_contacted": False,
+            "rehearsal_executed": False,
+            "market_ticker": market_ticker,
+            "contract_ticker": contract_ticker,
+            "note": "Archived GET cannot execute a firewall rehearsal.",
+        }
+    )
 
 
 @router.get("/proof-reports")

@@ -9,6 +9,7 @@ from enum import Enum
 from pathlib import Path
 from typing import Any
 
+from autonomy.target_policy import is_prediction_quarantined_target
 from core.ontology import ComplianceVerdict, ForecastOpinion, HybridReviewResult, StrategyCritique
 
 
@@ -39,11 +40,11 @@ class RiskCritique:
 class MarketQualityScores:
     """Numeric quality dimensions extracted from a market snapshot."""
 
-    liquidity_score: float = 0.0
-    spread_score: float = 0.0
-    freshness_score: float = 0.0
-    depth_score: float = 0.0
-    settlement_risk_score: float = 0.0
+    liquidity_score: float | None = None
+    spread_score: float | None = None
+    freshness_score: float | None = None
+    depth_score: float | None = None
+    settlement_risk_score: float | None = None
 
     @classmethod
     def from_opinion(cls, opinion: ForecastOpinion) -> "MarketQualityScores":
@@ -57,11 +58,11 @@ class MarketQualityScores:
                 except ValueError:
                     continue
         return cls(
-            liquidity_score=values.get("liquidity_score", 0.0),
-            spread_score=values.get("spread_score", 0.0),
-            freshness_score=values.get("freshness_score", 0.0),
-            depth_score=values.get("depth_score", 0.0),
-            settlement_risk_score=values.get("settlement_risk_score", 0.0),
+            liquidity_score=values.get("liquidity_score"),
+            spread_score=values.get("spread_score"),
+            freshness_score=values.get("freshness_score"),
+            depth_score=values.get("depth_score"),
+            settlement_risk_score=values.get("settlement_risk_score"),
         )
 
 
@@ -117,7 +118,24 @@ class StrategyGovernor:
         cap_impact: CapImpact | None = None,
         compliance_verdict: ComplianceVerdict | None = None,
         model_output_firewall_blocked: bool = False,
+        market_category: str | None = None,
     ) -> StrategyGovernorOutput:
+        if is_prediction_quarantined_target(
+            opinion.market_ticker,
+            category=market_category,
+        ) or is_prediction_quarantined_target(
+            opinion.contract_ticker,
+            category=market_category,
+        ):
+            return self._output(
+                GovernorDecision.NO_TRADE,
+                (
+                    "Target has zero prediction and proposal authority under "
+                    "the shared target policy"
+                ),
+                ["prediction_target_quarantine"],
+                1.0,
+            )
         if quality_scores is None:
             quality_scores = MarketQualityScores.from_opinion(opinion)
         if cap_impact is None:
@@ -141,6 +159,25 @@ class StrategyGovernor:
 
         blocked_by: list[str] = []
         no_trade_bias = float(min(1.0, disagreement_score))
+
+        missing_quality = [
+            name
+            for name in (
+                "liquidity_score",
+                "spread_score",
+                "freshness_score",
+                "depth_score",
+                "settlement_risk_score",
+            )
+            if getattr(quality_scores, name) is None
+        ]
+        if missing_quality:
+            return self._output(
+                GovernorDecision.REQUIRE_MORE_EVIDENCE,
+                "Market quality evidence unavailable: " + ", ".join(missing_quality),
+                ["missing_quality_evidence"],
+                no_trade_bias,
+            )
 
         # Hard blocks first.
         if model_output_firewall_blocked:

@@ -42,8 +42,18 @@ NO_PICK_BAND = 0.02
 CALIBRATION_BINS = 10
 
 
-def build_fused_signal(market_ticker: str, forecast: Any) -> Signal:
+def build_fused_signal(
+    market_ticker: str,
+    forecast: Any,
+    tier_assessment: Any | None = None,
+) -> Signal:
     """The fused forecast as a persistable ledger row."""
+    tier_features: dict[str, Any] = {}
+    if tier_assessment is not None:
+        try:
+            tier_features = dict(tier_assessment.feature_fields())
+        except (AttributeError, TypeError, ValueError):
+            tier_features = {}
     return Signal(
         source=FUSED_SOURCE,
         market_ticker=market_ticker,
@@ -56,6 +66,7 @@ def build_fused_signal(market_ticker: str, forecast: Any) -> Signal:
             "market_implied_yes": forecast.market_implied_yes,
             "edge_yes": forecast.edge_yes,
             "sources_used": dict(forecast.sources_used),
+            **tier_features,
         },
     )
 
@@ -81,7 +92,10 @@ def load_fused_maps() -> dict[str, Any]:
 
 
 def build_calibrated_fused_signal(
-    market_ticker: str, forecast: Any, maps: dict[str, Any],
+    market_ticker: str,
+    forecast: Any,
+    maps: dict[str, Any],
+    tier_assessment: Any | None = None,
 ) -> Signal | None:
     """The SHADOW calibrated fused row (``fused_forecast::cal``), or None
     when no reliability map covers this market's fused scope yet.
@@ -95,7 +109,7 @@ def build_calibrated_fused_signal(
     from autonomy.reliability import apply_reliability
     from autonomy.taxonomy import grading_scope
 
-    raw = build_fused_signal(market_ticker, forecast)
+    raw = build_fused_signal(market_ticker, forecast, tier_assessment)
     scope = grading_scope(FUSED_SOURCE, market_ticker, raw.features)
     knots = maps.get(scope)
     if not knots:
@@ -128,32 +142,99 @@ def _scope_of(ticker: str) -> tuple[str, str]:
 def latest_settled_emissions(
     conn: sqlite3.Connection, source: str, days: float | None = None,
 ) -> list[tuple[str, float, bool]]:
-    """[(ticker, probability_yes, result_yes)] using the LAST emission per
-    settled market -- the pick of record is the final pre-settlement opinion."""
+    """Return one canonical live pick per settled market.
+
+    The pick of record is the latest source emission that was both created
+    and received no later than settlement and, when present, the earliest
+    decision. Retro rows and malformed provenance never become live evidence.
+    """
+    import math
+
     from autonomy.retention import install_signal_history
+    from autonomy.strategy_miner import _parse_ts
 
     install_signal_history(conn)
+    has_decisions = conn.execute(
+        "SELECT 1 FROM sqlite_master WHERE type='table' AND name='decisions'"
+    ).fetchone() is not None
+    decision_times: dict[str, float | None] = {}
+    if has_decisions:
+        for ticker, created_at in conn.execute(
+            "SELECT market_ticker, created_at FROM decisions"
+        ):
+            key = str(ticker)
+            stamp = _parse_ts(created_at)
+            if stamp is None:
+                decision_times[key] = None
+            elif key not in decision_times:
+                decision_times[key] = stamp
+            elif decision_times[key] is not None:
+                decision_times[key] = min(float(decision_times[key]), stamp)
+
     clause = ""
     params: list[Any] = [source]
     if days is not None:
-        clause = " AND s.created_at >= datetime('now', ?)"
+        clause = " AND julianday(s.created_at) >= julianday('now', ?)"
         params.append(f"-{float(days)} days")
     rows = conn.execute(
         f"""
-        SELECT s.market_ticker, s.probability_yes, s.created_at, st.result_yes
+        SELECT s.id, s.market_ticker, s.probability_yes, s.created_at,
+               s.ingested_at, s.mode, st.result_yes, st.settled_at
         FROM signal_history s
         JOIN settlements st ON st.market_ticker = s.market_ticker
-        WHERE s.source = ?{clause}
+        WHERE s.source = ? AND LOWER(s.mode) = 'live'{clause}
         """,
         params,
     ).fetchall()
-    latest: dict[str, tuple[str, float, bool]] = {}
-    for ticker, probability, created_at, result_yes in rows:
+    latest: dict[str, tuple[tuple[float, float, int], float, bool]] = {}
+    for (
+        row_id,
+        ticker,
+        probability,
+        created_at,
+        ingested_at,
+        mode,
+        result_yes,
+        settled_at,
+    ) in rows:
         ticker = str(ticker)
+        if str(mode).strip().lower() != "live":
+            continue
+        created_ts = _parse_ts(created_at)
+        ingested_ts = _parse_ts(ingested_at)
+        settled_ts = _parse_ts(settled_at)
+        if created_ts is None or ingested_ts is None or settled_ts is None:
+            continue
+        if ingested_ts < created_ts:
+            continue
+        cutoff_ts = settled_ts
+        if ticker in decision_times:
+            decision_ts = decision_times[ticker]
+            if decision_ts is None:
+                continue
+            cutoff_ts = min(cutoff_ts, decision_ts)
+        if created_ts > cutoff_ts or ingested_ts > cutoff_ts:
+            continue
+        try:
+            parsed_probability = float(probability)
+            outcome = float(result_yes)
+        except (TypeError, ValueError):
+            continue
+        if (
+            not math.isfinite(parsed_probability)
+            or not 0.0 <= parsed_probability <= 1.0
+            or not math.isfinite(outcome)
+            or outcome not in (0.0, 1.0)
+        ):
+            continue
+        rank = (created_ts, ingested_ts, int(row_id))
         held = latest.get(ticker)
-        if held is None or str(created_at) > held[0]:
-            latest[ticker] = (str(created_at), float(probability), bool(result_yes))
-    return [(t, p, y) for t, (_, p, y) in sorted(latest.items())]
+        if held is None or rank > held[0]:
+            latest[ticker] = (rank, parsed_probability, bool(outcome))
+    return [
+        (ticker, probability, result)
+        for ticker, (_rank, probability, result) in sorted(latest.items())
+    ]
 
 
 def grade_picks(

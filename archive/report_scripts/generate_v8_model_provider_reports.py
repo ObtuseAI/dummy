@@ -110,9 +110,36 @@ def _error_tag_to_classification(tag: str) -> dict[str, Any]:
     }
 
 
-async def _exercise_provider(name: str, provider: Any, task: Any) -> dict[str, Any]:
+async def _exercise_provider(
+    name: str,
+    provider: Any,
+    task: Any,
+    *,
+    allow_live: bool = False,
+    network_capability: Any | None = None,
+) -> dict[str, Any]:
     from model_router.error_classifier import classify_provider_error
     from model_router.providers import ProviderError
+
+    if allow_live is not True:
+        return {
+            "provider": name,
+            "available": False,
+            "status": "skipped",
+            "note": "PREFLIGHT_ONLY: explicit allow_live=True required",
+            "contact_mode": "PREFLIGHT_ONLY",
+            "network_contacted": False,
+        }
+
+    if provider is None:
+        return {
+            "provider": name,
+            "available": False,
+            "status": "skipped",
+            "note": "provider config missing",
+            "contact_mode": "LIVE_MANUAL",
+            "network_contacted": False,
+        }
 
     if not provider.available:
         return {
@@ -128,6 +155,7 @@ async def _exercise_provider(name: str, provider: Any, task: Any) -> dict[str, A
             task,
             max_tokens=64,
             temperature=0.0,
+            network_capability=network_capability,
         )
         return {
             "provider": name,
@@ -153,28 +181,84 @@ async def _exercise_provider(name: str, provider: Any, task: Any) -> dict[str, A
         }
 
 
-async def generate_live_model_provider_adapter_report_v1() -> dict:
+async def generate_live_model_provider_adapter_report_v1(
+    *,
+    allow_live: bool = False,
+) -> dict:
     from model_router.config import load_model_routing_config
-    from model_router.providers import DeepSeekV4FlashProvider, MinimaxM3Provider, MockProvider
+    from model_router.providers import MockProvider
     from model_router.tasks import ModelTask
 
     cfg = load_model_routing_config()
-    providers: dict[str, Any] = {}
-    if "deepseek_v4_flash" in cfg.provider_configs:
-        providers["deepseek_v4_flash"] = DeepSeekV4FlashProvider(
-            cfg.provider_configs["deepseek_v4_flash"]
-        )
-    if "minimax_m3" in cfg.provider_configs:
-        providers["minimax_m3"] = MinimaxM3Provider(cfg.provider_configs["minimax_m3"])
-    providers["mock"] = MockProvider()
+    if allow_live is True:
+        # Import and construct provider-capable adapters only after the direct
+        # caller has supplied the explicit capability. Credential presence,
+        # config state, report generation, and test execution are insufficient.
+        from model_router.providers import DeepSeekV4FlashProvider, MinimaxM3Provider
+        from model_router.network_capability import issue_model_network_capability
 
-    # Exercise each provider on a representative task.  Missing live credentials
-    # cause a skipped/error status, which is still a valid testable outcome.
-    results = await asyncio.gather(
-        _exercise_provider("deepseek_v4_flash", providers.get("deepseek_v4_flash"), ModelTask.FORECAST_OPINION),
-        _exercise_provider("minimax_m3", providers.get("minimax_m3"), ModelTask.STRATEGY_CRITIQUE),
-        _exercise_provider("mock", providers["mock"], ModelTask.FORECAST_OPINION),
-    )
+        network_capability = issue_model_network_capability(
+            allow_live=allow_live,
+            source="archive.v8.manual_provider_report",
+        )
+
+        providers: dict[str, Any] = {}
+        if "deepseek_v4_flash" in cfg.provider_configs:
+            providers["deepseek_v4_flash"] = DeepSeekV4FlashProvider(
+                cfg.provider_configs["deepseek_v4_flash"]
+            )
+        if "minimax_m3" in cfg.provider_configs:
+            providers["minimax_m3"] = MinimaxM3Provider(
+                cfg.provider_configs["minimax_m3"]
+            )
+        providers["mock"] = MockProvider()
+        results = await asyncio.gather(
+            _exercise_provider(
+                "deepseek_v4_flash",
+                providers.get("deepseek_v4_flash"),
+                ModelTask.FORECAST_OPINION,
+                allow_live=True,
+                network_capability=network_capability,
+            ),
+            _exercise_provider(
+                "minimax_m3",
+                providers.get("minimax_m3"),
+                ModelTask.STRATEGY_CRITIQUE,
+                allow_live=True,
+                network_capability=network_capability,
+            ),
+            _exercise_provider(
+                "mock",
+                providers["mock"],
+                ModelTask.FORECAST_OPINION,
+                allow_live=True,
+                network_capability=network_capability,
+            ),
+        )
+    else:
+        # Do not even construct a provider-capable adapter on the default path.
+        # This makes ordinary pytest/report/dashboard flows structurally unable
+        # to turn a discovered project credential into a paid call.
+        mock = MockProvider()
+        mock_result = await _exercise_provider(
+            "mock",
+            mock,
+            ModelTask.FORECAST_OPINION,
+            allow_live=True,
+        )
+        results = [
+            await _exercise_provider(
+                "deepseek_v4_flash",
+                None,
+                ModelTask.FORECAST_OPINION,
+            ),
+            await _exercise_provider(
+                "minimax_m3",
+                None,
+                ModelTask.STRATEGY_CRITIQUE,
+            ),
+            mock_result,
+        ]
 
     ok_or_skipped = sum(1 for r in results if r["status"] in ("ok", "skipped"))
     any_live_error = any(
@@ -193,6 +277,9 @@ async def generate_live_model_provider_adapter_report_v1() -> dict:
         "generated_at": now_iso(),
         "workstream": "V8: Live Model Provider Adapter",
         "live_model_calls_enabled": cfg.live_model_calls_enabled,
+        "live_contact_authorized": allow_live is True,
+        "contact_mode": "LIVE_MANUAL" if allow_live is True else "PREFLIGHT_ONLY",
+        "network_contact_authorized": allow_live is True,
         "mock_fallback_enabled": cfg.mock_fallback_enabled,
         "provider_results": results,
         "adapter_count": len(results),
@@ -214,9 +301,7 @@ async def generate_model_provider_error_handling_report_v1() -> dict:
     import httpx
 
     from model_router.error_classifier import classify_provider_error
-    from model_router.config import ProviderConfig
-    from model_router.providers import DeepSeekV4FlashProvider, ProviderError
-    from model_router.tasks import ModelTask
+    from model_router.providers import ProviderError
 
     sample_errors = [
         RuntimeError("DEEPSEEK_API_KEY not set"),
@@ -229,25 +314,16 @@ async def generate_model_provider_error_handling_report_v1() -> dict:
     sample_tags = [classify_provider_error(e) for e in sample_errors]
     sample_classifications = [_error_tag_to_classification(tag) for tag in sample_tags]
 
-    # Exercise an actual provider error path without leaking the key value.
-    # Use a guaranteed-missing env var so the report is deterministic even if
-    # DEEPSEEK_API_KEY happens to be set in the runtime environment.
-    cfg = ProviderConfig(
-        api_base="https://api.deepseek.com",
-        api_key_env="DEEPSEEK_API_KEY_DO_NOT_SET_V8_REPORT",
-        model_name="deepseekv4flash",
+    # Classify the provider's typed error envelope without constructing a live
+    # adapter. Error-report generation is therefore deterministic and cannot
+    # inherit a project credential or create an HTTP client.
+    sample_provider_error = ProviderError(
+        "deterministic provider error sample",
+        metadata={"error_class": "PROVIDER_ERROR"},
     )
-    ds = DeepSeekV4FlashProvider(cfg)
-    provider_error_sample: dict[str, Any] | None = None
-    if not ds.available:
-        try:
-            await ds.complete("test", ModelTask.FORECAST_OPINION)
-        except ProviderError as exc:
-            tag = exc.metadata.get("error_class", "PROVIDER_ERROR")
-            provider_error_sample = _error_tag_to_classification(tag)
-        except Exception as exc:
-            tag = classify_provider_error(exc)
-            provider_error_sample = _error_tag_to_classification(tag)
+    provider_error_sample = _error_tag_to_classification(
+        sample_provider_error.metadata["error_class"]
+    )
 
     all_known = all(c["error_type"] != "unknown" for c in sample_classifications)
     return {
@@ -259,7 +335,7 @@ async def generate_model_provider_error_handling_report_v1() -> dict:
     }
 
 
-async def generate_provider_reports() -> dict[str, Path]:
+async def generate_provider_reports(*, allow_live: bool = False) -> dict[str, Path]:
     """Write live adapter and error-handling reports.
 
     Returns a mapping of report filename to written Path.
@@ -267,7 +343,9 @@ async def generate_provider_reports() -> dict[str, Path]:
     return {
         "live_model_provider_adapter_report_v1.json": _write_report(
             "live_model_provider_adapter_report_v1.json",
-            await generate_live_model_provider_adapter_report_v1(),
+            await generate_live_model_provider_adapter_report_v1(
+                allow_live=allow_live
+            ),
         ),
         "model_provider_error_handling_report_v1.json": _write_report(
             "model_provider_error_handling_report_v1.json",
@@ -281,7 +359,7 @@ async def generate_provider_reports() -> dict[str, Path]:
 # ---------------------------------------------------------------------------
 
 
-async def generate_smoke_reports() -> dict[str, Path]:
+async def generate_smoke_reports(*, allow_live: bool = False) -> dict[str, Path]:
     """Write live model smoke and prompt-safety reports.
 
     Falls back to MOCK_ONLY when live credentials are absent and never writes
@@ -293,7 +371,9 @@ async def generate_smoke_reports() -> dict[str, Path]:
         generate_live_model_smoke_report_v1,
     )
 
-    smoke_report = await generate_live_model_smoke_report_v1()
+    smoke_report = await generate_live_model_smoke_report_v1(
+        allow_live=allow_live
+    )
     safety_report = generate_live_model_prompt_safety_report_v1()
     smoke = LiveModelSmoke(artifacts_dir=ARTIFACTS)
     return smoke.write_reports(smoke_report, safety_report)
@@ -304,10 +384,10 @@ async def generate_smoke_reports() -> dict[str, Path]:
 # ---------------------------------------------------------------------------
 
 
-async def main() -> dict[str, Path]:
+async def main(*, allow_live: bool = False) -> dict[str, Path]:
     cred_paths = generate_credential_reports()
-    provider_paths = await generate_provider_reports()
-    smoke_paths = await generate_smoke_reports()
+    provider_paths = await generate_provider_reports(allow_live=allow_live)
+    smoke_paths = await generate_smoke_reports(allow_live=allow_live)
     return {**cred_paths, **provider_paths, **smoke_paths}
 
 

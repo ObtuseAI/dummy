@@ -67,9 +67,26 @@ class BookState:
         self.seq: int | None = None
         self.updated_at: str | None = None
 
+    @staticmethod
+    def _aggregate_levels(raw: Any) -> dict[int, float]:
+        """Aggregate duplicate price levels instead of silently overwriting."""
+        levels: dict[int, float] = {}
+        for item in raw or []:
+            if not isinstance(item, (list, tuple)) or len(item) < 2:
+                continue
+            try:
+                price = int(item[0])
+                count = float(item[1])
+            except (TypeError, ValueError):
+                continue
+            if not 1 <= price <= 99 or count <= 0:
+                continue
+            levels[price] = levels.get(price, 0.0) + count
+        return levels
+
     def apply_snapshot(self, msg: dict[str, Any]) -> None:
-        self.yes = {int(p): float(c) for p, c in msg.get("yes", []) if float(c) > 0}
-        self.no = {int(p): float(c) for p, c in msg.get("no", []) if float(c) > 0}
+        self.yes = self._aggregate_levels(msg.get("yes", []))
+        self.no = self._aggregate_levels(msg.get("no", []))
         self.seq = msg.get("seq")
         self._stamp()
 
@@ -102,9 +119,14 @@ class BookState:
     def best_no_ask(self) -> int | None:
         return (100 - max(self.yes)) if self.yes else None
 
-    def quote(self) -> dict[str, int | float | None]:
+    def quote(self) -> dict[str, Any]:
         yes_bid = self.best_yes_bid()
         no_bid = self.best_no_bid()
+        # Kalshi publishes YES and NO bids. Buying YES consumes NO bids at
+        # complement prices; buying NO consumes YES bids. Preserve the full
+        # executable ask ladders for depth/VWAP-aware presubmit sizing.
+        yes_ask_levels = sorted((100 - price, count) for price, count in self.no.items())
+        no_ask_levels = sorted((100 - price, count) for price, count in self.yes.items())
         return {
             "yes_bid": yes_bid,
             "yes_ask": self.best_yes_ask(),
@@ -112,6 +134,13 @@ class BookState:
             "no_ask": self.best_no_ask(),
             "yes_bid_size": self.yes.get(yes_bid) if yes_bid is not None else None,
             "no_bid_size": self.no.get(no_bid) if no_bid is not None else None,
+            "yes_ask_size": self.no.get(no_bid) if no_bid is not None else None,
+            "no_ask_size": self.yes.get(yes_bid) if yes_bid is not None else None,
+            "yes_ask_levels": [list(level) for level in yes_ask_levels],
+            "no_ask_levels": [list(level) for level in no_ask_levels],
+            # Local receipt time, not a fabricated venue event timestamp.
+            "book_received_at": self.updated_at,
+            "book_sequence": self.seq,
         }
 
 
@@ -185,15 +214,15 @@ class KalshiLiveBook:
     def stop(self) -> None:
         self._running = False
 
-    def quote(self, ticker: str) -> dict[str, int | float | None] | None:
+    def quote(self, ticker: str) -> dict[str, Any] | None:
         book = self.books.get(ticker)
         return book.quote() if book else None
 
 
 def fresh_best_quote(
     ticker: str, fetch_orderbook: Callable[[str], dict[str, Any]] | None = None,
-) -> dict[str, int | float | None] | None:
-    """Synchronous REST book read → best quote, for pre-submit re-pricing."""
+) -> dict[str, Any] | None:
+    """Synchronous REST read -> timestamped quote plus executable ask depth."""
     if fetch_orderbook is None:
         from kalshi.presubmit import default_fetch_orderbook
 

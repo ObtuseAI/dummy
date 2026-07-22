@@ -5,8 +5,26 @@ def test_firewall_rehearsal_report_passes():
     from archive.report_scripts.generate_v5_reports import generate_firewall_rehearsal_report_v2
     report = asyncio.run(generate_firewall_rehearsal_report_v2())
     assert report["verdict"] == "PASS"
+    assert report["verdict_scope"] == "LOCAL_SAFETY_REHEARSAL_ONLY"
+    assert report["execution_ready"] is False
     assert report["all_block_tests_passed"] is True
     assert report["live_submit_enabled"] is False
+    assert report["mandatory_submit_gate_blocked"] is True
+    assert report["mandatory_submit_rejected_by"] == "autonomy_risk_state"
+    assert report["model_influence_attestation_verified"] is True
+    assert (
+        report["model_influence_attestation_reason"]
+        == "quant_only_probability_attested"
+    )
+    assert report["block_tests"]["missing_model_influence_attestation"] is True
+    assert (
+        report["block_reasons"]["missing_model_influence_attestation"]
+        == "model_influence_attestation_missing"
+    )
+    assert report["broker_contacted"] is False
+    assert report["client_methods_called"] == []
+    assert report["no_adapter_or_broker_call"] is True
+    assert report["fresh_sink_checks_required"] is True
 
 
 def test_autonomous_live_capped_path_report():

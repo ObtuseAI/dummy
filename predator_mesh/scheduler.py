@@ -59,6 +59,10 @@ class MeshScheduler:
         shared_state: dict[str, Any] = {}
 
         semaphore = asyncio.Semaphore(self.max_concurrency)
+        dependency_events = {
+            getattr(lane, "name", "unknown"): asyncio.Event() for lane in lanes
+        }
+        dependency_states: dict[str, LaneState] = {}
         # Sort by priority rank descending.
         ordered = sorted(
             lanes,
@@ -67,15 +71,37 @@ class MeshScheduler:
         )
 
         async def _run_lane(lane: Any) -> MeshResult:
-            async with semaphore:
-                return await self._execute_lane(
-                    lane=lane,
-                    budget=budget,
-                    timeout=timeout,
-                    ledger=ledger,
-                    run_id=run_id,
-                    shared_state=shared_state,
-                )
+            lane_name = getattr(lane, "name", "unknown")
+            dependencies = tuple(getattr(lane, "dependencies", ()) or ())
+            try:
+                for dependency in dependencies:
+                    event = dependency_events.get(dependency)
+                    if event is None:
+                        return MeshResult(
+                            lane_name=lane_name,
+                            state=LaneState.BLOCKED,
+                            error=f"missing dependency: {dependency}",
+                        )
+                    await event.wait()
+                    if dependency_states.get(dependency) != LaneState.COMPLETED:
+                        return MeshResult(
+                            lane_name=lane_name,
+                            state=LaneState.BLOCKED,
+                            error=f"dependency did not complete: {dependency}",
+                        )
+                async with semaphore:
+                    result = await self._execute_lane(
+                        lane=lane,
+                        budget=budget,
+                        timeout=timeout,
+                        ledger=ledger,
+                        run_id=run_id,
+                        shared_state=shared_state,
+                    )
+                    dependency_states[lane_name] = result.state
+                    return result
+            finally:
+                dependency_events[lane_name].set()
 
         wrapper_tasks = [asyncio.create_task(_run_lane(lane)) for lane in ordered]
         deadline = timeout.cycle_timeout_s

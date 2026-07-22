@@ -12,6 +12,7 @@ fabricated ~50c mid on an unquoted strike is not a market opinion, and
 "beating" it was the audit's largest evidence contamination. No honest quote
 → abstain, so junk books yield no anchor, no benchmark, and no trust movement.
 """
+
 from __future__ import annotations
 
 from autonomy.ontology import MarketView, Signal
@@ -31,7 +32,9 @@ class MarketPriorSignal:
         mid = (market.yes_bid + market.yes_ask) / 2.0
         spread = market.yes_ask - market.yes_bid
         # Thin books are weak anchors; encode that in the uncertainty.
-        thinness = 0.0 if market.volume >= 1000 else (0.15 if market.volume >= 100 else 0.3)
+        thinness = (
+            0.0 if market.volume >= 1000 else (0.15 if market.volume >= 100 else 0.3)
+        )
         uncertainty = min(0.5, spread / 100.0 + thinness)
         return Signal(
             source=self.name,
@@ -39,5 +42,13 @@ class MarketPriorSignal:
             probability_yes=min(0.995, max(0.005, implied)),
             uncertainty=max(0.02, uncertainty),
             rationale=f"book mid {mid:.1f}c spread {spread}c volume {market.volume}",
-            features={"mid": mid, "spread": spread, "volume": market.volume},
+            features={
+                "mid": mid,
+                "spread": spread,
+                "volume": market.volume,
+                "close_time": market.close_time,
+                "market_status": market.status,
+                "fetched_at": market.fetched_at,
+                "vertical": market.vertical.value,
+            },
         )

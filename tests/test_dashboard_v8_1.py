@@ -7,57 +7,41 @@ from fastapi.testclient import TestClient
 from dashboard.backend.main import app
 
 
-async def _mock_resolve(self, provider_name: str, *args, **kwargs):
-    from model_router.resolver import ProviderResolutionResult
+def test_v8_1_model_provider_resolution_is_configuration_only():
+    client = TestClient(app)
+    # A dashboard GET must not instantiate or invoke the network resolver.
+    with patch("model_router.resolver.ModelProviderResolver.resolve") as resolve:
+        response = client.get("/api/v8/model-provider-resolution")
+    assert response.status_code == 200, response.text
+    resolve.assert_not_called()
+    data = response.json()
+    assert data["hybrid_providers"] == [
+        "gemini_3_6_flash",
+        "gpt_5_6_luna",
+        "claude_sonnet_5",
+        "glm_5_2",
+    ]
+    assert data["data_status"] == "configuration_only_no_provider_contact"
+    assert data["provider_contacted"] is False
+    assert data["live_model_calls_enabled"] is False
 
-    if provider_name == "deepseek_v4_flash":
-        return ProviderResolutionResult(
-            provider_name="deepseek_v4_flash",
-            status="LIVE_PROVEN",
-            api_base="https://api.deepseek.com",
-            api_key_env="DEEPSEEK_API_KEY",
-            configured_model="deepseek-chat",
-            resolved_model="deepseek-chat",
-            resolved_by="model_list",
-        )
-    return ProviderResolutionResult(
-        provider_name="minimax_m3",
-        status="OPERATOR_MODEL_CONFIG_REQUIRED",
-        api_base="https://api.minimax.chat",
-        api_key_env="MINIMAX_API_KEY",
-        configured_model="minimax-01",
-        error_category="MODEL_NOT_FOUND",
-        error_detail="all aliases unresolved",
+
+def test_v8_1_model_provider_resolution_reports_exact_active_models():
+    data = TestClient(app).get("/api/v8/model-provider-resolution").json()
+    providers = data["providers"]
+    assert providers["claude_sonnet_5"]["model_name"] == "anthropic/claude-sonnet-5"
+    assert providers["gpt_5_6_luna"]["model_name"] == "openai/gpt-5.6-luna"
+    assert providers["glm_5_2"]["model_name"] == "z-ai/glm-5.2"
+    assert providers["gemini_3_6_flash"]["model_name"] == "google/gemini-3.6-flash"
+    assert all(
+        provider["status"] == "CONFIGURED_NOT_PROBED_BY_DASHBOARD"
+        for provider in providers.values()
     )
 
 
-def test_v8_1_model_provider_resolution_endpoint_returns_200():
-    client = TestClient(app)
-    with patch("dashboard.backend.main.ModelProviderResolver.resolve", new=_mock_resolve):
-        r = client.get("/api/v8/model-provider-resolution")
-    assert r.status_code == 200, r.text
-    data = r.json()
-    assert "deepseek_v4_flash" in data
-    assert "minimax_m3" in data
-    assert "repair_recommendation_path" in data
-
-
-def test_v8_1_model_provider_resolution_redacts_keys():
-    client = TestClient(app)
-    with patch("dashboard.backend.main.ModelProviderResolver.resolve", new=_mock_resolve):
-        r = client.get("/api/v8/model-provider-resolution")
-    assert r.status_code == 200
-    text = str(r.json())
-    assert "sk-" not in text
-    assert "BEGIN" not in text
-    assert "DEEPSEEK_API_KEY" in text  # env name is fine
-    assert "MINIMAX_API_KEY" in text
-
-
-def test_v8_1_model_provider_resolution_status_values():
-    client = TestClient(app)
-    with patch("dashboard.backend.main.ModelProviderResolver.resolve", new=_mock_resolve):
-        r = client.get("/api/v8/model-provider-resolution")
-    data = r.json()
-    assert data["deepseek_v4_flash"]["status"] == "LIVE_PROVEN"
-    assert data["minimax_m3"]["status"] == "OPERATOR_MODEL_CONFIG_REQUIRED"
+def test_v8_1_model_provider_resolution_never_returns_secret_values(monkeypatch):
+    monkeypatch.setenv("OPENROUTER_API_KEY", "sk-dashboard-secret-value")
+    response = TestClient(app).get("/api/v8/model-provider-resolution")
+    text = response.text
+    assert "sk-dashboard-secret-value" not in text
+    assert "OPENROUTER_API_KEY" in text

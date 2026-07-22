@@ -20,7 +20,7 @@ class ForecastRecord(BaseModel):
 class SettlementRecord(BaseModel):
     market_ticker: str
     contract_ticker: str
-    outcome: int  # 0 or 1
+    outcome: int = Field(ge=0, le=1)
     settled_at: datetime
     source: str
 
@@ -50,6 +50,8 @@ class ForecastRecordV2(BaseModel):
     forecast_id: str
     market_ticker: str
     contract_ticker: str
+    category: str | None = None
+    horizon: str | None = None
     model_route: str
     market_implied_probability: Decimal
     dummy_probability: Decimal
@@ -80,6 +82,7 @@ class CalibrationMetricsV2(BaseModel):
     brier_score: float | None = None
     log_loss: float | None = None
     expected_calibration_error: float | None = None
+    maximum_calibration_error: float | None = None
     market_implied_delta: float | None = None
     model_disagreement_score: float | None = None
     confidence_bucket_accuracy: dict[str, float] = Field(default_factory=dict)

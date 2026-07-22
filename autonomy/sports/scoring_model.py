@@ -29,16 +29,23 @@ def _norm_cdf(z: float) -> float:
 
 
 class LakeScoringModel:
-    def __init__(self, store: SportsHistoryStore, league: str) -> None:
+    def __init__(
+        self, store: SportsHistoryStore, league: str, *,
+        require_known_availability: bool = False,
+    ) -> None:
         self.store = store
         self.league = league
+        self.require_known_availability = require_known_availability
         self.home_edge, self.sigma_margin, self.sigma_total = _LEAGUE_PARAMS.get(
             league, (2.0, 12.0, 14.0))
 
     def _rates(self, team: str, as_of: str, n: int = 200) -> tuple[float, float, int] | None:
         """(avg scored, avg allowed, games) from the team's completed games
         before ``as_of``. None if no history."""
-        games = self.store.team_form(team, as_of, league=self.league, n=n)
+        games = self.store.team_form(
+            team, as_of, league=self.league, n=n,
+            require_known_availability=self.require_known_availability,
+        )
         if not games:
             return None
         scored = allowed = 0.0

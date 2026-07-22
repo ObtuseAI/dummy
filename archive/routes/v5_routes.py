@@ -7,12 +7,13 @@ import os
 from pathlib import Path
 from typing import Any
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 
 from core.config_loader import load_caps
 from core.ontology import AccountMode, OrderBook, OrderBookLevel
 from core.secret_guard import redact
 from core.state import STATE
+from dashboard.backend.operator_auth import require_operator
 from forecasting.engine import ForecastEngine
 from kalshi.live_data import KalshiRealReadOnly
 from strategies.scan import StrategyScanner
@@ -193,7 +194,7 @@ async def strategies_scan(market_ticker: str = "MKT", contract_ticker: str = "MK
     }
 
 
-@router.get("/firewall/rehearse")
+@router.get("/firewall/rehearse", dependencies=[Depends(require_operator)])
 async def firewall_rehearse(market_ticker: str = "MKT", contract_ticker: str = "MKT-YES") -> dict[str, Any]:
     if STATE.mode != AccountMode.AUTONOMOUS_LIVE_CAPPED:
         return {"status": "blocked", "reason": "Mode is not AUTONOMOUS_LIVE_CAPPED", "mode": STATE.mode.value}

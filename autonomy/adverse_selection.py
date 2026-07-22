@@ -632,7 +632,10 @@ def adverse_selection_report(conn: sqlite3.Connection) -> dict[str, Any]:
             "taker_full_surface_brier_skill_vs_market": full_metrics.get("brier_skill_vs_market"),
             "maker_realized_net_pnl_cents": maker_realized.get("net_pnl_cents"),
             "maker_realized_win_rate": maker_realized.get("win_rate"),
-            "taker_full_surface_net_pnl_cents_per_contract": taker_all.get("net_pnl_cents"),
+            "taker_full_surface_net_pnl_cents": taker_all.get("net_pnl_cents"),
+            "taker_full_surface_mean_pnl_cents_per_contract": taker_all.get(
+                "average_pnl_cents"
+            ),
             "taker_full_surface_win_rate": taker_all.get("win_rate"),
             "fill_vs_nofill_brier_gap": fill_delta.get("filled_minus_unfilled_brier"),
         },

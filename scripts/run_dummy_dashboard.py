@@ -10,6 +10,7 @@ task. It has no route to broker submission, production weights, risk, or capital
 from __future__ import annotations
 
 import argparse
+import os
 import sys
 from pathlib import Path
 
@@ -32,8 +33,8 @@ from autonomy.dashboard import build_app  # noqa: E402
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--port", type=int, default=8787)
-    parser.add_argument("--host", default="127.0.0.1")
+    parser.add_argument("--port", type=int, default=int(os.environ.get("DUMMY_DASHBOARD_PORT", "8787")))
+    parser.add_argument("--host", default=os.environ.get("DUMMY_DASHBOARD_HOST", "127.0.0.1"))
     args = parser.parse_args()
     import uvicorn
 

@@ -30,6 +30,7 @@ from core.ontology import (
     OrderBookLevel,
 )
 from core.state import DummyState
+from forecasting.model_influence_attestation import build_model_influence_attestation
 from live_firewall.exposure_tracker import ExposureTracker
 from live_firewall.firewall import (
     REJECTED_ADAPTERS,
@@ -92,16 +93,24 @@ def _make_forecast() -> Forecast:
 
 
 def _make_request(adapter_name: str) -> LiveOrderRequest:
+    forecast = _make_forecast()
+    request_fields = {
+        "proposal_id": "p1",
+        "market_ticker": "MARKET",
+        "contract_ticker": "MARKET-YES",
+        "side": "yes",
+        "price_cents": 50,
+        "size": 1,
+        "strategy_proof_reference": "sp1",
+        "forecast_proof_reference": forecast.proof_reference,
+        "adapter_name": adapter_name,
+    }
     return LiveOrderRequest(
-        proposal_id="p1",
-        market_ticker="MARKET",
-        contract_ticker="MARKET-YES",
-        side="yes",
-        price_cents=50,
-        size=1,
-        strategy_proof_reference="sp1",
-        forecast_proof_reference="fp1",
-        adapter_name=adapter_name,
+        **request_fields,
+        model_influence_attestation=build_model_influence_attestation(
+            forecast,
+            request_fields,
+        ),
     )
 
 
@@ -153,7 +162,7 @@ def test_import(record):
 
 
 @pytest.mark.parametrize("record", PROMOTED_RECORDS, ids=lambda r: r["adapter_name"])
-def test_schema_conversion(record):
+def test_scaffold_abstains_without_upstream_integration(record):
     module = __import__(f"adapters.promoted.{record['module_name']}", fromlist=[record["class_name"]])
     cls = getattr(module, record["class_name"])
     adapter = cls()
@@ -165,9 +174,38 @@ def test_schema_conversion(record):
         "book": _make_book(),
     }
     forecast = adapter.to_native_forecast(raw)
-    assert isinstance(forecast, Forecast)
-    assert forecast.market_ticker == "MARKET"
-    assert forecast.contract_ticker == "MARKET-YES"
+    assert forecast is None
+    assert adapter.INTEGRATION_STATUS == "scaffold_only"
+    assert adapter.UPSTREAM_INTEGRATION_VERIFIED is False
+    assert adapter.PRODUCTION_CAPABILITY is False
+    assert adapter.PREDICTION_AUTHORITY is False
+    assert adapter.EXECUTION_AUTHORITY is False
+
+
+@pytest.mark.parametrize(
+    "record",
+    [r for r in PROMOTED_RECORDS if r["passthrough_model_zoo"]],
+    ids=lambda r: r["adapter_name"],
+)
+def test_model_zoo_shell_never_claims_tested_capability(record):
+    module = __import__(f"adapters.promoted.{record['module_name']}", fromlist=[record["class_name"]])
+    adapter = getattr(module, record["class_name"])()
+    assert adapter.PASSTHROUGH_MODEL_ZOO is True
+    assert adapter.TEST_STATUS == "pending_adapter_specific_tests"
+    assert adapter.PRODUCTION_CAPABILITY is False
+
+
+@pytest.mark.parametrize(
+    "record",
+    [r for r in PROMOTED_RECORDS if r["data_only"]],
+    ids=lambda r: r["adapter_name"],
+)
+def test_weather_and_commodities_remain_data_only(record):
+    module = __import__(f"adapters.promoted.{record['module_name']}", fromlist=[record["class_name"]])
+    adapter = getattr(module, record["class_name"])()
+    assert adapter.DATA_ONLY is True
+    assert adapter.to_native_forecast({"book": _make_book()}) is None
+    assert adapter.PREDICTION_AUTHORITY is False
 
 
 @pytest.mark.parametrize("record", PROMOTED_RECORDS, ids=lambda r: r["adapter_name"])
@@ -200,7 +238,7 @@ def test_firewall_routing(record):
         "book": _make_book(),
     }
     forecast = adapter.to_native_forecast(raw)
-    assert isinstance(forecast, Forecast)
+    assert forecast is None
     # Adapters must not expose broker client methods.
     assert not hasattr(adapter, "create_order")
     assert not hasattr(adapter, "submit_order")
@@ -243,7 +281,7 @@ def write_adapter_test_report(passed: int, failed: int, errors: int, path: Path 
         "test_file": str(TEST_PATH),
         "required_test_types": [
             "import",
-            "schema_conversion",
+            "scaffold_abstention",
             "no_secret_leak",
             "no_direct_order_path",
             "firewall_routing",
@@ -253,8 +291,21 @@ def write_adapter_test_report(passed: int, failed: int, errors: int, path: Path 
             "passed": passed,
             "failed": failed,
             "errors": errors,
-            "overall": "PASS" if failed == 0 and errors == 0 else "FAIL",
+            "overall": (
+                "STRUCTURAL_PASS_CAPABILITY_UNVERIFIED"
+                if failed == 0 and errors == 0
+                else "STRUCTURAL_FAIL"
+            ),
         },
+        "adapter_specific_upstream_tests_passed": False,
+        "production_capability": False,
+        "prediction_authority": False,
+        "execution_authority": False,
+        "incorporation_authority": False,
+        "notes": (
+            "These tests cover generated shell structure and isolation only. "
+            "They do not exercise any upstream repository implementation."
+        ),
     }
     report_path.write_text(json.dumps(report, indent=2, default=str))
     return report_path

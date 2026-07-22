@@ -10,7 +10,7 @@ from __future__ import annotations
 import asyncio
 import json
 import time
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -22,6 +22,10 @@ HEARTBEAT_PATH = RUNTIME_DIR / "heartbeat.json"
 CYCLE_LOG_PATH = RUNTIME_DIR / "cycles.jsonl"
 RECAL_STAMP_PATH = RUNTIME_DIR / "last_recalibration.json"
 RECAL_INTERVAL_HOURS = 6.0
+
+
+def _utc_now_iso() -> str:
+    return datetime.now(timezone.utc).isoformat()
 
 
 def _maybe_recalibrate(now_iso: str) -> dict[str, Any] | None:
@@ -94,8 +98,19 @@ def run_one_cycle(now_iso: str, mode: SessionMode = SessionMode.SHADOW) -> dict[
     from autonomy.session import build_brain
 
     if kill_switch_active():
-        record = {"status": "HALTED_KILL_SWITCH", "at": now_iso}
-        _write_heartbeat({**record, "alive": True})
+        completed_at = _utc_now_iso()
+        record = {
+            "status": "HALTED_KILL_SWITCH",
+            "at": now_iso,
+            "completed_at": completed_at,
+        }
+        _write_heartbeat({
+            "alive": True,
+            "last_cycle_at": completed_at,
+            "last_cycle_started_at": now_iso,
+            "last_status": record["status"],
+            "mode": mode.value,
+        })
         return record
 
     try:
@@ -126,10 +141,17 @@ def run_one_cycle(now_iso: str, mode: SessionMode = SessionMode.SHADOW) -> dict[
     except Exception:
         ledger_health = None
 
+    # ``now_iso`` is the cycle start. Long production cycles can take several
+    # minutes, so publishing it as the heartbeat time makes a just-completed
+    # healthy cycle appear stale. Preserve start time for duration forensics and
+    # use the actual completion time for liveness/freshness consumers.
+    completed_at = _utc_now_iso()
+    record["completed_at"] = completed_at
     _append_cycle_log(record)
     _write_heartbeat({
         "alive": True,
-        "last_cycle_at": now_iso,
+        "last_cycle_at": completed_at,
+        "last_cycle_started_at": now_iso,
         "last_status": record.get("status"),
         "last_orders_placed": record.get("orders_placed"),
         "last_signals": record.get("signals_generated"),
@@ -154,9 +176,11 @@ def run_one_cycle(now_iso: str, mode: SessionMode = SessionMode.SHADOW) -> dict[
             risk_state = json.loads(risk_path.read_text(encoding="utf-8"))
         gate_ready = False
         try:
-            from autonomy.session import canary_readiness
+            from live_firewall.firewall import live_execution_authority_status
 
-            gate_ready = bool(canary_readiness(check_balance=False).get("ready"))
+            gate_ready = bool(
+                live_execution_authority_status().get("execution_authority")
+            )
         except Exception:
             gate_ready = False
         backtest_freshness = None

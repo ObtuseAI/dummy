@@ -7,8 +7,9 @@ happen.
 """
 from __future__ import annotations
 
-import os
 from datetime import datetime, timezone
+from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
+import os
 from typing import Any, Callable
 
 from autonomy.fees import kalshi_maker_fee_cents, kalshi_taker_fee_cents
@@ -18,16 +19,50 @@ from autonomy.ontology import MarketView, OutcomeKind, TradeOutcome
 STALE_ORDER_MINUTES = 45
 
 
+def _decimal_or_none(value: Any) -> Decimal | None:
+    if value is None or value == "":
+        return None
+    try:
+        parsed = Decimal(str(value))
+    except (InvalidOperation, TypeError, ValueError):
+        return None
+    return parsed if parsed.is_finite() else None
+
+
+def _dollar_amount(
+    payload: dict[str, Any], dollars_key: str, cents_key: str,
+) -> Decimal | None:
+    """Read one cumulative monetary field, preferring subpenny dollars."""
+    dollars = _decimal_or_none(payload.get(dollars_key))
+    if dollars is not None:
+        return dollars
+    cents = _decimal_or_none(payload.get(cents_key))
+    return None if cents is None else cents / Decimal(100)
+
+
+def _whole_cents(amount_dollars: Decimal | None) -> int | None:
+    if amount_dollars is None:
+        return None
+    return int((amount_dollars * 100).quantize(Decimal("1"), rounding=ROUND_HALF_UP))
+
+
 def _public_base() -> str:
     base = os.environ.get("KALSHI_API_BASE", "https://api.elections.kalshi.com").rstrip("/")
     version = os.environ.get("KALSHI_API_VERSION", "trade-api/v2").strip("/")
     return f"{base}/{version}"
 
 
-def default_fetch_market_result(ticker: str) -> dict[str, Any]:
+def default_fetch_market_result(
+    ticker: str,
+    *,
+    timeout_seconds: float = 15.0,
+) -> dict[str, Any]:
     import httpx
 
-    response = httpx.get(f"{_public_base()}/markets/{ticker}", timeout=15)
+    response = httpx.get(
+        f"{_public_base()}/markets/{ticker}",
+        timeout=max(0.1, float(timeout_seconds)),
+    )
     response.raise_for_status()
     market = response.json().get("market", {})
     return market if isinstance(market, dict) else {}
@@ -171,9 +206,13 @@ class Reconciler:
             if not order_id or order_id.startswith("shadow-"):
                 continue
             try:
-                status = self.order_status_fn(order_id)
+                status_payload = self.order_status_fn(order_id)
             except Exception:
                 continue
+            if not isinstance(status_payload, dict):
+                continue
+            wrapped = status_payload.get("order")
+            status = wrapped if isinstance(wrapped, dict) else status_payload
             state = str(status.get("status", "")).lower()
             try:
                 filled = int(float(status.get("fill_count_fp") or status.get("fill_count")
@@ -182,20 +221,41 @@ class Reconciler:
                 filled = 0
             prior_filled = int(open_decision.get("filled_count") or 0)
             created = str(status.get("created_time", ""))
+            fill_price, fill_detail = self._broker_fill_evidence(
+                open_decision, status, filled
+            )
             if state in ("executed", "filled") or filled >= int(open_decision["count"]):
-                outcomes.append(self._outcome(open_decision, OutcomeKind.FILLED, order_id, filled))
+                outcomes.append(self._outcome(
+                    open_decision, OutcomeKind.FILLED, order_id, filled,
+                    {"state": state or "filled", **fill_detail}, fill_price,
+                ))
             elif state in ("canceled", "cancelled"):
-                outcomes.append(self._outcome(open_decision, OutcomeKind.CANCELED, order_id, filled))
+                outcomes.append(self._outcome(
+                    open_decision, OutcomeKind.CANCELED, order_id, filled,
+                    {"state": state, **fill_detail}, fill_price,
+                ))
             elif filled > prior_filled:
                 outcomes.append(self._outcome(
                     open_decision, OutcomeKind.PARTIALLY_FILLED, order_id, filled,
-                    {"state": state or "resting", "new_cumulative_fill_count": filled},
+                    {
+                        "state": state or "resting",
+                        "new_cumulative_fill_count": filled,
+                        **fill_detail,
+                    },
+                    fill_price,
                 ))
             elif state == "resting" and self._is_stale(created) and self.cancel_fn is not None:
                 try:
                     self.cancel_fn(order_id)
-                    outcomes.append(self._outcome(open_decision, OutcomeKind.CANCELED, order_id, filled,
-                                                  {"reason": "stale_maker_quote_auto_cancel"}))
+                    role = str(open_decision.get("liquidity_role") or "maker")
+                    reason = (
+                        "stale_taker_remainder_auto_cancel"
+                        if role == "taker" else "stale_maker_quote_auto_cancel"
+                    )
+                    outcomes.append(self._outcome(
+                        open_decision, OutcomeKind.CANCELED, order_id, filled,
+                        {"reason": reason, **fill_detail}, fill_price,
+                    ))
                 except Exception:
                     pass
         for outcome in outcomes:
@@ -208,13 +268,12 @@ class Reconciler:
         *,
         now: datetime | None = None,
     ) -> list[TradeOutcome]:
-        """Conservatively fill shadow maker orders only after an observed cross.
+        """Conservatively witness shadow maker and taker fills.
 
-        A pending BUY YES at 40c is considered filled only when a later market
-        snapshot offers YES at 40c or better. The simulator books the original
-        limit price (not the potentially better observed ask), avoiding
-        optimistic price improvement. Uncrossed quotes expire on the same TTL
-        as live orders and never become fictional positions or P&L.
+        Maker fills require a later cross/print/queue witness. Taker fills
+        require a later executable ask witness. Both book the submitted limit
+        rather than optimistic price improvement, and both expire without P&L
+        when no witness arrives.
         """
         from autonomy.executor import MAX_QUEUE_AHEAD_CONTRACTS, order_ttl_seconds
 
@@ -232,8 +291,59 @@ class Reconciler:
             ttl_seconds = order_ttl_seconds(str(pending["market_ticker"]))
             expires = created.timestamp() + ttl_seconds
             submission = pending.get("submission_detail") or {}
+            liquidity_role = str(pending.get("liquidity_role") or "maker").lower()
+            taker_depth_evidence: dict[str, Any] | None = None
+            if liquidity_role == "taker":
+                reprice = submission.get("execution_reprice")
+                if not isinstance(reprice, dict):
+                    reprice = {}
+                candidate = submission.get("executable_liquidity") or reprice.get(
+                    "executable_liquidity"
+                )
+                evidence_error: str | None = None
+                if not isinstance(candidate, dict):
+                    evidence_error = "missing_executable_depth_evidence"
+                else:
+                    from autonomy.executable_liquidity import LIQUIDITY_EVIDENCE_VERSION
+
+                    if candidate.get("liquidity_evidence_version") != LIQUIDITY_EVIDENCE_VERSION:
+                        evidence_error = "invalid_executable_depth_version"
+                    elif candidate.get("fill_status") != "unfilled_plan_only":
+                        evidence_error = "invalid_executable_depth_fill_status"
+                    elif not candidate.get("quote_received_at"):
+                        evidence_error = "missing_executable_depth_receipt"
+                    else:
+                        try:
+                            evidence_count = int(candidate.get("executable_count"))
+                            evidence_limit = int(candidate.get("submitted_limit_price_cents"))
+                        except (TypeError, ValueError):
+                            evidence_error = "invalid_executable_depth_values"
+                        else:
+                            if evidence_count != int(pending["count"]):
+                                evidence_error = "executable_depth_count_mismatch"
+                            elif evidence_limit != int(pending["price_cents"]):
+                                evidence_error = "executable_depth_limit_mismatch"
+                if evidence_error is not None:
+                    if age_seconds >= ttl_seconds:
+                        outcomes.append(TradeOutcome(
+                            decision_id=str(pending["decision_id"]),
+                            market_ticker=str(pending["market_ticker"]),
+                            kind=OutcomeKind.EXPIRED,
+                            order_id=str(pending.get("order_id") or ""),
+                            fill_count=0,
+                            fill_price_cents=None,
+                            pnl_cents=None,
+                            broker_contacted=False,
+                            detail={
+                                "reason": f"shadow_taker_{evidence_error}",
+                                "liquidity_role": "taker",
+                            },
+                        ))
+                    continue
+                taker_depth_evidence = candidate
             if (
-                submission.get("queue_snapshot_available")
+                liquidity_role == "maker"
+                and submission.get("queue_snapshot_available")
                 and float(submission.get("queue_ahead_contracts") or 0)
                     > MAX_QUEUE_AHEAD_CONTRACTS
             ):
@@ -255,16 +365,21 @@ class Reconciler:
                 continue
             detail: dict[str, Any] | None = None
             if now.timestamp() < expires:
-                detail = self._shadow_trade_fill(
-                    pending, int(created.timestamp()), int(min(now.timestamp(), expires)),
-                )
                 market = by_ticker.get(str(pending["market_ticker"]))
                 ask = None
                 if market is not None:
                     ask = market.yes_ask if pending["side"] == "yes" else market.no_ask
+                if liquidity_role == "maker":
+                    detail = self._shadow_trade_fill(
+                        pending, int(created.timestamp()), int(min(now.timestamp(), expires)),
+                    )
                 if detail is None and ask is not None and int(ask) <= int(pending["price_cents"]):
                     detail = {
-                        "reason": "shadow_maker_observed_cross",
+                        "reason": (
+                            "shadow_taker_observed_executable_ask"
+                            if liquidity_role == "taker"
+                            else "shadow_maker_observed_cross"
+                        ),
                         "observed_ask_cents": int(ask),
                         "fill_witness_at": now.isoformat(),
                         "conservative_fill_price_cents": int(pending["price_cents"]),
@@ -273,11 +388,21 @@ class Reconciler:
                 detail = self._shadow_candle_cross(
                     pending, int(created.timestamp()), int(min(now.timestamp(), expires))
                 )
+                if detail is not None and liquidity_role == "taker":
+                    detail["reason"] = "shadow_taker_intracycle_executable_ask"
             if detail is not None:
                 kind = OutcomeKind.FILLED
+                detail["liquidity_role"] = liquidity_role
+                detail["fill_price_source"] = "submitted_limit_conservative"
+                if taker_depth_evidence is not None:
+                    detail["executable_liquidity"] = taker_depth_evidence
+                    detail["simulated_fill_authority"] = "depth_haircut_plus_later_ask"
             elif age_seconds >= ttl_seconds:
                 kind = OutcomeKind.EXPIRED
-                detail = {"reason": "shadow_maker_ttl_expired_unfilled"}
+                detail = {
+                    "reason": f"shadow_{liquidity_role}_ttl_expired_unfilled",
+                    "liquidity_role": liquidity_role,
+                }
             else:
                 continue
             outcomes.append(TradeOutcome(
@@ -425,18 +550,113 @@ class Reconciler:
         except Exception:
             return False
 
+    def _broker_fill_evidence(
+        self,
+        open_decision: dict[str, Any],
+        status: dict[str, Any],
+        fill_count: int,
+    ) -> tuple[int | None, dict[str, Any]]:
+        """Derive weighted price, actual fees, and role from one broker status."""
+        if fill_count <= 0:
+            return None, {}
+
+        taker_cost = _dollar_amount(
+            status, "taker_fill_cost_dollars", "taker_fill_cost"
+        )
+        maker_cost = _dollar_amount(
+            status, "maker_fill_cost_dollars", "maker_fill_cost"
+        )
+        taker_fee = _dollar_amount(status, "taker_fees_dollars", "taker_fees")
+        maker_fee = _dollar_amount(status, "maker_fees_dollars", "maker_fees")
+        total_cost = sum(
+            (value for value in (taker_cost, maker_cost) if value is not None),
+            Decimal(0),
+        ) if taker_cost is not None or maker_cost is not None else None
+        total_fee = sum(
+            (value for value in (taker_fee, maker_fee) if value is not None),
+            Decimal(0),
+        ) if taker_fee is not None or maker_fee is not None else None
+
+        average_dollars = None
+        for key in ("average_fill_price", "average_fill_price_dollars", "avg_price_dollars"):
+            average_dollars = _decimal_or_none(status.get(key))
+            if average_dollars is not None:
+                break
+        fill_price_source = "broker_average_fill_price"
+        if average_dollars is None and total_cost is not None and total_cost > 0:
+            average_dollars = total_cost / Decimal(fill_count)
+            fill_price_source = "broker_fill_cost"
+        if average_dollars is not None:
+            fill_price = int(
+                (average_dollars * 100).quantize(Decimal("1"), rounding=ROUND_HALF_UP)
+            )
+        else:
+            raw_cents = _decimal_or_none(
+                status.get("avg_price_cents", status.get("avg_price"))
+            )
+            if raw_cents is not None:
+                fill_price = int(raw_cents.quantize(Decimal("1"), rounding=ROUND_HALF_UP))
+                fill_price_source = "broker_average_fill_price_cents"
+            else:
+                fill_price = int(open_decision["price_cents"])
+                fill_price_source = "submitted_limit_fallback"
+
+        taker_witnessed = taker_cost is not None and taker_cost > 0
+        maker_witnessed = maker_cost is not None and maker_cost > 0
+        if taker_witnessed and maker_witnessed:
+            liquidity_role = "mixed"
+            role_evidence = "broker_maker_and_taker_fill_cost"
+        elif taker_witnessed:
+            liquidity_role = "taker"
+            role_evidence = "broker_taker_fill_cost"
+        elif maker_witnessed:
+            liquidity_role = "maker"
+            role_evidence = "broker_maker_fill_cost"
+        else:
+            liquidity_role = str(open_decision.get("liquidity_role") or "maker").lower()
+            if liquidity_role not in {"maker", "taker", "mixed"}:
+                liquidity_role = "maker"
+            role_evidence = "submitted_role_fallback"
+
+        detail: dict[str, Any] = {
+            "liquidity_role": liquidity_role,
+            "liquidity_role_evidence": role_evidence,
+            "fill_price_source": fill_price_source,
+            "witnessed_fill_price_cents": fill_price,
+        }
+        fill_cost_cents = _whole_cents(total_cost)
+        execution_fee_cents = _whole_cents(total_fee)
+        if fill_cost_cents is not None:
+            detail["fill_cost_cents"] = fill_cost_cents
+            detail["fill_cost_dollars"] = str(total_cost)
+        if execution_fee_cents is not None:
+            detail["execution_fee_cents"] = execution_fee_cents
+            detail["execution_fee_dollars"] = str(total_fee)
+        return fill_price, detail
+
     def _outcome(self, open_decision: dict[str, Any], kind: OutcomeKind, order_id: str,
-                 fill_count: int, detail: dict[str, Any] | None = None) -> TradeOutcome:
+                 fill_count: int, detail: dict[str, Any] | None = None,
+                 fill_price_cents: int | None = None) -> TradeOutcome:
+        resolved_detail = dict(detail or {})
+        if fill_count > 0:
+            resolved_detail.setdefault(
+                "liquidity_role", str(open_decision.get("liquidity_role") or "maker")
+            )
+        resolved_price = (
+            int(fill_price_cents)
+            if fill_count > 0 and fill_price_cents is not None
+            else int(open_decision["price_cents"])
+        )
         return TradeOutcome(
             decision_id=str(open_decision["decision_id"]),
             market_ticker=str(open_decision["market_ticker"]),
             kind=kind,
             order_id=order_id,
             fill_count=fill_count,
-            fill_price_cents=int(open_decision["price_cents"]),
+            fill_price_cents=resolved_price,
             pnl_cents=None,
             broker_contacted=True,
-            detail=detail or {},
+            detail=resolved_detail,
         )
 
 
@@ -447,11 +667,25 @@ def settlement_pnl_cents(
     result_yes: bool,
     market_ticker: str | None = None,
     liquidity_role: str = "taker",
+    fee_cents: int | None = None,
+    fill_cost_cents: int | None = None,
 ) -> int:
-    """Realized P&L for confirmed fills, net of the applicable trading fee."""
+    """Realized P&L for confirmed fills, net of witnessed/applicable fees.
+
+    Broker-reported aggregate cost and fee take precedence when available.
+    Shadow and legacy fills fall back to their canonical maker/taker role; a
+    mixed or unknown role without witnessed fees is charged as taker so the
+    ledger cannot overstate performance.
+    """
     won = (side == "yes" and result_yes) or (side == "no" and not result_yes)
-    gross = (100 - price_cents) * count if won else -price_cents * count
-    if liquidity_role == "maker":
+    if fill_cost_cents is not None:
+        cost = max(0, int(fill_cost_cents))
+        gross = 100 * count - cost if won else -cost
+    else:
+        gross = (100 - price_cents) * count if won else -price_cents * count
+    if fee_cents is not None:
+        fee = max(0, int(fee_cents))
+    elif liquidity_role == "maker":
         fee = kalshi_maker_fee_cents(price_cents, count, market_ticker)
     else:
         fee = kalshi_taker_fee_cents(price_cents, count, market_ticker)

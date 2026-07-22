@@ -15,6 +15,7 @@ def no_creds(monkeypatch):
         "KALSHI_API_PRIVATE_KEY_PEM_PATH",
         "DEEPSEEK_API_KEY",
         "MINIMAX_API_KEY",
+        "OPENROUTER_API_KEY",
     ):
         monkeypatch.delenv(name, raising=False)
 
@@ -41,12 +42,36 @@ async def test_live_hybrid_forecast_proof_report(no_creds, tmp_path):
     assert len(proof["opinion_proof_references"]) == result["count"]
 
     for decision in proof["model_provider_decisions"]:
-        assert "deepseek_decision" in decision
-        assert "critique_decision" in decision
-        assert decision["deepseek_decision"]["task"] == ModelTask.FORECAST_OPINION.value
+        assert set(decision) == {
+            "market_ticker",
+            "contract_ticker",
+            "primary_forecast_decision",
+            "rapid_forecast_decision",
+            "no_trade_decision",
+            "critique_decision",
+            "risk_decision",
+            "thesis_decision",
+            "calibration_decision",
+        }
+        assert (
+            decision["primary_forecast_decision"]["task"]
+            == ModelTask.FORECAST_OPINION.value
+        )
+        assert (
+            decision["rapid_forecast_decision"]["task"]
+            == ModelTask.RAPID_FORECAST.value
+        )
+        assert (
+            decision["no_trade_decision"]["task"]
+            == ModelTask.NO_TRADE_REASON.value
+        )
         assert decision["critique_decision"]["task"] == ModelTask.STRATEGY_CRITIQUE.value
         assert decision["risk_decision"]["task"] == ModelTask.RISK_CRITIQUE.value
         assert decision["thesis_decision"]["task"] == ModelTask.MARKET_THESIS.value
+        assert (
+            decision["calibration_decision"]["task"]
+            == ModelTask.CALIBRATION_NOTE.value
+        )
 
 
 @pytest.mark.asyncio

@@ -98,7 +98,11 @@ def test_shadow_maker_requires_observed_cross_then_becomes_position(tmp_path):
     try:
         decision = _decision("d1", "KXBTC-26JUL10-T100")
         ledger.record_decision(decision)
-        outcome = asyncio.run(Executor(SessionMode.SHADOW).execute(decision))
+        outcome = asyncio.run(
+            Executor(SessionMode.SHADOW).execute(
+                decision, market=_market(decision.market_ticker, 41)
+            )
+        )
         ledger.record_outcome(outcome)
         reconciler = Reconciler(ledger, fetch_market_result=lambda _ticker: {})
 
@@ -124,7 +128,11 @@ def test_shadow_maker_expires_without_cross(tmp_path):
         created = (datetime.now(timezone.utc) - timedelta(hours=1)).isoformat()
         decision = _decision("d1", "KXBTC-26JUL10-T100", created_at=created)
         ledger.record_decision(decision)
-        ledger.record_outcome(asyncio.run(Executor(SessionMode.SHADOW).execute(decision)))
+        ledger.record_outcome(asyncio.run(
+            Executor(SessionMode.SHADOW).execute(
+                decision, market=_market(decision.market_ticker, 41)
+            )
+        ))
         updates = Reconciler(ledger).reconcile_shadow_orders(
             [_market(decision.market_ticker, 41)]
         )
@@ -140,7 +148,11 @@ def test_shadow_maker_detects_intracycle_candle_cross(tmp_path):
         created = (datetime.now(timezone.utc) - timedelta(minutes=10)).isoformat()
         decision = _decision("d1", "KXBTC-26JUL10-T100", created_at=created)
         ledger.record_decision(decision)
-        ledger.record_outcome(asyncio.run(Executor(SessionMode.SHADOW).execute(decision)))
+        ledger.record_outcome(asyncio.run(
+            Executor(SessionMode.SHADOW).execute(
+                decision, market=_market(decision.market_ticker, 43)
+            )
+        ))
 
         def candles(_series, _ticker, _start, end, _period):
             return [{
@@ -173,7 +185,7 @@ def test_shadow_maker_public_print_consumes_captured_queue(tmp_path):
             shadow_book_fn=lambda _ticker: {
                 "yes_dollars": [["0.4000", "3.00"]], "no_dollars": [],
             },
-        ).execute(decision)))
+        ).execute(decision, market=_market(decision.market_ticker, 43))))
         trade_time = (created_dt + timedelta(seconds=15)).isoformat().replace("+00:00", "Z")
         trades = [
             {"trade_id": "a", "created_time": trade_time, "count_fp": "2.00",
@@ -199,7 +211,11 @@ def test_shadow_maker_public_print_through_proves_fill_without_queue_snapshot(tm
         created_dt = datetime.now(timezone.utc) - timedelta(seconds=30)
         decision = _decision("d1", "KXBTC-26JUL10-T100", created_at=created_dt.isoformat())
         ledger.record_decision(decision)
-        ledger.record_outcome(asyncio.run(Executor(SessionMode.SHADOW).execute(decision)))
+        ledger.record_outcome(asyncio.run(
+            Executor(SessionMode.SHADOW).execute(
+                decision, market=_market(decision.market_ticker, 43)
+            )
+        ))
         trade = {
             "trade_id": "through", "created_time": (
                 created_dt + timedelta(seconds=15)
@@ -250,7 +266,11 @@ def test_shadow_bankroll_includes_only_verified_realized_pnl(tmp_path):
     try:
         decision = _decision("d1", "KXBTC-26JUL10-T100")
         ledger.record_decision(decision)
-        ledger.record_outcome(asyncio.run(Executor(SessionMode.SHADOW).execute(decision)))
+        ledger.record_outcome(asyncio.run(
+            Executor(SessionMode.SHADOW).execute(
+                decision, market=_market(decision.market_ticker, 41)
+            )
+        ))
         ledger.record_outcome(TradeOutcome(
             decision_id="d1", market_ticker=decision.market_ticker,
             kind=OutcomeKind.FILLED, order_id="shadow-d1", fill_count=1,
@@ -278,7 +298,11 @@ def test_unfilled_settlement_releases_order_without_pnl(tmp_path):
     try:
         decision = _decision("d1", "KXBTC-26JUL10-T100")
         ledger.record_decision(decision)
-        ledger.record_outcome(asyncio.run(Executor(SessionMode.SHADOW).execute(decision)))
+        ledger.record_outcome(asyncio.run(
+            Executor(SessionMode.SHADOW).execute(
+                decision, market=_market(decision.market_ticker, 41)
+            )
+        ))
         ledger.record_settlement(decision.market_ticker, True)
         brain = PredatorBrain(
             SessionMode.SHADOW, ledger, registry=None, scanner=None,
@@ -363,6 +387,12 @@ def test_source_grading_uses_decision_time_not_near_settlement_update(tmp_path):
             source="model", market_ticker=ticker, probability_yes=0.80,
             uncertainty=0.05, rationale="", created_at=early,
         ))
+        # Synthetic historical fixture: the early live opinions were durably
+        # received before the decision, not backfilled on today's test run.
+        ledger._conn.execute(
+            "UPDATE signals SET ingested_at=created_at WHERE market_ticker=?",
+            (ticker,),
+        )
         ledger.record_decision(_decision("d1", ticker, created_at=decision_time))
         # Near settlement the market catches up and the model degrades. These
         # are not the opinions that produced the decision and must not grade it.

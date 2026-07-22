@@ -8,18 +8,18 @@ to a premium, *living* finish (Wave-55):
     prefers-reduced-motion, paused when the tab is hidden);
   * an always-on pari-mutuel ticker tape that streams the live picks and
     mispricing across every scope, right-to-left, pausing under the pointer;
-  * a hero band with an animated radial ROI gauge and a bankroll sparkline;
+  * an outcome-first hero band for the cached live Kalshi account and controls;
   * split-flap flip counters that roll only when new data actually lands;
   * cards that tilt in 3D and catch a specular highlight under the cursor;
   * a Cmd/Ctrl-K command palette to jump to any scope from the keyboard;
-  * a phosphor-tube accent switcher (emerald / amber / cyan / violet, saved);
+  * a saved full-application theme switcher (emerald / amber / cyan / violet);
   * a faint shockwave that sweeps the board the moment a new snapshot lands;
   * hand-drawn SVG charts that draw themselves in and answer a hover crosshair.
 
 Left nav = Overview plus a Crypto and a Sports section listing their coins /
-leagues; the stage shows the overview (paper account, balance curve, promotion
-ladder) or a per-scope breakdown (graded accuracy, progression, model-vs-market,
-current picks) with the legacy surfaces folded into each scope's "Other data".
+leagues; the stage shows the live account/control overview or a per-scope
+breakdown (graded accuracy, progression, model-vs-market, current picks) with
+legacy research surfaces folded into each scope's "Other data".
 
 No build step, no CDN: served as one string, system fonts (Bahnschrift/Cascadia
 for tabular numerics), hand-drawn SVG, CSS-only motion + a tiny canvas loop.
@@ -33,10 +33,11 @@ terminal/phosphor treatment; motion tiers + chart specs from its motion/chart DB
 from __future__ import annotations
 
 DASHBOARD_HTML = r"""<!doctype html>
-<html lang="en" data-accent="emerald"><head>
+<html lang="en" data-theme="emerald" data-accent="emerald"><head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>DUMMY — the board</title>
+<title>DUMMY — operator board</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='16' fill='%23081711'/%3E%3Cpath d='M18 14h14c11 0 18 7 18 18S43 50 32 50H18V14zm11 9v18h3c6 0 9-3 9-9s-3-9-9-9h-3z' fill='%232fe38f'/%3E%3C/svg%3E">
 <style>
 :root{
   --bg:#04100a; --bg-1:#071811; --panel:#081c13; --panel-2:#0b2418; --panel-3:#0e2c1d;
@@ -44,31 +45,60 @@ DASHBOARD_HTML = r"""<!doctype html>
   --green:#2fe38f; --phos:#5cffab; --green-deep:#0f7a52;
   --amber:#ffc24d; --amber-deep:#8a5a12; --red:#ff6b7a; --cyan:#6fe0ff; --violet:#b79cff;
   --txt:#e8f6ef; --muted:#83a898; --faint:#537163;
-  /* accent = the phosphor "tube" colour; swaps the chrome, never the pos/neg semantics */
+  /* Theme surfaces change together; green/red remain stable win/loss semantics. */
   --acc:#2fe38f; --acc-2:#0f7a52; --acc-glow:rgba(77,255,160,.22); --acc-rgb:77,255,160;
+  --line-rgb:18,53,40; --secondary-rgb:111,224,255; --surface-rgb:8,28,19;
+  --card-top-rgb:8,28,19; --card-bottom-rgb:7,24,17;
+  --side-top-rgb:7,24,17; --side-bottom-rgb:4,16,10;
+  --tape-top-rgb:6,20,14; --tape-bottom-rgb:6,20,14; --overlay-rgb:2,8,5;
+  --mark-ink:#04140d;
   --mono:"Cascadia Mono","Consolas",ui-monospace,monospace;
   --disp:"Bahnschrift","DIN Alternate Bold","Segoe UI Semibold","Segoe UI",sans-serif;
   --body:"Segoe UI",system-ui,-apple-system,sans-serif;
   --s1:6px; --s2:10px; --s3:16px; --s4:24px; --r:14px;
   --ease:cubic-bezier(.2,.8,.2,1); --spring:cubic-bezier(.16,1.1,.3,1);
 }
-html[data-accent=amber] {--acc:#ffc24d;--acc-2:#7a4e12;--acc-glow:rgba(255,194,77,.22);--acc-rgb:255,194,77}
-html[data-accent=cyan]  {--acc:#6fe0ff;--acc-2:#12667a;--acc-glow:rgba(111,224,255,.22);--acc-rgb:111,224,255}
-html[data-accent=violet]{--acc:#b79cff;--acc-2:#4a3a8a;--acc-glow:rgba(183,156,255,.24);--acc-rgb:183,156,255}
+html[data-theme=amber]{
+  --bg:#120b03;--bg-1:#1a1106;--panel:#201408;--panel-2:#2b1a0a;--panel-3:#35200d;
+  --line:#4a3014;--line-2:#704a1d;--line-3:#956425;--glow:rgba(255,194,77,.20);
+  --txt:#fff4d8;--muted:#c0a677;--faint:#786646;--phos:#ffd56f;
+  --acc:#ffc24d;--acc-2:#7a4e12;--acc-glow:rgba(255,194,77,.22);--acc-rgb:255,194,77;
+  --line-rgb:74,48,20;--secondary-rgb:255,151,77;--surface-rgb:32,20,8;
+  --card-top-rgb:32,20,8;--card-bottom-rgb:24,15,5;--side-top-rgb:26,17,6;--side-bottom-rgb:18,11,3;
+  --tape-top-rgb:30,18,6;--tape-bottom-rgb:23,14,5;--overlay-rgb:12,7,2;--mark-ink:#211304;
+}
+html[data-theme=cyan]{
+  --bg:#020e14;--bg-1:#061922;--panel:#071d27;--panel-2:#0a2733;--panel-3:#0d3342;
+  --line:#123949;--line-2:#1a586e;--line-3:#287890;--glow:rgba(111,224,255,.20);
+  --txt:#e8f8ff;--muted:#84afbd;--faint:#557581;--phos:#8eeaff;
+  --acc:#6fe0ff;--acc-2:#12667a;--acc-glow:rgba(111,224,255,.22);--acc-rgb:111,224,255;
+  --line-rgb:18,57,73;--secondary-rgb:47,227,143;--surface-rgb:7,29,39;
+  --card-top-rgb:7,29,39;--card-bottom-rgb:5,23,31;--side-top-rgb:6,25,34;--side-bottom-rgb:2,14,20;
+  --tape-top-rgb:5,25,34;--tape-bottom-rgb:4,20,27;--overlay-rgb:1,8,12;--mark-ink:#03151d;
+}
+html[data-theme=violet]{
+  --bg:#0b0714;--bg-1:#151025;--panel:#18112a;--panel-2:#211638;--panel-3:#2b1c47;
+  --line:#352751;--line-2:#544078;--line-3:#735ca0;--glow:rgba(183,156,255,.20);
+  --txt:#f4efff;--muted:#ab99c6;--faint:#6f6086;--phos:#c9b5ff;
+  --acc:#b79cff;--acc-2:#4a3a8a;--acc-glow:rgba(183,156,255,.24);--acc-rgb:183,156,255;
+  --line-rgb:53,39,81;--secondary-rgb:111,224,255;--surface-rgb:24,17,42;
+  --card-top-rgb:24,17,42;--card-bottom-rgb:18,12,33;--side-top-rgb:21,16,37;--side-bottom-rgb:11,7,20;
+  --tape-top-rgb:22,15,38;--tape-bottom-rgb:16,11,29;--overlay-rgb:7,4,13;--mark-ink:#160d27;
+}
 *{box-sizing:border-box}
 html,body{margin:0;height:100%}
 body{background:
     radial-gradient(1300px 760px at 82% -14%, rgba(var(--acc-rgb),.10), transparent 60%),
-    radial-gradient(1000px 640px at -6% 112%, rgba(111,224,255,.045), transparent 55%),
+    radial-gradient(1000px 640px at -6% 112%, rgba(var(--secondary-rgb),.055), transparent 55%),
     var(--bg);
-  color:var(--txt);font-family:var(--body);font-size:14px;line-height:1.5;
+  color:var(--txt);font-family:var(--body);font-size:14.5px;line-height:1.5;
   -webkit-font-smoothing:antialiased;overflow:hidden}
 /* ambient phosphor field */
-#fx{position:fixed;inset:0;z-index:0;pointer-events:none;display:block}
+#fx{position:fixed;inset:0;z-index:0;pointer-events:none;display:block;opacity:.48}
 /* faint CRT scanline — static (no motion), very low contrast */
 body::after{content:"";position:fixed;inset:0;pointer-events:none;z-index:9;
   background:repeating-linear-gradient(0deg,rgba(0,0,0,.16) 0 1px,transparent 1px 3px);
-  opacity:.30;mix-blend-mode:overlay}
+  opacity:.12;mix-blend-mode:overlay}
 a{color:inherit;text-decoration:none}
 ::-webkit-scrollbar{width:10px;height:10px}
 ::-webkit-scrollbar-thumb{background:var(--line-2);border-radius:8px;border:2px solid transparent;background-clip:padding-box}
@@ -76,22 +106,23 @@ a{color:inherit;text-decoration:none}
 ::-webkit-scrollbar-track{background:transparent}
 :focus-visible{outline:2px solid var(--acc);outline-offset:2px;border-radius:6px}
 
-#app{position:relative;z-index:1;display:grid;grid-template-columns:250px 1fr;height:100vh}
+.skip{position:fixed;left:12px;top:10px;z-index:100;transform:translateY(-150%);padding:9px 13px;
+  border-radius:8px;background:var(--txt);color:var(--bg);font-weight:700;transition:transform .16s}
+.skip:focus{transform:translateY(0)}
+#app{position:relative;z-index:1;display:grid;grid-template-columns:264px 1fr;height:100vh}
 
 /* ---------- sidebar ---------- */
-.side{position:relative;background:linear-gradient(180deg,rgba(7,24,17,.86),rgba(4,16,10,.92));
+.side{position:relative;background:linear-gradient(180deg,rgba(var(--side-top-rgb),.86),rgba(var(--side-bottom-rgb),.92));
   backdrop-filter:blur(8px);border-right:1px solid var(--line);display:flex;flex-direction:column;min-height:0}
 .side::after{content:"";position:absolute;top:0;right:0;width:1px;height:100%;
   background:linear-gradient(180deg,transparent,var(--line-2) 30%,var(--line-2) 70%,transparent)}
-.brand{padding:var(--s4) var(--s3) var(--s3);display:flex;align-items:center;gap:11px}
+.brand{padding:var(--s4) var(--s3) var(--s3);display:flex;align-items:center;gap:11px;border-radius:10px}
 .brand .mark{position:relative;width:36px;height:36px;border-radius:10px;display:grid;place-items:center;
   background:radial-gradient(circle at 32% 26%,var(--acc),var(--acc-2));
   box-shadow:0 0 22px var(--acc-glow),inset 0 1px 1px rgba(255,255,255,.35);
-  color:#04140d;font-family:var(--disp);font-weight:700;font-size:19px}
+  color:var(--mark-ink);font-family:var(--disp);font-weight:700;font-size:19px}
 .brand .mark::before{content:"";position:absolute;inset:-3px;border-radius:13px;
-  background:conic-gradient(from 0deg,transparent,rgba(var(--acc-rgb),.55),transparent 42%);
-  animation:spin 6s linear infinite;z-index:-1;opacity:.9}
-@keyframes spin{to{transform:rotate(360deg)}}
+  border:1px solid rgba(var(--acc-rgb),.34);z-index:-1;opacity:.9}
 .brand h1{margin:0;font-family:var(--disp);font-size:20px;letter-spacing:.16em;font-weight:700;
   text-shadow:0 0 18px var(--acc-glow)}
 .brand .sub{font-size:9.5px;letter-spacing:.36em;color:var(--acc);text-transform:uppercase;opacity:.85}
@@ -115,7 +146,10 @@ a{color:inherit;text-decoration:none}
 .item .tag{margin-left:auto;font-family:var(--mono);font-size:11px;color:var(--faint)}
 .item.active .tag{color:var(--green)}
 .side .foot{position:relative;z-index:1;border-top:1px solid var(--line);padding:var(--s2) var(--s3);
-  display:flex;align-items:center;gap:8px;font-size:11px;color:var(--muted)}
+  display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:5px 8px;font-size:11px;color:var(--muted);min-height:45px}
+.side .foot .kbd{display:none}
+.side .foot .tubes{grid-column:2/4;justify-self:end}
+.theme-label{font:700 8.5px var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--faint)}
 .dot{width:8px;height:8px;border-radius:50%;background:var(--faint);flex:none;transition:.3s}
 .dot.live{background:var(--acc);box-shadow:0 0 10px var(--acc);animation:pulse 2.4s infinite}
 @keyframes pulse{50%{opacity:.35}}
@@ -129,10 +163,14 @@ a{color:inherit;text-decoration:none}
 
 /* ---------- stage ---------- */
 .stage{position:relative;overflow-y:auto;min-height:0;padding:0 var(--s4) var(--s4);scroll-behavior:smooth}
+.modechip{font-family:var(--mono);font-size:9px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;
+  border:1px solid var(--line-2);border-radius:999px;padding:3px 7px;color:var(--muted);background:var(--panel)}
+.modechip.shadow{color:var(--amber);border-color:var(--amber-deep);background:rgba(255,194,77,.06)}
+.modechip.live-auth{color:var(--red);border-color:rgba(255,107,122,.55);background:rgba(255,107,122,.08)}
 
 /* pari-mutuel ticker tape */
 .tape{position:sticky;top:0;z-index:8;margin:0 calc(-1*var(--s4)) var(--s3);
-  background:linear-gradient(180deg,rgba(6,20,14,.94),rgba(6,20,14,.82));
+  background:linear-gradient(180deg,rgba(var(--tape-top-rgb),.94),rgba(var(--tape-bottom-rgb),.82));
   backdrop-filter:blur(8px);border-bottom:1px solid var(--line);overflow:hidden;height:44px;display:flex;align-items:stretch}
 .tape::before{content:"LIVE TAPE";position:absolute;left:0;top:0;bottom:0;z-index:2;display:flex;align-items:center;
   padding:0 13px;font-family:var(--disp);font-size:10px;letter-spacing:.22em;color:var(--acc);
@@ -153,26 +191,80 @@ a{color:inherit;text-decoration:none}
 .tape .ti b{color:var(--phos)}
 .tape .ti .up{color:var(--green)} .tape .ti .dn{color:var(--red)}
 .tape.off{display:none}
+.tape.off::before,.tape.off::after{content:none;display:none}
 
-#view{animation:swap .42s var(--ease);padding-top:var(--s3)}
+#view{animation:swap .32s var(--ease);padding-top:var(--s3);max-width:1680px;margin:0 auto}
 @keyframes swap{from{opacity:0;transform:translateY(8px)}}
-.topbar{display:flex;align-items:baseline;gap:14px;margin-bottom:var(--s3)}
+.topbar{display:flex;align-items:center;gap:14px;margin-bottom:var(--s3);min-height:38px}
 .topbar h2{margin:0;font-family:var(--disp);font-size:27px;letter-spacing:.02em;text-shadow:0 0 22px var(--acc-glow)}
 .topbar .crumb{font-size:10.5px;letter-spacing:.24em;text-transform:uppercase;color:var(--faint)}
 .topbar .spacer{flex:1}
 .stamp{font-family:var(--mono);font-size:11px;color:var(--muted);display:flex;align-items:center;gap:7px}
 .stamp .beat{width:6px;height:6px;border-radius:50%;background:var(--acc);box-shadow:0 0 8px var(--acc);animation:pulse 2.4s infinite}
+.top-actions{display:flex;align-items:center;gap:7px}
+.ghostbtn{appearance:none;border:1px solid var(--line-2);background:rgba(var(--surface-rgb),.78);color:var(--muted);
+  min-height:34px;border-radius:8px;padding:6px 10px;font:600 11px var(--body);letter-spacing:.02em;cursor:pointer;
+  transition:color .15s,border-color .15s,background .15s,transform .15s}
+.ghostbtn:hover{color:var(--txt);border-color:var(--line-3);background:var(--panel-2)}
+.ghostbtn:active{transform:translateY(1px)}
+.ghostbtn .key{font:9px var(--mono);color:var(--faint);margin-left:6px}
+
+/* operational truth bar: the first answer on every screen */
+.opsbar{display:grid;grid-template-columns:auto minmax(260px,1fr) auto auto;align-items:center;gap:14px;
+  margin-bottom:var(--s3);padding:13px 14px;border:1px solid var(--line-2);border-radius:12px;
+  background:linear-gradient(90deg,rgba(255,194,77,.07),rgba(var(--surface-rgb),.82) 42%,rgba(var(--surface-rgb),.88));
+  box-shadow:inset 3px 0 0 var(--amber)}
+.opsbar.live-auth{border-color:rgba(255,107,122,.48);box-shadow:inset 3px 0 0 var(--red);
+  background:linear-gradient(90deg,rgba(255,107,122,.09),rgba(var(--surface-rgb),.88) 46%)}
+.opsbar.wait{box-shadow:inset 3px 0 0 var(--faint);background:rgba(var(--surface-rgb),.78)}
+.opsicon{width:36px;height:36px;border-radius:9px;display:grid;place-items:center;color:var(--amber);
+  background:rgba(255,194,77,.09);border:1px solid rgba(255,194,77,.24)}
+.opsbar.live-auth .opsicon{color:var(--red);background:rgba(255,107,122,.09);border-color:rgba(255,107,122,.28)}
+.opsicon svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.8}
+.opseye{font-size:9px;letter-spacing:.19em;text-transform:uppercase;color:var(--faint);margin-bottom:1px}
+.opstitle{font:700 15px var(--disp);letter-spacing:.02em;color:var(--txt)}
+.opsdetail{font-size:11.5px;color:var(--muted);margin-top:1px}
+.opsfacts{display:flex;align-items:stretch;gap:4px}
+.opsfact{min-width:88px;padding:3px 11px;border-left:1px solid var(--line)}
+.opsfact span{display:block;font-size:8.5px;letter-spacing:.16em;text-transform:uppercase;color:var(--faint)}
+.opsfact b{display:block;margin-top:2px;font:600 11px var(--mono);color:var(--txt);white-space:nowrap}
+.opsfact b.ok{color:var(--green)}.opsfact b.warn{color:var(--amber)}.opsfact b.bad{color:var(--red)}
+
+.outcome-brief{display:flex;align-items:center;gap:12px;margin:-2px 0 var(--s3);padding:11px 13px;
+  border-radius:10px;border:1px solid rgba(255,107,122,.30);background:rgba(255,107,122,.055)}
+.outcome-brief.good{border-color:rgba(47,227,143,.30);background:rgba(47,227,143,.055)}
+.outcome-brief .verdict{font:700 13px var(--disp);color:var(--red);white-space:nowrap}
+.outcome-brief.good .verdict{color:var(--green)}
+.outcome-brief .explain{font-size:12px;color:var(--muted)}
+.outcome-brief .explain b{color:var(--txt);font-weight:600}
+.section-head{display:flex;align-items:baseline;gap:12px;margin:var(--s4) 0 var(--s2)}
+.section-head h2{margin:0;font:700 18px var(--disp);letter-spacing:.02em}
+.section-head p{margin:0;color:var(--faint);font-size:11.5px}
+.metric-note{margin:-1px 0 15px;padding:9px 11px;border-left:2px solid var(--amber-deep);
+  border-radius:0 7px 7px 0;background:rgba(255,194,77,.045);color:var(--muted);font-size:11.5px}
 
 .grid{display:grid;gap:var(--s3)}
 .kpis{grid-template-columns:repeat(auto-fit,minmax(172px,1fr))}
 .cols2{grid-template-columns:1fr 1fr}
 .hero{grid-template-columns:1.25fr .85fr 1fr;margin-bottom:var(--s3)}
-@media(max-width:1040px){.hero{grid-template-columns:1fr 1fr}.hero .gaugecard{grid-column:span 2}}
-@media(max-width:920px){.cols2,.hero{grid-template-columns:1fr}.hero .gaugecard{grid-column:auto}
-  #app{grid-template-columns:64px 1fr}
-  .brand h1,.brand .sub,.item span:not(.tag),.grp span:last-child,.foot #footstat,.foot .kbd{display:none}}
+.overview-hero{grid-template-areas:"acct gauge summary"}
+.overview-hero .acct{grid-area:acct}.overview-hero .gaugecard{grid-area:gauge}.overview-hero .summarycard{grid-area:summary}
+@media(max-width:1040px){.hero{grid-template-columns:1fr 1fr}.hero:not(.overview-hero) .gaugecard{grid-column:span 2}
+  .overview-hero{grid-template-areas:"acct summary" "gauge gauge"}.overview-hero .gaugecard{max-height:220px}}
+@media(max-width:920px){.cols2,.hero{grid-template-columns:1fr}.hero:not(.overview-hero) .gaugecard{grid-column:auto}
+  .overview-hero{grid-template-areas:"acct" "summary" "gauge"}.overview-hero .gaugecard{max-height:210px}
+  #app{grid-template-columns:72px 1fr}
+  .brand{padding-left:18px}.brand h1,.brand .sub,.item span:not(.tag),.grp span:last-child,.foot #footstat,.foot .kbd,.foot .theme-label{display:none}
+  .item{justify-content:center}.item.child{padding-left:11px;margin-left:0}.item .tag{display:none}
+  .grp{height:9px;margin:11px 8px 3px;padding:0;border-top:1px solid var(--line)}.grp span{display:none}
+  .side .foot{grid-template-columns:1fr;padding:8px 4px;justify-items:center}.side .foot .dot{display:none}
+  .side .foot .modechip{font-size:7px;padding:2px 4px}.side .foot .tubes{display:grid;grid-template-columns:repeat(2,12px);gap:4px;grid-column:1;justify-self:center;margin:0}
+  .opsbar{grid-template-columns:auto 1fr auto}.opsfacts{display:none}}
+@media(max-width:680px){.stage{padding:0 12px 18px}.topbar{align-items:flex-start;flex-wrap:wrap}.topbar .crumb{order:3;width:100%}
+  .stamp{margin-left:auto}.top-actions .ghostbtn:first-child{display:none}.opsbar{grid-template-columns:auto 1fr;padding:11px}.opsbar>.ghostbtn{display:none}
+  .opsdetail{font-size:11px}.card{padding:13px}.kpis{grid-template-columns:1fr 1fr}}
 
-.card{position:relative;background:linear-gradient(180deg,rgba(8,28,19,.80),rgba(7,24,17,.90));
+.card{position:relative;background:linear-gradient(180deg,rgba(var(--card-top-rgb),.80),rgba(var(--card-bottom-rgb),.90));
   backdrop-filter:blur(6px) saturate(1.08);
   border:1px solid var(--line);border-radius:var(--r);padding:var(--s3);overflow:hidden;
   transition:transform .18s var(--ease),border-color .2s,box-shadow .2s}
@@ -215,10 +307,12 @@ a{color:inherit;text-decoration:none}
 .acct{display:flex;flex-direction:column;justify-content:space-between;gap:var(--s2)}
 .acct .big{font-family:var(--mono);font-size:38px;font-weight:600;letter-spacing:-1px;line-height:1;color:var(--phos);
   text-shadow:0 0 22px var(--glow)}
+.acct .big.neg{color:var(--red);text-shadow:0 0 18px rgba(255,107,122,.18)}
+.acct .big.pos{color:var(--green)}
 .acct .spark{margin-top:6px}
 .mini{display:grid;grid-template-columns:1fr;gap:9px}
 .mini .row{display:flex;align-items:baseline;justify-content:space-between;gap:10px;
-  padding-bottom:8px;border-bottom:1px solid rgba(18,53,40,.5)}
+  padding-bottom:8px;border-bottom:1px solid rgba(var(--line-rgb),.5)}
 .mini .row:last-child{border-bottom:0;padding-bottom:0}
 .mini .k{font-size:9.5px;letter-spacing:.16em;text-transform:uppercase;color:var(--faint)}
 .mini .vv{font-family:var(--mono);font-size:17px}
@@ -249,7 +343,7 @@ thead th{position:sticky;top:0;background:var(--panel);z-index:1}
 th{text-align:right;font-family:var(--body);font-size:9.5px;letter-spacing:.14em;text-transform:uppercase;
   color:var(--faint);font-weight:600;padding:8px 10px;border-bottom:1px solid var(--line)}
 th:first-child,td:first-child{text-align:left}
-td{padding:8px 10px;border-bottom:1px solid rgba(18,53,40,.55);white-space:nowrap}
+td{padding:8px 10px;border-bottom:1px solid rgba(var(--line-rgb),.55);white-space:nowrap}
 tbody tr{transition:background .14s,box-shadow .14s}
 tbody tr:hover{background:var(--panel-2);box-shadow:inset 2px 0 0 var(--acc)}
 .pill{font-size:10px;padding:2px 8px;border-radius:6px;font-family:var(--body);letter-spacing:.05em}
@@ -301,22 +395,120 @@ td.hc .td{font-size:11px;margin-left:3px}
   background:var(--panel-2);border:1px solid var(--line);color:var(--muted);transition:.15s;text-transform:capitalize}
 .bt-tab:hover{border-color:var(--line-2);color:var(--txt)}
 .bt-tab.on{background:rgba(var(--acc-rgb),.14);border-color:var(--line-3);color:var(--acc)}
-.bt-tab .c{color:var(--faint);font-size:10px;margin-left:2px}
+.bt-tab .c{display:inline-grid;place-items:center;min-width:18px;margin-left:6px;padding:1px 4px;border-radius:999px;
+  background:rgba(var(--line-rgb),.5);color:var(--faint);font-size:9.5px;line-height:1.25}
+.bt-tab.on .c{background:rgba(var(--acc-rgb),.12);color:var(--acc)}
 .bt-panel{display:none} .bt-panel.on{display:block}
+.guide-filter-note{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;margin:0 0 9px;
+  padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:rgba(var(--acc-rgb),.035);color:var(--muted);font-size:11.5px;line-height:1.45}
+.guide-filter-note b{color:var(--txt);font-weight:650}.guide-filter-note .counts{flex:0 0 auto;color:var(--faint);font-family:var(--mono);font-size:10.5px}
+.table-more{text-align:center!important;color:var(--faint);font-family:var(--body);white-space:normal!important;padding:11px!important}
 .res-ok{color:var(--green)} .res-no{color:var(--red)}
+/* versioned, forward-only tier evidence */
+.tier-card{overflow:hidden}.tier-card .tier-intro{display:flex;align-items:flex-start;justify-content:space-between;gap:14px;margin:-2px 0 12px}
+.tier-card .tier-intro p{margin:0;color:var(--muted);font-size:11.5px;max-width:780px}.tier-state{flex:none;font:700 9.5px var(--mono);letter-spacing:.1em;text-transform:uppercase;border:1px solid var(--line-2);border-radius:999px;padding:4px 8px;color:var(--faint);background:var(--panel-2)}
+.tier-state.ready{color:var(--green);border-color:rgba(47,227,143,.42);background:rgba(47,227,143,.07)}
+.tier-state.stale{color:var(--amber);border-color:rgba(255,194,77,.42);background:rgba(255,194,77,.07)}
+.tier-dist{display:grid;grid-template-columns:repeat(5,minmax(105px,1fr));gap:8px;margin-bottom:12px}
+.tier-count{position:relative;overflow:hidden;border:1px solid var(--line);border-radius:10px;padding:9px 10px;background:var(--panel-2)}
+.tier-count::after{content:"";position:absolute;left:0;right:0;bottom:0;height:2px;background:var(--tier-color,var(--faint));opacity:.75}
+.tier-count .tc-head{display:flex;align-items:center;justify-content:space-between;gap:8px}.tier-count .tc-n{font:650 18px var(--mono);color:var(--txt)}
+.tier-count .tc-share{font:10px var(--mono);color:var(--faint)}
+.tier-badge{display:inline-grid;place-items:center;min-width:28px;height:20px;padding:0 7px;border:1px solid var(--line-2);border-radius:6px;background:var(--panel-3);font:750 10px var(--mono);letter-spacing:.08em;color:var(--muted)}
+.tier-badge.a{color:var(--green);border-color:rgba(47,227,143,.42);background:rgba(47,227,143,.08)}
+.tier-badge.b{color:var(--cyan);border-color:rgba(111,224,255,.38);background:rgba(111,224,255,.07)}
+.tier-badge.c{color:var(--amber);border-color:rgba(255,194,77,.42);background:rgba(255,194,77,.07)}
+.tier-badge.watch{color:var(--faint);border-style:dashed}.tier-badge.unattributed{min-width:88px;color:var(--red);border-color:rgba(255,107,122,.34);border-style:dotted;background:rgba(255,107,122,.055)}.tier-sample{display:block;margin-top:2px;font:9.5px var(--mono);color:var(--faint)}
+.tier-table-wrap{overflow-x:auto;margin:0 calc(-1*var(--s3));padding:0 var(--s3)}.tier-table th:first-child,.tier-table td:first-child{position:sticky;left:0;background:var(--panel);z-index:1}.tier-table tbody tr:hover td:first-child{background:var(--panel-2)}
+.tier-horizon-head{display:flex;align-items:baseline;justify-content:space-between;gap:12px;margin:14px 0 6px;padding-top:11px;border-top:1px solid var(--line)}
+.tier-horizon-head b{font:700 12px var(--disp);color:var(--txt)}.tier-horizon-head span{font:10px var(--mono);color:var(--faint)}
+.tier-horizon-table .scope-row td:first-child{font-weight:700;color:var(--txt)}.tier-horizon-table .tier-detail td:first-child{padding-left:24px;color:var(--muted)}
+.tier-foot{display:flex;justify-content:space-between;gap:12px;margin-top:10px;color:var(--faint);font:10.5px var(--mono);line-height:1.5}.tier-foot b{color:var(--muted);font-weight:600}
+@media(max-width:680px){.tier-dist{grid-template-columns:repeat(2,1fr)}.tier-card .tier-intro,.tier-foot{display:block}.tier-state{display:inline-block;margin-top:7px}}
 /* day's games, click to expand */
 .games{display:flex;flex-direction:column;gap:8px;max-height:440px;overflow:auto}
-.game{border:1px solid var(--line);border-radius:10px;overflow:hidden;transition:border-color .15s}
+.game{flex:0 0 auto;border:1px solid var(--line);border-radius:10px;overflow:hidden;transition:border-color .15s}
 .game:hover{border-color:var(--line-2)}
-.ghead{display:grid;grid-template-columns:22px 1fr auto auto;gap:10px;align-items:center;padding:10px 12px;cursor:pointer;
-  font-family:var(--mono);font-size:12.5px;background:var(--panel-2)}
+.ghead{appearance:none;width:100%;color:inherit;border:0;display:grid;grid-template-columns:52px minmax(180px,1fr) auto auto;gap:10px;
+  align-items:center;padding:10px 12px;cursor:pointer;font-family:var(--mono);font-size:12.5px;background:var(--panel-2);text-align:left}
 .ghead:hover{background:var(--panel-3)}
 .ghead .gx{color:var(--faint);transition:transform .2s}
+.ghead .gx b{color:var(--acc);font-weight:700;margin-right:4px}
+.ghead .gm{min-width:0}
+.ghead .gm small{display:block;color:var(--faint);font-weight:400;margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .game.open .ghead .gx{transform:rotate(90deg);color:var(--acc)}
-.ghead .gc{color:var(--faint);font-size:11px} .ghead .ge{color:var(--acc);font-size:11.5px}
+.ghead .gc{color:var(--faint);font-size:11px} .ghead .ge{display:flex;align-items:center;justify-content:flex-end;gap:7px;color:var(--acc);font-size:11.5px;min-width:146px;text-align:right}
+.ghead .ge .guide-value{white-space:nowrap}.game-tier-summary{display:inline-flex;align-items:center;justify-content:flex-end;flex-wrap:wrap;gap:4px}
+.game-tier-chip{display:inline-flex;align-items:center;gap:3px}.game-tier-chip .tier-badge{height:18px;min-width:24px;padding:0 5px;font-size:9px}.game-tier-chip .tier-n{color:var(--muted);font:9.5px var(--mono)}
 .gbody{display:none;padding:2px 8px 8px}
 .game.open .gbody{display:block}
 .game.open .ghead{border-bottom:1px solid var(--line)}
+@media(max-width:680px){.ghead{grid-template-columns:46px minmax(120px,1fr) auto}.ghead .gc{display:none}.games{max-height:none}.daily-guide .bt-tabs{flex-wrap:nowrap;overflow-x:auto;padding:1px 1px 6px;scroll-snap-type:x proximity}.daily-guide .bt-tab{flex:0 0 auto;scroll-snap-align:start}.guide-filter-note{display:block}.guide-filter-note .counts{display:block;margin-top:4px}}
+
+/* crypto horizon coverage */
+.horizon-grid{display:grid;grid-template-columns:repeat(4,minmax(150px,1fr));gap:10px}
+.horizon{padding:12px;border:1px solid var(--line);border-radius:10px;background:var(--panel-2)}
+.horizon .hh{display:flex;align-items:center;justify-content:space-between;gap:8px;font:700 12px var(--mono);color:var(--txt)}
+.horizon .hs{margin-top:7px;color:var(--muted);font-size:11.5px;line-height:1.45}
+.horizon .hm{display:flex;justify-content:space-between;gap:8px;margin-top:9px;padding-top:8px;border-top:1px solid var(--line);font:11px var(--mono);color:var(--faint)}
+.horizon .state{font-size:9px;letter-spacing:.08em;text-transform:uppercase;color:var(--acc)}
+.horizon .state.wait{color:var(--amber)}
+@media(max-width:1080px){.horizon-grid{grid-template-columns:repeat(2,minmax(150px,1fr))}}
+@media(max-width:560px){.horizon-grid{grid-template-columns:1fr}}
+
+/* glossary and operating model */
+.how-flow{display:grid;grid-template-columns:repeat(6,1fr);gap:8px;margin-top:12px;counter-reset:how}
+.how-step{position:relative;padding:14px 12px 12px;border:1px solid var(--line);border-radius:10px;background:var(--panel-2);min-height:110px}
+.how-step::before{counter-increment:how;content:counter(how);display:grid;place-items:center;width:22px;height:22px;border-radius:50%;background:rgba(var(--acc-rgb),.14);color:var(--acc);font:700 11px var(--mono);margin-bottom:8px}
+.how-step b{display:block;font:700 12px var(--disp);color:var(--txt);margin-bottom:4px}.how-step span{font-size:11px;color:var(--muted)}
+.glossary-tools{display:flex;align-items:center;gap:12px;margin:var(--s3) 0}.glossary-tools label{font:700 10px var(--mono);letter-spacing:.12em;text-transform:uppercase;color:var(--faint)}
+.glossary-search{flex:1;min-width:0;padding:10px 12px;border:1px solid var(--line-2);border-radius:9px;background:var(--panel);color:var(--txt);font:13px var(--mono);outline:0}
+.glossary-search::placeholder{color:var(--faint)}.glossary-search:focus{border-color:var(--acc);box-shadow:0 0 0 3px rgba(var(--acc-rgb),.09)}
+.glossary-grid{display:grid;grid-template-columns:repeat(3,minmax(220px,1fr));gap:10px}
+.gloss{padding:13px 14px;border:1px solid var(--line);border-radius:10px;background:linear-gradient(180deg,var(--panel-2),var(--panel));min-height:112px}
+.gloss[hidden]{display:none}.gloss .gt{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:7px}.gloss h4{margin:0;font:700 13px var(--disp);color:var(--txt)}
+.gloss .cat{font:700 8px var(--mono);letter-spacing:.12em;text-transform:uppercase;color:var(--acc)}.gloss p{margin:0;color:var(--muted);font-size:12px;line-height:1.55}
+.glossary-empty{display:none;padding:28px;text-align:center;color:var(--faint);font-family:var(--mono)}
+.glossary-empty.show{display:block}
+@media(max-width:1180px){.how-flow{grid-template-columns:repeat(3,1fr)}.glossary-grid{grid-template-columns:repeat(2,minmax(210px,1fr))}}
+@media(max-width:680px){.how-flow,.glossary-grid{grid-template-columns:1fr}.glossary-tools{align-items:stretch;flex-direction:column;gap:6px}}
+
+/* model arsenal — stored, redacted proof and two-key paid-call truth */
+.arsenal-hero{display:grid;grid-template-columns:minmax(0,1.45fr) minmax(300px,.75fr);gap:12px;margin-bottom:var(--s3)}
+.arsenal-lead{overflow:hidden;background:
+  radial-gradient(640px 220px at 0 0,rgba(var(--acc-rgb),.14),transparent 65%),
+  linear-gradient(180deg,rgba(var(--card-top-rgb),.92),rgba(var(--card-bottom-rgb),.96))}
+.arsenal-kicker{font:700 9px var(--mono);letter-spacing:.2em;text-transform:uppercase;color:var(--acc)}
+.arsenal-title{margin:7px 0 5px;font:700 clamp(24px,3vw,36px)/1.05 var(--disp);letter-spacing:-.02em;color:var(--txt)}
+.arsenal-copy{max-width:760px;color:var(--muted);font-size:12.5px;line-height:1.65}
+.proof-banner{display:flex;align-items:center;gap:11px;margin-top:15px;padding:11px 12px;border:1px solid var(--line-2);border-radius:10px;background:rgba(var(--acc-rgb),.07)}
+.proof-orb{width:32px;height:32px;flex:0 0 auto;display:grid;place-items:center;border-radius:50%;background:rgba(var(--acc-rgb),.13);border:1px solid rgba(var(--acc-rgb),.4);color:var(--acc);font:700 12px var(--mono);box-shadow:0 0 22px var(--acc-glow)}
+.proof-banner b{display:block;color:var(--txt);font:700 12px var(--disp)}.proof-banner span{display:block;margin-top:2px;color:var(--faint);font:10.5px var(--mono)}
+.arsenal-facts{display:grid;grid-template-columns:1fr 1fr;gap:8px}.arsenal-fact{padding:11px;border:1px solid var(--line);border-radius:9px;background:var(--panel-2)}
+.arsenal-fact .afl{font:700 8.5px var(--mono);letter-spacing:.13em;text-transform:uppercase;color:var(--faint)}
+.arsenal-fact .afv{margin-top:5px;color:var(--txt);font:700 12px var(--mono);overflow-wrap:anywhere}.arsenal-fact .afv.ok{color:var(--green)}.arsenal-fact .afv.lock{color:var(--amber)}
+.gate-strip{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:var(--s3)}
+.gate-box{position:relative;padding:13px 14px;border:1px solid var(--line);border-radius:10px;background:var(--panel-2)}
+.gate-box::before{content:attr(data-step);position:absolute;right:10px;top:9px;color:var(--faint);font:700 10px var(--mono)}
+.gate-box .gl{font:700 9px var(--mono);letter-spacing:.12em;text-transform:uppercase;color:var(--faint)}
+.gate-box .gv{margin-top:7px;font:700 17px var(--disp);color:var(--txt)}.gate-box .gv.on{color:var(--green)}.gate-box .gv.off{color:var(--amber)}
+.gate-box .gd{margin-top:3px;color:var(--muted);font-size:10.5px}
+.arsenal-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-bottom:var(--s3)}
+.model-unit{position:relative;padding:15px;border:1px solid var(--line);border-radius:12px;background:linear-gradient(155deg,var(--panel-2),var(--panel));overflow:hidden}
+.model-unit::after{content:attr(data-index);position:absolute;right:-5px;top:-15px;color:rgba(var(--acc-rgb),.07);font:700 86px var(--disp);line-height:1;pointer-events:none}
+.unit-head{position:relative;z-index:1;display:flex;align-items:flex-start;justify-content:space-between;gap:12px}.unit-name{font:700 16px var(--disp);color:var(--txt)}
+.unit-slug{margin-top:3px;color:var(--acc);font:10px var(--mono);overflow-wrap:anywhere}.unit-role{position:relative;z-index:1;margin:12px 0;color:var(--muted);font-size:12px;line-height:1.55;min-height:38px}
+.unit-meta{position:relative;z-index:1;display:flex;flex-wrap:wrap;gap:6px;padding-top:10px;border-top:1px solid var(--line)}
+.unit-meta span{padding:4px 7px;border-radius:6px;background:rgba(var(--surface-rgb),.8);color:var(--faint);font:9px var(--mono)}.unit-meta b{color:var(--muted);font-weight:600}
+.truth-pill{display:inline-flex;align-items:center;gap:5px;padding:4px 7px;border:1px solid var(--line-2);border-radius:999px;color:var(--muted);font:700 8.5px var(--mono);letter-spacing:.06em;text-transform:uppercase;white-space:nowrap}
+.truth-pill::before{content:"";width:5px;height:5px;border-radius:50%;background:var(--faint)}.truth-pill.ok{color:var(--green);border-color:var(--green-deep)}.truth-pill.ok::before{background:var(--green);box-shadow:0 0 7px var(--green)}
+.truth-pill.warn{color:var(--amber);border-color:var(--amber-deep)}.truth-pill.warn::before{background:var(--amber)}.truth-pill.bad{color:var(--red);border-color:#70303a}.truth-pill.bad::before{background:var(--red)}
+.authority-row{display:grid;grid-template-columns:repeat(3,1fr);gap:9px}.authority-lock{padding:12px;border:1px solid var(--green-deep);border-radius:9px;background:rgba(47,227,143,.045)}
+.authority-lock b{display:flex;align-items:center;justify-content:space-between;color:var(--txt);font:700 11px var(--disp)}.authority-lock b span{color:var(--green);font:700 9px var(--mono)}.authority-lock p{margin:5px 0 0;color:var(--muted);font-size:10.5px;line-height:1.45}
+.authority-lock.danger{border-color:#70303a;background:rgba(255,107,122,.07)}.authority-lock.danger b span{color:var(--red)}.authority-lock.unknown{border-color:var(--amber-deep);background:rgba(255,194,77,.05)}.authority-lock.unknown b span{color:var(--amber)}
+.arsenal-link{display:flex;align-items:center;justify-content:space-between;gap:12px;cursor:pointer}.arsenal-link:hover{border-color:var(--line-3)}.arsenal-link .go{color:var(--acc);font:700 11px var(--mono)}
+@media(max-width:980px){.arsenal-hero{grid-template-columns:1fr}.arsenal-grid{grid-template-columns:1fr}}
+@media(max-width:680px){.gate-strip,.authority-row{grid-template-columns:1fr}.arsenal-facts{grid-template-columns:1fr}}
 
 /* charts */
 .cwrap{position:relative}
@@ -336,7 +528,7 @@ td.hc .td{font-size:11px;margin-left:3px}
 
 /* command palette */
 .cmdk{position:fixed;inset:0;z-index:40;display:none;align-items:flex-start;justify-content:center;
-  padding-top:14vh;background:rgba(2,8,5,.55);backdrop-filter:blur(3px)}
+  padding-top:14vh;background:rgba(var(--overlay-rgb),.62);backdrop-filter:blur(3px)}
 .cmdk.open{display:flex;animation:fade .18s var(--ease)}
 @keyframes fade{from{opacity:0}}
 .cmdk .box{width:min(560px,92vw);background:linear-gradient(180deg,var(--panel-2),var(--bg-1));
@@ -365,38 +557,45 @@ td.hc .td{font-size:11px;margin-left:3px}
   .gauge .val-arc{stroke-dashoffset:var(--off)!important}.tape .ttrack{transform:none}}
 </style>
 </head><body>
+<a class="skip" href="#main">Skip to dashboard</a>
 <canvas id="fx"></canvas>
 <div id="shock"></div>
 <div id="app">
-  <aside class="side">
-    <div class="brand">
-      <div class="mark">D</div>
+  <aside class="side" aria-label="Primary navigation">
+    <a class="brand" href="#/overview" aria-label="DUMMY overview">
+      <div class="mark" aria-hidden="true">D</div>
       <div><h1>DUMMY</h1><div class="sub">totalizator</div></div>
-    </div>
-    <nav class="nav" id="nav"><div class="glide" id="glide"></div></nav>
-    <div class="foot">
-      <span class="dot" id="live"></span><span id="footstat">connecting…</span>
+    </a>
+    <nav class="nav" id="nav" aria-label="Markets"><div class="glide" id="glide"></div></nav>
+    <div class="foot" role="status" aria-live="polite">
+      <span class="dot" id="live" aria-hidden="true"></span><span id="footstat">connecting…</span>
+      <span class="modechip" id="sideMode">wait</span>
       <span class="kbd" title="command palette">⌘K</span>
-      <span class="tubes" id="tubes" role="group" aria-label="phosphor accent"></span>
+      <span class="theme-label">Theme</span>
+      <span class="tubes" id="tubes" role="group" aria-label="Application theme"></span>
     </div>
   </aside>
-  <main class="stage">
+  <main class="stage" id="main" tabindex="-1">
     <div class="tape off" id="tape" aria-hidden="true"><div class="ttrack" id="tapetrack"></div></div>
     <div id="view"></div>
   </main>
 </div>
-<div class="cmdk" id="cmdk" role="dialog" aria-modal="true" aria-label="Jump to">
+<div class="cmdk" id="cmdk" role="dialog" aria-modal="true" aria-label="Jump to a market scope" aria-hidden="true">
   <div class="box">
-    <input id="cmdq" type="text" placeholder="Jump to a scope…  (type to filter)" autocomplete="off" spellcheck="false">
-    <div class="list" id="cmdlist"></div>
-    <div class="foot2"><span>↑↓ navigate</span><span>⏎ open</span><span>esc close</span><span>t · cycle tube</span></div>
+    <input id="cmdq" type="text" aria-label="Filter market scopes" placeholder="Jump to a scope…  (type to filter)" autocomplete="off" spellcheck="false">
+    <div class="list" id="cmdlist" role="listbox" aria-label="Available scopes"></div>
+    <div class="foot2"><span>↑↓ navigate</span><span>⏎ open</span><span>esc close</span><span>t · cycle theme</span></div>
   </div>
 </div>
 <script>
 const ICON={
  overview:'<path d="M3 3h7v7H3zM14 3h7v4h-7zM14 10h7v11h-7zM3 14h7v7H3z"/>',
+ arsenal:'<rect x="3" y="5" width="18" height="14" rx="3"/><path d="M8 9h2v2H8zM14 9h2v2h-2zM8 15h8M12 2v3M12 19v3M1 12h2M21 12h2"/>',
+ glossary:'<path d="M4 5.5A3.5 3.5 0 0 1 7.5 2H11v17H7.5A3.5 3.5 0 0 0 4 22zM20 5.5A3.5 3.5 0 0 0 16.5 2H13v17h3.5A3.5 3.5 0 0 1 20 22z"/>',
  coin:'<circle cx="12" cy="12" r="8.5"/><path d="M12 7.5v9M9.5 9.5h4a1.8 1.8 0 0 1 0 3.6h-4"/>',
- ball:'<circle cx="12" cy="12" r="8.5"/><path d="M4 12h16M12 4v16"/>'
+ ball:'<circle cx="12" cy="12" r="8.5"/><path d="M4 12h16M12 4v16"/>',
+ market:'<path d="M4 19V9M10 19V5M16 19v-7M22 19H2"/>',
+ weather:'<path d="M8 17h9a4 4 0 0 0 0-8 6 6 0 0 0-11.4 1.5A3.5 3.5 0 0 0 8 17z"/>'
 };
 const $=(h)=>{const t=document.createElement('template');t.innerHTML=h.trim();return t.content.firstChild;};
 const fmtUSD=(c)=> (c==null?'—':(c<0?'-':'')+'$'+Math.abs(c/100).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2}));
@@ -407,16 +606,27 @@ const num=(x,d=3)=> x==null?'—':(+x).toFixed(d);
 const commaN=(x)=> x==null?'—':(+x).toLocaleString();
 const ago=(iso)=>{if(!iso)return'—';const s=(Date.now()-Date.parse(iso))/1000;if(s<90)return Math.round(s)+'s ago';if(s<5400)return Math.round(s/60)+'m ago';return Math.round(s/3600)+'h ago';};
 const esc=(s)=>String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
-const flip=(text)=>'<span class="flip">'+String(text).split('').map((c,i)=>'<span class="flap" style="animation-delay:'+(i*32)+'ms">'+(c===' '?'&nbsp;':esc(c))+'</span>').join('')+'</span>';
+const flip=(text)=>'<span class="flip" aria-label="'+esc(String(text))+'">'+String(text).split('').map((c,i)=>'<span class="flap" aria-hidden="true" style="animation-delay:'+(i*32)+'ms">'+(c===' '?'&nbsp;':esc(c))+'</span>').join('')+'</span>';
 const REDUCE=matchMedia('(prefers-reduced-motion:reduce)').matches;
 
-let STATE={overview:null,scopes:null,status:null,walk:null,board:null};
+let STATE={overview:null,scopes:null,status:null,walk:null,board:null,boardMeta:null,arsenal:null,tierPerformance:null,tierPerformanceFetchOk:false,connection:{pending:true,error:null}};
 let ROUTE=location.hash||'#/overview';
 let lastSig='';
-// every sport league the board lists, in season or not (backend enriches each
-// with season + last-season grades; this keeps the slate whole even before the
-// next snapshot lands).
+let POLLING=false;
+let LAZY_GUIDE={};
+let GUIDE_FILTERS={};
+// Year-round capability fallback, not a claim that a league has games today.
+// The APIs publish the same server-authored roster; this local copy keeps every
+// league navigable during the initial load or a degraded artifact refresh.
 const SPORTS_ROSTER=['MLB','WNBA','NBA','NFL','NHL','NCAAF','NCAAMB'];
+const VERTICAL_META={CRYPTO:['coin','Crypto'],SPORTS:['ball','Sports']};
+function sportsRoster(){
+  const fromScopes=STATE.scopes&&STATE.scopes.sports_leagues;
+  const fromBoard=STATE.boardMeta&&STATE.boardMeta.sports_leagues;
+  const published=Array.isArray(fromScopes)?fromScopes:(Array.isArray(fromBoard)?fromBoard:[]);
+  return [...new Set([...SPORTS_ROSTER,...published.map(x=>String(x).toUpperCase()).filter(Boolean)])];
+}
+function verticalIcon(vert){return (VERTICAL_META[vert]||['market'])[0];}
 
 function svgIcon(k){return '<svg viewBox="0 0 24 24">'+(ICON[k]||ICON.overview)+'</svg>';}
 
@@ -508,17 +718,26 @@ function buildNav(){
   const nav=document.getElementById('nav');
   [...nav.querySelectorAll('.item,.grp')].forEach(n=>n.remove());
   nav.appendChild(navItem('overview','Overview','#/overview',null));
+  nav.appendChild(navItem('arsenal','Model Arsenal','#/arsenal',null));
+  nav.appendChild(navItem('glossary','Glossary & how it works','#/glossary',null));
   const v=(STATE.scopes&&STATE.scopes.verticals)||{};
-  [['CRYPTO','coin'],['SPORTS','ball']].forEach(([key,cicon])=>{
-    const block=v[key];
-    nav.appendChild($('<div class="grp"><span>'+key+'</span><span>'+(block?pct(block.summary.hit_rate,0):'')+'</span></div>'));
+  // SPORTS is a stable product surface, not a reflection of the current
+  // snapshot's row keys.  Render it immediately and keep it through outages.
+  const keys=['CRYPTO','SPORTS'].filter(key=>key==='SPORTS'||v[key]);
+  keys.forEach(key=>{
+    const cicon=verticalIcon(key);
+    const block=v[key]||{scopes:{},summary:{}};
+    const summary=block.summary||{};
+    nav.appendChild($('<div class="grp"><span>'+key+'</span><span>'+(summary.hit_rate==null?'':pct(summary.hit_rate,0))+'</span></div>'));
     const labels=scopeLabels(key,block);
     if(!labels.length){nav.appendChild($('<div class="item child" style="color:var(--faint)"><span>no data</span></div>'));return;}
     labels.forEach(lab=>{
       const sc=block&&block.scopes&&block.scopes[lab];
-      const off=sc?sc.in_season===false:false;
-      const tag=sc&&sc.summary&&sc.summary.hit_rate!=null?pct(sc.summary.hit_rate,0):(off?'off':'·');
-      const it=navItem(cicon,lab,'#/scope/'+key+'/'+lab,tag);
+      const season=sc&&sc.season_status;
+      const off=sc?(sc.in_season===false||season==='off'):false;
+      const tag=sc&&sc.summary&&sc.summary.hit_rate!=null?pct(sc.summary.hit_rate,0):(off?'off':(season==='upcoming'?'pre':'·'));
+      const display=lab===key?'All '+((VERTICAL_META[key]||['',titleCase(key)])[1]):lab;
+      const it=navItem(cicon,display,'#/scope/'+key+'/'+lab,tag);
       it.classList.add('child');if(off)it.classList.add('off');
       nav.appendChild(it);
     });
@@ -531,7 +750,7 @@ function buildNav(){
 function scopeLabels(key,block){
   if(key==='SPORTS'){
     const have=block&&block.scopes?Object.keys(block.scopes):[];
-    return [...new Set([...have,...SPORTS_ROSTER])].sort((a,b)=>{
+    return [...new Set([...have,...sportsRoster()])].sort((a,b)=>{
       const sa=block&&block.scopes&&block.scopes[a],sb=block&&block.scopes&&block.scopes[b];
       const ia=sa?sa.in_season!==false:true,ib=sb?sb.in_season!==false:true;
       if(ia!==ib)return ia?-1:1;                 // live leagues lead
@@ -543,8 +762,8 @@ function scopeLabels(key,block){
   return block&&block.scopes?Object.keys(block.scopes).sort((a,b)=>((block.scopes[b].summary.n)||0)-((block.scopes[a].summary.n)||0)):[];
 }
 function navItem(icon,label,href,tag){
-  const a=$('<a class="item" href="'+href+'" tabindex="0">'+svgIcon(icon)+'<span>'+label+'</span>'+(tag?'<span class="tag">'+tag+'</span>':'')+'</a>');
-  if(href===ROUTE)a.classList.add('active');
+  const a=$('<a class="item" href="'+href+'" tabindex="0" title="'+esc(label)+'" aria-label="'+esc(label)+'">'+svgIcon(icon)+'<span>'+label+'</span>'+(tag?'<span class="tag">'+tag+'</span>':'')+'</a>');
+  if(href===ROUTE){a.classList.add('active');a.setAttribute('aria-current','page');}
   a.addEventListener('mouseenter',()=>moveGlide(a));
   a.addEventListener('mouseleave',()=>moveGlide());
   return a;
@@ -569,56 +788,248 @@ function buildTape(){
 }
 
 // ---------- views ----------
+function statusSummary(){
+  const st=STATE.status||{},hb=st.heartbeat||{},wd=st.watchdog||{},session=st.session||{},controls=st.live_controls||(STATE.overview&&STATE.overview.live_controls)||{};
+  const mode=String(hb.mode||'').toUpperCase();
+  const activeSession=!!(session.present&&!session.expired&&String(session.mode||'').toUpperCase()==='LIVE');
+  const contractAuth=controls.execution_authority===true;
+  const liveAuth=mode==='LIVE'&&activeSession&&contractAuth;
+  const known=!!st.generated_at;
+  const ages=st.data_ages||{},accountAge=ages.live_account||{};
+  // The old SHADOW heartbeat is retained only as historical observer data. It
+  // has no sports-grade or live authority, so its age must not degrade the
+  // operational ribbon after paper/shadow retirement.
+  const healthy=known&&wd.healthy!==false&&accountAge.stale!==true;
+  const stale=Object.entries(ages).filter(([k,v])=>['live_account','sports_model_seed'].includes(k)&&v&&v.stale);
+  const auth=session.expired?'SESSION EXPIRED':(liveAuth?'ACTIVE':(contractAuth?'ARMED / NO SESSION':'LOCKED'));
+  if(!known)return {tone:'wait',mode:'WAIT',title:'Connecting to execution state',detail:'Loading the latest engine health, authorization, and evidence freshness.',healthy:false,auth:'CHECKING',stale:[],liveAuth:false};
+  if(liveAuth)return {tone:'live-auth',mode:'LIVE',title:'Live execution authorized — capital at risk',detail:'The engine reports an active live session. Confirm risk limits before taking action.',healthy,auth,stale,liveAuth:true};
+  const title=accountAge.stale!==true?'Live account observer active — submit locked':'Live submit locked';
+  const blocker=controls.blocker||'No active controlled-live authority and session';
+  return {tone:'',mode:'LOCKED',title,detail:blocker+'. Paper/shadow results are retired and cannot enable or block LIVE.',healthy,auth,stale,liveAuth:false};
+}
+function statusRibbon(){
+  const s=statusSummary(),failure=STATE.connection&&STATE.connection.error;
+  const health=failure?'DEGRADED':(s.healthy?'HEALTHY':'CHECK');
+  const healthClass=failure?'bad':(s.healthy?'ok':'warn');
+  const staleLabel=s.stale.length?s.stale.length+' STALE':'CURRENT';
+  const staleClass=s.stale.length?'warn':'ok';
+  const staleTitle=s.stale.length?' title="Stale: '+esc(s.stale.map(([k])=>k.replace(/_/g,' ')).join(', '))+'"':'';
+  const icon=s.liveAuth?'<path d="M12 3v10M8 7l4-4 4 4M5 11v9h14v-9"/>':'<rect x="5" y="10" width="14" height="10" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/>';
+  return '<section class="opsbar '+s.tone+'" role="status" aria-live="polite" aria-label="Execution authority">'
+    +'<div class="opsicon" aria-hidden="true"><svg viewBox="0 0 24 24">'+icon+'</svg></div>'
+    +'<div><div class="opseye">Execution authority</div><div class="opstitle">'+esc(s.title)+'</div><div class="opsdetail">'+esc(failure?failure:s.detail)+'</div></div>'
+    +'<div class="opsfacts"><div class="opsfact"><span>Engine</span><b class="'+healthClass+'">'+health+'</b></div>'
+    +'<div class="opsfact"><span>Live auth</span><b class="'+(s.liveAuth?'bad':'warn')+'">'+esc(s.auth)+'</b></div>'
+    +'<div class="opsfact"'+staleTitle+'><span>Evidence</span><b class="'+staleClass+'">'+staleLabel+'</b></div></div>'
+    +'<button class="ghostbtn" type="button" data-action="readiness" aria-label="Review deployment readiness">Readiness</button></section>';
+}
 function render(){
   const view=document.getElementById('view');
   const parts=ROUTE.replace('#/','').split('/');
   view.style.animation='none';void view.offsetWidth;view.style.animation='';
-  if(parts[0]==='scope'&&parts[1]&&parts[2])view.innerHTML=scopeView(parts[1],parts[2]);
-  else view.innerHTML=overviewView();
+  const allowedScope=parts[1]==='CRYPTO'||parts[1]==='SPORTS';
+  const page=parts[0]==='scope'&&allowedScope&&parts[2]?scopeView(parts[1],parts[2]):(parts[0]==='arsenal'?modelArsenalView():(parts[0]==='glossary'?glossaryView():overviewView()));
+  view.innerHTML=statusRibbon()+page;
   [...view.querySelectorAll('.reveal')].forEach((el,i)=>el.style.animationDelay=(i*45)+'ms');
+  requestAnimationFrame(()=>revealGuideTab(view.querySelector('.daily-guide .bt-tab.on')));
+  if(parts[0]==='glossary')wireGlossary();
   buildNav();buildTape();
 }
 function kpi(lab,val,cls,sub,doFlip){
   return '<div class="card kpi reveal"><div class="lab">'+lab+'</div><div class="val '+(cls||'')+'">'+(doFlip?flip(val):val)+'</div>'+(sub?'<div class="sub">'+sub+'</div>':'')+'</div>';
 }
+const ISSUED_TIER_ORDER=['A','B','C','WATCH'];
+const TIER_ORDER=[...ISSUED_TIER_ORDER,'UNATTRIBUTED'];
+const TIER_EVIDENCE_MAX_AGE_MS=48*60*60*1000;
+function tierBadge(tier){const t=TIER_ORDER.includes(String(tier).toUpperCase())?String(tier).toUpperCase():'UNATTRIBUTED';return '<span class="tier-badge '+t.toLowerCase()+'">'+t+'</span>';}
+function boardTier(row){
+  const t=String(row&&row.tier_display_bucket||'UNATTRIBUTED').toUpperCase();
+  return TIER_ORDER.includes(t)?t:'UNATTRIBUTED';
+}
+function boardTierReason(row){
+  const tier=boardTier(row),display=String(row&&row.tier_display_reason||'').toLowerCase();
+  const raw=String((tier==='UNATTRIBUTED'||display==='a_scarcity_cap_enforced_at_read')?display:(row&&row.tier_reason||display)).toLowerCase();
+  const labels={
+    meets_a_edge_and_uncertainty:'At least 4% net edge and at most 12% uncertainty',
+    meets_b_edge_and_uncertainty:'At least 2% net edge and at most 18% uncertainty',
+    meets_c_edge_and_uncertainty:'At least 1% net edge and at most 25% uncertainty',
+    a_scarcity_cap_demoted_to_b:'B after the A-tier event or scope scarcity cap',
+    a_scarcity_cap_enforced_at_read:'B after the A-tier event or scope scarcity cap',
+    below_c_after_fee_edge:'WATCH — below 1% executable net edge',
+    uncertainty_above_tier_gate:'WATCH — uncertainty exceeds the tier gate',
+    no_executable_depth:'UNATTRIBUTED — no two-sided selected-side quote with positive quote sizes or legacy liquidity',
+    cached_model_market_prior_only:'UNATTRIBUTED — exchange price only; no independent predictive source',
+    cached_model_missing_lineage:'UNATTRIBUTED — forecast source lineage is missing',
+    cached_model_missing_exact_forecast_timestamp:'UNATTRIBUTED — exact forecast time is missing',
+    cached_model_missing:'UNATTRIBUTED — no governed forecast exists for this market',
+    series_refresh_failed_or_unknown:'UNATTRIBUTED — this market series did not refresh successfully',
+    legacy_or_superseded_tier_policy:'UNATTRIBUTED — grade belongs to an older tier policy',
+    snapshot_not_bound_to_visible_row:'UNATTRIBUTED — tier snapshot is not bound to this visible row',
+    invalid_assessment_clock:'UNATTRIBUTED — assessment time cannot be verified',
+    assessment_after_board_generation:'UNATTRIBUTED — assessment is newer than the board snapshot',
+    assessment_after_read_time:'UNATTRIBUTED — assessment time is in the future',
+    market_expired_for_board:'UNATTRIBUTED — market expired before this board was read',
+    legacy_missing_or_invalid_tier_snapshot:'UNATTRIBUTED — no valid current-policy snapshot'
+  };
+  if(labels[raw])return labels[raw];
+  if(raw)return raw.replaceAll('_',' ');
+  return tier==='UNATTRIBUTED'?'UNATTRIBUTED — no valid current-policy attribution':tier+' — current executable-value policy';
+}
+function boardTierCounts(scope){
+  const counts=Object.fromEntries(TIER_ORDER.map(t=>[t,0])),board=STATE.board;
+  if(!board||typeof board!=='object')return {available:false,counts:counts,rows:0};
+  const coverageDate=String((STATE.boardMeta||{}).coverage_date||'');
+  const groups=scope?[board[String(scope).toLowerCase()]]:Object.values(board);
+  let available=false,rows=0;
+  groups.forEach(group=>{if(!group||typeof group!=='object')return;available=true;
+    Object.values(group).forEach(items=>(Array.isArray(items)?items:[]).forEach(row=>{
+      if(coverageDate&&String((row||{}).event_date||'')!==coverageDate)return;
+      counts[boardTier(row)]++;rows++;
+    }));
+  });
+  return {available:available,counts:counts,rows:rows};
+}
+function gameTierSummary(rows){
+  const counts=Object.fromEntries(TIER_ORDER.map(t=>[t,0]));
+  rows.forEach(row=>counts[boardTier(row)]++);
+  const present=TIER_ORDER.filter(t=>counts[t]>0),label=present.map(t=>t+' '+counts[t]).join(', ');
+  return '<span class="game-tier-summary" aria-label="Tier counts: '+esc(label)+'">'+present.map(t=>'<span class="game-tier-chip">'+tierBadge(t)+'<span class="tier-n">'+counts[t]+'</span></span>').join('')+'</span>';
+}
+function tierScopeCounts(dist,scope){
+  if(!scope)return dist.counts||{};
+  const by=dist.by_scope||{},wanted=String(scope).toLowerCase();
+  const key=Object.keys(by).find(k=>String(k).toLowerCase()===wanted);
+  return key?by[key]:{};
+}
+function tierEvidenceBucket(area,tier,scope){
+  if(!area)return {};
+  if(!scope)return (area.by_tier||{})[tier]||{};
+  const by=area.by_tier_scope||{},wanted=(tier+'|'+scope).toLowerCase();
+  const key=Object.keys(by).find(k=>String(k).toLowerCase()===wanted);
+  return key?by[key]:{};
+}
+function tierEvidenceFreshness(tp){
+  const stamp=tp&&(tp.tier_performance_generated_at||tp.evidence_generated_at||tp.backtest_generated_at),at=Date.parse(stamp||'');
+  if(!Number.isFinite(at))return {known:false,stale:false,stamp:null,ageMs:null};
+  const ageMs=Math.max(0,Date.now()-at);
+  return {known:true,stale:ageMs>TIER_EVIDENCE_MAX_AGE_MS,stamp:stamp,ageMs:ageMs};
+}
+function tierSampleLabel(f,freshness){
+  const n=Number(f.n||0);
+  if(!n)return 'COLLECTING';
+  if(freshness&&freshness.stale)return 'STALE SAMPLE';
+  if(freshness&&!freshness.known)return 'TIME UNKNOWN';
+  if(f.evidence_status==='INSUFFICIENT_SAMPLE')return 'INSUFFICIENT';
+  return 'FORWARD SAMPLE';
+}
+function metricToken(value){
+  const token=String(value==null?'':value).trim().toLowerCase().replace(/[\s_-]+/g,'');
+  if(['1h','hour','hourly'].includes(token))return 'hourly';
+  if(['1d','day','daily'].includes(token))return 'daily';
+  if(['1w','week','weekly'].includes(token))return 'weekly';
+  return token;
+}
+function metricBucket(map,parts){
+  if(!map||typeof map!=='object')return null;
+  const wanted=parts.map(metricToken);
+  for(const [key,value] of Object.entries(map)){
+    const tokens=String(key).split('|').map(metricToken);
+    if(tokens.length===wanted.length&&tokens.every((token,i)=>token===wanted[i]))return value&&typeof value==='object'?value:{};
+  }
+  let node=map;
+  for(const part of wanted){
+    if(!node||typeof node!=='object')return null;
+    const key=Object.keys(node).find(candidate=>metricToken(candidate)===part);
+    if(key==null)return null;node=node[key];
+  }
+  return node&&typeof node==='object'?node:null;
+}
+function cryptoTierHorizonTable(scope,forecast,freshness){
+  const hasApi=['by_scope_horizon','by_tier_scope_horizon'].some(key=>forecast&&forecast[key]);
+  if(!hasApi)return '';
+  const horizons=[['hourly','Hourly'],['daily','Daily'],['weekly','Weekly']];let rows='';
+  const metricCells=f=>'<td>'+commaN((f||{}).n||0)+' / '+commaN((f||{}).event_clusters||0)+'</td>'
+    +'<td>'+((f||{}).value_side_hit_rate==null?'—':pct(f.value_side_hit_rate,1))+'</td><td>'+((f||{}).mean_brier==null?'—':num(f.mean_brier,3))+'</td>';
+  horizons.forEach(([horizon,label])=>{
+    const f=metricBucket(forecast&&forecast.by_scope_horizon,[scope,horizon]);
+    if(f!==null)rows+='<tr class="scope-row"><td>'+label+'<span class="tier-sample">'+tierSampleLabel(f||{},freshness)+'</span></td>'+metricCells(f)+'</tr>';
+    ISSUED_TIER_ORDER.forEach(t=>{
+      const tf=metricBucket(forecast&&forecast.by_tier_scope_horizon,[t,scope,horizon]);
+      if(tf!==null)rows+='<tr class="tier-detail"><td>'+tierBadge(t)+'<span class="tier-sample">'+label+'</span></td>'+metricCells(tf)+'</tr>';
+    });
+  });
+  if(!rows)return '';
+  return '<div class="tier-horizon-head"><b>'+esc(scope)+' hourly / daily / weekly forecast evidence</b><span>policy-separated settled forecast slices</span></div>'
+    +'<div class="tier-table-wrap"><table class="tier-table tier-horizon-table"><thead><tr><th>Horizon / tier</th><th>Forecast n / clusters</th><th>Value-side hit</th><th>Brier</th></tr></thead><tbody>'+rows+'</tbody></table></div>';
+}
+function tierPerformanceCard(scope){
+  const tp=STATE.tierPerformance||{},dist=tp.current_distribution||{},boardCounts=boardTierCounts(scope),counts=boardCounts.available?boardCounts.counts:tierScopeCounts(dist,scope);
+  const total=TIER_ORDER.reduce((n,t)=>n+Number(counts[t]||0),0),forecast=tp.forecast||{},freshness=tierEvidenceFreshness(tp);
+  const evidenceN=ISSUED_TIER_ORDER.reduce((n,t)=>n+Number(tierEvidenceBucket(forecast,t,scope).n||0),0);
+  const unavailable=!STATE.tierPerformanceFetchOk||tp.status==='UNAVAILABLE'||!!tp.error;
+  const state=unavailable?'RESULT EVIDENCE UNAVAILABLE':(freshness.stale?'STALE EVIDENCE':(evidenceN&&!freshness.known?'EVIDENCE TIME UNKNOWN':(evidenceN?(ISSUED_TIER_ORDER.some(t=>tierSampleLabel(tierEvidenceBucket(forecast,t,scope),freshness)==='INSUFFICIENT')?'INSUFFICIENT SAMPLE':'FORWARD EVIDENCE'):'COLLECTING FORWARD EVIDENCE')));
+  const policy=tp.policy_version||(dist.policy_versions||[]).join(', ')||'executable value v5';
+  let h='<section class="card reveal tier-card" style="margin-bottom:var(--s3)" aria-label="'+esc((scope?scope+' ':'')+'tier forecast diagnostics')+'"><h3>Tier forecast diagnostics <span class="r">'+esc(scope||'all scopes')+' · '+esc(policy)+'</span></h3>';
+  h+='<div class="tier-intro"><p>Current grades come from the visible board snapshot'+(boardCounts.available?' ('+commaN(boardCounts.rows)+' rows)':'')+'. Forward forecast evidence is shown separately and never inferred from current grades. Paper/shadow realized economics are retired and are not displayed or used for live authority.</p><span class="tier-state '+(state==='FORWARD EVIDENCE'?'ready':(state==='STALE EVIDENCE'||state==='EVIDENCE TIME UNKNOWN'||state==='RESULT EVIDENCE UNAVAILABLE'?'stale':''))+'">'+esc(state)+'</span></div>';
+  h+='<div class="tier-dist" aria-label="Current tier distribution">'+TIER_ORDER.map(t=>{const n=Number(counts[t]||0),share=total?n/total:0,color=t==='A'?'var(--green)':(t==='B'?'var(--cyan)':(t==='C'?'var(--amber)':(t==='UNATTRIBUTED'?'var(--red)':'var(--faint)')));return '<div class="tier-count" style="--tier-color:'+color+'"><div class="tc-head">'+tierBadge(t)+'<span class="tc-n">'+commaN(n)+'</span></div><div class="tc-share">'+pct(share,1)+' of '+commaN(total)+' current</div></div>';}).join('')+'</div>';
+  h+='<div class="tier-table-wrap"><table class="tier-table"><thead><tr><th>Tier / evidence</th><th>Current</th><th>Forecast n / clusters</th><th>Value-side hit</th><th>Brier</th></tr></thead><tbody>';
+  TIER_ORDER.forEach(t=>{const f=tierEvidenceBucket(forecast,t,scope),sample=t==='UNATTRIBUTED'?'NOT SCORED':tierSampleLabel(f,freshness);
+    if(t==='UNATTRIBUTED'){h+='<tr><td>'+tierBadge(t)+'<span class="tier-sample">'+sample+'</span></td><td>'+commaN(counts[t]||0)+'</td><td>—</td><td>—</td><td>—</td></tr>';return;}
+    h+='<tr><td>'+tierBadge(t)+'<span class="tier-sample">'+sample+'</span></td><td>'+commaN(counts[t]||0)+'</td>'
+      +'<td>'+commaN(f.n||0)+' / '+commaN(f.event_clusters||0)+'</td><td>'+(f.value_side_hit_rate==null?'—':pct(f.value_side_hit_rate,1))+'</td><td>'+(f.mean_brier==null?'—':num(f.mean_brier,3))+'</td></tr>';});
+  h+='</tbody></table></div>'+cryptoTierHorizonTable(scope,forecast,freshness)+'<div class="tier-foot"><span><b>Policy:</b> A ≥4% net edge / ≤12% uncertainty · B ≥2% / ≤18% · C ≥1% / ≤25%.</span><span>Letters also require an independent governed model source, a two-sided selected-side quote, and positive depth from both Kalshi quote sizes (or positive legacy liquidity). A is capped at one per event and five per scope. Research only; no execution authority.</span></div>';
+  if(unavailable)h+='<div class="sub" style="margin-top:8px;color:var(--amber)">Forward tier-performance evidence is temporarily unavailable. Current A/B/C/WATCH/UNATTRIBUTED counts above still come directly from the visible board snapshot; no legacy rows are relabelled.</div>';
+  else if(freshness.stale)h+='<div class="sub" style="margin-top:8px;color:var(--amber)">Evidence snapshot '+esc(ago(freshness.stamp))+' exceeds the 48-hour freshness window. Metrics remain visible for audit only and are not presented as forward-ready.</div>';
+  else if(evidenceN&&!freshness.known)h+='<div class="sub" style="margin-top:8px;color:var(--amber)">Evidence timestamp is unavailable. Metrics remain visible for audit only until freshness can be verified.</div>';
+  return h+'</section>';
+}
 function overviewView(){
   const o=STATE.overview;
-  if(!o||o.error||o.bankroll_cents==null)return topbar('Overview','account & promotion ladder')+skeleton();
-  const rts=o.realized_trade_statistics||{};
-  const curveRaw=o.balance_curve||[];
-  const curve=curveRaw.map(p=>({v:p.bankroll_cents,disp:(p.bankroll_cents/100),t:(p.t||'').slice(0,10)}));
-  const sparkPts=curveRaw.slice(-30).map(p=>p.bankroll_cents);
-  let h=topbar('Overview','account & promotion ladder');
-  // hero band: account + ROI gauge + quick stats
-  h+='<div class="grid hero">';
-  h+='<div class="card acct reveal"><div><div class="lab" style="font-size:9.5px;letter-spacing:.2em;text-transform:uppercase;color:var(--faint);display:flex;gap:8px;align-items:center">Paper account <span class="badge"><span class="d"></span>paper</span></div>'
-    +'<div class="big">'+flip(fmtUSD(o.bankroll_cents))+'</div>'
-    +'<div class="sub" style="font-family:var(--mono);color:var(--muted);margin-top:4px">base '+fmtUSD(o.base_bankroll_cents)+'</div></div>'
-    +'<div class="spark">'+(spark(sparkPts,{color:o.account_roi>=0?'var(--green)':'var(--red)'})||'<div class="sub" style="color:var(--faint)">curve warming up…</div>')+'</div></div>';
-  h+='<div class="card gaugecard reveal">'+gauge(o.account_roi,{span:0.5,label:'Account ROI'})+'</div>';
-  h+='<div class="card reveal"><div class="mini">'
-    +miniRow('Open exposure',fmtUSD(o.exposure_cents),'amb')
-    +miniRow('Realized P&amp;L',fmtUSD(o.realized_pnl_cents),sgn(o.realized_pnl_cents))
-    +miniRow('Settled trades',commaN(rts.trades||0),'')
-    +miniRow('Stage',esc(o.stage==null?'—':o.stage),'cy')
+  if(!o||o.error)return topbar('Overview','live Kalshi account & execution control')+skeleton();
+  const account=o.live_account||{},controls=o.live_controls||(STATE.status&&STATE.status.live_controls)||{};
+  const accountAvailable=Number.isInteger(account.balance_cents)&&!account.invalid;
+  const accountFresh=accountAvailable&&account.stale===false&&String(account.status||'').toUpperCase()!=='ERROR';
+  const controlState=String(controls.state||'invalid_or_blocked').replace(/_/g,' ').toUpperCase();
+  const proof=account.http_proof||{},source=account.source||{};
+  let h=topbar('Overview','live Kalshi account & execution control');
+  // Hero band: cached GET-only live account + explicit live authority.
+  h+='<div class="grid hero overview-hero">';
+  h+='<div class="card acct reveal"><div><div class="lab" style="font-size:9.5px;letter-spacing:.2em;text-transform:uppercase;color:var(--faint);display:flex;gap:8px;align-items:center">Live Kalshi account <span class="badge"><span class="d"></span>'+esc(accountFresh?'fresh':'read-only')+'</span></div>'
+    +'<div class="big '+(accountFresh?'pos':'')+'">'+flip(accountAvailable?fmtUSD(account.balance_cents):'SNAPSHOT PENDING')+'</div>'
+    +'<div class="sub" style="font-family:var(--mono);color:var(--muted);margin-top:4px">'+(account.generated_at?'captured '+esc(ago(account.generated_at)):'No validated cached live-account snapshot')+' · page requests never query Kalshi</div></div></div>';
+  h+='<div class="card reveal"><h3>Open live state <span class="r">cached broker reads</span></h3><div class="mini">'
+    +miniRow('Open positions',accountAvailable?commaN(account.open_positions_count||0):'—',(account.open_positions_count||0)>0?'amb':'')
+    +miniRow('Open orders',accountAvailable?commaN(account.open_orders_count||0):'—',(account.open_orders_count||0)>0?'amb':'')
+    +miniRow('Orders in retained window',accountAvailable?commaN(account.historical_orders_count||0):'—','')
+    +miniRow('Fills in retained window',account.historical_fills_count==null?'—':commaN(account.historical_fills_count),'')
+    +'</div><div class="sub" style="margin-top:8px;color:var(--faint)">'+esc(source.history_scope||'live portfolio retention window')+' · not all-time P&amp;L</div></div>';
+  h+='<div class="card summarycard reveal"><div class="mini">'
+    +miniRow('Live authority',controls.execution_authority===true?'ARMED':'LOCKED',controls.execution_authority===true?'neg':'amb')
+    +miniRow('Authority state',esc(controlState),'cy')
+    +miniRow('Proof scope','ONE CONTROLLED','')
+    +miniRow('Order policy','LIMIT ONLY','pos')
     +'</div></div>';
   h+='</div>';
-  h+='<div class="card reveal" style="margin-bottom:var(--s3)"><h3>Balance curve <span class="r">'+curveRaw.length+' pts · paper $</span></h3>'
-    +areaChart(curve,{h:176,color:o.account_roi>=0?'var(--green)':'var(--red)'})
-    +'<div class="legend"><span><i style="background:var(--green)"></i>paper bankroll</span><span style="color:var(--faint)">hover for value · date</span></div></div>';
+  h+='<div class="outcome-brief '+(controls.execution_authority===true?'good':'')+' reveal" role="note"><span class="verdict">'
+    +(controls.execution_authority===true?'One-proof live authority is armed':'Live submission remains locked')+'</span><span class="explain">'
+    +(controls.execution_authority===true?'An order still requires an active LIVE session, fresh market/account/risk state, every central firewall check, and a limit-only submit. This page cannot place orders.'
+      :'<b>'+esc(controls.blocker||'DEFAULT_DISABLED')+'</b>. Paper/shadow results cannot unlock or block LIVE; only the explicit live-control contracts can change this state.')+'</span></div>';
+  h+='<div class="card reveal" style="margin-bottom:var(--s3)"><h3>Paper history retired <span class="r">RETIRED_NON_AUTHORITATIVE</span></h3>'
+    +'<div class="sub" style="color:var(--muted)">Paper bankroll, paper P&amp;L, and paper-result promotion gates were removed from this operator view and from live authority. Raw ledger/history remains preserved for audit; it is not rewritten or deleted.</div></div>';
+  h+=tierPerformanceCard();
+  h+='<section id="readiness"><div class="section-head"><h2>Live control contract</h2><p>Local checks only · no broker contact</p></div>';
+  h+='<div class="card reveal"><div class="mini">'
+    +miniRow('Central firewall',controls.central_firewall_required===true?'REQUIRED':'UNKNOWN',controls.central_firewall_required===true?'pos':'amb')
+    +miniRow('Market orders',controls.market_orders_allowed===false?'DISABLED':'UNKNOWN',controls.market_orders_allowed===false?'pos':'neg')
+    +miniRow('GET-only account proof',proof.get_only===true?'VERIFIED':(accountAvailable?'UNVERIFIED':'PENDING'),proof.get_only===true?'pos':'amb')
+    +miniRow('Account source',source.provider?esc(String(source.provider).toUpperCase()):'PENDING','')
+    +'</div></div></section>';
+  h+='<div class="section-head"><h2>Forecast diagnostics</h2><p>Probability quality across graded markets — not trading profit</p></div>';
   h+=accuracyPanel();
-  h+='<div class="grid kpis" style="margin-bottom:var(--s3)">';
-  h+=kpi('Win rate',pct(rts.win_rate),'','settled trades',true);
-  h+=kpi('ROI on cost',signed(rts.roi_on_entry_cost),sgn(rts.roi_on_entry_cost),'',true);
-  h+=kpi('Profit factor',num(rts.profit_factor,2),rts.profit_factor>=1?'pos':'neg','',true);
-  h+=kpi('Max drawdown',fmtUSD(rts.max_drawdown_cents),'amb','',true);
-  h+='</div>';
-  h+='<div class="grid cols2">';
-  h+='<div class="card reveal"><h3>'+svgTrophy()+'Actively promoted</h3>'+promotedList(o.promoted)+'</div>';
-  h+='<div class="card reveal"><h3>Close to promotion <span class="r">contested Brier edge</span></h3>'+closeList(o.close_to_promotion)+'</div>';
-  h+='</div>';
   h+='<div class="card reveal" style="margin-top:var(--s3)"><h3>Active model — fused sources <span class="r">weight</span></h3><div>'
     +((o.active_sources||[]).map(s=>'<span class="chip">'+esc(s.source)+' <b>'+num(s.weight,2)+'</b></span>').join('')||'<div class="empty">no weights</div>')+'</div></div>';
+  h+=modelArsenalSummaryCard();
   return h;
 }
 function miniRow(k,v,cls){return '<div class="row"><span class="k">'+k+'</span><span class="vv '+(cls||'')+'">'+flip(v)+'</span></div>';}
@@ -654,11 +1065,12 @@ function accuracyPanel(){
   if(!tel||!tel.overall)return '';
   const s=tel.overall.summary||{},imp=tel.overall.improvement||{};
   if(!s.n)return '';
-  let h='<div class="card reveal" style="margin-bottom:var(--s3)"><h3>Accuracy &amp; improvement <span class="r">'+commaN(s.n)+' graded · recent vs prior window</span></h3>';
+  let h='<div class="card reveal" style="margin-bottom:var(--s3)"><h3>Forecast quality &amp; improvement <span class="r">'+commaN(s.n)+' graded forecasts · recent vs prior</span></h3>';
+  h+='<div class="metric-note">Diagnostic only: this population includes markets the engine did not trade. Forecast quality has no live-submit authority and is not a claim of realized profitability.</div>';
   h+='<div class="acc-hero">'
     +'<div class="acc-stat"><div class="lab">Brier</div><div class="val">'+flip(num(s.brier))+'</div><div class="sub">lower = sharper</div></div>'
-    +'<div class="acc-stat"><div class="lab">Hit rate</div><div class="val '+(s.hit_rate>=.5?'pos':'')+'">'+flip(pct(s.hit_rate))+'</div><div class="sub">directional</div></div>'
-    +'<div class="acc-stat"><div class="lab">Edge vs market</div><div class="val '+sgn(s.brier_edge)+'">'+flip(signed(s.brier_edge,2))+'</div><div class="sub">'+commaN(s.contested_n||0)+' contested</div></div>'
+    +'<div class="acc-stat"><div class="lab">Directional hit rate</div><div class="val '+(s.hit_rate>=.5?'pos':'')+'">'+flip(pct(s.hit_rate))+'</div><div class="sub">all graded forecasts</div></div>'
+    +'<div class="acc-stat"><div class="lab">Brier edge vs market</div><div class="val '+sgn(s.brier_edge)+'">'+flip(signed(s.brier_edge,2))+'</div><div class="sub">'+commaN(s.contested_n||0)+' contested</div></div>'
     +'<div class="acc-stat"><div class="lab">Improvement</div><div class="val">'+improvBig(imp)+'</div><div class="sub">Brier fell = sharper</div></div>'
     +'</div>';
   const series=tel.series||[];
@@ -695,23 +1107,55 @@ function settledTodayCard(scope){
   if(!rows.length)return '';
   const correct=rows.filter(r=>r.correct).length;
   const pctc=Math.round(correct/rows.length*100);
+  const visible=[...rows].sort((a,b)=>String(b.settled_at||'').localeCompare(String(a.settled_at||''))).slice(0,100);
   let h='<div class="card pad0 reveal" style="margin-top:var(--s3)"><h3 style="padding:var(--s3) var(--s3) var(--s2)">Settled today '
     +'<span class="r"><b class="'+(pctc>=50?'res-ok':'res-no')+'">'+correct+'/'+rows.length+'</b> correct · '+pctc+'%</span></h3>';
   h+='<div style="max-height:300px;overflow:auto"><table><thead><tr><th>Market</th><th>Bet</th><th>Lean</th><th>Model</th><th>Result</th><th>Call</th></tr></thead><tbody>';
-  rows.forEach(r=>{h+='<tr><td title="'+esc(r.ticker)+'">'+esc(r.matchup||(r.ticker||'').slice(0,26))+'</td><td>'+esc(prettyBet(r.bet_type))+'</td>'
+  visible.forEach(r=>{h+='<tr><td title="'+esc(r.ticker)+'">'+esc(r.label||r.matchup||(r.ticker||'').slice(0,26))+'</td><td>'+esc(prettyBet(r.bet_type))+'</td>'
     +'<td>'+esc(r.lean)+(r.traded?' <span style="color:var(--amber);font-size:10px">·traded</span>':'')+'</td>'
     +'<td>'+num(r.prob,2)+'</td><td>'+(r.result?'YES':'NO')+'</td>'
     +'<td>'+(r.correct?'<span class="res-ok">✓</span>':'<span class="res-no">✗</span>')+'</td></tr>';});
+  if(rows.length>visible.length)h+='<tr><td class="table-more" colspan="6">Showing the 100 most recent of '+commaN(rows.length)+' settlements.</td></tr>';
   return h+'</tbody></table></div></div>';
 }
 // delegated bet-type tab switch (survives re-renders)
 document.addEventListener('click',e=>{
+  const action=e.target.closest&&e.target.closest('[data-action]');
+  if(action){
+    const name=action.getAttribute('data-action');
+    if(name==='search'){cmdOpen();return;}
+    if(name==='refresh'){poll();return;}
+    if(name==='readiness'){
+      if(ROUTE!=='#/overview'){location.hash='#/overview';setTimeout(()=>document.getElementById('readiness')?.scrollIntoView({behavior:REDUCE?'auto':'smooth'}),80);}
+      else document.getElementById('readiness')?.scrollIntoView({behavior:REDUCE?'auto':'smooth'});
+      return;
+    }
+  }
   const tab=e.target.closest&&e.target.closest('.bt-tab');
   if(tab){const card=tab.closest('.card'),bt=tab.getAttribute('data-bt');
-    card.querySelectorAll('.bt-tab').forEach(t=>t.classList.toggle('on',t===tab));
-    card.querySelectorAll('.bt-panel').forEach(p=>p.classList.toggle('on',p.getAttribute('data-bt')===bt));return;}
+    if(card.classList.contains('daily-guide')&&card.dataset.league){GUIDE_FILTERS[card.dataset.league]=tab.dataset.marketType||'all';card.dataset.filter=tab.dataset.marketType||'all';}
+    card.querySelectorAll('.bt-tab').forEach(t=>{const on=t===tab;t.classList.toggle('on',on);t.setAttribute('aria-selected',String(on));t.tabIndex=on?0:-1;});
+    revealGuideTab(tab,true);
+    card.querySelectorAll('.bt-panel').forEach(p=>{const on=p.getAttribute('data-bt')===bt;p.classList.toggle('on',on);p.hidden=!on;
+      if(on&&p.dataset.loaded!=='true'){
+        const kind=p.parentElement&&p.parentElement.dataset.kind;
+        if(kind==='guide'){
+          const lazy=LAZY_GUIDE[bt]||{rows:[],label:'All markets',isAll:true,key:bt};
+          p.innerHTML=dayGames(lazy.rows,lazy.key,lazy.label,lazy.isAll);
+        }
+        p.dataset.loaded='true';
+      }});return;}
   const gh=e.target.closest&&e.target.closest('.ghead');
-  if(gh){gh.parentElement.classList.toggle('open');}
+  if(gh){const open=gh.parentElement.classList.toggle('open'),body=gh.parentElement.querySelector('.gbody');gh.setAttribute('aria-expanded',String(open));if(body)body.hidden=!open;}
+});
+document.addEventListener('keydown',e=>{
+  const tab=e.target.closest&&e.target.closest('.bt-tab[role="tab"]');if(!tab)return;
+  const tabs=[...tab.closest('[role="tablist"]').querySelectorAll('.bt-tab[role="tab"]')];
+  const i=tabs.indexOf(tab);let next=null;
+  if(e.key==='ArrowRight'||e.key==='ArrowDown')next=(i+1)%tabs.length;
+  if(e.key==='ArrowLeft'||e.key==='ArrowUp')next=(i-1+tabs.length)%tabs.length;
+  if(e.key==='Home')next=0;if(e.key==='End')next=tabs.length-1;
+  if(next==null)return;e.preventDefault();tabs[next].focus();tabs[next].click();
 });
 // ---- market-type readability ----
 function titleCase(s){return String(s).replace(/_/g,' ').replace(/\b\w/g,c=>c.toUpperCase());}
@@ -747,59 +1191,96 @@ function prettyDay(d,today){
     if(diff===1)return 'Tomorrow';if(diff===-1)return 'Yesterday';}
   const p=d.split('-');return (_MON[(+p[1]||1)-1]||'')+' '+(+p[2]||'');
 }
-// ---- day's games (from the bet board, grouped by day then matchup) ----
+// ---- daily sports guide: event date -> market category -> ranked matchups ----
 function boardFor(label){return STATE.board&&STATE.board[String(label).toLowerCase()];}
-function boardRows(rows){
-  return '<div style="max-height:340px;overflow:auto"><table><thead><tr><th>Matchup</th><th>Market</th><th>Pick</th><th>Model</th><th>Mkt</th><th>Edge</th></tr></thead><tbody>'
-    +rows.map(r=>'<tr><td>'+esc(r.matchup||prettyMatchup(r.matchup))+dateTag(r.game_date)+'</td><td title="'+esc(r.ticker)+'">'+esc(r.market||prettyBet(r.bet_type))+'</td>'
-      +'<td>'+(r.pick?'<span class="pill '+(String(r.pick).toLowerCase()==='no'?'no':'yes')+'">'+esc(String(r.pick).toUpperCase())+'</span>':'—')+'</td>'
-      +'<td>'+num(r.probability,2)+'</td><td>'+(r.market_probability==null?'—':num(r.market_probability,2))+'</td>'
-      +'<td class="'+((r.edge||0)>=0?'pos':'neg')+'">'+signed(r.edge||0,1)+'</td></tr>').join('')
-    +'</tbody></table></div>';
+function localISODate(){const d=new Date(),p=n=>String(n).padStart(2,'0');return d.getFullYear()+'-'+p(d.getMonth()+1)+'-'+p(d.getDate());}
+function rowEventDate(r){
+  if(r.event_date)return r.event_date;
+  const m=String(r.ticker||'').match(/-(\d{2})([A-Z]{3})(\d{2})/);
+  if(!m)return '';
+  const month={JAN:'01',FEB:'02',MAR:'03',APR:'04',MAY:'05',JUN:'06',JUL:'07',AUG:'08',SEP:'09',OCT:'10',NOV:'11',DEC:'12'}[m[2]];
+  return month?'20'+m[1]+'-'+month+'-'+m[3]:'';
 }
-function betRankCard(label){
-  const grp=boardFor(label);
-  const types=grp?Object.keys(grp).filter(t=>grp[t]&&grp[t].length):[];
-  if(!types.length)return '';
-  types.sort((a,b)=>grp[b].length-grp[a].length);
-  const total=types.reduce((n,t)=>n+grp[t].length,0);
-  let h='<div class="card reveal" style="margin-top:var(--s3)"><h3>All markets by category <span class="r">'+total+' priced now · every market, not just traded</span></h3>';
-  h+='<div class="bt-tabs">'+types.map((t,i)=>'<button class="bt-tab'+(i===0?' on':'')+'" data-bt="'+esc(t)+'">'+esc(prettyBet(t))+'<span class="c">'+grp[t].length+'</span></button>').join('')+'</div>';
-  h+='<div class="bt-panels">'+types.map((t,i)=>{const rows=[...grp[t]].sort((a,b)=>(b.edge||0)-(a.edge||0));
-    return '<div class="bt-panel'+(i===0?' on':'')+'" data-bt="'+esc(t)+'">'+boardRows(rows)+'</div>';}).join('')+'</div>';
-  return h+'</div>';
+function eventKey(r){return r.event_id||String(r.ticker||'').split('-')[1]||((r.matchup||'?')+'|'+rowEventDate(r));}
+function eventCount(rows){return new Set(rows.map(eventKey)).size;}
+function countLabel(n,word){return n+' '+word+(n===1?'':'s');}
+function opportunity(r){
+  if(r.after_fee_edge!=null&&Number.isFinite(Number(r.after_fee_edge)))return Number(r.after_fee_edge);
+  return r.edge==null||!Number.isFinite(Number(r.edge))?Number.NEGATIVE_INFINITY:Math.abs(Number(r.edge));
+}
+function sideFor(r){
+  const explicit=String(r.value_side||r.pick||'').toUpperCase();
+  if(explicit==='YES'||explicit==='NO')return explicit;
+  return r.edge==null||!Number.isFinite(Number(r.edge))?null:(Number(r.edge)>=0?'YES':'NO');
+}
+function opportunityLabel(r){const edge=opportunity(r);if(!Number.isFinite(edge))return '—';return r.after_fee_edge!=null?signed(edge,1):pct(edge,1);}
+function sideProb(r,key){const v=r[key];if(v==null)return null;return sideFor(r)==='NO'?1-v:v;}
+function marketName(r){
+  if(String(r.bet_type||'').startsWith('prop_')&&r.title){
+    const m=String(r.title).match(/^\s*(.+?)\s*:\s*(.+?)\s*\??\s*$/);
+    if(m)return m[1].trim()+' · '+m[2].trim().replace(/\?$/,'');
+  }
+  return r.market||String(r.ticker||'').slice(0,30);
+}
+function domId(s){return String(s||'guide').toLowerCase().replace(/[^a-z0-9_-]+/g,'-');}
+function revealGuideTab(tab,smooth){
+  if(!tab)return;const strip=tab.parentElement;if(!strip||strip.scrollWidth<=strip.clientWidth)return;
+  const left=Math.max(0,tab.offsetLeft-(strip.clientWidth-tab.offsetWidth)/2);
+  strip.scrollTo({left:left,behavior:smooth&&!REDUCE?'smooth':'auto'});
 }
 function gameBreakdown(rows){
-  rows=[...rows].sort((a,b)=>Math.abs(b.edge||0)-Math.abs(a.edge||0));
-  return '<table><thead><tr><th>Bet type</th><th>Market</th><th>Pick</th><th>Model</th><th>Mkt</th><th>Edge</th></tr></thead><tbody>'
-    +rows.map(r=>'<tr><td>'+esc(prettyBet(r.bet_type))+'</td><td title="'+esc(r.ticker)+'">'+esc(r.market||(r.ticker||'').slice(0,26))+'</td>'
-      +'<td>'+(r.pick?'<span class="pill '+(String(r.pick).toLowerCase()==='no'?'no':'yes')+'">'+esc(String(r.pick).toUpperCase())+'</span>':'—')+'</td>'
-      +'<td>'+num(r.probability,2)+'</td><td>'+(r.market_probability==null?'—':num(r.market_probability,2))+'</td>'
-      +'<td class="'+((r.edge||0)>=0?'pos':'neg')+'">'+signed(r.edge||0,1)+'</td></tr>').join('')
-    +'</tbody></table>';
+  rows=[...rows].sort((a,b)=>opportunity(b)-opportunity(a));
+  return '<div style="overflow:auto"><table><thead><tr><th>Category</th><th>Market</th><th>Value side</th><th>Model P</th><th>Market P</th><th>Net edge</th><th>Tier / reason</th></tr></thead><tbody>'
+    +rows.map(r=>{const side=sideFor(r),edge=opportunity(r);
+      return '<tr><td>'+esc(prettyBet(r.bet_type))+'</td><td title="'+esc(r.ticker)+'">'+esc(marketName(r))+'</td>'
+        +'<td>'+(side?'<span class="pill '+(side==='NO'?'no':'yes')+'">'+side+'</span>':'—')+'</td>'
+        +'<td>'+num(sideProb(r,'probability'),2)+'</td><td>'+num(sideProb(r,'market_probability'),2)+'</td>'
+        +'<td class="'+(!Number.isFinite(edge)?'':(edge>=0?'pos':'neg'))+'">'+opportunityLabel(r)+'</td><td title="'+esc(r.tier_reason||r.tier_display_reason||'')+'">'+tierBadge(boardTier(r))+'<span class="tier-sample">'+esc(boardTierReason(r))+'</span></td></tr>';}).join('')
+    +'</tbody></table></div>';
 }
-function dayGames(rows){
-  const byGame={};rows.forEach(r=>{const m=r.matchup||'?';(byGame[m]=byGame[m]||[]).push(r);});
-  const games=Object.keys(byGame).sort((a,b)=>Math.max(...byGame[b].map(r=>Math.abs(r.edge||0)))-Math.max(...byGame[a].map(r=>Math.abs(r.edge||0))));
-  return '<div class="games">'+games.map(m=>{const rows2=byGame[m];const be=Math.max(...rows2.map(r=>Math.abs(r.edge||0)));
-    return '<div class="game"><div class="ghead"><span class="gx">▸</span><span class="gm">'+esc(prettyMatchup(m))+'</span><span class="gc">'+rows2.length+' markets</span><span class="ge">'+signed(be,1)+' best</span></div>'
-      +'<div class="gbody">'+gameBreakdown(rows2)+'</div></div>';}).join('')+'</div>';
+function dayGames(rows,key,filterLabel,isAll){
+  const byGame={};rows.forEach(r=>{const k=eventKey(r);(byGame[k]=byGame[k]||[]).push(r);});
+  const games=Object.keys(byGame).sort((a,b)=>{const gap=Math.max(...byGame[b].map(opportunity))-Math.max(...byGame[a].map(opportunity));return gap||String(byGame[a][0].matchup||a).localeCompare(String(byGame[b][0].matchup||b));});
+  if(!games.length)return '<div class="empty">No events in this category.</div>';
+  const note=isAll?'All-market view. Open a matchup for its complete priced board.':'Filtered to <b>'+esc(filterLabel)+'</b>. Matchup rankings, counts, and expanded rows stay inside this category; choose All markets for the complete board.';
+  const counts=games.length+' matchup'+(games.length===1?'':'s')+' · '+rows.length+' market'+(rows.length===1?'':'s');
+  return '<div class="guide-filter-note" role="status" aria-live="polite"><span>'+note+'</span><span class="counts">'+counts+'</span></div>'
+    +'<div class="games">'+games.map((k,i)=>{const ranked=byGame[k];
+    const best=[...ranked].sort((a,b)=>opportunity(b)-opportunity(a))[0],side=sideFor(best),be=opportunity(best);
+    const bodyId=domId(key+'-'+k+'-'+i),count=ranked.length+' market'+(ranked.length===1?'':'s'),value=side&&Number.isFinite(be)?side+' · '+opportunityLabel(best):'No executable quote';
+    return '<div class="game"><button type="button" class="ghead" aria-expanded="false" aria-controls="'+bodyId+'"><span class="gx"><b>#'+(i+1)+'</b> ▸</span><span class="gm">'+esc(prettyMatchup(best.matchup||'?'))+'<small>'+esc(marketName(best))+'</small></span><span class="gc">'+count+'</span><span class="ge"><span class="guide-value">'+esc(value)+'</span>'+gameTierSummary(ranked)+'</span></button>'
+      +'<div class="gbody" id="'+bodyId+'" hidden><div class="sub" style="padding:8px 4px;color:var(--muted)">'+(isAll?'Complete matchup board':'Filtered '+esc(filterLabel)+' breakdown')+' · ranked by quoted ask + taker-fee net edge · forecast guide, not an order</div>'+gameBreakdown(ranked)+'</div></div>';}).join('')+'</div>';
 }
-function gamesCard(vert,label){
-  if(vert!=='SPORTS')return '';
-  const grp=boardFor(label);
-  if(!grp)return '';
-  const all=[];Object.values(grp).forEach(rows=>rows.forEach(r=>all.push(r)));
-  if(!all.length)return '';
-  const byDay={};all.forEach(r=>{const d=(r.close_time||'').slice(0,10);if(d)(byDay[d]=byDay[d]||[]).push(r);});
-  const days=Object.keys(byDay).sort();
-  if(!days.length)return '';
-  const today=new Date().toISOString().slice(0,10);
-  let defIdx=days.findIndex(d=>d>=today);if(defIdx<0)defIdx=days.length-1;
-  const nGames=(rows)=>{const s=new Set();rows.forEach(r=>s.add(r.matchup||'?'));return s.size;};
-  let h='<div class="card reveal" style="margin-top:var(--s3)"><h3>Games — full breakdown <span class="r">pick a day, then a game</span></h3>';
-  h+='<div class="bt-tabs">'+days.map((d,i)=>'<button class="bt-tab'+(i===defIdx?' on':'')+'" data-bt="day-'+d+'">'+esc(prettyDay(d,today))+'<span class="c">'+nGames(byDay[d])+'</span></button>').join('')+'</div>';
-  h+='<div class="bt-panels">'+days.map((d,i)=>'<div class="bt-panel'+(i===defIdx?' on':'')+'" data-bt="day-'+d+'">'+dayGames(byDay[d])+'</div>').join('')+'</div>';
+function dailyGuideCard(label){
+  const grp=boardFor(label)||{},all=[];
+  Object.values(grp).forEach(rows=>rows.forEach(r=>{if(rowEventDate(r))all.push(r);}));
+  const today=localISODate(),todayRows=all.filter(r=>rowEventDate(r)===today);
+  // A daily guide is strictly today's slate.  Future rows can never stand in
+  // for an empty/off-season day because that makes the header and rankings lie.
+  const active=todayRows;
+  const sports=(STATE.scopes&&STATE.scopes.verticals&&STATE.scopes.verticals.SPORTS)||{};
+  const scope=(sports.scopes&&sports.scopes[label])||null;
+  const season=scope?(scope.season_status||(scope.in_season===false?'off':'unknown')):'unknown';
+  const refreshed=STATE.boardMeta&&STATE.boardMeta.generated_at;
+  const requested=GUIDE_FILTERS[label]||'all';
+  const preferred=requested==='all'||active.some(r=>r.bet_type===requested)?requested:'all';
+  if(preferred!==requested)GUIDE_FILTERS[label]='all';
+  let h='<div class="card reveal daily-guide" data-league="'+esc(label)+'" data-season="'+esc(season)+'" data-filter="'+esc(preferred)+'" style="margin-bottom:var(--s3)"><h3>Today’s '+esc(label)+' betting guide <span class="r">refreshed '+ago(refreshed)+'</span></h3>';
+  h+='<div class="sub" style="margin:-3px 0 12px;color:var(--muted)">'+esc(prettyDay(today,today))+' · '+countLabel(eventCount(todayRows),'event')+' · '+countLabel(todayRows.length,'priced market')+(active.length?' · ranked by executable after-fee value · click any matchup for market breakdown':'')+'</div>';
+  if(!todayRows.length){
+    const detail=season==='off'
+      ? esc(label)+' is currently out of season. It stays available in the league menu year-round; this guide will populate only when a current-day slate is listed.'
+      : (season==='upcoming'
+        ? esc(label)+' is in preseason or awaiting its next slate. It stays available year-round, with no future event substituted for today.'
+        : 'No current-day slate is available. Future-dated markets are intentionally excluded from today’s rankings.');
+    h+='<div class="empty" style="margin-bottom:12px"><b>No '+esc(label)+' events are listed for today.</b><br><span style="color:'+(season==='off'?'var(--amber)':'var(--faint)')+'">'+detail+'</span></div>';
+  }
+  if(!active.length)return h+'</div>';
+  const types=[...new Set(active.map(r=>r.bet_type).filter(Boolean))].sort((a,b)=>prettyBet(a).localeCompare(prettyBet(b)));
+  const tabs=['all',...types],selected=tabs.includes(preferred)?preferred:'all';LAZY_GUIDE={};
+  h+='<div class="bt-tabs" role="tablist" aria-label="'+esc(label)+' market categories">'+tabs.map(t=>{const rows=t==='all'?active:active.filter(r=>r.bet_type===t),key='guide-'+label.toLowerCase()+'-'+t,labelText=t==='all'?'All markets':prettyBet(t),on=t===selected;LAZY_GUIDE[key]={rows:rows,label:labelText,isAll:t==='all',key:key};
+    return '<button type="button" id="'+domId(key+'-tab')+'" role="tab" aria-selected="'+String(on)+'" aria-controls="'+domId(key+'-panel')+'" tabindex="'+(on?'0':'-1')+'" class="bt-tab'+(on?' on':'')+'" data-market-type="'+esc(t)+'" data-bt="'+esc(key)+'">'+esc(labelText)+'<span class="c" aria-label="'+countLabel(eventCount(rows),'matchup')+'">'+eventCount(rows)+'</span></button>';}).join('')+'</div>';
+  h+='<div class="bt-panels" data-kind="guide">'+tabs.map(t=>{const key='guide-'+label.toLowerCase()+'-'+t,lazy=LAZY_GUIDE[key],on=t===selected;return '<div id="'+domId(key+'-panel')+'" role="tabpanel" aria-labelledby="'+domId(key+'-tab')+'" class="bt-panel'+(on?' on':'')+'" data-bt="'+esc(key)+'" data-loaded="'+String(on)+'" '+(on?'':'hidden')+'>'+(on?dayGames(lazy.rows,lazy.key,lazy.label,lazy.isAll):'')+'</div>';}).join('')+'</div>';
   return h+'</div>';
 }
 function walkCard(vert,label){
@@ -834,24 +1315,126 @@ function skeleton(){
   return '<div class="grid hero" style="margin-bottom:var(--s3)">'+Array(3).fill('<div class="card reveal" style="height:150px"><div class="empty">warming up…</div></div>').join('')
     +'</div><div class="card reveal" style="height:200px"><div class="empty">the snapshot refreshes every 20 min</div></div>';
 }
-function svgTrophy(){return '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--amber)" stroke-width="1.7" style="vertical-align:-2px"><path d="M7 4h10v3a5 5 0 0 1-10 0zM7 5H4v2a3 3 0 0 0 3 3M17 5h3v2a3 3 0 0 1-3 3M9 20h6M12 12v8"/></svg>';}
-function promotedList(arr){
-  if(!arr||!arr.length)return '<div class="empty">0 promoted — every challenger still in evaluation<br><span style="color:var(--green)">promotion to capital is operator-gated</span></div>';
-  return '<div class="rank">'+arr.map(e=>'<div class="rowbar"><span class="nm">'+esc(e.name)+'</span><span class="pill yes">'+(e.execution_authority?'execution':e.auto_promote?'auto':'ready')+'</span><span class="mv">'+(e.contested_markets||0)+' mkts</span></div>').join('')+'</div>';
+function truthText(v,on='ON',off='OFF'){return v===true?on:(v===false?off:'UNKNOWN');}
+function proofPill(label,v,good=true){const known=v===true||v===false,tone=!known?'warn':(v===good?'ok':'bad');return '<span class="truth-pill '+tone+'">'+esc(label)+' · '+esc(truthText(v,'pass','fail'))+'</span>';}
+function statePill(label,v,ok){const text=String(v==null?'UNKNOWN':v),tone=text===ok?'ok':(text==='UNKNOWN'?'warn':'bad');return '<span class="truth-pill '+tone+'">'+esc(label)+' · '+esc(text)+'</span>';}
+function shortAge(seconds){if(seconds==null||!Number.isFinite(Number(seconds)))return'UNKNOWN';const s=Math.max(0,Number(seconds));if(s<60)return Math.round(s)+'s';if(s<3600)return Math.round(s/60)+'m';if(s<86400)return(s/3600).toFixed(1)+'h';return(s/86400).toFixed(1)+'d';}
+function gateBox(step,label,value,detail,result){const on=value===true,known=on||value===false,text=result?(on?'OPEN':'LOCKED'):truthText(value);return '<div class="gate-box" data-step="'+esc(step)+'"><div class="gl">'+esc(label)+'</div><div class="gv '+(on?'on':'off')+'">'+text+'</div><div class="gd">'+esc(detail||'UNKNOWN')+'</div></div>';}
+function authorityLock(label,value,detail){const cls=value===false?'':(value===true?' danger':' unknown'),state=value===false?'FALSE · LOCKED':(value===true?'TRUE · DANGER':'UNKNOWN');return '<div class="authority-lock'+cls+'"><b>'+esc(label)+'<span>'+state+'</span></b><p>'+esc(detail)+'</p></div>';}
+function modelArsenalSummaryCard(){
+  const a=STATE.arsenal||{},sm=a.live_smoke||{},pc=a.panel_configuration||{},n=sm.models_proven;
+  const headline=sm.all_models_live_proven===true?String(n==null?4:n)+' / 4 live identities proven':'Model connectivity proof unavailable';
+  return '<a class="card arsenal-link reveal" href="#/arsenal" aria-label="Open Model Arsenal" style="margin-top:var(--s3)"><div><h3>'+svgIcon('arsenal')+'Model Arsenal <span class="r">stored OpenRouter witness</span></h3><div style="font:700 15px var(--disp);color:var(--txt)">'+esc(headline)+'</div><div class="sub" style="margin-top:4px;color:var(--muted)">Paid-call gate '+esc(pc.gate_status||'UNKNOWN')+' · evidence, probability, and order authority remain separate.</div></div><span class="go">inspect →</span></a>';
 }
-function closeList(arr){
-  if(!arr||!arr.length)return '<div class="empty">no challengers near the line</div>';
-  return '<div class="rank">'+arr.map(e=>{
-    const low=e.lower95==null?-0.05:e.lower95,w=Math.max(4,Math.min(100,(1-(Math.min(0,low)/-0.05))*100));
-    return '<div class="rowbar"><span class="nm" title="'+esc(e.blocker||'')+'">'+esc(e.name)+'</span>'
-      +'<span class="track"><span class="fill amb" style="--w:'+w.toFixed(0)+'%;width:'+w.toFixed(0)+'%"></span></span>'
-      +'<span class="mv '+(low>=0?'pos':'')+'">'+num(low,3)+'</span></div>';
-  }).join('')+'</div>';
+function modelArsenalView(){
+  const a=STATE.arsenal;
+  let h=topbar('Model Arsenal','exact four-model routing · stored proof · zero dashboard authority');
+  if(!a||a.error)return h+'<div class="card reveal"><div class="empty">Model Arsenal status is unavailable.<br><span style="color:var(--faint)">No provider call was attempted; local status remains UNKNOWN.</span></div></div>';
+  const pc=a.panel_configuration||{},access=a.openrouter_access||{},sm=a.live_smoke||{},auth=a.authorities||{},models=Array.isArray(a.models)?a.models:[];
+  const live=sm.all_models_live_proven===true,proofTitle=live?String(sm.models_proven==null?4:sm.models_proven)+' / 4 exact identities live-proven':'Stored connectivity proof is not current';
+  h+='<div class="arsenal-hero"><section class="card arsenal-lead reveal" aria-label="Model connectivity summary"><div class="arsenal-kicker">OpenRouter intelligence layer</div><div class="arsenal-title">Four minds. Separate jobs.<br>Zero automatic authority.</div><div class="arsenal-copy">This surface reads local configuration, redacted credential presence, and a previously stored smoke witness. Opening or refreshing it never sends a prompt, contacts OpenRouter, changes routing, or places an order.</div><div class="proof-banner"><div class="proof-orb">'+esc(String(sm.models_proven==null?'?':sm.models_proven))+'/4</div><div><b>'+esc(proofTitle)+'</b><span>'+esc(sm.verdict||'UNKNOWN')+' · witness '+shortAge(sm.age_seconds)+' old · response content not stored</span></div></div></section>';
+  h+='<section class="card reveal" aria-label="Model access facts"><h3>Local access truth <span class="r">secret-free</span></h3><div class="arsenal-facts">'
+    +'<div class="arsenal-fact"><div class="afl">Credential present</div><div class="afv '+(access.present===true?'ok':'lock')+'">'+truthText(access.present,'YES','NO')+'</div></div>'
+    +'<div class="arsenal-fact"><div class="afl">Resolver source</div><div class="afv">'+esc(access.source||'UNKNOWN')+'</div></div>'
+    +'<div class="arsenal-fact"><div class="afl">Exact configuration</div><div class="afv '+(pc.exact===true?'ok':'lock')+'">'+truthText(pc.exact,'MATCH','MISMATCH')+'</div></div>'
+    +'<div class="arsenal-fact"><div class="afl">Stored response text</div><div class="afv '+(sm.response_content_stored===false?'ok':'lock')+'">'+(sm.response_content_stored===false?'NONE':truthText(sm.response_content_stored,'PRESENT','NONE'))+'</div></div>'
+    +'</div><div class="sub" style="margin-top:10px;color:var(--faint);font:9.5px var(--mono);overflow-wrap:anywhere">'+esc((a.source&&a.source.smoke)||'UNKNOWN')+'</div></section></div>';
+  h+='<div class="section-head"><h2>Paid-call controls</h2><p>Both keys must be open; credentials and exact routing are additional readiness checks</p></div><div class="gate-strip">'
+    +gateBox('01','Persistent config gate',pc.configured_gate,'configs/model_routing.json')
+    +gateBox('02','Runtime opt-in',pc.runtime_opt_in,(pc.runtime_opt_in_state||'UNKNOWN')+' · dashboard process')
+    +gateBox('=','Two-key gate',pc.two_key_paid_call_gate_open,(pc.background_panel_ready===true?'panel ready':'panel not armed'),true)+'</div>';
+  h+='<div class="section-head"><h2>Intelligent routing roster</h2><p>Every stored call must match its configured model, task, identity, and response schema</p></div><div class="arsenal-grid">';
+  if(!models.length)h+='<div class="card"><div class="empty">No exact model roster is available.</div></div>';
+  models.forEach((m,i)=>{const s=m.smoke||{};h+='<article class="model-unit reveal" data-index="'+(i+1)+'"><div class="unit-head"><div><div class="unit-name">'+esc(m.display_name||m.provider_alias||'UNKNOWN')+'</div><div class="unit-slug">'+esc(m.model||'UNKNOWN')+'</div></div>'+proofPill('route',m.configuration_match,true)+'</div><div class="unit-role">'+esc(m.role||'Role unavailable')+'</div><div class="unit-meta"><span>task <b>'+esc(m.task||'UNKNOWN')+'</b></span><span>reasoning <b>'+esc(m.reasoning_effort||'UNKNOWN')+'</b></span><span>latency <b>'+(s.latency_ms==null?'UNKNOWN':esc(Math.round(Number(s.latency_ms)))+' ms')+'</b></span>'+statePill('smoke',s.status,'LIVE_PROVEN')+proofPill('identity',s.identity_ok,true)+proofPill('schema',s.schema_ok,true)+'</div></article>';});
+  h+='</div><section class="card reveal" aria-label="Model authority locks"><h3>Separation of powers <span class="r">connectivity is not predictive skill</span></h3><div class="sub" style="margin:-2px 0 12px;color:var(--muted)">A valid key and 4/4 smoke prove bounded reachability only. They cannot promote evidence, change operational probabilities, or authorize a broker order.</div><div class="authority-row">'
+    +authorityLock('Evidence authority',auth.evidence,'Stored model output remains research evidence only.')
+    +authorityLock('Probability authority',auth.probability,'Operational model weight remains zero without exact-scope proof.')
+    +authorityLock('Order authority',auth.order,'The central live firewall and operator gates remain separate.')+'</div>';
+  const blockers=Array.isArray(sm.blockers)?sm.blockers:[];if(blockers.length)h+='<div class="sub" style="margin-top:12px;color:var(--amber)"><b>Stored-proof blockers:</b> '+esc(blockers.join(' · '))+'</div>';
+  h+='</section>';
+  return h;
+}
+
+const GLOSSARY=[
+  ['Forecast','Probability','Dummy’s estimated chance that a contract settles YES. It is a calibrated estimate, not certainty or a guaranteed result.'],
+  ['Forecast','Market probability','The probability implied by the executable market price or midpoint. A 63¢ YES price is roughly a 63% market view before fees.'],
+  ['Forecast','Model-to-market gap','The absolute difference between Dummy’s probability and the market probability. A large gap is a research lead, not automatically a trade.'],
+  ['Forecast','Edge','Expected advantage after choosing YES or NO. Dummy evaluates both sides and then applies uncertainty, fees, entry-price, and liquidity rules.'],
+  ['Forecast','Uncertainty','How unsure the model is. Higher uncertainty increases the safety haircut and can turn an apparent edge into an abstention.'],
+  ['Forecast','Calibration','Whether events predicted at a given probability happen at about that rate over time—for example, whether 70% calls win near 70% of the time.'],
+  ['Evidence','Brier score','Mean squared probability error. Lower is better: confident wrong calls are penalized more heavily than cautious ones.'],
+  ['Evidence','Market Brier','The same Brier calculation applied to the contemporaneous market probability. Dummy must beat this benchmark, not merely beat a coin flip.'],
+  ['Evidence','Hit rate','The percentage of directional calls that settled correctly. It ignores confidence and price, so it is never sufficient by itself.'],
+  ['Evidence','Contested market','A settlement where Dummy and the market had meaningfully different views. These cases are especially useful for measuring genuine model value.'],
+  ['Evidence','CLV','Closing-line value: whether a quoted entry later looked better than the price near game start or market close. Positive CLV is useful but is not settled profit.'],
+  ['Evidence','Point-in-time','Data that was actually available at the decision moment. Backtests exclude future results, later revisions, and other look-ahead leakage.'],
+  ['Execution','YES / NO','The two sides of a binary contract. YES pays $1 if the event happens; NO pays $1 if it does not, subject to the venue’s settlement rules.'],
+  ['Execution','Expected value (EV)','Estimated payout value minus entry price and fees, after Dummy’s uncertainty haircut. Positive raw edge can still have negative EV.'],
+  ['Execution','Spread','The gap between the best bid and ask. Wide spreads increase execution cost and reduce the chance that an apparent opportunity is real.'],
+  ['Execution','Liquidity','Available market depth and trading activity. Thin books are harder to enter or exit without paying a worse price.'],
+  ['Execution','Maker / taker','A maker rests a limit order; a taker trades against an available quote. They have different fill evidence, queue risk, and fees.'],
+  ['Execution','Shadow fill','A simulated fill backed by observable public prints or quote movement. It is stronger than a model assumption but is not a live broker fill.'],
+  ['Execution','Exposure','Capital currently at risk across open positions. Correlated contracts are grouped so one underlying event cannot silently dominate the bankroll.'],
+  ['Risk','Drawdown','The decline from a previous bankroll peak. Drawdown gates automatically shrink or stop risk before losses compound unchecked.'],
+  ['Risk','Profit factor','Gross winning P&L divided by gross losing P&L. Above 1 is profitable before considering the confidence interval and sample quality.'],
+  ['Risk','Confidence tier','Versioned executable-value labels: A requires at least 4% edge after the quoted ask and modeled taker fee with uncertainty at or below 12%; B requires 2% and 18%; C requires 1% and 25%. A letter also requires an independent governed predictive source, a valid two-sided selected-side quote, and positive executable depth witnessed by both selected-side Kalshi quote sizes or positive legacy liquidity. A is capped at one A-tier market per correlated event and five per scope per cycle. WATCH is a valid current-policy assessment that clears no letter-tier hurdle; UNATTRIBUTED means required evidence is missing or invalid. Tiers are display/research labels only and never grant execution authority.'],
+  ['Evidence','Unattributed tier','A row without current verifiable attribution—for example, market-price-only evidence, a missing exact model timestamp, no executable depth, a failed series refresh, or an older tier-policy snapshot. UNATTRIBUTED is not WATCH, is never retroactively relabelled, and is excluded from tier-performance claims.'],
+  ['Evidence','Tier forecast diagnostics','Forward-only forecast results for the policy version issued with each forecast or decision: settled value-side hit rate, event clusters, and Brier. Paper/shadow realized economics are retired from the primary operator view and have no live authority.'],
+  ['Risk','Event cluster','Contracts sharing the same underlying outcome or expiry. Clustering prevents double-counting evidence and over-allocating correlated risk.'],
+  ['Operation','15m / 1h / 1d / 1w','Crypto horizons: 15-minute, hourly, daily, and weekly. BTC, ETH, and SOL are monitored separately at every listed horizon.'],
+  ['Operation','Retired paper history','Historical local simulation retained unchanged for audit. Paper bankroll, P&L, and promotion results can neither enable nor block live trading and are removed from the primary operator view.'],
+  ['Operation','Shadow mode','The production decision path runs against public market data, but live submission remains locked. This is Dummy’s current operating mode.'],
+  ['Operation','Live authorization','A separate, time-bounded, one-controlled-proof operator grant required before any broker submission. It also requires protected caps, a command seal, central firewall, local credential resolution, an unused proof lock, an active LIVE session, and limit orders only. Model confidence and paper history cannot create or extend this authority.'],
+  ['Operation','Champion / challenger','The incumbent model is the champion. New methods remain challengers until later, out-of-sample settlements show a reliable improvement.'],
+  ['Operation','Live risk stage','A live-only persisted risk state used by the central firewall to cap an already-authorized order. It is separate from the retired shadow bankroll and never creates live authority by itself.'],
+  ['Operation','Live account snapshot','A cached authenticated GET-only view of Kalshi balance, open positions, and open orders. Dashboard page requests read the local artifact and never contact the broker. The snapshot is account visibility, not order authority.'],
+  ['Operation','Daily betting guide','The sports page’s current-day event list, separated by market category and ranked by quoted, taker-fee-adjusted executable value. Matchups expand into every priced contract. It is a forecast guide, not an order screen.'],
+  ['Data','Data-only source','Weather and commodity feeds may inform sports or crypto context, but their contracts cannot become predictions, picks, or orders.'],
+  ['Data','Abstain','A deliberate no-trade result caused by missing listings, incomplete quotes, weak EV, excessive uncertainty, stale data, or a safety gate.']
+];
+function glossaryView(){
+  const steps=[
+    ['Discover','Read the supported crypto and sports listings from public market data.'],
+    ['Collect','Attach point-in-time price, book, sports, and contextual data with provenance.'],
+    ['Forecast','Independent specialists estimate probability and uncertainty for eligible targets.'],
+    ['Challenge','The ensemble compares models with the market, fees, liquidity, and correlation.'],
+    ['Gate','Live submission requires explicit one-proof operator, caps, seal, session, risk, and central-firewall authority. Paper results are ignored.'],
+    ['Learn','Fills and settlements update calibration, backtests, diagnostics, and challenger evidence.']
+  ];
+  let h=topbar('Glossary & how Dummy works','plain-language operating guide');
+  h+='<div class="card reveal" style="margin-bottom:var(--s3)"><h3>How Dummy works <span class="r">evidence first · fail closed</span></h3>'
+    +'<div class="sub" style="color:var(--muted)">Dummy is a probability and execution-research engine. It looks for mispricing, but it can also decide that doing nothing is the best action. Weather and commodities supply context only; prediction targets are crypto and sports.</div>'
+    +'<div class="how-flow">'+steps.map(s=>'<div class="how-step"><b>'+esc(s[0])+'</b><span>'+esc(s[1])+'</span></div>').join('')+'</div></div>';
+  h+='<div class="glossary-tools"><label for="glossarySearch">Find a term</label><input class="glossary-search" id="glossarySearch" type="search" placeholder="Search probability, Brier, shadow, EV…" autocomplete="off"><span class="sub" id="glossaryCount" aria-live="polite">'+GLOSSARY.length+' terms</span></div>';
+  h+='<div class="glossary-grid" id="glossaryGrid">'+GLOSSARY.map(g=>'<article class="gloss reveal" data-search="'+esc(g.join(' ').toLowerCase())+'"><div class="gt"><h4>'+esc(g[1])+'</h4><span class="cat">'+esc(g[0])+'</span></div><p>'+esc(g[2])+'</p></article>').join('')+'</div><div class="glossary-empty" id="glossaryEmpty">No glossary term matches that search.</div>';
+  return h;
+}
+function wireGlossary(){
+  const q=document.getElementById('glossarySearch'),cards=[...document.querySelectorAll('.gloss')],count=document.getElementById('glossaryCount'),empty=document.getElementById('glossaryEmpty');
+  if(!q)return;q.addEventListener('input',()=>{const needle=q.value.trim().toLowerCase();let shown=0;cards.forEach(card=>{const hit=!needle||(card.dataset.search||'').includes(needle);card.hidden=!hit;if(hit)shown++;});count.textContent=shown+' of '+cards.length+' terms';empty.classList.toggle('show',shown===0);});
+}
+function cryptoHorizonCard(asset){
+  const twin=(STATE.status&&STATE.status.crypto_paper_twin)||{},coverage=twin.forced_crypto_coverage||{},matrix=coverage.matrix||[];
+  const horizons=[['1h','Hourly'],['1d','Daily'],['1w','Weekly'],['15m','15-minute']];
+  const rows=horizons.map(([key,label])=>{const row=matrix.find(r=>String(r.asset).toUpperCase()===String(asset).toUpperCase()&&r.timeframe===key)||{};
+    const observed=Number(row.targets_observed_this_cycle||0),tracked=Number(row.tracked_decisions||0),open=Number(row.open_decisions||0);
+    const active=observed>0||open>0,status=observed>0?'research tracking':(open>0?'research position open':(tracked>0?'awaiting next listing':'no listing yet'));
+    return '<div class="horizon"><div class="hh"><span>'+label+'</span><span class="state '+(active?'':'wait')+'">'+status+'</span></div>'
+      +'<div class="hs">Every real, compatible '+label.toLowerCase()+' listing is evaluated. Normal positions still require positive fee- and uncertainty-adjusted EV.</div>'
+      +'<div class="hm"><span>'+observed+' targets now</span><span>'+open+' open · '+tracked+' tracked</span></div></div>';}).join('');
+  return '<div class="card reveal" style="margin-bottom:var(--s3)"><h3>'+esc(asset)+' crypto horizon research <span class="r">read-only observer · '+ago(twin.completed_at)+'</span></h3>'
+    +'<div class="sub" style="margin:-3px 0 12px;color:var(--muted)">Hourly, daily, and weekly forecast coverage is monitored for BTC, ETH, and SOL whenever a compatible market is listed. This retired paper observer supplies research coverage only; its results have no live authority and it never contacts the broker.</div>'
+    +'<div class="horizon-grid">'+rows+'</div></div>';
 }
 function scopeView(vert,label){
   const block=STATE.scopes&&STATE.scopes.verticals&&STATE.scopes.verticals[vert];
   const sc=block&&block.scopes&&block.scopes[label];
-  if(!sc)return topbar(label,vert.toLowerCase())+'<div class="card"><div class="empty">'+esc(label)+' — no snapshot data yet.<br><span style="color:var(--faint)">the board refreshes every 20 min; leagues populate as their markets settle</span></div></div>';
+  if(!sc){
+    let empty=topbar(label,vert.toLowerCase());
+    if(vert==='SPORTS')empty+=dailyGuideCard(label)+tierPerformanceCard(label);
+    if(vert==='CRYPTO')empty+=cryptoHorizonCard(label)+tierPerformanceCard(label);
+    return empty+'<div class="card"><div class="empty">'+esc(label)+' — no graded history yet.<br><span style="color:var(--faint)">the live slate above refreshes independently from settled model diagnostics</span></div></div>';
+  }
   const s=sc.summary;
   // Season is a SPORTS-only concept -- crypto trades 24/7 and has no season, so
   // none of the season badge / status / basis applies to a coin scope.
@@ -866,6 +1449,8 @@ function scopeView(vert,label){
       : (status==='upcoming'?'<span class="badge"><span class="d"></span>preseason · not yet playing</span>':''));
   const seasonWord=status==='in'?'in season':(status==='upcoming'?'preseason':'off season');
   let h=topbar(label,vert.toLowerCase()+' · graded forecast quality',seasonBadge);
+  if(isSports)h+=dailyGuideCard(label)+tierPerformanceCard(label);
+  if(!isSports)h+=cryptoHorizonCard(label)+tierPerformanceCard(label);
   // scope hero: edge gauge + key figures
   h+='<div class="grid hero">';
   h+='<div class="card gaugecard reveal">'+gauge(s.brier_edge,{span:0.15,label:'Edge vs market',fmt:(x)=>signed(x,2)})+'</div>';
@@ -876,7 +1461,7 @@ function scopeView(vert,label){
     +miniRow('Contested',commaN(s.contested_n||0),'cy')
     +'</div></div>';
   h+='<div class="card reveal"><div class="mini">'
-    +miniRow('Open picks',commaN(sc.picks?sc.picks.length:0),'amb')
+    +miniRow('Open forecasts',commaN(sc.picks?sc.picks.length:0),'amb')
     +(isSports
       ? miniRow('Season',seasonWord,status==='in'?'pos':(status==='upcoming'?'amb':'neg'))
         +miniRow('Data basis',basis==='current'?'current window':(basis==='last-season'?'last season':(status==='upcoming'?'preseason — no games yet':'no history')),basis==='last-season'?'amb':'')
@@ -893,11 +1478,10 @@ function scopeView(vert,label){
     +'<div class="legend"><span><i style="background:var(--green)"></i>hit rate</span><span><i style="background:var(--amber)"></i>Brier</span></div></div>';
   h+='<div class="grid cols2">';
   h+='<div class="card reveal"><h3>Model vs market <span class="r">Brier, lower better</span></h3>'+accuracyBars(s)+'</div>';
-  h+='<div class="card pad0 reveal"><h3 style="padding:var(--s3) var(--s3) var(--s2)">Current picks <span class="r">by edge</span></h3>'+picksTable(sc.picks)+'</div>';
+  h+='<div class="card pad0 reveal"><h3 style="padding:var(--s3) var(--s3) var(--s2)">Model shortlist <span class="r">forecast gaps · not orders</span></h3>'+picksTable(sc.picks)+'</div>';
   h+='</div>';
   h+=betTypeCard(sc.bet_types);
-  h+=gamesCard(vert,label);
-  h+='<div class="grid cols2">'+betRankCard(label)+settledTodayCard(sc)+'</div>';
+  h+=settledTodayCard(sc);
   h+=walkCard(vert,label);
   h+=extrasSection(sc.extras||{},label);
   return h;
@@ -914,8 +1498,8 @@ function accuracyBars(s){
     +(better?'▲ model beats the line by '+num(s.brier_edge,3)+' Brier':'▼ model trails the line by '+num(-s.brier_edge,3))+'</div>';
 }
 function picksTable(picks){
-  if(!picks||!picks.length)return '<div class="empty">no open picks in this scope right now</div>';
-  let h='<div style="max-height:326px;overflow:auto"><table><thead><tr><th>Market</th><th>Side</th><th>Model</th><th>Mkt</th><th>Edge¢</th></tr></thead><tbody>';
+  if(!picks||!picks.length)return '<div class="empty">no open forecasts in this scope right now</div>';
+  let h='<div style="max-height:326px;overflow:auto"><table><thead><tr><th>Market</th><th>Side</th><th>Model P</th><th>Market P</th><th>Gap (¢)</th></tr></thead><tbody>';
   picks.forEach(p=>{h+='<tr><td title="'+esc(p.ticker)+'">'+esc(p.label||p.ticker)+dateTag(p.game_date)+'</td>'
     +'<td><span class="pill '+((p.side||'').toUpperCase().includes('NO')?'no':'yes')+'">'+esc(p.side||'')+'</span></td>'
     +'<td>'+num(p.prob,2)+'</td><td>'+(p.market==null?'—':num(p.market,2))+'</td>'
@@ -933,7 +1517,7 @@ function extrasSection(x,label){
   h+='<div class="card reveal"><h3>Closing-line value <span class="r">bps vs close</span></h3>'+clvCard(x.clv)+'</div>';
   h+='</div>';
   if(hasEj)h+='<div class="card reveal" style="margin-bottom:var(--s3);border-color:var(--amber-deep)"><h3 style="color:var(--amber)">'+svgIcon2('alert')+'Ejection / injury events</h3>'+ejectionList(x.ejections)+'</div>';
-  h+='<div class="card pad0 reveal"><h3 style="padding:var(--s3) var(--s3) var(--s2)">Live mispricing tape <span class="r">model vs book vs market</span></h3>'+mispTable(x.mispricing)+'</div>';
+  h+='<div class="card pad0 reveal"><h3 style="padding:var(--s3) var(--s3) var(--s2)">Mispricing monitor <span class="r">model vs book vs market · non-authoritative research</span></h3>'+mispTable(x.mispricing)+'</div>';
   return h;
 }
 function svgIcon2(k){const p={council:'<path d="M12 3l7 4v5c0 4-3 7-7 8-4-1-7-4-7-8V7z"/><path d="M9 12l2 2 4-4"/>',alert:'<path d="M12 3l9 16H3z"/><path d="M12 9v5M12 17v.5"/>'};
@@ -976,7 +1560,9 @@ function topbar(title,crumb,badge){
   const stamp=STATE.overview&&STATE.overview.generated_at;
   return '<div class="topbar"><h2>'+esc(title)+'</h2><span class="crumb">'+esc(crumb)+'</span>'
     +(badge?' '+badge:'')+'<span class="spacer"></span>'
-    +'<span class="stamp"><span class="beat"></span>updated '+ago(stamp)+'</span></div>';
+    +'<span class="stamp"><span class="beat"></span>updated '+ago(stamp)+'</span>'
+    +'<span class="top-actions"><button class="ghostbtn" type="button" data-action="refresh" aria-label="Refresh dashboard data">Refresh</button>'
+    +'<button class="ghostbtn" type="button" data-action="search" aria-label="Open market search">Jump <span class="key">Ctrl K</span></button></span></div>';
 }
 
 // ---------- 3D tilt + cursor glare on cards ----------
@@ -998,40 +1584,45 @@ if(!REDUCE){
   function resetTilt(el){el.classList.remove('tilt');el.style.removeProperty('--rx');el.style.removeProperty('--ry');}
 }
 
-// ---------- accent tube switcher ----------
-const ACCENTS=[['emerald','#2fe38f'],['amber','#ffc24d'],['cyan','#6fe0ff'],['violet','#b79cff']];
-function setAccent(a){document.documentElement.setAttribute('data-accent',a);try{localStorage.setItem('dummy-accent',a);}catch(_){}
+// ---------- complete application theme switcher ----------
+const THEMES=[['emerald','#2fe38f'],['amber','#ffc24d'],['cyan','#6fe0ff'],['violet','#b79cff']];
+function setTheme(a){document.documentElement.setAttribute('data-theme',a);document.documentElement.setAttribute('data-accent',a);try{localStorage.setItem('dummy-theme',a);}catch(_){}
   [...document.querySelectorAll('.tube')].forEach(t=>t.setAttribute('aria-pressed',String(t.dataset.a===a)));}
 (function(){const box=document.getElementById('tubes');
-  ACCENTS.forEach(([a,c])=>{const b=$('<button class="tube" data-a="'+a+'" title="'+a+'" aria-label="'+a+' tube" style="--c:'+c+'"></button>');
-    b.addEventListener('click',()=>setAccent(a));box.appendChild(b);});
-  let saved='emerald';try{saved=localStorage.getItem('dummy-accent')||'emerald';}catch(_){}
-  setAccent(ACCENTS.some(x=>x[0]===saved)?saved:'emerald');})();
-function cycleAccent(){const cur=document.documentElement.getAttribute('data-accent');
-  const i=ACCENTS.findIndex(x=>x[0]===cur);setAccent(ACCENTS[(i+1)%ACCENTS.length][0]);}
+  THEMES.forEach(([a,c])=>{const label=a[0].toUpperCase()+a.slice(1)+' full theme';const b=$('<button class="tube" data-a="'+a+'" title="'+label+'" aria-label="'+label+'" style="--c:'+c+'"></button>');
+    b.addEventListener('click',()=>setTheme(a));box.appendChild(b);});
+  let saved='emerald';try{saved=localStorage.getItem('dummy-theme')||localStorage.getItem('dummy-accent')||'emerald';}catch(_){}
+  setTheme(THEMES.some(x=>x[0]===saved)?saved:'emerald');})();
+function cycleTheme(){const cur=document.documentElement.getAttribute('data-theme');
+  const i=THEMES.findIndex(x=>x[0]===cur);setTheme(THEMES[(i+1)%THEMES.length][0]);}
 
 // ---------- command palette ----------
 const cmdk=document.getElementById('cmdk'),cmdq=document.getElementById('cmdq'),cmdlist=document.getElementById('cmdlist');
 let cmdRoutes=[],cmdSel=0,lastFocus=null;
 function cmdBuild(){
-  cmdRoutes=[{icon:'overview',label:'Overview',hint:'account & ladder',href:'#/overview'}];
+  cmdRoutes=[{icon:'overview',label:'Overview',hint:'performance & readiness',href:'#/overview'},
+    {icon:'arsenal',label:'Model Arsenal',hint:'four-model routing & stored proof',href:'#/arsenal'},
+    {icon:'glossary',label:'Glossary & how Dummy works',hint:'terms and operating model',href:'#/glossary'}];
   const v=(STATE.scopes&&STATE.scopes.verticals)||{};
-  Object.entries(v).forEach(([vert,vb])=>Object.keys(vb.scopes||{}).forEach(lab=>
-    cmdRoutes.push({icon:vert==='CRYPTO'?'coin':'ball',label:lab,hint:vert.toLowerCase(),href:'#/scope/'+vert+'/'+lab})));
+  ['CRYPTO','SPORTS'].forEach(vert=>{
+    if(vert==='CRYPTO'&&!v[vert])return;
+    const vb=v[vert]||{scopes:{}};
+    scopeLabels(vert,vb).forEach(lab=>cmdRoutes.push({icon:verticalIcon(vert),label:lab===vert?'All '+((VERTICAL_META[vert]||['',titleCase(vert)])[1]):lab,hint:vert.toLowerCase(),href:'#/scope/'+vert+'/'+lab}));
+  });
 }
 function fuzzy(q,s){q=q.toLowerCase();s=s.toLowerCase();let i=0;for(const ch of s){if(ch===q[i])i++;if(i===q.length)return true;}return q.length===0;}
 function cmdRender(){
   const q=cmdq.value.trim();
   const rows=cmdRoutes.filter(r=>fuzzy(q,r.label+' '+r.hint));
   cmdSel=Math.max(0,Math.min(cmdSel,rows.length-1));
-  cmdlist.innerHTML=rows.map((r,i)=>'<div class="opt'+(i===cmdSel?' sel':'')+'" data-href="'+r.href+'">'+svgIcon(r.icon)
+  cmdlist.innerHTML=rows.map((r,i)=>'<div class="opt'+(i===cmdSel?' sel':'')+'" role="option" aria-selected="'+(i===cmdSel?'true':'false')+'" data-href="'+r.href+'">'+svgIcon(r.icon)
     +'<span>'+esc(r.label)+'</span><span class="oh">'+esc(r.hint)+'</span></div>').join('')||'<div class="empty">no match</div>';
   cmdlist._rows=rows;
   const sel=cmdlist.querySelector('.opt.sel');if(sel)sel.scrollIntoView({block:'nearest'});
 }
 function cmdOpen(){cmdBuild();cmdSel=0;cmdq.value='';cmdRender();lastFocus=document.activeElement;
-  cmdk.classList.add('open');requestAnimationFrame(()=>cmdq.focus());}
-function cmdClose(){cmdk.classList.remove('open');if(lastFocus&&lastFocus.focus)lastFocus.focus();}
+  cmdk.classList.add('open');cmdk.setAttribute('aria-hidden','false');requestAnimationFrame(()=>cmdq.focus());}
+function cmdClose(){cmdk.classList.remove('open');cmdk.setAttribute('aria-hidden','true');if(lastFocus&&lastFocus.focus)lastFocus.focus();}
 function cmdGo(){const rows=cmdlist._rows||[];const r=rows[cmdSel];if(r){location.hash=r.href;cmdClose();}}
 cmdq.addEventListener('input',()=>{cmdSel=0;cmdRender();});
 cmdlist.addEventListener('click',e=>{const o=e.target.closest('.opt');if(o&&o.dataset.href){location.hash=o.dataset.href;cmdClose();}});
@@ -1041,7 +1632,7 @@ document.addEventListener('keydown',e=>{
   if(!open){
     const tag=(document.activeElement&&document.activeElement.tagName)||'';
     if(e.key==='/'&&tag!=='INPUT'){e.preventDefault();cmdOpen();}
-    else if((e.key==='t'||e.key==='T')&&tag!=='INPUT'&&!e.metaKey&&!e.ctrlKey){cycleAccent();}
+    else if((e.key==='t'||e.key==='T')&&tag!=='INPUT'&&!e.metaKey&&!e.ctrlKey){cycleTheme();}
     return;
   }
   if(e.key==='Escape'){e.preventDefault();cmdClose();}
@@ -1077,26 +1668,35 @@ function shock(){if(REDUCE)return;const s=document.getElementById('shock');s.cla
 
 // ---------- data ----------
 async function poll(){
+  if(POLLING)return;
+  POLLING=true;STATE.connection.pending=true;
   try{
-    const [ov,sc,st,wf,bb]=await Promise.all([
-      fetch('/api/overview').then(r=>r.json()).catch(()=>null),
-      fetch('/api/scopes').then(r=>r.json()).catch(()=>null),
-      fetch('/api/status').then(r=>r.json()).catch(()=>null),
-      fetch('/api/walk_forward').then(r=>r.json()).catch(()=>null),
-      fetch('/api/bet_board').then(r=>r.json()).catch(()=>null),
-    ]);
+    const get=async(url)=>{const r=await fetch(url);if(!r.ok)throw new Error(url+' returned '+r.status);return r.json();};
+    const results=await Promise.allSettled(['/api/overview','/api/scopes','/api/status','/api/walk_forward','/api/bet_board','/api/model-arsenal','/api/tier-performance'].map(get));
+    const [ov,sc,st,wf,bb,arsenal,tiers]=results.map(r=>r.status==='fulfilled'?r.value:null);
+    // Tier-performance is deliberately fail-closed until a validated forward
+    // artifact exists. Its own card explains that state; it must not make the
+    // otherwise healthy operator board look generically degraded.
+    const failed=results.slice(0,6).filter(r=>r.status==='rejected');
+    STATE.connection.error=failed.length?failed.length+' data source'+(failed.length===1?' is':'s are')+' unavailable; showing the last good snapshot.':null;
+    STATE.tierPerformanceFetchOk=results[6].status==='fulfilled';
     if(ov)STATE.overview=ov;if(sc)STATE.scopes=sc;if(st)STATE.status=st;
     if(wf)STATE.walk=wf.leagues||{};
-    if(bb){STATE.board=bb.groups||{};buildTape();}   // tape tracks the board, independent of view re-render
-    const live=document.getElementById('live'),fs=document.getElementById('footstat');
+    if(bb){STATE.board=bb.groups||{};STATE.boardMeta=bb;buildTape();}   // tape tracks the board, independent of view re-render
+    if(arsenal)STATE.arsenal=arsenal;
+    if(tiers)STATE.tierPerformance=tiers;
+    const live=document.getElementById('live'),fs=document.getElementById('footstat'),sideMode=document.getElementById('sideMode');
     const fresh=ov&&ov.generated_at&&(Date.now()-Date.parse(ov.generated_at))<30*60*1000;
     live.className='dot'+(fresh?' live':'');
-    fs.textContent=fresh?'live · '+ago(ov.generated_at):'stale snapshot';
+    fs.textContent=fresh?'snapshot · '+ago(ov.generated_at):'snapshot stale';
+    const summary=statusSummary();
+    sideMode.textContent=summary.mode;sideMode.className='modechip '+(summary.liveAuth?'live-auth':(summary.mode==='SHADOW'?'shadow':''));
     // re-render (and re-flip the flaps) only when the data actually changed --
     // like a real tote board, the numbers roll when new results land.
-    const sig=JSON.stringify([STATE.overview,STATE.scopes]);
+    const sig=JSON.stringify([STATE.overview,STATE.scopes,STATE.boardMeta&&STATE.boardMeta.generated_at,STATE.arsenal,STATE.tierPerformance,STATE.tierPerformanceFetchOk,summary.mode,summary.title,summary.healthy,summary.auth,summary.stale.map(([k])=>k),STATE.connection.error]);
     if(sig!==lastSig){const had=lastSig!=='';lastSig=sig;render();if(had)shock();}
-  }catch(e){}
+  }catch(e){STATE.connection.error='Dashboard refresh failed; showing the last good snapshot.';render();}
+  finally{POLLING=false;STATE.connection.pending=false;}
 }
 window.addEventListener('hashchange',()=>{ROUTE=location.hash||'#/overview';render();});
 window.addEventListener('resize',()=>moveGlide());

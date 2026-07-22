@@ -23,6 +23,7 @@ from predator_mesh.brokers.livebrokerfirewall_adapter import (
 from predator_mesh.brokers.kalshi_livebrokerfirewall_adapter import (
     KalshiLiveBrokerFirewallAdapter,
 )
+from predator_mesh.brokers.kalshi_errors import BrokerErrorCode
 
 
 def _minimal_limit_order(**overrides: Any) -> LimitOrderRequest:
@@ -159,8 +160,8 @@ def fake_kalshi_credentials(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_kalshi_limit_order_accepted_into_mocked_transport(monkeypatch, fake_kalshi_credentials):
-    """A valid limit order reaches the (mocked) Kalshi transport."""
+async def test_kalshi_legacy_submit_is_retired_without_transport(monkeypatch, fake_kalshi_credentials):
+    """A valid legacy request cannot reach even a mocked transport."""
     captured: dict[str, Any] = {}
 
     async def fake_create_order(payload: dict[str, Any]) -> dict[str, Any]:
@@ -180,10 +181,11 @@ async def test_kalshi_limit_order_accepted_into_mocked_transport(monkeypatch, fa
     order = _minimal_limit_order()
     result = await adapter.submit_limit_order(order)
 
-    assert result.submitted is True
-    assert result.order_id == "ord-123"
-    assert captured["payload"]["type"] == "limit"
-    assert captured["payload"]["side"] == "yes"
+    assert result.submitted is False
+    assert result.order_id is None
+    assert result.state == OrderState.REJECTED
+    assert result.errors == [BrokerErrorCode.LEGACY_SUBMIT_PATH_RETIRED]
+    assert captured == {}
 
 
 @pytest.mark.asyncio

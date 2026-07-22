@@ -1,5 +1,6 @@
 """Tests for real Kalshi READ_ONLY ingestion wrapper."""
 
+import asyncio
 import os
 from datetime import datetime, timezone
 from unittest.mock import AsyncMock
@@ -88,6 +89,31 @@ async def test_get_full_snapshot_no_order_endpoints(mock_kalshi_client, monkeypa
 
 
 @pytest.mark.asyncio
+async def test_timeout_is_unavailable_real_source_not_mock(
+    mock_kalshi_client, monkeypatch
+):
+    monkeypatch.setenv("KALSHI_API_KEY_ID", "test")
+    monkeypatch.setenv("KALSHI_API_PRIVATE_KEY_PEM", "dummy")
+    monkeypatch.setattr("kalshi.live_data.KALSHI_READ_ONLY_TIMEOUT_SECONDS", 0.001)
+
+    async def slow_account():
+        await asyncio.sleep(0.05)
+        return {}
+
+    mock_kalshi_client.get_account.side_effect = slow_account
+    reader = KalshiRealReadOnly(client=mock_kalshi_client)
+    snapshot = await reader.get_full_snapshot("MKT-YES")
+
+    assert snapshot["source"] == "kalshi_real_read_only"
+    assert snapshot["source"] != "mock"
+    assert snapshot["data_status"] == "UNAVAILABLE"
+    assert snapshot["complete"] is False
+    assert snapshot["data_authority"] is False
+    assert snapshot["timeout"] is True
+    assert snapshot["order_creating_endpoints"] == []
+
+
+@pytest.mark.asyncio
 async def test_real_credentials_present_skip_if_missing(monkeypatch):
     """Live Kalshi read-only ping.
 
@@ -113,5 +139,9 @@ async def test_real_credentials_present_skip_if_missing(monkeypatch):
         raise
     except (httpx.ConnectError, httpx.ConnectTimeout, httpx.ReadTimeout) as exc:
         pytest.skip(f"Kalshi unreachable: {type(exc).__name__}")
+    except ValueError as exc:
+        if "orderbook" in str(exc).lower() and "missing" in str(exc).lower():
+            pytest.skip("Kalshi demo ticker currently has no usable two-sided orderbook")
+        raise
     assert "account_status" in snapshot
     assert not reader.order_creating_endpoints_called()

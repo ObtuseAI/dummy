@@ -1,7 +1,9 @@
 param(
     [string]$TaskName = "DummyMispricingMonitor",
-    [int]$IntervalMinutes = 2,
-    [int]$StartDelayMinutes = 1
+    [int]$IntervalMinutes = 5,
+    [int]$StartDelayMinutes = 1,
+    [int]$LiveBurstSeconds = 0,
+    [int]$TimeoutMinutes = 10
 )
 
 $ErrorActionPreference = "Stop"
@@ -13,11 +15,18 @@ if (-not (Test-Path -LiteralPath $script)) {
     throw "Mispricing monitor not found: $script"
 }
 
-# Fast cadence (default 2 min) so buy-low dips are caught between full scans.
+# The current public universe takes roughly 3-4 minutes for a cold full sweep.
+# A 2-minute timeout killed every run before it could publish an artifact.
+# Five minutes plus IgnoreNew keeps one bounded worker alive without overlap;
+# the 10-minute ceiling still terminates a genuinely wedged source call.  The
+# scheduled default omits the optional live burst because a cold burst can run
+# past its wall-clock budget; the dedicated live poller already captures those
+# public events, and operators can still opt in explicitly for diagnostics.
 $start = (Get-Date).AddMinutes([Math]::Max(1, $StartDelayMinutes)).ToString("HH:mm")
-$cadence = [Math]::Max(1, $IntervalMinutes)
-$timeoutMinutes = [Math]::Max(1, $cadence)
-$arguments = "`"$script`""
+$cadence = [Math]::Max(5, $IntervalMinutes)
+$timeoutMinutes = [Math]::Max($cadence + 2, $TimeoutMinutes)
+$burstSeconds = [Math]::Max(0, $LiveBurstSeconds)
+$arguments = "`"$script`" --live-burst-seconds $burstSeconds"
 $bootstrapAction = "cmd /c cd /d $repo && $python $arguments"
 
 & schtasks.exe /Create /TN $TaskName /TR $bootstrapAction /SC MINUTE `
@@ -48,6 +57,7 @@ $info = Get-ScheduledTaskInfo -TaskName $TaskName
     WorkingDirectory = $repo
     CadenceMinutes = $cadence
     ExecutionTimeLimitMinutes = $timeoutMinutes
+    LiveBurstSeconds = $burstSeconds
     PublicGetOnly = $true
     IndependentOfShadowOrLiveSession = $true
     ExecutionAuthority = $false

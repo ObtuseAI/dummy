@@ -13,16 +13,37 @@ bridge is introduced; the exact operator gate from V33/V34 is reused unchanged.
 
 from __future__ import annotations
 
+import hashlib
+import json
+
 from dataclasses import asdict, dataclass
+from pathlib import Path
 from typing import Any
 
-from predator_mesh.v31.probes import CAPS_HASH, LIVE_SUBMIT_HASH
+from core.caps_authority import evaluate_caps_authority
+from predator_mesh.v31.probes import LIVE_SUBMIT_HASH
 from predator_mesh.v34.run import build_default_v34_state
 
 from predator_mesh.v35 import MILESTONE
 
 V34_MILESTONE = "DUMMY_V34_OPERATOR_ENABLED_PROBE_RUN_RECONCILIATION_AND_LIVE_SCORE_CLOSURE_V1"
 EXACT_GATE_ENV = {"DUMMY_PUBLIC_PROBE_MODE": "1", "DUMMY_PUBLIC_PROBE_ACK": "READ_ONLY_PUBLIC_PROBES_ONLY"}
+ROOT = Path(__file__).resolve().parents[2]
+
+
+def _sha256(path: Path) -> str:
+    try:
+        return hashlib.sha256(path.read_bytes()).hexdigest().upper()
+    except OSError:
+        return ""
+
+
+def _load_object(path: Path) -> dict[str, Any]:
+    try:
+        value = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, json.JSONDecodeError):
+        return {}
+    return value if isinstance(value, dict) else {}
 
 
 # ---------------------------------------------------------------------------
@@ -1336,6 +1357,11 @@ class ProtectedHashReverificationV1Result:
     live_submit_hash: str
     caps_hash: str
     live_submit_enabled: bool
+    caps_config_integrity_valid: bool
+    caps_authority_state: str
+    caps_authority_registration_valid: bool
+    legacy_caps_authority_invalidated: bool
+    execution_authority: bool = False
     execution_bridge_present: bool = False
 
     def to_dict(self) -> dict[str, Any]:
@@ -1344,11 +1370,30 @@ class ProtectedHashReverificationV1Result:
 
 class ProtectedHashReverificationV1:
     def evaluate(self, state: dict[str, Any]) -> ProtectedHashReverificationV1Result:
+        del state
+        live_submit_path = ROOT / "configs" / "live_submit.json"
+        live_submit_hash = _sha256(live_submit_path)
+        live_submit_enabled = _load_object(live_submit_path).get("enabled") is True
+        caps_authority = evaluate_caps_authority()
+        if (
+            live_submit_hash != LIVE_SUBMIT_HASH
+            or live_submit_enabled
+            or not caps_authority.config_integrity_valid
+        ):
+            status = "FAIL"
+        elif not caps_authority.authority_registration_valid:
+            status = "REVIEW_REQUIRED"
+        else:
+            status = "PASS"
         return ProtectedHashReverificationV1Result(
-            "PASS",
-            LIVE_SUBMIT_HASH,
-            CAPS_HASH,
-            False,
+            status,
+            live_submit_hash,
+            caps_authority.current_caps_sha256 or "",
+            live_submit_enabled,
+            caps_authority.config_integrity_valid,
+            caps_authority.state,
+            caps_authority.authority_registration_valid,
+            caps_authority.legacy_authority_invalidated,
         )
 
 
@@ -1365,7 +1410,12 @@ class LiveSubmitHashCheckV1Result:
 
 class LiveSubmitHashCheckV1:
     def evaluate(self, state: dict[str, Any]) -> LiveSubmitHashCheckV1Result:
-        return LiveSubmitHashCheckV1Result("PASS", LIVE_SUBMIT_HASH, True)
+        del state
+        current_hash = _sha256(ROOT / "configs" / "live_submit.json")
+        unchanged = current_hash == LIVE_SUBMIT_HASH
+        return LiveSubmitHashCheckV1Result(
+            "PASS" if unchanged else "FAIL", current_hash, unchanged
+        )
 
 
 @dataclass(frozen=True)
@@ -1373,6 +1423,10 @@ class CapsHashCheckV1Result:
     caps_hash_check_v1_status: str
     caps_hash: str
     unchanged: bool
+    caps_authority_state: str
+    caps_authority_registration_valid: bool
+    legacy_caps_authority_invalidated: bool
+    execution_authority: bool = False
     execution_bridge_present: bool = False
 
     def to_dict(self) -> dict[str, Any]:
@@ -1381,7 +1435,24 @@ class CapsHashCheckV1Result:
 
 class CapsHashCheckV1:
     def evaluate(self, state: dict[str, Any]) -> CapsHashCheckV1Result:
-        return CapsHashCheckV1Result("PASS", CAPS_HASH, True)
+        del state
+        authority = evaluate_caps_authority()
+        unchanged = authority.config_integrity_valid
+        status = (
+            "FAIL"
+            if not unchanged
+            else "PASS"
+            if authority.authority_registration_valid
+            else "REVIEW_REQUIRED"
+        )
+        return CapsHashCheckV1Result(
+            status,
+            authority.current_caps_sha256 or "",
+            unchanged,
+            authority.state,
+            authority.authority_registration_valid,
+            authority.legacy_authority_invalidated,
+        )
 
 
 @dataclass(frozen=True)
@@ -1389,6 +1460,8 @@ class ProtectedConfigDiffCheckV1Result:
     protected_config_diff_check_v1_status: str
     configs_live_submit_modified: bool
     configs_caps_modified: bool
+    caps_authority_registration_valid: bool
+    execution_authority: bool = False
     execution_bridge_present: bool = False
 
     def to_dict(self) -> dict[str, Any]:
@@ -1397,7 +1470,25 @@ class ProtectedConfigDiffCheckV1Result:
 
 class ProtectedConfigDiffCheckV1:
     def evaluate(self, state: dict[str, Any]) -> ProtectedConfigDiffCheckV1Result:
-        return ProtectedConfigDiffCheckV1Result("PASS", False, False)
+        del state
+        live_submit_modified = (
+            _sha256(ROOT / "configs" / "live_submit.json") != LIVE_SUBMIT_HASH
+        )
+        authority = evaluate_caps_authority()
+        caps_modified = not authority.config_integrity_valid
+        status = (
+            "FAIL"
+            if live_submit_modified or caps_modified
+            else "PASS"
+            if authority.authority_registration_valid
+            else "REVIEW_REQUIRED"
+        )
+        return ProtectedConfigDiffCheckV1Result(
+            status,
+            live_submit_modified,
+            caps_modified,
+            authority.authority_registration_valid,
+        )
 
 
 @dataclass(frozen=True)
@@ -1412,13 +1503,21 @@ class LiveSubmitEnabledCheckV1Result:
 
 class LiveSubmitEnabledCheckV1:
     def evaluate(self, state: dict[str, Any]) -> LiveSubmitEnabledCheckV1Result:
-        return LiveSubmitEnabledCheckV1Result("PASS", False)
+        del state
+        enabled = (
+            _load_object(ROOT / "configs" / "live_submit.json").get("enabled")
+            is True
+        )
+        return LiveSubmitEnabledCheckV1Result(
+            "FAIL" if enabled else "PASS", enabled
+        )
 
 
 @dataclass(frozen=True)
 class ProtectedHashBlockerV1Result:
     protected_hash_blocker_v1_status: str
     blocker: str | None
+    execution_authority: bool = False
     execution_bridge_present: bool = False
 
     def to_dict(self) -> dict[str, Any]:
@@ -1427,6 +1526,25 @@ class ProtectedHashBlockerV1Result:
 
 class ProtectedHashBlockerV1:
     def evaluate(self, state: dict[str, Any]) -> ProtectedHashBlockerV1Result:
+        del state
+        authority = evaluate_caps_authority()
+        live_hash_ok = _sha256(ROOT / "configs" / "live_submit.json") == LIVE_SUBMIT_HASH
+        live_enabled = (
+            _load_object(ROOT / "configs" / "live_submit.json").get("enabled")
+            is True
+        )
+        if not live_hash_ok or live_enabled:
+            return ProtectedHashBlockerV1Result(
+                "FAIL", "LIVE_SUBMIT_PROTECTED_STATE_INVALID"
+            )
+        if not authority.config_integrity_valid:
+            return ProtectedHashBlockerV1Result(
+                "FAIL", "CAPS_V2_CONFIG_INTEGRITY_INVALID"
+            )
+        if not authority.authority_registration_valid:
+            return ProtectedHashBlockerV1Result(
+                "REVIEW_REQUIRED", "CAPS_AUTHORITY_REGISTRATION_REQUIRED"
+            )
         return ProtectedHashBlockerV1Result("PASS", None)
 
 

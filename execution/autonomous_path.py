@@ -17,6 +17,7 @@ from core.ontology import (
     TradeProposal,
 )
 from forecasting.engine import ForecastEngine
+from forecasting.model_influence_attestation import build_model_influence_attestation
 from kalshi.live_data import KalshiLiveData, KalshiRealReadOnly, KalshiCredentialsMissing
 from kalshi.normalizer import KalshiNormalizer
 from live_firewall.firewall import LiveBrokerFirewall
@@ -26,6 +27,11 @@ from risk.governor import assess_trade_risk
 from compliance.governor import assess_compliance
 from strategies.registry import STRATEGIES
 from proof.ledger import write_proof
+from autonomy.target_policy import (
+    is_data_only_target,
+    is_equity_index_target,
+    is_prediction_quarantined_target,
+)
 
 DEFAULT_ADAPTER_NAME = "kalshi_live_firewall_adapter"
 PROJECT_ROOT = Path(__file__).parent.parent
@@ -83,6 +89,28 @@ class AutonomousExecutionPath:
                 ),
             )
 
+        if is_data_only_target(market_ticker) or is_data_only_target(contract_ticker):
+            return self._blocked(
+                market_ticker,
+                contract_ticker,
+                strategy_name,
+                rejected_by="data_only_target",
+                reason=(
+                    "Weather and commodity contracts are contextual data only"
+                ),
+            )
+
+        if is_equity_index_target(market_ticker) or is_equity_index_target(
+            contract_ticker
+        ):
+            return self._blocked(
+                market_ticker,
+                contract_ticker,
+                strategy_name,
+                rejected_by="equity_index_target_quarantine",
+                reason="Target is outside Dummy's supported prediction surface",
+            )
+
         try:
             orderbook = await self.live_data.get_orderbook(contract_ticker)
         except Exception as exc:
@@ -102,7 +130,13 @@ class AutonomousExecutionPath:
             orderbook=orderbook,
         )
 
-        proposal = self._select_proposal(forecast, orderbook, strategy_name)
+        proposal = self._select_proposal(
+            forecast,
+            orderbook,
+            strategy_name,
+            expected_market_ticker=market_ticker,
+            expected_contract_ticker=contract_ticker,
+        )
         if proposal is None:
             return self._no_trade(
                 market_ticker,
@@ -135,16 +169,23 @@ class AutonomousExecutionPath:
                 risk_verdict=risk_verdict,
             )
 
+        request_fields = {
+            "proposal_id": proposal.id,
+            "market_ticker": proposal.market_ticker,
+            "contract_ticker": proposal.contract_ticker,
+            "side": proposal.side,
+            "price_cents": proposal.price_cents,
+            "size": proposal.size,
+            "strategy_proof_reference": proposal.proof_reference,
+            "forecast_proof_reference": proposal.forecast_reference,
+            "adapter_name": self.adapter_name,
+        }
         request = LiveOrderRequest(
-            proposal_id=proposal.id,
-            market_ticker=proposal.market_ticker,
-            contract_ticker=proposal.contract_ticker,
-            side=proposal.side,
-            price_cents=proposal.price_cents,
-            size=proposal.size,
-            strategy_proof_reference=proposal.proof_reference,
-            forecast_proof_reference=proposal.forecast_reference,
-            adapter_name=self.adapter_name,
+            **request_fields,
+            model_influence_attestation=build_model_influence_attestation(
+                forecast,
+                request_fields,
+            ),
         )
 
         firewall_verdict = await self.firewall.evaluate(request, orderbook, forecast)
@@ -187,18 +228,91 @@ class AutonomousExecutionPath:
         forecast: Any,
         orderbook: OrderBook,
         strategy_name: str | None,
+        *,
+        expected_market_ticker: str | None = None,
+        expected_contract_ticker: str | None = None,
     ) -> TradeProposal | None:
-        candidates = self.strategies
-        if strategy_name is not None:
-            candidates = [
-                s
-                for s in candidates
-                if s.__class__.__name__ == strategy_name or getattr(s, "name", None) == strategy_name
-            ]
-        for strategy in candidates:
+        """Select a proposal only after binding it to the current inputs.
+
+        Strategy objects supplied to the execution path are untrusted.  A
+        strategy must opt into the prediction contract explicitly, and a
+        returned proposal cannot redirect the cycle to another market,
+        contract, or forecast proof.  Re-validating into a fresh
+        ``TradeProposal`` also prevents a caller from retaining and mutating
+        the object that the execution path consumes.
+        """
+        forecast_market = getattr(forecast, "market_ticker", None)
+        forecast_contract = getattr(forecast, "contract_ticker", None)
+        forecast_reference = getattr(forecast, "proof_reference", None)
+        expected_market = expected_market_ticker or forecast_market
+        expected_contract = expected_contract_ticker or forecast_contract
+
+        if not all(
+            isinstance(value, str) and value
+            for value in (
+                expected_market,
+                expected_contract,
+                forecast_market,
+                forecast_contract,
+                forecast_reference,
+            )
+        ):
+            return None
+        if (
+            forecast_market != expected_market
+            or forecast_contract != expected_contract
+            or orderbook.contract_ticker != expected_contract
+            # Kalshi's direct order-book adapter historically uses the
+            # contract ticker for both fields.  Accept that canonical alias,
+            # but never an unrelated market identity.
+            or orderbook.market_ticker not in {expected_market, expected_contract}
+        ):
+            return None
+        if is_prediction_quarantined_target(
+            expected_market
+        ) or is_prediction_quarantined_target(expected_contract):
+            return None
+        for strategy in self.strategies:
+            try:
+                has_authority = (
+                    getattr(strategy, "PREDICTION_AUTHORITY", None) is True
+                    and getattr(strategy, "DATA_ONLY", False) is False
+                )
+            except Exception:
+                has_authority = False
+            if not has_authority:
+                continue
+            if strategy_name is not None:
+                try:
+                    matches_requested_strategy = (
+                        strategy.__class__.__name__ == strategy_name
+                        or getattr(strategy, "name", None) == strategy_name
+                    )
+                except Exception:
+                    matches_requested_strategy = False
+                if not matches_requested_strategy:
+                    continue
             proposal = strategy.evaluate(forecast, orderbook)
-            if proposal is not None:
-                return proposal
+            if not isinstance(proposal, TradeProposal):
+                continue
+            if (
+                proposal.market_ticker != expected_market
+                or proposal.contract_ticker != expected_contract
+                or proposal.forecast_reference != forecast_reference
+            ):
+                continue
+            try:
+                proposal_payload = proposal.model_dump(mode="python")
+                proposal_payload.update(
+                    {
+                        "market_ticker": expected_market,
+                        "contract_ticker": expected_contract,
+                        "forecast_reference": forecast_reference,
+                    }
+                )
+                return TradeProposal.model_validate(proposal_payload)
+            except Exception:
+                continue
         return None
 
     async def rehearse_live_cap(
@@ -223,6 +337,25 @@ class AutonomousExecutionPath:
 
         if state_module.STATE.mode != AccountMode.AUTONOMOUS_LIVE_CAPPED:
             base.update({"status": "blocked", "rejected_by": "mode", "reason": "Mode is not AUTONOMOUS_LIVE_CAPPED"})
+            proof_ref = write_proof("rehearse_live_cap", "blocked", base)
+            return {**base, "proof_reference": proof_ref}
+
+        if is_data_only_target(market_ticker) or is_data_only_target(contract_ticker):
+            base.update({
+                "status": "blocked",
+                "rejected_by": "data_only_target",
+                "reason": "Weather and commodity contracts are contextual data only",
+            })
+            proof_ref = write_proof("rehearse_live_cap", "blocked", base)
+            return {**base, "proof_reference": proof_ref}
+        if is_equity_index_target(market_ticker) or is_equity_index_target(
+            contract_ticker
+        ):
+            base.update({
+                "status": "blocked",
+                "rejected_by": "equity_index_target_quarantine",
+                "reason": "Target is outside Dummy's supported prediction surface",
+            })
             proof_ref = write_proof("rehearse_live_cap", "blocked", base)
             return {**base, "proof_reference": proof_ref}
 
@@ -260,7 +393,11 @@ class AutonomousExecutionPath:
         )
 
         scanner = StrategyScanner()
-        scan_results = scanner.scan(forecast, orderbook)
+        scan_results = scanner.scan(
+            forecast,
+            orderbook,
+            market_category=market.category,
+        )
 
         proposal = None
         if strategy_name is not None:
@@ -294,16 +431,23 @@ class AutonomousExecutionPath:
             proof_ref = write_proof("rehearse_live_cap", "blocked", payload)
             return {**payload, "proof_reference": proof_ref}
 
+        request_fields = {
+            "proposal_id": proposal.id,
+            "market_ticker": proposal.market_ticker,
+            "contract_ticker": proposal.contract_ticker,
+            "side": proposal.side,
+            "price_cents": proposal.price_cents,
+            "size": proposal.size,
+            "strategy_proof_reference": proposal.proof_reference,
+            "forecast_proof_reference": proposal.forecast_reference,
+            "adapter_name": self.adapter_name,
+        }
         request = LiveOrderRequest(
-            proposal_id=proposal.id,
-            market_ticker=proposal.market_ticker,
-            contract_ticker=proposal.contract_ticker,
-            side=proposal.side,
-            price_cents=proposal.price_cents,
-            size=proposal.size,
-            strategy_proof_reference=proposal.proof_reference,
-            forecast_proof_reference=proposal.forecast_reference,
-            adapter_name=self.adapter_name,
+            **request_fields,
+            model_influence_attestation=build_model_influence_attestation(
+                forecast,
+                request_fields,
+            ),
         )
 
         firewall_rehearsal = await self.firewall.submit_rehearsal(request, orderbook, forecast)
@@ -556,12 +700,11 @@ def generate_firewall_order_path_report(project_root: Path | None = None) -> Pat
     """Generate the firewall order path proof report.
 
     Statically analyses the repository for ``create_order`` invocations and
-    documents that the only live order paths are ``LiveBrokerFirewall.submit``
-    and the ``KalshiSubmitter`` helper it may delegate to.
+    documents that the only live order path is ``LiveBrokerFirewall.submit``.
     """
     root = project_root or PROJECT_ROOT
     scan = _scan_for_create_order(root)
-    allowed_callers = {"live_firewall/firewall.py", "kalshi/submitter.py"}
+    allowed_callers = {"live_firewall/firewall.py"}
     files_with_calls = set(scan["files_with_create_order_calls"])
     only_allowed = files_with_calls <= allowed_callers
     autonomous_source = _autonomous_path_source(root)
@@ -582,7 +725,7 @@ def generate_firewall_order_path_report(project_root: Path | None = None) -> Pat
         "assertions": {
             "only_allowed_callers_invoke_create_order": only_allowed,
             "allowed_callers": sorted(allowed_callers),
-            "submitter_enforces_limit_orders": True,
+            "legacy_submitter_retired": True,
             "market_orders_forbidden": True,
         },
         "runtime_proof": {

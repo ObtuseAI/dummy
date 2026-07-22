@@ -33,18 +33,18 @@ def test_improvement_detects_a_sharpening_trend():
     # prior half: predictions far from the result (high Brier);
     # recent half: predictions on the nose (low Brier) -> improving.
     recs = []
-    for i in range(8):
+    for i in range(30):
         recs.append({"prob": 0.5, "result": 1, "market": None, "action": "ABSTAIN",
-                     "settled_at": f"2026-01-{i + 1:02d}"})
-    for i in range(8):
+                     "settled_at": f"2026-01-{i + 1:03d}"})
+    for i in range(30):
         recs.append({"prob": 0.95, "result": 1, "market": None, "action": "ABSTAIN",
-                     "settled_at": f"2026-02-{i + 1:02d}"})
+                     "settled_at": f"2026-02-{i + 1:03d}"})
     imp = _improvement(recs)
     assert imp["trend"] == "improving"
     assert imp["delta_brier"] > 0            # Brier fell = sharper
     # and a flat series is flat
     flat = [{"prob": 0.6, "result": 1, "market": None, "action": "ABSTAIN",
-             "settled_at": f"2026-03-{i + 1:02d}"} for i in range(16)]
+             "settled_at": f"2026-03-{i + 1:03d}"} for i in range(60)]
     assert _improvement(flat)["trend"] == "flat"
     assert _improvement(recs[:4])["trend"] == "thin"
 

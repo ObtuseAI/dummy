@@ -28,6 +28,18 @@ if sys.stdout is None or sys.stderr is None:
 
 
 def main() -> int:
+    from autonomy.session import PAPER_RESULTS_AUTHORITY
+
+    if PAPER_RESULTS_AUTHORITY == "RETIRED_NON_AUTHORITATIVE":
+        print(json.dumps({
+            "status": PAPER_RESULTS_AUTHORITY,
+            "episodes_completed": 0,
+            "episodes_issued": 0,
+            "execution_authority": False,
+            "note": "vNext shadow-result production is retired; history remains audit-only.",
+        }, sort_keys=True))
+        return 0
+
     from autonomy.vnext_runtime import run_shadow_pass
 
     summary = run_shadow_pass()

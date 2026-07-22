@@ -43,7 +43,9 @@ class TestClassifyProviderError:
 
 class TestProviderErrorHandling:
     @pytest.mark.asyncio
-    async def test_deepseek_raises_provider_error_without_key(self, monkeypatch, no_project_env):
+    async def test_deepseek_raises_provider_error_without_key(
+        self, monkeypatch, no_project_env, model_network_capability
+    ):
         monkeypatch.delenv("DEEPSEEK_API_KEY", raising=False)
         monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
         cfg = ProviderConfig(
@@ -53,11 +55,17 @@ class TestProviderErrorHandling:
         )
         provider = DeepSeekV4FlashProvider(cfg)
         with pytest.raises(ProviderError) as exc_info:
-            await provider.complete("test", ModelTask.FORECAST_OPINION)
+            await provider.complete(
+                "test",
+                ModelTask.FORECAST_OPINION,
+                network_capability=model_network_capability,
+            )
         assert exc_info.value.metadata["error_class"] == "PROVIDER_ERROR"
 
     @pytest.mark.asyncio
-    async def test_minimax_raises_provider_error_without_key(self, monkeypatch, no_project_env):
+    async def test_minimax_raises_provider_error_without_key(
+        self, monkeypatch, no_project_env, model_network_capability
+    ):
         monkeypatch.delenv("MINIMAX_API_KEY", raising=False)
         monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
         cfg = ProviderConfig(
@@ -67,7 +75,11 @@ class TestProviderErrorHandling:
         )
         provider = MinimaxM3Provider(cfg)
         with pytest.raises(ProviderError) as exc_info:
-            await provider.complete("test", ModelTask.STRATEGY_CRITIQUE)
+            await provider.complete(
+                "test",
+                ModelTask.STRATEGY_CRITIQUE,
+                network_capability=model_network_capability,
+            )
         assert exc_info.value.metadata["error_class"] == "PROVIDER_ERROR"
 
     @pytest.mark.asyncio
@@ -82,7 +94,9 @@ class TestProviderErrorHandling:
         assert metadata["error_class"] is None
 
     @pytest.mark.asyncio
-    async def test_deepseek_retries_on_500_then_succeeds(self, monkeypatch):
+    async def test_deepseek_retries_on_500_then_succeeds(
+        self, monkeypatch, model_network_capability
+    ):
         monkeypatch.setenv("DEEPSEEK_API_KEY", "sk-test")
         cfg = ProviderConfig(
             api_base="https://api.deepseek.com",
@@ -119,7 +133,11 @@ class TestProviderErrorHandling:
 
         with patch("model_router.providers.httpx.AsyncClient", return_value=client_instance):
             with patch("model_router.providers.asyncio.sleep", new_callable=AsyncMock):
-                content, metadata = await provider.complete("prompt", ModelTask.FORECAST_OPINION)
+                content, metadata = await provider.complete(
+                    "prompt",
+                    ModelTask.FORECAST_OPINION,
+                    network_capability=model_network_capability,
+                )
 
         assert call_count == 2
         assert metadata["attempts"] == 2

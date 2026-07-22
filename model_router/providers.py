@@ -6,6 +6,8 @@ import json
 import os
 import time
 from abc import ABC, abstractmethod
+from dataclasses import dataclass
+from decimal import Decimal, InvalidOperation
 from typing import Any
 
 import httpx
@@ -15,6 +17,11 @@ from model_router.credential_source import ProviderCredentialSourceResolver
 from model_router.error_classifier import (
     ProviderResponseSchemaError,
     classify_provider_error,
+)
+from model_router.network_capability import (
+    ModelNetworkCapability,
+    require_model_network_capability,
+    validate_model_provider_endpoint,
 )
 from model_router.tasks import ModelTask
 
@@ -41,14 +48,31 @@ def _is_retryable(error_class: str | None) -> bool:
 # content downstream.
 _TASK_SCHEMAS: dict[ModelTask, set[str]] = {
     ModelTask.FORECAST_OPINION: {"dummy_probability", "confidence_score", "reasoning"},
+    ModelTask.RAPID_FORECAST: {
+        "dummy_probability",
+        "confidence_score",
+        "reasoning",
+        "action",
+        "entry_condition",
+    },
     ModelTask.STRATEGY_CRITIQUE: {"verdict", "reasoning"},
     ModelTask.RISK_CRITIQUE: {"risk_level", "reasoning"},
     ModelTask.NO_TRADE_REASON: {"reason", "contributing_factors"},
     ModelTask.TRADE_DRAFT: {"action", "reasoning"},
     ModelTask.CALIBRATION_NOTE: {"note"},
     ModelTask.MARKET_THESIS: {"thesis", "confidence"},
+    ModelTask.REFLECTION_LESSONS: {"lessons"},
     ModelTask.HYBRID_REVIEW: {"verdict", "agreement_score"},
 }
+
+
+@dataclass(frozen=True)
+class _ProviderCallResult:
+    """One request's content and telemetry, kept concurrency-local."""
+
+    content: str
+    usage: dict[str, int] | None = None
+    actual_model: str | None = None
 
 
 class ProviderError(Exception):
@@ -81,6 +105,9 @@ class BaseModelProvider(ABC):
     name: str = "base"
     # Which LLM backend switch gates this provider (None = ungated, e.g. mock).
     _backend: str | None = None
+    # HTTP providers override this.  Mock and injected local-only providers do
+    # not need a paid-network capability merely to exercise response handling.
+    _network_capability_required = False
 
     def __init__(self, config: ProviderConfig):
         self.config = config
@@ -105,7 +132,7 @@ class BaseModelProvider(ABC):
     @abstractmethod
     async def _call_api(
         self, prompt: str, task: ModelTask, max_tokens: int, temperature: float
-    ) -> str:
+    ) -> str | _ProviderCallResult:
         """Make a single provider API call and return the raw response text."""
         ...
 
@@ -148,6 +175,97 @@ class BaseModelProvider(ABC):
                 raise ProviderResponseSchemaError(
                     f"Response missing required fields for {task.value}: {sorted(missing)}"
                 )
+        if not isinstance(data, dict):
+            raise ProviderResponseSchemaError(
+                f"Response for {task.value} must be a JSON object"
+            )
+
+        def probability(value: Any) -> Decimal | None:
+            if isinstance(value, bool):
+                return None
+            try:
+                parsed = Decimal(str(value))
+            except (InvalidOperation, TypeError, ValueError):
+                return None
+            if not parsed.is_finite() or not Decimal("0") <= parsed <= Decimal("1"):
+                return None
+            return parsed
+
+        semantic_error: str | None = None
+        if task in {ModelTask.FORECAST_OPINION, ModelTask.RAPID_FORECAST}:
+            forecast_probability = probability(data.get("dummy_probability"))
+            if forecast_probability is None:
+                semantic_error = "dummy_probability must be finite and in [0, 1]"
+            elif probability(data.get("confidence_score")) is None:
+                semantic_error = "confidence_score must be finite and in [0, 1]"
+            elif not isinstance(data.get("reasoning"), str) or not data["reasoning"].strip():
+                semantic_error = "reasoning must be a non-empty string"
+            elif "uncertainty_band" in data:
+                band = data["uncertainty_band"]
+                if not isinstance(band, list) or len(band) != 2:
+                    semantic_error = "uncertainty_band must contain [low, high]"
+                else:
+                    low, high = probability(band[0]), probability(band[1])
+                    if (
+                        low is None
+                        or high is None
+                        or not low <= forecast_probability <= high
+                    ):
+                        semantic_error = (
+                            "uncertainty_band must be ordered, finite, in [0, 1], "
+                            "and contain dummy_probability"
+                        )
+            if semantic_error is None and task is ModelTask.RAPID_FORECAST:
+                if str(data.get("action", "")).lower() not in {
+                    "hold",
+                    "consider_yes",
+                    "consider_no",
+                }:
+                    semantic_error = (
+                        "action must be hold, consider_yes, or consider_no"
+                    )
+                elif not isinstance(data.get("entry_condition"), str) or not data[
+                    "entry_condition"
+                ].strip():
+                    semantic_error = "entry_condition must be a non-empty string"
+        elif task is ModelTask.STRATEGY_CRITIQUE:
+            if str(data.get("verdict", "")).lower() not in {
+                "block",
+                "warn",
+                "proceed",
+            }:
+                semantic_error = "verdict must be proceed, warn, or block"
+        elif task is ModelTask.RISK_CRITIQUE:
+            if str(data.get("risk_level", "")).lower() not in {
+                "low",
+                "medium",
+                "high",
+                "critical",
+            }:
+                semantic_error = "risk_level must be low, medium, high, or critical"
+        elif task is ModelTask.NO_TRADE_REASON:
+            reason = data.get("reason")
+            factors = data.get("contributing_factors")
+            if reason is not None and not isinstance(reason, str):
+                semantic_error = "reason must be a string or null"
+            elif not isinstance(factors, list) or any(
+                not isinstance(item, str) or not item.strip() for item in factors
+            ):
+                semantic_error = "contributing_factors must be a list of strings"
+        elif task is ModelTask.MARKET_THESIS:
+            if probability(data.get("confidence")) is None:
+                semantic_error = "confidence must be finite and in [0, 1]"
+        elif task is ModelTask.REFLECTION_LESSONS:
+            lessons = data.get("lessons")
+            if not isinstance(lessons, list) or any(
+                not isinstance(item, str) or not item.strip() for item in lessons
+            ):
+                semantic_error = "lessons must be a list of non-empty strings"
+
+        if semantic_error is not None:
+            raise ProviderResponseSchemaError(
+                f"Invalid {task.value} response: {semantic_error}"
+            )
         return stripped
 
     def _estimate_cost(self, usage: dict[str, int] | None) -> float | None:
@@ -158,18 +276,24 @@ class BaseModelProvider(ABC):
         """
         if usage is None:
             return None
-        # Placeholder pricing per 1M tokens.  These are intentionally
-        # conservative defaults used only for telemetry; replace with provider
-        # list prices when available.
+        # Prefer config-pinned list prices so telemetry follows the exact
+        # OpenRouter route rather than an unrelated generic estimate.
         model_pricing = {
             "deepseek/deepseek-v3": (0.50, 2.00),
             "minimax/minimax-01": (0.20, 1.10),
         }
         prompt_tokens = usage.get("prompt_tokens", 0)
         completion_tokens = usage.get("completion_tokens", 0)
-        prompt_price, completion_price = model_pricing.get(
-            self._model_name, (1.00, 5.00)
+        configured = (
+            self.config.prompt_cost_per_million,
+            self.config.completion_cost_per_million,
         )
+        if all(price is not None for price in configured):
+            prompt_price, completion_price = configured
+        else:
+            prompt_price, completion_price = model_pricing.get(
+                self._model_name, (1.00, 5.00)
+            )
         return round(
             (prompt_tokens * prompt_price + completion_tokens * completion_price) / 1_000_000,
             6,
@@ -181,7 +305,9 @@ class BaseModelProvider(ABC):
         task: ModelTask,
         max_tokens: int = 512,
         temperature: float = 0.2,
-        max_retries: int = 3,
+        max_retries: int | None = None,
+        *,
+        network_capability: ModelNetworkCapability | None = None,
     ) -> tuple[str, dict[str, Any]]:
         """Return ``(response_text, metadata)``.
 
@@ -194,26 +320,46 @@ class BaseModelProvider(ABC):
             - ``error_class``: ``None`` on success, otherwise a classifier tag.
             - ``cost_usd``: estimated cost when usage is reported, else ``None``.
         """
+        # Enforce authority at the common public sink, not only in ModelRouter.
+        # Direct provider calls therefore cannot bypass a disabled routing
+        # config simply because a real key is discoverable in the project .env.
+        if self._network_capability_required:
+            require_model_network_capability(network_capability)
+
         started = time.monotonic()
         digest = _prompt_digest(prompt)
         last_exc: Exception | None = None
         error_class: str | None = None
         attempts = 0
 
-        for attempt in range(max_retries + 1):
+        retry_limit = self.config.max_retries if max_retries is None else max_retries
+        retry_limit = max(0, min(3, int(retry_limit)))
+        for attempt in range(retry_limit + 1):
             attempts += 1
             try:
-                text = await self._call_api(prompt, task, max_tokens, temperature)
+                raw_result = await self._call_api(
+                    prompt, task, max_tokens, temperature
+                )
+                if isinstance(raw_result, _ProviderCallResult):
+                    text = raw_result.content
+                    usage = raw_result.usage
+                    actual_model = raw_result.actual_model or self._model_name
+                else:
+                    # Compatibility for local/mock/test providers whose
+                    # low-level method still returns only content.
+                    text = raw_result
+                    usage = None
+                    actual_model = self._model_name
                 text = self._validate_response(text, task)
                 latency_ms = (time.monotonic() - started) * 1000
                 metadata: dict[str, Any] = {
                     "provider": self.name,
-                    "model": self._model_name,
+                    "model": actual_model,
                     "latency_ms": round(latency_ms, 4),
                     "attempts": attempts,
                     "prompt_digest": digest,
                     "error_class": None,
-                    "cost_usd": self._estimate_cost(None),
+                    "cost_usd": self._estimate_cost(usage),
                 }
                 return text, metadata
             except Exception as exc:
@@ -221,7 +367,7 @@ class BaseModelProvider(ABC):
                 error_class = classify_provider_error(exc)
                 if not _is_retryable(error_class):
                     break
-                if attempt < max_retries:
+                if attempt < retry_limit:
                     await asyncio.sleep(self._backoff_delay(attempt))
 
         latency_ms = (time.monotonic() - started) * 1000
@@ -242,10 +388,15 @@ class _OpenAICompatibleProvider(BaseModelProvider):
 
     _timeout_seconds: float | None = None
     _backend = "openrouter"   # gated by the openrouter LLM switch
+    _network_capability_required = True
 
     async def _call_api(
         self, prompt: str, task: ModelTask, max_tokens: int, temperature: float
-    ) -> str:
+    ) -> str | _ProviderCallResult:
+        # Validate the host/key binding before reading the secret.  In
+        # particular, legacy DEEPSEEK_BASE_URL/MINIMAX_BASE_URL overrides may
+        # never redirect an OpenRouter bearer token to another host.
+        validate_model_provider_endpoint(self._api_base, self.config.api_key_env)
         credential_resolver = ProviderCredentialSourceResolver()
         key = credential_resolver.get_value(self.config.api_key_env)
         if not key:
@@ -257,6 +408,10 @@ class _OpenAICompatibleProvider(BaseModelProvider):
             "max_tokens": max_tokens,
             "temperature": temperature,
         }
+        if self.config.reasoning_effort:
+            # OpenRouter's unified reasoning object is portable across Google,
+            # OpenAI, Anthropic, and compatible reasoning models.
+            body["reasoning"] = {"effort": self.config.reasoning_effort}
         # Some provider/model combos on OpenRouter do not accept json_object response_format.
         if not ("openrouter" in self._api_base.lower() and "minimax" in self._model_name.lower()):
             body["response_format"] = {"type": "json_object"}
@@ -276,13 +431,26 @@ class _OpenAICompatibleProvider(BaseModelProvider):
             data = r.json()
 
         content = data["choices"][0]["message"]["content"]
-        # Update the last cost estimate based on provider-reported usage.
         usage = data.get("usage")
-        self._last_usage = usage  # type: ignore[attr-defined]
-        return content
-
-    def _estimate_cost(self, usage: dict[str, int] | None) -> float | None:
-        return super()._estimate_cost(usage or getattr(self, "_last_usage", None))
+        actual_model = data.get("model")
+        if self.name == "openrouter_generic":
+            if not isinstance(actual_model, str) or not actual_model.strip():
+                raise ProviderResponseSchemaError(
+                    "OpenRouter response omitted the actual model identity"
+                )
+            if actual_model != self._model_name:
+                raise ProviderResponseSchemaError(
+                    "OpenRouter returned a model other than the configured exact route"
+                )
+        return _ProviderCallResult(
+            content=content,
+            usage=usage if isinstance(usage, dict) else None,
+            actual_model=(
+                actual_model
+                if self.name == "openrouter_generic" and isinstance(actual_model, str)
+                else self._model_name
+            ),
+        )
 
 
 class DeepSeekV4FlashProvider(_OpenAICompatibleProvider):
@@ -361,6 +529,15 @@ class MockProvider(BaseModelProvider):
                     "reasoning": "mock forecast",
                 }
             ),
+            ModelTask.RAPID_FORECAST: json.dumps(
+                {
+                    "dummy_probability": "0.55",
+                    "confidence_score": "0.72",
+                    "reasoning": "mock rapid forecast",
+                    "action": "hold",
+                    "entry_condition": "mock only; never submit",
+                }
+            ),
             ModelTask.STRATEGY_CRITIQUE: json.dumps(
                 {"verdict": "proceed", "reasoning": "mock critique"}
             ),
@@ -379,6 +556,9 @@ class MockProvider(BaseModelProvider):
             ModelTask.CALIBRATION_NOTE: json.dumps({"note": "mock calibration"}),
             ModelTask.MARKET_THESIS: json.dumps(
                 {"thesis": "mock thesis", "confidence": "0.60"}
+            ),
+            ModelTask.REFLECTION_LESSONS: json.dumps(
+                {"lessons": ["mock reflection; never operationalize"]}
             ),
             ModelTask.HYBRID_REVIEW: json.dumps(
                 {"verdict": "agree", "agreement_score": "0.80"}

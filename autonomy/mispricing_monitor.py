@@ -11,11 +11,12 @@ Pure and injectable: the caller supplies the market list, a ``forecast_fn``
 (our model's probability for a market; None -> skip, fail-closed), an optional
 ``book_fn`` (de-vigged sportsbook probability), and an optional stateful
 ``OpportunistEngine`` carried across passes. ``run_mispricing_sweep`` itself
-still does no I/O — the runner script does the scanning and scheduling, and
-calls the ``persist_book_tape`` / ``persist_paper_entries`` helpers below
-(WS-8) to write the two new evidence artifacts this module now also owns.
+still does no I/O — the runner script does the scanning and scheduling. The
+production runner persists only the point-in-time book tape; the historical
+``persist_paper_entries`` helper remains for replay compatibility but is not
+called by the live runtime.
 
-Everything downstream is challenger / paper evidence — the sweep never places
+Everything downstream is non-authoritative research evidence — the sweep never places
 an order; it surfaces the shortlist and the opportunist strikes for review.
 
 WS-8 (spec §3.2, CLV grading): every pass also emits ``tape_rows`` (one
@@ -404,7 +405,7 @@ def run_mispricing_sweep(
             "max_items": max_items,
         },
         "note": (
-            "Challenger/paper evidence only. The sweep surfaces mispricing and "
+            "Non-authoritative research evidence only. The sweep surfaces mispricing and "
             "opportunist strikes for review; it never places an order."
         ),
     }

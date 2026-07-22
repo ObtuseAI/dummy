@@ -64,7 +64,7 @@ async def test_provider_smoke_call_times_out_within_20s(tmp_path, monkeypatch):
     # Use a short timeout in the test so we prove the path without waiting 20s.
     monkeypatch.setattr(smoke_module, "SMOKE_CALL_TIMEOUT", 2)
 
-    runner = LiveModelSmoke(artifacts_dir=tmp_path)
+    runner = LiveModelSmoke(artifacts_dir=tmp_path, allow_live=True)
     slow = _SlowProvider(ProviderConfig(api_base="", api_key_env="", model_name="slow"))
 
     start = asyncio.get_event_loop().time()

@@ -141,14 +141,9 @@ def generate_no_live_submit_still_disabled_report_v11() -> dict[str, Any]:
 
 
 def generate_no_caps_config_modification_report_v11() -> dict[str, Any]:
-    clean = _git_diff_empty("configs/caps.json")
-    return {
-        "generated_at": now_iso(),
-        "workstream": "V11: No Caps Config Modification",
-        "modified_by_v11": not clean,
-        "config_diff_empty": clean,
-        "verdict": "PASS" if clean else "FAIL",
-    }
+    from archive.report_scripts.caps_integrity import generate_historical_caps_phase_report
+
+    return generate_historical_caps_phase_report("V11")
 
 
 def generate_no_direct_order_bypass_report_v11() -> dict[str, Any]:

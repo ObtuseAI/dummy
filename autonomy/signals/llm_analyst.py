@@ -60,16 +60,29 @@ class LlmAnalystSignal:
             f"Rules excerpt: {rules}\n"
             f"Current book: yes_bid={market.yes_bid} yes_ask={market.yes_ask} volume={market.volume}\n"
             "Estimate the probability the market resolves YES. Think about base rates, "
-            "the exact settlement rule, and time remaining. Return STRICT JSON: "
-            '{"probability_yes": <0..1>, "confidence": <0..1>, "reasoning": "<one paragraph>"}'
+            "the exact settlement rule, and time remaining. Return STRICT JSON using "
+            "the FORECAST_OPINION contract: "
+            '{"dummy_probability": <0..1>, "confidence_score": <0..1>, '
+            '"reasoning": "<one paragraph>"}'
         )
         try:
             envelope = asyncio.run(
                 router.call(ModelTask.FORECAST_OPINION, prompt, context={"market_ticker": market.ticker})
             )
+            decision = envelope.decision
+            expected_provider = router.config.default_provider.get(
+                ModelTask.FORECAST_OPINION.value
+            )
+            if (
+                envelope.blocked_by
+                or decision.fallback_reason
+                or decision.provider_name != expected_provider
+                or decision.provider_name in {"mock", "none"}
+            ):
+                return None
             data = json.loads(envelope.content)
-            p_yes = float(data["probability_yes"])
-            confidence = float(data.get("confidence", 0.5))
+            p_yes = float(data["dummy_probability"])
+            confidence = float(data["confidence_score"])
         except Exception:
             return None
         if not (0.0 < p_yes < 1.0):
@@ -80,5 +93,11 @@ class LlmAnalystSignal:
             probability_yes=min(0.995, max(0.005, p_yes)),
             uncertainty=min(0.5, max(0.05, 0.5 * (1.0 - confidence))),
             rationale=str(data.get("reasoning", ""))[:400],
-            features={"confidence": confidence},
+            features={
+                "confidence": confidence,
+                "challenger_only": True,
+                "observational_only": True,
+                "promotion_eligible": False,
+                "llm_probability_authority": "zero_unless_exact_scope_dossier",
+            },
         )

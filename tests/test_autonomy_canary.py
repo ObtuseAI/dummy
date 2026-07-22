@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import json
+from datetime import datetime, timezone
+
 from autonomy.canary import evaluate_canary_readiness
 from autonomy.ledger import AutonomyLedger
 from autonomy.ontology import Signal
@@ -10,7 +13,8 @@ from autonomy.ontology import Signal
 def _seed_beating_history(ledger, n, correct=True):
     """n settled markets where 'sharp' beats the market prior."""
     for i in range(n):
-        ticker = f"M{i}"
+        # One exact taxonomy scope with independent event clusters.
+        ticker = f"MTEST-EVENT{i}-CONTRACT"
         result = (i % 2 == 0)
         ledger.record_signal(Signal(source="market_prior", market_ticker=ticker,
                                     probability_yes=0.5, uncertainty=0.1, rationale=""))
@@ -183,14 +187,118 @@ def test_blocks_on_low_balance(tmp_path):
         ledger.close()
 
 
-def test_start_session_live_blocked_by_gate(tmp_path, monkeypatch):
+def test_positive_paper_result_cannot_enable_live_session(tmp_path, monkeypatch):
+    import autonomy.canary as canary
     import autonomy.session as sess
     from autonomy.executor import AUTONOMY_ACK
     from autonomy.ontology import SessionMode
 
-    # Point the gate's ledger at an empty temp db -> not ready.
-    monkeypatch.setattr(sess, "AutonomyLedger", lambda *a, **k: AutonomyLedger(db_path=tmp_path / "l.db"))
+    class Ready:
+        ready = True
+        blockers = []
+        evidence = {"settled_markets": 10_000}
+
+    monkeypatch.setattr(canary, "evaluate_canary_readiness", lambda *a, **k: Ready())
+    monkeypatch.setattr(sess, "live_session_readiness", lambda: {
+        "execution_authority": False,
+        "blocker": "DEFAULT_DISABLED",
+    })
     result = sess.start_session(SessionMode.LIVE, ack=AUTONOMY_ACK, session_path=tmp_path / "s.json")
     assert result["started"] is False
-    assert result["reason"] == "LIVE blocked by evidence gate"
+    assert result["reason"] == "LIVE blocked by explicit live authority contracts"
+    assert result["paper_results_authority"] == "RETIRED_NON_AUTHORITATIVE"
     assert not (tmp_path / "s.json").exists()
+
+
+def test_live_start_fails_closed_when_signed_balance_read_fails(tmp_path, monkeypatch):
+    import autonomy.session as sess
+    from autonomy.executor import AUTONOMY_ACK
+    from autonomy.ontology import SessionMode
+
+    monkeypatch.setattr(sess, "live_session_readiness", lambda: {
+        "execution_authority": True,
+        "blocker": None,
+    })
+    monkeypatch.setattr(
+        sess, "_live_balance_cents",
+        lambda: (_ for _ in ()).throw(RuntimeError("signed read unavailable")),
+    )
+    monkeypatch.setattr(
+        sess, "AutonomyLedger", lambda *a, **k: AutonomyLedger(db_path=tmp_path / "l.db")
+    )
+
+    path = tmp_path / "live-session.json"
+    result = sess.start_session(SessionMode.LIVE, ack=AUTONOMY_ACK, session_path=path)
+    assert result["started"] is False
+    assert result["reason"] == "LIVE blocked by balance/credential readiness"
+    assert result["error_type"] == "RuntimeError"
+    assert not path.exists()
+
+
+def test_negative_paper_result_cannot_block_explicit_live_session(tmp_path, monkeypatch):
+    import autonomy.canary as canary
+    import autonomy.session as sess
+    from autonomy.executor import AUTONOMY_ACK
+    from autonomy.ontology import SessionMode
+
+    monkeypatch.setattr(
+        canary,
+        "evaluate_canary_readiness",
+        lambda *a, **k: (_ for _ in ()).throw(
+            AssertionError("retired paper gate was consulted")
+        ),
+    )
+    monkeypatch.setattr(sess, "live_session_readiness", lambda: {
+        "execution_authority": True,
+        "blocker": None,
+    })
+    monkeypatch.setattr(sess, "_live_balance_cents", lambda: 500)
+
+    path = tmp_path / "live-session.json"
+    result = sess.start_session(
+        SessionMode.LIVE,
+        ack=AUTONOMY_ACK,
+        session_path=path,
+    )
+    assert result["started"] is True
+    assert result["mode"] == "LIVE"
+    assert path.exists()
+
+
+def test_canary_compatibility_report_is_retired_and_never_reads_balance(tmp_path, monkeypatch):
+    import autonomy.session as sess
+
+    monkeypatch.setattr(
+        sess, "AutonomyLedger", lambda *a, **k: AutonomyLedger(db_path=tmp_path / "l.db")
+    )
+    monkeypatch.setattr(
+        sess, "_live_balance_cents",
+        lambda: (_ for _ in ()).throw(AssertionError("broker read attempted")),
+    )
+    result = sess.canary_readiness(check_balance=True)
+    assert result["ready"] is False
+    assert result["status"] == "RETIRED_NON_AUTHORITATIVE"
+    assert result["execution_authority"] is False
+    assert result["can_enable_live"] is False
+    assert result["can_block_live"] is False
+    assert result["broker_contacted"] is False
+
+
+def test_cached_canary_preflight_fails_fast_on_incomplete_summary(tmp_path):
+    ledger = AutonomyLedger(db_path=tmp_path / "l.db")
+    summary = tmp_path / "latest.json"
+    summary.write_text(json.dumps({
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "settled_markets": 100,
+    }), encoding="utf-8")
+    try:
+        result = evaluate_canary_readiness(
+            ledger,
+            prefer_cached_backtest=True,
+            cached_backtest_path=summary,
+        )
+        assert result.ready is False
+        assert any("lacks canary evidence" in blocker for blocker in result.blockers)
+        assert "sources" in result.evidence["cached_backtest"]["missing_fields"]
+    finally:
+        ledger.close()

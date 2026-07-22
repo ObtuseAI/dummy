@@ -2,8 +2,8 @@ from __future__ import annotations
 from datetime import datetime
 from decimal import Decimal
 from enum import Enum
-from typing import Any, Optional
-from pydantic import BaseModel, Field
+from typing import Any, Literal, Optional
+from pydantic import BaseModel, ConfigDict, Field, StrictBool, model_validator
 
 
 class ForecastOpinion(BaseModel):
@@ -13,6 +13,7 @@ class ForecastOpinion(BaseModel):
     market_implied_probability: Decimal
     dummy_probability: Decimal
     probability_delta: Decimal
+    model_disagreement: Decimal | None = None
     confidence_score: Decimal
     uncertainty_band: tuple[Decimal, Decimal]
     model_summary: str
@@ -103,6 +104,10 @@ class OrderBook(BaseModel):
     bids: list[OrderBookLevel]
     asks: list[OrderBookLevel]
     timestamp: datetime
+    # Local receipt time is distinct from an optional venue/source timestamp.
+    # A fresh broker read may legitimately omit a venue event timestamp; the
+    # sink can still prove when the complete response was received.
+    received_at: Optional[datetime] = None
     source_ts: Optional[datetime] = None
     freshness_score: Optional[Decimal] = None
     depth_summary: Optional[dict[str, Any]] = None
@@ -165,6 +170,25 @@ class ComplianceVerdict(BaseModel):
     blocked_categories: list[str]
     reason: str
 
+
+class MarketComplianceMetadata(BaseModel):
+    """Verified Kalshi hierarchy metadata used by the compliance gate.
+
+    Kalshi tickers are opaque identifiers. Category policy must therefore be
+    evaluated against the linked market -> event -> series records returned by
+    the exchange, not against substrings guessed from a ticker.
+    """
+
+    source: str
+    received_at: datetime
+    market_ticker: str
+    event_ticker: str
+    series_ticker: str
+    series_category: str
+    event_category: Optional[str] = None
+    series_tags: list[str] = Field(default_factory=list)
+    verified: bool = True
+
 class RiskVerdict(BaseModel):
     passed: bool
     reason: str
@@ -174,6 +198,62 @@ class FirewallVerdict(BaseModel):
     allow: bool
     reason: str
     rejected_by: Optional[str] = None
+
+
+class ProbabilityInfluenceKind(str, Enum):
+    """Whether model output changed an operational forecast probability."""
+
+    QUANT_ONLY = "QUANT_ONLY"
+    MODEL_WEIGHTED = "MODEL_WEIGHTED"
+
+
+class ModelInfluenceAttestation(BaseModel):
+    """Immutable binding between model authority, a forecast, and a proposal.
+
+    The central firewall recomputes both bindings and, for ``MODEL_WEIGHTED``,
+    independently re-evaluates the exact authority scope.  The attestation is
+    deliberately carried on the order request so it cannot be separated from
+    the proposal that consumes the probability.
+    """
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    schema_version: Literal["operational_model_influence_v1"] = (
+        "operational_model_influence_v1"
+    )
+    influence_kind: ProbabilityInfluenceKind
+    model_probability_authority: Decimal = Field(..., ge=0, le=Decimal("0.35"))
+    authority_scope: Optional[str] = None
+    authority_evidence_ref: Optional[str] = None
+    market_category: Optional[str] = None
+    # ``None`` means the venue phase was not established. It must never be
+    # coerced to pregame model/order authority downstream.
+    live_phase: Optional[StrictBool] = None
+    supporting_model_output_reference: Optional[str] = None
+    issued_at: datetime
+    forecast_binding_sha256: str = Field(pattern=r"^[0-9A-F]{64}$")
+    proposal_binding_sha256: str = Field(pattern=r"^[0-9A-F]{64}$")
+    attestation_sha256: str = Field(pattern=r"^[0-9A-F]{64}$")
+
+    @model_validator(mode="after")
+    def _validate_authority_shape(self) -> "ModelInfluenceAttestation":
+        if self.influence_kind is ProbabilityInfluenceKind.QUANT_ONLY:
+            if self.model_probability_authority != 0:
+                raise ValueError("quant-only attestation must have zero model authority")
+            return self
+        if self.model_probability_authority <= 0:
+            raise ValueError("model-weighted attestation requires positive model authority")
+        for field_name in (
+            "authority_scope",
+            "authority_evidence_ref",
+            "market_category",
+            "supporting_model_output_reference",
+        ):
+            value = getattr(self, field_name)
+            if not isinstance(value, str) or not value.strip():
+                raise ValueError(f"model-weighted attestation requires {field_name}")
+        return self
+
 
 class LiveOrderRequest(BaseModel):
     proposal_id: str
@@ -185,12 +265,28 @@ class LiveOrderRequest(BaseModel):
     strategy_proof_reference: str
     forecast_proof_reference: str
     adapter_name: str
+    # Prevent a stale caller from silently turning a passive maker quote into
+    # an immediately marketable order at the final broker boundary.
+    liquidity_role: Literal["maker", "taker"] = "maker"
+    # Autonomous orders bind the request to the exact durable risk snapshot
+    # used for sizing. The central firewall owns the trusted path and verifies
+    # this digest immediately before submit.
+    risk_state_sha256: Optional[str] = None
+    risk_snapshot: dict[str, Any] = Field(default_factory=dict)
+    # Exchange-enforced expiry for resting limit orders. Optional for legacy
+    # callers, required by the autonomous executor's central-firewall path.
+    expiration_ts: Optional[int] = None
+    # Optional in the transport schema for backwards deserialization only.
+    # LiveBrokerFirewall rejects omission, while every production constructor
+    # emits an explicit QUANT_ONLY or MODEL_WEIGHTED attestation.
+    model_influence_attestation: Optional[ModelInfluenceAttestation] = None
 
 class LiveOrderResult(BaseModel):
     success: bool
     order_id: Optional[str] = None
     error: Optional[str] = None
     proof_reference: str
+    broker_contacted: bool = False
     # Structured broker-rejection diagnostics (safe, non-secret)
     broker_rejection_code: Optional[str] = None
     broker_rejection_safe_message: Optional[str] = None
@@ -205,8 +301,12 @@ class CancelRequest(BaseModel):
     reason: str
 
 class CapConfig(BaseModel):
+    schema_version: int = 1
+    authority_epoch: str = "legacy-unversioned"
+    authority_registration_required: bool = True
     max_single_order_cents: int = 100
     max_market_exposure_cents: int = 500
+    max_correlated_exposure_cents: int = 500
     max_daily_loss_cents: int = 500
     max_total_live_exposure_cents: int = 1000
     max_open_markets: int = 3
@@ -334,6 +434,7 @@ class Contract(BaseModel):
     yes_ask: Optional[int] = None
     last_price: Optional[int] = None
     source_ts: Optional[datetime] = None
+    expiration: Optional[datetime] = None
 
 
 class Market(BaseModel):

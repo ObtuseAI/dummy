@@ -42,6 +42,11 @@ def test_heartbeat_and_log_written_on_success(monkeypatch, tmp_path):
     monkeypatch.setattr(daemon, "HEARTBEAT_PATH", tmp_path / "hb.json")
     monkeypatch.setattr(daemon, "CYCLE_LOG_PATH", tmp_path / "c.jsonl")
     monkeypatch.setattr(daemon, "kill_switch_active", lambda: False)
+    monkeypatch.setattr(
+        daemon,
+        "_utc_now_iso",
+        lambda: "2026-07-09T00:08:00+00:00",
+    )
 
     class FakeReport:
         def to_dict(self):
@@ -63,3 +68,6 @@ def test_heartbeat_and_log_written_on_success(monkeypatch, tmp_path):
     hb = json.loads((tmp_path / "hb.json").read_text(encoding="utf-8"))
     assert hb["alive"] is True
     assert hb["last_orders_placed"] == 2
+    assert hb["last_cycle_started_at"] == "2026-07-09T00:00:00+00:00"
+    assert hb["last_cycle_at"] == "2026-07-09T00:08:00+00:00"
+    assert record["completed_at"] == "2026-07-09T00:08:00+00:00"

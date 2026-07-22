@@ -8,14 +8,14 @@ from typing import Any
 
 from fastapi import APIRouter
 
+from autonomy.target_policy import is_data_only_target
 from core.config_loader import load_caps
 from core.ontology import OrderBook, OrderBookLevel
 from core.secret_guard import redact
 from core.state import STATE
 from forecasting.engine import ForecastEngine
 from kalshi.live_data import KalshiLiveData
-from live_firewall.exposure_tracker import ExposureTracker
-from services.sqlite_store import get_orders, get_positions
+from live_firewall.exposure_tracker import get_persistent_exposure_tracker
 from strategies.registry import STRATEGIES
 
 router = APIRouter(prefix="/v3", tags=["v3"])
@@ -35,38 +35,74 @@ def _load_artifact(filename: str) -> dict[str, Any]:
     return {}
 
 
-def _safe_markets_fallback() -> dict[str, Any]:
-    """Demo markets payload when live credentials are absent."""
+def _credentials_present() -> bool:
+    key_id = os.environ.get("KALSHI_API_KEY_ID")
+    pem = os.environ.get("KALSHI_API_PRIVATE_KEY_PEM") or os.environ.get(
+        "KALSHI_PRIVATE_KEY"
+    )
+    pem_path = os.environ.get("KALSHI_API_PRIVATE_KEY_PEM_PATH") or os.environ.get(
+        "KALSHI_PRIVATE_KEY_PATH"
+    )
+    return bool(key_id and (pem or pem_path))
+
+
+def _unavailable_payload(*, reason: str, **fields: Any) -> dict[str, Any]:
     return {
-        "events": [
-            {
-                "event_ticker": "WEATHER-NYC-RAIN",
-                "title": "NYC Rain Forecast",
-                "markets": [
-                    {
-                        "ticker": "WEATHER-NYC-RAIN-YES",
-                        "title": "Will it rain in NYC?",
-                        "status": "active",
-                    }
-                ],
-            }
-        ],
-        "source": "mock",
+        **fields,
+        "source": "unavailable",
+        "data_status": "unavailable",
+        "unavailable_reason": reason,
+        "live_snapshot_available": False,
     }
 
 
-def _safe_orderbook_fallback(ticker: str) -> OrderBook:
-    return OrderBook(
-        market_ticker=ticker,
-        contract_ticker=ticker,
-        bids=[OrderBookLevel(price=48, size=100)],
-        asks=[OrderBookLevel(price=52, size=100)],
-        timestamp=datetime.now(timezone.utc),
+def _extract_list(payload: Any, key: str) -> list[dict[str, Any]] | None:
+    value = payload.get(key) if isinstance(payload, dict) else payload
+    return value if isinstance(value, list) else None
+
+
+def _target_policy(record: dict[str, Any], *, fallback_ticker: str = "") -> dict[str, Any]:
+    ticker = str(
+        record.get("ticker")
+        or record.get("market_ticker")
+        or record.get("event_ticker")
+        or fallback_ticker
     )
+    category = record.get("category") or record.get("series_category") or record.get("event_category")
+    if is_data_only_target(ticker, category=category):
+        return {
+            "role": "data_only",
+            "prediction_target": False,
+            "execution_target": False,
+        }
+    return {
+        "role": "eligibility_unverified",
+        "prediction_target": None,
+        "execution_target": None,
+    }
+
+
+def _annotate_events(events: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    annotated: list[dict[str, Any]] = []
+    for raw_event in events:
+        if not isinstance(raw_event, dict):
+            continue
+        event = dict(raw_event)
+        event_ticker = str(event.get("event_ticker") or event.get("ticker") or "")
+        raw_markets = event.get("markets")
+        if isinstance(raw_markets, list):
+            event["markets"] = [
+                {**market, "target_policy": _target_policy(market, fallback_ticker=event_ticker)}
+                for market in raw_markets
+                if isinstance(market, dict)
+            ]
+        event["target_policy"] = _target_policy(event)
+        annotated.append(event)
+    return annotated
 
 
 async def _kalshi_live_data() -> KalshiLiveData | None:
-    if not os.environ.get("KALSHI_API_KEY_ID"):
+    if not _credentials_present():
         return None
     return KalshiLiveData()
 
@@ -138,33 +174,43 @@ async def kalshi_status() -> dict[str, Any]:
     live = await _kalshi_live_data()
     if live is None:
         return redact(
-            {
-                "connected": False,
-                "mode": STATE.mode.value,
-                "api_key_id_present": False,
-                "balance_cents": 0,
-                "positions": [],
-                "resting_orders": [],
-                "fills": [],
-                "source": "mock",
-            }
+            _unavailable_payload(
+                reason="credentials_missing",
+                connected=False,
+                mode=STATE.mode.value,
+                api_key_id_present=False,
+                credentials_present=False,
+                balance_cents=None,
+                positions=None,
+                resting_orders=None,
+                fills=None,
+            )
         )
     try:
         balance = await live.get_account_balance()
-        positions = await live.get_positions()
-        resting = await live.get_resting_orders()
-        fills = await live.get_fills()
-        await live.close()
+        positions = _extract_list(await live.get_positions(), "positions")
+        resting = _extract_list(await live.get_resting_orders(), "orders")
+        fills = _extract_list(await live.get_fills(), "fills")
+        complete = (
+            isinstance(balance, dict)
+            and balance.get("account_loaded") is True
+            and positions is not None
+            and resting is not None
+            and fills is not None
+        )
         return redact(
             {
                 "connected": True,
                 "mode": STATE.mode.value,
                 "api_key_id_present": True,
-                "balance_cents": balance.get("balance_cents", 0),
+                "credentials_present": True,
+                "balance_cents": balance.get("balance_cents") if complete else None,
                 "positions": positions,
                 "resting_orders": resting,
                 "fills": fills,
-                "source": "live",
+                "source": "live" if complete else "live_incomplete",
+                "data_status": "live_read_only" if complete else "live_read_only_incomplete",
+                "live_snapshot_available": complete,
             }
         )
     except Exception as exc:
@@ -173,28 +219,58 @@ async def kalshi_status() -> dict[str, Any]:
                 "connected": False,
                 "mode": STATE.mode.value,
                 "api_key_id_present": True,
+                "credentials_present": True,
                 "error": str(exc),
-                "balance_cents": 0,
-                "positions": [],
-                "resting_orders": [],
-                "fills": [],
+                "balance_cents": None,
+                "positions": None,
+                "resting_orders": None,
+                "fills": None,
                 "source": "live_error",
+                "data_status": "unavailable",
+                "live_snapshot_available": False,
             }
         )
+    finally:
+        try:
+            await live.close()
+        except Exception:
+            pass
 
 
 @router.get("/kalshi/markets")
 async def kalshi_markets() -> dict[str, Any]:
-    """Live markets/events, cached or mocked if no credentials."""
+    """Live read-only markets/events; unavailable is never replaced by demo rows."""
     live = await _kalshi_live_data()
     if live is None:
-        return redact(_safe_markets_fallback())
+        return redact(_unavailable_payload(reason="credentials_missing", events=None))
     try:
-        events = await live.get_events()
-        await live.close()
-        return redact({"events": events, "source": "live"})
+        events = _extract_list(await live.get_events(), "events")
+        if events is None:
+            return redact({
+                "events": None,
+                "source": "live_incomplete",
+                "data_status": "live_read_only_incomplete",
+                "live_snapshot_available": False,
+            })
+        return redact({
+            "events": _annotate_events(events),
+            "source": "live",
+            "data_status": "live_read_only",
+            "live_snapshot_available": True,
+        })
     except Exception as exc:
-        return redact({"events": _safe_markets_fallback()["events"], "source": "live_error", "error": str(exc)})
+        return redact({
+            "events": None,
+            "source": "live_error",
+            "data_status": "unavailable",
+            "live_snapshot_available": False,
+            "error": str(exc),
+        })
+    finally:
+        try:
+            await live.close()
+        except Exception:
+            pass
 
 
 @router.get("/kalshi/orderbook/{ticker}")
@@ -202,20 +278,36 @@ async def kalshi_orderbook(ticker: str) -> dict[str, Any]:
     """Live orderbook for a Kalshi contract ticker."""
     live = await _kalshi_live_data()
     if live is None:
-        book = _safe_orderbook_fallback(ticker)
-        return redact({"orderbook": book.model_dump(), "source": "mock"})
+        return redact(_unavailable_payload(
+            reason="credentials_missing",
+            orderbook=None,
+            target_policy=_target_policy({}, fallback_ticker=ticker),
+        ))
     try:
         book = await live.get_orderbook(ticker)
-        await live.close()
-        return redact({"orderbook": book.model_dump(), "source": "live"})
+        return redact({
+            "orderbook": book.model_dump(),
+            "source": "live",
+            "data_status": "live_read_only",
+            "live_snapshot_available": True,
+            "target_policy": _target_policy({}, fallback_ticker=ticker),
+        })
     except Exception as exc:
         return redact(
             {
-                "orderbook": _safe_orderbook_fallback(ticker).model_dump(),
+                "orderbook": None,
                 "source": "live_error",
+                "data_status": "unavailable",
+                "live_snapshot_available": False,
+                "target_policy": _target_policy({}, fallback_ticker=ticker),
                 "error": str(exc),
             }
         )
+    finally:
+        try:
+            await live.close()
+        except Exception:
+            pass
 
 
 @router.get("/strategies/candidates")
@@ -223,19 +315,35 @@ async def strategies_candidates() -> dict[str, Any]:
     """Repo-derived strategy candidates from the extraction report."""
     report = _load_artifact("strategy_extraction_report_v1.json")
     registered = [s.__class__.__name__ for s in STRATEGIES]
+    candidates = []
+    for candidate in report.get("candidates", []):
+        if not isinstance(candidate, dict):
+            continue
+        sample_size = candidate.get("sample_size")
+        try:
+            thin_data = sample_size is None or int(sample_size) < 30
+        except (TypeError, ValueError):
+            thin_data = True
+        candidates.append({
+            **candidate,
+            "validation_status": candidate.get("validation_status", "UNKNOWN"),
+            "sample_size": sample_size,
+            "thin_data": thin_data,
+            "forecast_quality": candidate.get("forecast_quality"),
+        })
     return {
         "registered_strategies": registered,
-        "candidates": report.get("candidates", []),
-        "candidate_count": report.get("candidate_count", 0),
+        "candidates": candidates,
+        "candidate_count": len(candidates),
     }
 
 
 @router.get("/proposed-trades")
 async def proposed_trades(
-    market_ticker: str = "WEATHER-NYC-RAIN",
-    contract_ticker: str = "WEATHER-NYC-RAIN-YES",
+    market_ticker: str = "DEMO-SPORTS-MATCHUP",
+    contract_ticker: str = "DEMO-SPORTS-MATCHUP-HOME",
 ) -> dict[str, Any]:
-    """Current proposed trades generated by repo-derived strategies."""
+    """Demo proposed trades generated against an explicitly synthetic book."""
     engine = ForecastEngine()
     book = OrderBook(
         market_ticker=market_ticker,
@@ -259,7 +367,13 @@ async def proposed_trades(
                 proposals.append(proposal.model_dump())
         except Exception:
             continue
-    return {"market_ticker": market_ticker, "contract_ticker": contract_ticker, "proposals": proposals}
+    return {
+        "market_ticker": market_ticker,
+        "contract_ticker": contract_ticker,
+        "proposals": proposals,
+        "source": "demo",
+        "data_status": "synthetic_orderbook",
+    }
 
 
 @router.get("/blocked-orders")
@@ -340,28 +454,21 @@ async def caps() -> dict[str, Any]:
 
 @router.get("/exposure")
 async def exposure() -> dict[str, Any]:
-    """Current positions and exposure computed from the SQLite store."""
-    positions = await get_positions()
-    tracker = ExposureTracker()
-    for p in positions:
-        from core.ontology import Position
-
-        tracker.update_position(
-            Position(
-                market_ticker=p["market_ticker"],
-                contract_ticker=p.get("contract_ticker", ""),
-                side=p.get("side", ""),
-                quantity=int(p.get("quantity", 0)),
-                avg_price_cents=int(p.get("avg_price_cents", 0)),
-                unrealized_pnl_cents=int(p.get("unrealized_pnl_cents", 0)),
-            )
-        )
-    orders = await get_orders()
+    """Canonical durable live-risk exposure, including the rolling-hour count."""
+    tracker = get_persistent_exposure_tracker()
+    healthy = tracker.state_healthy
     return {
-        "positions": positions,
-        "orders": orders,
-        "total_exposure_cents": tracker.total_exposure_cents(),
-        "open_markets": tracker.open_markets(),
-        "open_order_count": tracker.open_order_count(),
+        "positions": (
+            [position.model_dump(mode="json") for position in tracker.positions.values()]
+            if healthy else None
+        ),
+        "orders": list(tracker.open_orders) if healthy else None,
+        "total_exposure_cents": tracker.total_exposure_cents() if healthy else None,
+        "open_markets": tracker.open_markets() if healthy else None,
+        "open_order_count": tracker.open_order_count() if healthy else None,
+        "orders_last_hour": tracker.orders_last_hour() if healthy else None,
+        "orders_last_hour_window": "rolling_60_minutes_utc",
+        "state_status": "ready" if healthy else "unavailable",
+        "source": "runtime/live_exposure_state.json",
         "mode": STATE.mode.value,
     }

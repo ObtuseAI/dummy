@@ -17,7 +17,9 @@ from autonomy.retro import (
 )
 from autonomy.signals.market_debias import (
     MIN_BUCKET_N,
+    DebiasSample,
     MarketDebiasSignal,
+    _exact_curve_scope,
     fit_curve,
     write_curve,
 )
@@ -30,8 +32,13 @@ def _ledger(tmp_path: Path) -> AutonomyLedger:
 
 
 def _signal(ticker: str, source: str = "crypto_spot_vol", p: float = 0.4) -> Signal:
-    return Signal(source=source, market_ticker=ticker, probability_yes=p,
-                  uncertainty=0.1, rationale="t")
+    return Signal(
+        source=source,
+        market_ticker=ticker,
+        probability_yes=p,
+        uncertainty=0.1,
+        rationale="t",
+    )
 
 
 # ---------------------------------------------------------------- ledger
@@ -39,7 +46,7 @@ def _signal(ticker: str, source: str = "crypto_spot_vol", p: float = 0.4) -> Sig
 
 def test_ledger_mode_column_and_forecast_queries(tmp_path):
     ledger = _ledger(tmp_path)
-    ledger.record_signal(_signal("MKT-A"))                     # default live
+    ledger.record_signal(_signal("MKT-A"))  # default live
     ledger.record_signal(_signal("MKT-B"), mode="retro")
     ledger.record_settlement("MKT-B", True)
     unsettled = ledger.unsettled_forecast_markets()
@@ -62,8 +69,10 @@ def test_ledger_migrates_existing_db_without_mode(tmp_path):
         " market_ticker TEXT NOT NULL, probability_yes REAL NOT NULL, uncertainty REAL NOT NULL,"
         " rationale TEXT NOT NULL, created_at TEXT NOT NULL)"
     )
-    conn.execute("INSERT INTO signals(source, market_ticker, probability_yes, uncertainty,"
-                 " rationale, created_at) VALUES ('s','M',0.5,0.1,'r','2026-07-01T00:00:00+00:00')")
+    conn.execute(
+        "INSERT INTO signals(source, market_ticker, probability_yes, uncertainty,"
+        " rationale, created_at) VALUES ('s','M',0.5,0.1,'r','2026-07-01T00:00:00+00:00')"
+    )
     conn.commit()
     conn.close()
     ledger = AutonomyLedger(db)  # must not raise; adds the mode column
@@ -74,8 +83,14 @@ def test_ledger_migrates_existing_db_without_mode(tmp_path):
 
 def test_unsettled_forecast_markets_age_bound(tmp_path):
     ledger = _ledger(tmp_path)
-    old = Signal(source="s", market_ticker="OLD", probability_yes=0.5, uncertainty=0.1,
-                 rationale="r", created_at=(NOW - timedelta(days=30)).isoformat())
+    old = Signal(
+        source="s",
+        market_ticker="OLD",
+        probability_yes=0.5,
+        uncertainty=0.1,
+        rationale="r",
+        created_at=(NOW - timedelta(days=30)).isoformat(),
+    )
     ledger.record_signal(old)
     ledger.record_signal(_signal("FRESH"))
     assert ledger.unsettled_forecast_markets(max_age_days=7) == ["FRESH"]
@@ -91,13 +106,19 @@ def test_reconcile_forecast_settlements_batch(tmp_path):
     ledger.record_signal(_signal("KXBTCD-26JUL0902-T71000"))
 
     pages = {
-        None: {"markets": [
-            {"ticker": "KXBTCD-26JUL0901-T70000", "result": "no"},
-            {"ticker": "KXBTCD-26JUL0999-T9", "result": "yes"},  # never forecasted
-        ], "cursor": "c2"},
-        "c2": {"markets": [
-            {"ticker": "KXBTCD-26JUL0902-T71000", "result": "yes"},
-        ], "cursor": None},
+        None: {
+            "markets": [
+                {"ticker": "KXBTCD-26JUL0901-T70000", "result": "no"},
+                {"ticker": "KXBTCD-26JUL0999-T9", "result": "yes"},  # never forecasted
+            ],
+            "cursor": "c2",
+        },
+        "c2": {
+            "markets": [
+                {"ticker": "KXBTCD-26JUL0902-T71000", "result": "yes"},
+            ],
+            "cursor": None,
+        },
     }
     calls: list[tuple] = []
 
@@ -105,11 +126,14 @@ def test_reconcile_forecast_settlements_batch(tmp_path):
         calls.append((series, cursor))
         return pages[cursor]
 
-    reconciler = Reconciler(ledger, fetch_market_result=lambda t: {},
-                            fetch_settled_page=fake_page)
+    reconciler = Reconciler(
+        ledger, fetch_market_result=lambda t: {}, fetch_settled_page=fake_page
+    )
     settled = reconciler.reconcile_forecast_settlements(["KXBTCD"])
-    assert sorted(settled) == [("KXBTCD-26JUL0901-T70000", False),
-                               ("KXBTCD-26JUL0902-T71000", True)]
+    assert sorted(settled) == [
+        ("KXBTCD-26JUL0901-T70000", False),
+        ("KXBTCD-26JUL0902-T71000", True),
+    ]
     assert ledger.unsettled_forecast_markets() == []
     # Cursor was followed.
     assert calls == [("KXBTCD", None), ("KXBTCD", "c2")]
@@ -135,8 +159,9 @@ def test_phantom_settlement_updates_trust_weights(tmp_path):
     def fake_page(series, min_close_ts, cursor=None):
         return {"markets": [{"ticker": ticker, "result": "no"}], "cursor": None}
 
-    reconciler = Reconciler(ledger, fetch_market_result=lambda t: {},
-                            fetch_settled_page=fake_page)
+    reconciler = Reconciler(
+        ledger, fetch_market_result=lambda t: {}, fetch_settled_page=fake_page
+    )
     learner = Learner(ledger)
     for t, result_yes in reconciler.reconcile_forecast_settlements(["KXBTCD"]):
         learner.apply_settlement(t, result_yes)
@@ -149,16 +174,20 @@ def test_phantom_settlement_updates_trust_weights(tmp_path):
 
 
 def _candle(end_ts: int, bid: float, ask: float) -> dict:
-    return {"end_period_ts": end_ts,
-            "yes_bid": {"close_dollars": f"{bid:.4f}"},
-            "yes_ask": {"close_dollars": f"{ask:.4f}"},
-            "volume_fp": "12.00"}
+    return {
+        "end_period_ts": end_ts,
+        "yes_bid": {"close_dollars": f"{bid:.4f}"},
+        "yes_ask": {"close_dollars": f"{ask:.4f}"},
+        "volume_fp": "12.00",
+    }
 
 
 def test_candle_quote_at_never_looks_ahead():
     decision = 1_000_000
-    candles = [_candle(decision - 3600, 0.30, 0.34),
-               _candle(decision + 60, 0.90, 0.95)]  # after decision: forbidden
+    candles = [
+        _candle(decision - 3600, 0.30, 0.34),
+        _candle(decision + 60, 0.90, 0.95),
+    ]  # after decision: forbidden
     quote = candle_quote_at(candles, decision)
     assert quote["yes_bid"] == 30 and quote["yes_ask"] == 34
     assert candle_quote_at([_candle(decision + 60, 0.9, 0.95)], decision) is None
@@ -186,9 +215,15 @@ def test_hourly_price_series_excludes_unclosed_candles():
 
 
 def _crypto_settled_raw(ticker: str, close_iso: str, floor: float, result: str) -> dict:
-    return {"ticker": ticker, "status": "finalized", "result": result,
-            "close_time": close_iso, "strike_type": "greater", "floor_strike": floor,
-            "title": "t"}
+    return {
+        "ticker": ticker,
+        "status": "finalized",
+        "result": result,
+        "close_time": close_iso,
+        "strike_type": "greater",
+        "floor_strike": floor,
+        "title": "t",
+    }
 
 
 def test_retro_crypto_replay_writes_signals_and_settlement(tmp_path):
@@ -205,17 +240,24 @@ def test_retro_crypto_replay_writes_signals_and_settlement(tmp_path):
         return [_candle(decision_ts - 600, 0.55, 0.60)]
 
     base = int((NOW - timedelta(days=19)).timestamp())
-    rows = [[base + i * 3600, 0, 0, 0, 63000 + (i % 3) * 40, 1.0]
-            for i in range(19 * 24)]
+    rows = [
+        [base + i * 3600, 0, 0, 0, 63000 + (i % 3) * 40, 1.0] for i in range(19 * 24)
+    ]
 
     def fake_coinbase(product, start_iso, end_iso, granularity):
         return rows
 
-    engine = RetroEvidenceEngine(ledger, fetch_settled_page=fake_settled,
-                                 fetch_candles=fake_candles, fetch_coinbase=fake_coinbase,
-                                 sleep_s=0.0, now=NOW)
-    stats = engine.replay_crypto(lookback_days=2.0, max_per_series=10,
-                                 series_list=["KXBTCD"])
+    engine = RetroEvidenceEngine(
+        ledger,
+        fetch_settled_page=fake_settled,
+        fetch_candles=fake_candles,
+        fetch_coinbase=fake_coinbase,
+        sleep_s=0.0,
+        now=NOW,
+    )
+    stats = engine.replay_crypto(
+        lookback_days=2.0, max_per_series=10, series_list=["KXBTCD"]
+    )
     assert stats["written"] == 1
 
     rows_db = ledger._conn.execute(
@@ -225,10 +267,15 @@ def test_retro_crypto_replay_writes_signals_and_settlement(tmp_path):
     assert sources == {"market_prior", "crypto_spot_vol"}
     assert all(r[1] == "retro" for r in rows_db)
     # Signals are timestamped at the historical decision moment.
-    assert all(r[2].startswith(datetime.fromtimestamp(decision_ts, tz=timezone.utc)
-                               .isoformat()[:16]) for r in rows_db)
+    assert all(
+        r[2].startswith(
+            datetime.fromtimestamp(decision_ts, tz=timezone.utc).isoformat()[:16]
+        )
+        for r in rows_db
+    )
     settlement = ledger._conn.execute(
-        "SELECT result_yes FROM settlements WHERE market_ticker=?", (ticker,)).fetchone()
+        "SELECT result_yes FROM settlements WHERE market_ticker=?", (ticker,)
+    ).fetchone()
     assert settlement == (1,)
     assert len(engine.debias_samples) == 1
     ledger.close()
@@ -237,7 +284,9 @@ def test_retro_crypto_replay_writes_signals_and_settlement(tmp_path):
 def test_retro_skips_markets_without_contemporaneous_quote(tmp_path):
     ledger = _ledger(tmp_path)
     close_dt = NOW - timedelta(hours=5)
-    raw = _crypto_settled_raw("KXBTCD-26JUL0907-T62000", close_dt.isoformat(), 62000.0, "yes")
+    raw = _crypto_settled_raw(
+        "KXBTCD-26JUL0907-T62000", close_dt.isoformat(), 62000.0, "yes"
+    )
     decision_ts = int(close_dt.timestamp()) - 45 * 60
 
     def fake_settled(series, min_close_ts, cursor=None):
@@ -247,11 +296,17 @@ def test_retro_skips_markets_without_contemporaneous_quote(tmp_path):
         return [_candle(decision_ts + 300, 0.55, 0.60)]  # only AFTER decision
 
     base = int((NOW - timedelta(days=19)).timestamp())
-    rows = [[base + i * 3600, 0, 0, 0, 63000 + (i % 3) * 40, 1.0] for i in range(19 * 24)]
-    engine = RetroEvidenceEngine(ledger, fetch_settled_page=fake_settled,
-                                 fetch_candles=fake_candles,
-                                 fetch_coinbase=lambda *a, **k: rows,
-                                 sleep_s=0.0, now=NOW)
+    rows = [
+        [base + i * 3600, 0, 0, 0, 63000 + (i % 3) * 40, 1.0] for i in range(19 * 24)
+    ]
+    engine = RetroEvidenceEngine(
+        ledger,
+        fetch_settled_page=fake_settled,
+        fetch_candles=fake_candles,
+        fetch_coinbase=lambda *a, **k: rows,
+        sleep_s=0.0,
+        now=NOW,
+    )
     stats = engine.replay_crypto(lookback_days=2.0, series_list=["KXBTCD"])
     assert stats["written"] == 0 and stats["skipped_no_quote"] == 1
     assert ledger._conn.execute("SELECT COUNT(*) FROM settlements").fetchone() == (0,)
@@ -268,12 +323,16 @@ def test_retro_never_rewrites_existing_settlement(tmp_path):
     engine = RetroEvidenceEngine(
         ledger,
         fetch_settled_page=lambda s, m, c=None: {"markets": [raw], "cursor": None},
-        fetch_candles=lambda *a, **k: [], fetch_coinbase=lambda *a, **k: [],
-        sleep_s=0.0, now=NOW)
+        fetch_candles=lambda *a, **k: [],
+        fetch_coinbase=lambda *a, **k: [],
+        sleep_s=0.0,
+        now=NOW,
+    )
     stats = engine.replay_crypto(lookback_days=2.0, series_list=["KXBTCD"])
     assert stats["skipped_already_settled"] == 1 and stats["written"] == 0
-    row = ledger._conn.execute("SELECT result_yes FROM settlements WHERE market_ticker=?",
-                               (ticker,)).fetchone()
+    row = ledger._conn.execute(
+        "SELECT result_yes FROM settlements WHERE market_ticker=?", (ticker,)
+    ).fetchone()
     assert row == (0,)  # original result untouched
     ledger.close()
 
@@ -285,8 +344,9 @@ def test_retro_appends_empirical_challenger_to_existing_settlement(tmp_path):
     ledger.record_settlement(ticker, False)
     raw = _crypto_settled_raw(ticker, close_dt.isoformat(), 62000.0, "yes")
     base = int((NOW - timedelta(days=19)).timestamp())
-    rows = [[base + i * 3600, 0, 0, 0, 60_000 * (1.0002**i), 1.0]
-            for i in range(19 * 24)]
+    rows = [
+        [base + i * 3600, 0, 0, 0, 60_000 * (1.0002**i), 1.0] for i in range(19 * 24)
+    ]
     engine = RetroEvidenceEngine(
         ledger,
         fetch_settled_page=lambda s, m, c=None: {"markets": [raw], "cursor": None},
@@ -296,10 +356,12 @@ def test_retro_appends_empirical_challenger_to_existing_settlement(tmp_path):
         now=NOW,
     )
     first = engine.replay_crypto_challengers(
-        lookback_days=2.0, series_list=["KXBTCD"],
+        lookback_days=2.0,
+        series_list=["KXBTCD"],
     )
     second = engine.replay_crypto_challengers(
-        lookback_days=2.0, series_list=["KXBTCD"],
+        lookback_days=2.0,
+        series_list=["KXBTCD"],
     )
     assert first["written"] == 1
     assert second["written"] == 0 and second["skipped_existing_signal"] == 1
@@ -322,8 +384,7 @@ def test_retro_appends_dvol_challenger_without_lookahead(tmp_path):
     decision_ts = int(close_dt.timestamp()) - 45 * 60
     base = int((NOW - timedelta(days=19)).timestamp())
     coinbase_rows = [
-        [base + i * 3600, 0, 0, 0, 60_000 * (1.0002**i), 1.0]
-        for i in range(19 * 24)
+        [base + i * 3600, 0, 0, 0, 60_000 * (1.0002**i), 1.0] for i in range(19 * 24)
     ]
     # Row 1 is fully closed before the decision; row 2 is still in progress
     # and must not leak its much larger value into the retro signal.
@@ -341,10 +402,12 @@ def test_retro_appends_dvol_challenger_without_lookahead(tmp_path):
         now=NOW,
     )
     first = engine.replay_crypto_dvol_challenger(
-        lookback_days=2.0, series_list=["KXBTCD"],
+        lookback_days=2.0,
+        series_list=["KXBTCD"],
     )
     second = engine.replay_crypto_dvol_challenger(
-        lookback_days=2.0, series_list=["KXBTCD"],
+        lookback_days=2.0,
+        series_list=["KXBTCD"],
     )
     assert first["written"] == 1
     assert second["written"] == 0 and second["skipped_existing_signal"] == 1
@@ -367,8 +430,7 @@ def test_retro_appends_hourly_technical_challenger(tmp_path):
     raw = _crypto_settled_raw(ticker, close_dt.isoformat(), 62000.0, "yes")
     base = int((NOW - timedelta(days=19)).timestamp())
     rows = [
-        [base + i * 3600, 0, 0, 0, 60_000 * (1.0002**i), 1.0]
-        for i in range(19 * 24)
+        [base + i * 3600, 0, 0, 0, 60_000 * (1.0002**i), 1.0] for i in range(19 * 24)
     ]
     engine = RetroEvidenceEngine(
         ledger,
@@ -379,10 +441,12 @@ def test_retro_appends_hourly_technical_challenger(tmp_path):
         now=NOW,
     )
     first = engine.replay_crypto_technical_challenger(
-        lookback_days=2.0, series_list=["KXBTCD"],
+        lookback_days=2.0,
+        series_list=["KXBTCD"],
     )
     second = engine.replay_crypto_technical_challenger(
-        lookback_days=2.0, series_list=["KXBTCD"],
+        lookback_days=2.0,
+        series_list=["KXBTCD"],
     )
     assert first["written"] == 1
     assert second["written"] == 0 and second["skipped_existing_signal"] == 1
@@ -396,7 +460,7 @@ def test_retro_appends_hourly_technical_challenger(tmp_path):
     ledger.close()
 
 
-def test_retro_weather_replay_uses_historical_forecast(tmp_path):
+def test_retro_weather_replay_is_retired_data_only(tmp_path):
     ledger = _ledger(tmp_path)
     event_date = (NOW - timedelta(days=3)).strftime("%Y-%m-%d")
     date_token = (NOW - timedelta(days=3)).strftime("%d").rjust(2, "0")
@@ -404,8 +468,16 @@ def test_retro_weather_replay_uses_historical_forecast(tmp_path):
     yy = (NOW - timedelta(days=3)).strftime("%y")
     ticker = f"KXHIGHNY-{yy}{mon}{date_token}-B83.5"
     close_iso = (NOW - timedelta(days=2, hours=7)).isoformat()
-    raw = {"ticker": ticker, "status": "finalized", "result": "yes", "close_time": close_iso,
-           "strike_type": "between", "floor_strike": 83, "cap_strike": 84, "title": "t"}
+    raw = {
+        "ticker": ticker,
+        "status": "finalized",
+        "result": "yes",
+        "close_time": close_iso,
+        "strike_type": "between",
+        "floor_strike": 83,
+        "cap_strike": 84,
+        "title": "t",
+    }
 
     def fake_settled(series, min_close_ts, cursor=None):
         return {"markets": [raw] if series == "KXHIGHNY" else [], "cursor": None}
@@ -415,20 +487,31 @@ def test_retro_weather_replay_uses_historical_forecast(tmp_path):
 
     def fake_history(lat, lon, start, end, kind):
         # Three models all forecasting ~83.6F for the event day.
-        return {"time": [event_date],
-                "temperature_2m_max_gfs_seamless": [83.4],
-                "temperature_2m_max_ecmwf_ifs025": [83.7],
-                "temperature_2m_max_icon_seamless": [83.8]}
+        return {
+            "time": [event_date],
+            "temperature_2m_max_gfs_seamless": [83.4],
+            "temperature_2m_max_ecmwf_ifs025": [83.7],
+            "temperature_2m_max_icon_seamless": [83.8],
+        }
 
-    engine = RetroEvidenceEngine(ledger, fetch_settled_page=fake_settled,
-                                 fetch_candles=fake_candles,
-                                 fetch_weather_history=fake_history,
-                                 sleep_s=0.0, now=NOW)
+    engine = RetroEvidenceEngine(
+        ledger,
+        fetch_settled_page=fake_settled,
+        fetch_candles=fake_candles,
+        fetch_weather_history=fake_history,
+        sleep_s=0.0,
+        now=NOW,
+    )
     stats = engine.replay_weather(lookback_days=7.0, series_list=["KXHIGHNY"])
-    assert stats["written"] == 1
-    sources = {r[0] for r in ledger._conn.execute(
-        "SELECT source FROM signals WHERE market_ticker=?", (ticker,)).fetchall()}
-    assert sources == {"market_prior", "weather_openmeteo"}
+    assert stats["status"] == "RETIRED_DATA_ONLY"
+    assert stats["written"] == 0
+    sources = {
+        r[0]
+        for r in ledger._conn.execute(
+            "SELECT source FROM signals WHERE market_ticker=?", (ticker,)
+        ).fetchall()
+    }
+    assert sources == set()
     ledger.close()
 
 
@@ -437,7 +520,9 @@ def test_weather_history_fetcher_routes_by_city():
         # Only NY gets data.
         if abs(lat - 40.7794) < 1e-6:
             return {"time": ["2026-07-05"], "temperature_2m_max_gfs_seamless": [88.0]}
-        return {"time": [], }
+        return {
+            "time": [],
+        }
 
     fetcher = build_weather_history_fetcher(7, today=NOW, fetch_history=fake_history)
     assert fetcher(40.7794, -73.9692, "2026-07-05", "HIGH") == [88.0]
@@ -450,14 +535,46 @@ def test_weather_history_fetcher_routes_by_city():
 
 def test_fit_curve_and_debias_signal(tmp_path):
     # 150 samples with mid ~0.32 of which 40 resolved YES -> yes_rate ~0.267.
-    samples = [(0.32, 1 if i < 40 else 0) for i in range(150)]
+    samples = []
+    for i in range(150):
+        ticker = f"KXBTC-26JUL09-B{64000 + i}"
+        observed = NOW + timedelta(minutes=i)
+        close = observed + timedelta(hours=2)
+        scope = _exact_curve_scope(ticker, "near_terminal")
+        assert scope is not None
+        samples.append(
+            DebiasSample(
+                probability_yes=0.32,
+                result_yes=1 if i < 40 else 0,
+                ticker=ticker,
+                horizon="near_terminal",
+                exact_scope=scope,
+                observed_at=observed.isoformat(),
+                received_at=(observed + timedelta(seconds=1)).isoformat(),
+                close_time=close.isoformat(),
+                settled_at=(close + timedelta(hours=1)).isoformat(),
+                decision_at=None,
+                signal_id=i,
+                selection_policy="earliest_live_receipt_for_undecided_contract",
+            )
+        )
     curve = fit_curve(samples)
     path = write_curve(curve, tmp_path / "curve.json")
     signal_source = MarketDebiasSignal(curve_path=path)
 
-    market = MarketView(ticker="X", title="", vertical=Vertical.CRYPTO, status="active",
-                        close_time=NOW.isoformat(), yes_bid=30, yes_ask=34,
-                        no_bid=66, no_ask=70, volume=100, liquidity=100)
+    market = MarketView(
+        ticker="KXBTC-26JUL09-B99999",
+        title="",
+        vertical=Vertical.CRYPTO,
+        status="active",
+        close_time=(datetime.now(timezone.utc) + timedelta(hours=1)).isoformat(),
+        yes_bid=30,
+        yes_ask=34,
+        no_bid=66,
+        no_ask=70,
+        volume=100,
+        liquidity=100,
+    )
     assert signal_source.applicable(market)
     signal = signal_source.generate(market)
     assert signal is not None
@@ -470,9 +587,19 @@ def test_debias_signal_fail_closed(tmp_path):
     curve = fit_curve([(0.32, 1)] * (MIN_BUCKET_N - 1))
     path = write_curve(curve, tmp_path / "thin.json")
     source = MarketDebiasSignal(curve_path=path)
-    market = MarketView(ticker="X", title="", vertical=Vertical.CRYPTO, status="active",
-                        close_time=NOW.isoformat(), yes_bid=30, yes_ask=34,
-                        no_bid=66, no_ask=70, volume=100, liquidity=100)
+    market = MarketView(
+        ticker="X",
+        title="",
+        vertical=Vertical.CRYPTO,
+        status="active",
+        close_time=NOW.isoformat(),
+        yes_bid=30,
+        yes_ask=34,
+        no_bid=66,
+        no_ask=70,
+        volume=100,
+        liquidity=100,
+    )
     assert source.generate(market) is None
     # Missing artifact -> inapplicable.
     missing = MarketDebiasSignal(curve_path=tmp_path / "nope.json")
@@ -529,24 +656,46 @@ def test_canary_gate_requires_contested_beater(tmp_path):
 
 
 def _forecast(ticker: str, p: float = 0.70) -> Forecast:
-    return Forecast(market_ticker=ticker, probability_yes=p, uncertainty=0.10,
-                    sources_used={"crypto_spot_vol": 1.0}, market_implied_yes=0.52,
-                    edge_yes=p - 0.52, rationale="t")
+    return Forecast(
+        market_ticker=ticker,
+        probability_yes=p,
+        uncertainty=0.10,
+        sources_used={"crypto_spot_vol": 1.0},
+        market_implied_yes=0.52,
+        edge_yes=p - 0.52,
+        rationale="t",
+    )
 
 
 def _risk_state(stage: Stage):
     from autonomy.risk_brain import RiskState
 
-    return RiskState(bankroll_cents=100_000, equity_peak_cents=100_000, stage=stage,
-                     open_exposure_cents=0, open_markets=0, daily_pnl_cents=0,
-                     settled_count_at_stage=0, realized_pnl_per_contract_cents=0.0)
+    return RiskState(
+        bankroll_cents=100_000,
+        equity_peak_cents=100_000,
+        stage=stage,
+        open_exposure_cents=0,
+        open_markets=0,
+        daily_pnl_cents=0,
+        settled_count_at_stage=0,
+        realized_pnl_per_contract_cents=0.0,
+    )
 
 
 def _far_market(days_out: float) -> MarketView:
-    return MarketView(ticker="KXNFLGAME-26AUG13DENSF-DEN", title="", vertical=Vertical.SPORTS,
-                      status="active",
-                      close_time=(datetime.now(timezone.utc) + timedelta(days=days_out)).isoformat(),
-                      yes_bid=50, yes_ask=55, no_bid=45, no_ask=50, volume=500, liquidity=500)
+    return MarketView(
+        ticker="KXNFLGAME-26AUG13DENSF-DEN",
+        title="",
+        vertical=Vertical.SPORTS,
+        status="active",
+        close_time=(datetime.now(timezone.utc) + timedelta(days=days_out)).isoformat(),
+        yes_bid=50,
+        yes_ask=55,
+        no_bid=45,
+        no_ask=50,
+        volume=500,
+        liquidity=500,
+    )
 
 
 def test_allocator_stage_horizon_blocks_far_dated_markets():
@@ -555,13 +704,19 @@ def test_allocator_stage_horizon_blocks_far_dated_markets():
 
     allocator = Allocator(RiskBrain())
     market = _far_market(35.0)
-    decision = allocator.decide(market, _forecast(market.ticker), _risk_state(Stage.CANARY))
+    decision = allocator.decide(
+        market, _forecast(market.ticker), _risk_state(Stage.CANARY)
+    )
     assert decision.action.value == "ABSTAIN"
     assert "stage horizon" in decision.abstain_reason
 
     near = _far_market(2.0)
-    decision_near = allocator.decide(near, _forecast(near.ticker), _risk_state(Stage.CANARY))
+    decision_near = allocator.decide(
+        near, _forecast(near.ticker), _risk_state(Stage.CANARY)
+    )
     assert "stage horizon" not in decision_near.abstain_reason
 
-    cruise = allocator.decide(market, _forecast(market.ticker), _risk_state(Stage.CRUISE))
+    cruise = allocator.decide(
+        market, _forecast(market.ticker), _risk_state(Stage.CRUISE)
+    )
     assert "stage horizon" not in cruise.abstain_reason

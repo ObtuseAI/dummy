@@ -28,33 +28,11 @@ def test_symbol_mapping():
     assert _symbol_for("KXHIGHNY-26JUL10-T85") is None
 
 
-def test_greater_strike_below_spot_high_prob():
-    # Spot 90 well above the 80.99 floor -> "above 80.99" very likely.
+def test_commodity_signal_is_retired_data_only():
     sig = CommoditiesSpotVolSignal(fetch_spot_and_vol=lambda s: (90.0, 0.35))
-    result = sig.generate(_market(floor=80.99))
-    assert result is not None
-    assert result.probability_yes > 0.8
-    assert result.source == "commodities_spot_vol"
-    assert result.uncertainty >= 0.10
-
-
-def test_greater_strike_above_spot_low_prob():
-    sig = CommoditiesSpotVolSignal(fetch_spot_and_vol=lambda s: (70.0, 0.35))
-    result = sig.generate(_market(floor=80.99))
-    assert result.probability_yes < 0.2
-
-
-def test_less_strike_type():
-    sig = CommoditiesSpotVolSignal(fetch_spot_and_vol=lambda s: (70.0, 0.35))
-    result = sig.generate(_market(ticker="KXWTI-26JUL1014-T80", strike_type="less", floor=None, cap=80.0))
-    assert result.probability_yes > 0.8  # spot 70 < 80 -> "below 80" likely
-
-
-def test_fail_closed_on_feed_error():
-    def boom(s):
-        raise RuntimeError("yahoo down")
-
-    sig = CommoditiesSpotVolSignal(fetch_spot_and_vol=boom)
+    assert sig.data_only is True
+    assert sig.prediction_authority is False
+    assert sig.applicable(_market()) is False
     assert sig.generate(_market()) is None
 
 

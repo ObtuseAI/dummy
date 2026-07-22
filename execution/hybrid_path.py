@@ -8,7 +8,17 @@ from typing import Any
 
 from execution.autonomous_path import AutonomousExecutionPath
 from forecasting.hybrid_engine import HybridForecastEngine
-from forecasting.real_market_loop import RealMarketForecastLoopV2
+from forecasting.model_influence_attestation import build_model_influence_attestation
+from forecasting.model_probability_authority import (
+    ModelProbabilityAuthorityDecision,
+    is_sports_model_market,
+)
+from forecasting.real_market_loop import (
+    MODEL_MODE_DEGRADED_QUANT_ONLY,
+    MODEL_MODE_LIVE_HYBRID,
+    MODEL_MODE_MOCK_ONLY,
+    RealMarketForecastLoopV2,
+)
 from kalshi.live_data import KalshiCredentialsMissing, KalshiLiveData
 from live_firewall.firewall import LiveBrokerFirewall
 from live_firewall.exposure_tracker import ExposureTracker
@@ -35,6 +45,12 @@ from core.ontology import (
     NoTradeReason,
     OrderBook,
     TradeProposal,
+)
+from autonomy.target_policy import (
+    has_prediction_target_authority,
+    is_data_only_target,
+    is_equity_index_target,
+    is_prediction_quarantined_target,
 )
 from proof.ledger import write_proof
 
@@ -111,6 +127,7 @@ class _RealMarketForecastLoopV2WithDetails(RealMarketForecastLoopV2):
         contract_ticker: str,
         max_markets: int = 5,
     ) -> dict[str, Any] | None:
+        self.model_authority_decisions = {}
         self.model_mode = self._determine_model_mode()
         reader = None
         try:
@@ -125,11 +142,13 @@ class _RealMarketForecastLoopV2WithDetails(RealMarketForecastLoopV2):
             if reader is None:
                 snapshot_source = "mock"
                 mock_entries = self._mock_market_data()
+                scored_mock = []
+                for market, contract, book in mock_entries:
+                    scores = self._score_market(market, contract, book)
+                    if scores is not None:
+                        scored_mock.append((market, contract, book, scores))
                 entries = self._select_from_scored(
-                    [
-                        (market, contract, book, self._score_market(market, contract, book))
-                        for market, contract, book in mock_entries
-                    ],
+                    scored_mock,
                     max_markets,
                 )
             else:
@@ -140,33 +159,78 @@ class _RealMarketForecastLoopV2WithDetails(RealMarketForecastLoopV2):
                 if not any(contract.ticker == contract_ticker for _m, contract, _b, _s in entries):
                     snapshot_source = "mock"
                     mock_entries = self._mock_market_data()
+                    scored_mock = []
+                    for market, contract, book in mock_entries:
+                        scores = self._score_market(market, contract, book)
+                        if scores is not None:
+                            scored_mock.append((market, contract, book, scores))
                     entries = self._select_from_scored(
-                        [
-                            (market, contract, book, self._score_market(market, contract, book))
-                            for market, contract, book in mock_entries
-                        ],
+                        scored_mock,
                         max_markets,
                     )
         finally:
             if reader is not None:
                 await reader.close()
 
+        # Never spend model budget on deterministic mock fallback entries.
+        # The source check later also blocks firewall progression, but this
+        # earlier gate is what prevents the paid requests themselves.
+        if snapshot_source != "live" and self.model_mode == MODEL_MODE_LIVE_HYBRID:
+            self.model_mode = MODEL_MODE_DEGRADED_QUANT_ONLY
+            self.model_degradation_reasons = sorted(
+                set(self.model_degradation_reasons + ["non_live_market_data"])
+            )
+
         for market, contract, orderbook, scores in entries:
             if contract.ticker != contract_ticker:
                 continue
+            if is_prediction_quarantined_target(
+                market.ticker,
+                category=getattr(market, "category", None),
+            ) or is_prediction_quarantined_target(
+                contract.ticker,
+                category=getattr(market, "category", None),
+            ):
+                continue
             base = self._build_base_forecast(market, contract, orderbook, scores)
-            review = await self.hybrid_engine.hybrid_review(
-                base=base,
-                orderbook=orderbook,
-                market=market,
-                contract=contract,
-                scores=scores,
-                model_mode=self.model_mode,
+            raw_review = None
+            failures: list[str] = []
+            if self.model_mode == MODEL_MODE_LIVE_HYBRID:
+                try:
+                    raw_review = await self.hybrid_engine.hybrid_review(
+                        base=base,
+                        orderbook=orderbook,
+                        market=market,
+                        contract=contract,
+                        scores=scores,
+                        model_mode=self.model_mode,
+                    )
+                except Exception as exc:
+                    failures.append(f"review_exception:{type(exc).__name__}")
+                failures.extend(self._review_contract_failures(raw_review))
+                if failures:
+                    self.model_mode = MODEL_MODE_DEGRADED_QUANT_ONLY
+                    self.model_degradation_reasons = sorted(
+                        set(self.model_degradation_reasons + failures)
+                    )
+                    raw_review = None
+            reason = (
+                "live_model_calls_disabled"
+                if self.model_mode == MODEL_MODE_MOCK_ONLY
+                else "hybrid_model_validation_failed"
             )
+            review = self._complete_review_set(raw_review, base, reason)
             opinion = self._synthesize_opinion(base, scores, review)
+            authority_summary = self._model_authority_summary()
+            authority_decision = next(
+                iter(self.model_authority_decisions.values()),
+                None,
+            )
             return {
                 "source": snapshot_source,
                 "model_mode": self.model_mode,
+                **authority_summary,
+                "model_degradation_reasons": self.model_degradation_reasons,
                 "credentials_present": self.credentials_present,
                 "market": market,
                 "contract": contract,
@@ -175,6 +239,7 @@ class _RealMarketForecastLoopV2WithDetails(RealMarketForecastLoopV2):
                 "base_forecast": base,
                 "review": review,
                 "opinion": opinion,
+                "model_probability_authority_decision": authority_decision,
             }
         return None
 
@@ -249,6 +314,29 @@ class HybridLiveCapRehearsalV2:
             proof_ref = write_proof("rehearse_live_cap_v2", "blocked", payload)
             return {**payload, "proof_reference": proof_ref}
 
+        if is_data_only_target(market_ticker) or is_data_only_target(contract_ticker):
+            payload = {
+                **base_payload,
+                "status": "blocked",
+                "rejected_by": "data_only_target",
+                "reason": "Weather and commodity contracts are contextual data only",
+                "live_submitted": False,
+            }
+            proof_ref = write_proof("rehearse_live_cap_v2", "blocked", payload)
+            return {**payload, "proof_reference": proof_ref}
+        if is_equity_index_target(market_ticker) or is_equity_index_target(
+            contract_ticker
+        ):
+            payload = {
+                **base_payload,
+                "status": "blocked",
+                "rejected_by": "equity_index_target_quarantine",
+                "reason": "Target is outside Dummy's supported prediction surface",
+                "live_submitted": False,
+            }
+            proof_ref = write_proof("rehearse_live_cap_v2", "blocked", payload)
+            return {**payload, "proof_reference": proof_ref}
+
         details = await self.loop.run_for_contract(contract_ticker)
         if details is None:
             payload = {
@@ -260,10 +348,211 @@ class HybridLiveCapRehearsalV2:
             proof_ref = write_proof("rehearse_live_cap_v2", "no_trade", payload)
             return {**payload, "proof_reference": proof_ref}
 
+        if details.get("source") != "live":
+            payload = {
+                **base_payload,
+                "status": "no_trade",
+                "source": details.get("source", "unknown"),
+                "model_mode": details.get("model_mode", "unknown"),
+                "credentials_present": details.get("credentials_present", False),
+                "rejected_by": "market_data_source",
+                "reason": "Non-live market data cannot advance to the live firewall",
+                "live_submitted": False,
+            }
+            proof_ref = write_proof("rehearse_live_cap_v2", "no_trade", payload)
+            return {**payload, "proof_reference": proof_ref}
+        if details.get("model_mode") != MODEL_MODE_LIVE_HYBRID:
+            payload = {
+                **base_payload,
+                "status": "no_trade",
+                "source": details.get("source", "unknown"),
+                "model_mode": details.get("model_mode", "unknown"),
+                "model_degradation_reasons": details.get(
+                    "model_degradation_reasons", []
+                ),
+                "credentials_present": details.get("credentials_present", False),
+                "rejected_by": "hybrid_model_validation",
+                "reason": "Only a fully validated LIVE_HYBRID review may advance through this hybrid rehearsal path",
+                "live_submitted": False,
+            }
+            proof_ref = write_proof("rehearse_live_cap_v2", "no_trade", payload)
+            return {**payload, "proof_reference": proof_ref}
+
         opinion: ForecastOpinion = details["opinion"]
         orderbook: OrderBook = details["orderbook"]
         base_forecast: Forecast = details["base_forecast"]
         review: dict[str, Any] = details["review"]
+        scores = details.get("scores") or {}
+        market = details.get("market")
+        contract = details.get("contract")
+        identity_mismatches: list[str] = []
+        if str(getattr(market, "ticker", "")) != market_ticker:
+            identity_mismatches.append("market")
+        if str(getattr(contract, "ticker", "")) != contract_ticker:
+            identity_mismatches.append("contract")
+        for label, candidate in (
+            ("orderbook", orderbook),
+            ("forecast", base_forecast),
+            ("opinion", opinion),
+        ):
+            if (
+                str(getattr(candidate, "market_ticker", "")) != market_ticker
+                or str(getattr(candidate, "contract_ticker", ""))
+                != contract_ticker
+            ):
+                identity_mismatches.append(label)
+        if identity_mismatches:
+            payload = {
+                **base_payload,
+                "status": "blocked",
+                "source": details["source"],
+                "model_mode": details["model_mode"],
+                "credentials_present": details["credentials_present"],
+                "rejected_by": "context_integrity",
+                "reason": "Hybrid market, forecast, or orderbook identity mismatch",
+                "identity_mismatches": sorted(set(identity_mismatches)),
+                "live_submitted": False,
+            }
+            proof_ref = write_proof("rehearse_live_cap_v2", "blocked", payload)
+            return {**payload, "proof_reference": proof_ref}
+
+        market_category = str(getattr(market, "category", ""))
+        if is_prediction_quarantined_target(
+            market_ticker,
+            category=market_category,
+        ) or is_prediction_quarantined_target(
+            contract_ticker,
+            category=market_category,
+        ):
+            payload = {
+                **base_payload,
+                "status": "blocked",
+                "source": details["source"],
+                "model_mode": details["model_mode"],
+                "credentials_present": details["credentials_present"],
+                "rejected_by": "prediction_target_quarantine",
+                "reason": (
+                    "Verified market category has zero prediction and proposal "
+                    "authority under the shared target policy"
+                ),
+                "live_submitted": False,
+            }
+            proof_ref = write_proof("rehearse_live_cap_v2", "blocked", payload)
+            return {**payload, "proof_reference": proof_ref}
+        if not (
+            has_prediction_target_authority(
+                market_ticker,
+                category=market_category,
+            )
+            and has_prediction_target_authority(
+                contract_ticker,
+                category=market_category,
+            )
+        ):
+            payload = {
+                **base_payload,
+                "status": "blocked",
+                "source": details["source"],
+                "model_mode": details["model_mode"],
+                "credentials_present": details["credentials_present"],
+                "rejected_by": "prediction_target_authority",
+                "reason": (
+                    "Structured live-market context does not establish "
+                    "prediction-target authority"
+                ),
+                "live_submitted": False,
+            }
+            proof_ref = write_proof("rehearse_live_cap_v2", "blocked", payload)
+            return {**payload, "proof_reference": proof_ref}
+        live_phase = scores.get("live_phase")
+        if (
+            is_sports_model_market(
+                ticker=contract_ticker,
+                category=market_category,
+            )
+            and live_phase is not True
+            and live_phase is not False
+        ):
+            payload = {
+                **base_payload,
+                "status": "blocked",
+                "source": details["source"],
+                "model_mode": details["model_mode"],
+                "credentials_present": details["credentials_present"],
+                "rejected_by": "sports_phase_authority",
+                "reason": (
+                    "Sports phase is unknown or ambiguous; no model probability "
+                    "or order authority is available"
+                ),
+                "model_probability_authority": Decimal("0"),
+                "live_submitted": False,
+            }
+            proof_ref = write_proof("rehearse_live_cap_v2", "blocked", payload)
+            return {**payload, "proof_reference": proof_ref}
+        model_probability_authority = Decimal(
+            str(details.get("model_probability_authority") or 0)
+        )
+        model_operationally_authorized = model_probability_authority > 0
+        authority_decision = details.get("model_probability_authority_decision")
+        if model_operationally_authorized and not (
+            isinstance(authority_decision, ModelProbabilityAuthorityDecision)
+            and authority_decision.authorized
+            and authority_decision.weight == model_probability_authority
+        ):
+            payload = {
+                **base_payload,
+                "status": "blocked",
+                "source": details["source"],
+                "model_mode": details["model_mode"],
+                "credentials_present": details["credentials_present"],
+                "rejected_by": "model_probability_authority_attestation",
+                "reason": (
+                    "Operational model probability lacks its exact typed "
+                    "authority decision"
+                ),
+                "live_submitted": False,
+            }
+            proof_ref = write_proof("rehearse_live_cap_v2", "blocked", payload)
+            return {**payload, "proof_reference": proof_ref}
+
+        # A validated panel may abstain, but that abstention is operational only
+        # after the exact market scope has earned model authority.  Revalidate
+        # the complete review contract at this handoff so stale mock/fallback
+        # text cannot become a veto merely because a caller mislabeled the mode.
+        panel_no_trade_reason = self._authorized_panel_no_trade_reason(
+            opinion=opinion,
+            review=review,
+            model_operationally_authorized=model_operationally_authorized,
+        )
+        if panel_no_trade_reason is not None:
+            no_trade = NoTradeReason(
+                market_ticker=market_ticker,
+                contract_ticker=contract_ticker,
+                reason=panel_no_trade_reason,
+                contributing_factors=[
+                    "validated_hybrid_panel_no_trade",
+                    "model_probability_scope_authorized",
+                ],
+                model_summary=opinion.model_summary,
+                timestamp=datetime.now(timezone.utc),
+                proof_reference=opinion.proof_reference,
+            )
+            payload = {
+                **base_payload,
+                "status": "no_trade",
+                "source": details["source"],
+                "model_mode": details["model_mode"],
+                "credentials_present": details["credentials_present"],
+                "rejected_by": "authorized_panel_no_trade",
+                "reason": panel_no_trade_reason,
+                "model_probability_authority": model_probability_authority,
+                "forecast_opinion": opinion.model_dump(),
+                "strategy_governor_decision": "NOT_EVALUATED_PANEL_VETO",
+                "no_trade_reason": no_trade.model_dump(),
+                "live_submitted": False,
+            }
+            proof_ref = write_proof("rehearse_live_cap_v2", "no_trade", payload)
+            return {**payload, "proof_reference": proof_ref}
 
         # The hybrid model review may revise the base forecast.  Reflect the
         # reviewed opinion in the forecast used by the firewall so the edge gate
@@ -275,19 +564,124 @@ class HybridLiveCapRehearsalV2:
         base_forecast.edge_after_fees = max(Decimal("0"), opinion.probability_delta - Decimal("0.005"))
         base_forecast.confidence_score = opinion.confidence_score
 
-        intelligence_results = await self.intelligence.evaluate(base_forecast, orderbook)
+        if model_operationally_authorized:
+            intelligence_results = await self.intelligence.evaluate(
+                base_forecast,
+                orderbook,
+                market_category=market_category,
+            )
+        else:
+            intelligence_results = self.intelligence.evaluate_quant_only(
+                base_forecast,
+                orderbook,
+                market_category=market_category,
+            )
         selected = self._select_intelligence_result(intelligence_results, strategy_name)
 
-        strategy_critique = selected.critique if selected else None
-        risk_critique = self._risk_critique_from_review(review)
+        scanner = getattr(self.intelligence, "scanner", None)
+        family_authority = getattr(scanner, "family_has_prediction_authority", None)
+        selected_scan = getattr(selected, "scan_result", None)
+        selected_family = str(getattr(selected_scan, "family", ""))
+        if not (
+            selected_scan is not None
+            and callable(family_authority)
+            and family_authority(selected_family) is True
+        ):
+            payload = {
+                **base_payload,
+                "status": "blocked",
+                "source": details["source"],
+                "model_mode": details["model_mode"],
+                "credentials_present": details["credentials_present"],
+                "rejected_by": "strategy_prediction_authority",
+                "reason": "Selected strategy lacks explicit prediction authority",
+                "live_submitted": False,
+            }
+            proof_ref = write_proof("rehearse_live_cap_v2", "blocked", payload)
+            return {**payload, "proof_reference": proof_ref}
 
-        disagreement = await self.disagreement.review(
-            opinion=opinion,
-            strategy_signal={"verdict": strategy_critique.verdict} if strategy_critique else None,
-            risk_governor_value={"risk_level": risk_critique.risk_level} if risk_critique else None,
-            calibration_confidence=opinion.confidence_score,
-            context={"market_ticker": market_ticker, "contract_ticker": contract_ticker},
+        selected_proposal = selected_scan.proposal
+        selection_identity_mismatch = (
+            selected_scan.market_ticker != market_ticker
+            or selected_scan.contract_ticker != contract_ticker
+            or (
+                selected_proposal is not None
+                and (
+                    selected_proposal.market_ticker != market_ticker
+                    or selected_proposal.contract_ticker != contract_ticker
+                )
+            )
         )
+        selected_target_quarantined = selected_proposal is not None and (
+            is_prediction_quarantined_target(
+                selected_proposal.market_ticker,
+                category=market_category,
+            )
+            or is_prediction_quarantined_target(
+                selected_proposal.contract_ticker,
+                category=market_category,
+            )
+        )
+        if selection_identity_mismatch or selected_target_quarantined:
+            payload = {
+                **base_payload,
+                "status": "blocked",
+                "source": details["source"],
+                "model_mode": details["model_mode"],
+                "credentials_present": details["credentials_present"],
+                "rejected_by": (
+                    "prediction_target_quarantine"
+                    if selected_target_quarantined
+                    else "context_integrity"
+                ),
+                "reason": (
+                    "Selected proposal violates target policy"
+                    if selected_target_quarantined
+                    else "Selected strategy/proposal identity does not match the forecast"
+                ),
+                "live_submitted": False,
+            }
+            proof_ref = write_proof("rehearse_live_cap_v2", "blocked", payload)
+            return {**payload, "proof_reference": proof_ref}
+
+        # On the zero-authority path, evaluate_quant_only supplies a neutral,
+        # deterministic critique. It is not model output and cannot change the
+        # quantitative scan; it simply avoids treating "model excluded" as an
+        # operator-warning verdict.
+        strategy_critique = selected.critique if selected else None
+        risk_critique = (
+            self._risk_critique_from_review(review)
+            if model_operationally_authorized
+            else None
+        )
+
+        # The first panel review was already route/schema validated.  Do not
+        # make a second, independently unvalidated model call here.  Until the
+        # exact scope earns authority, even the validated model disagreement is
+        # report-only and excluded from governor inputs.
+        if model_operationally_authorized:
+            disagreement_score = max(
+                Decimal("0"), min(Decimal("1"), opinion.model_disagreement)
+            )
+            disagreement = {
+                "disagreement_score": disagreement_score,
+                "source_of_disagreement": "validated_hybrid_panel",
+                "required_action": self.disagreement._required_action(disagreement_score),
+                "no_trade_bias_adjustment": self.disagreement._bias_adjustment(disagreement_score),
+                "proof_reference": opinion.proof_reference,
+                "model_probability_authority": model_probability_authority,
+                "operationally_authorized": True,
+            }
+        else:
+            disagreement = {
+                "disagreement_score": Decimal("0"),
+                "source_of_disagreement": "model_research_excluded",
+                "required_action": "NONE_RESEARCH_ONLY",
+                "no_trade_bias_adjustment": Decimal("0"),
+                "proof_reference": opinion.proof_reference,
+                "model_probability_authority": Decimal("0"),
+                "operationally_authorized": False,
+            }
 
         proposal = self._derive_trade_decision(
             market_ticker,
@@ -312,6 +706,7 @@ class HybridLiveCapRehearsalV2:
             cap_impact=cap_impact,
             compliance_verdict=compliance_verdict,
             model_output_firewall_blocked=False,
+            market_category=market_category,
         )
 
         if governor_output.decision != GovernorDecision.APPROVE_FOR_FIREWALL_REHEARSAL:
@@ -370,6 +765,49 @@ class HybridLiveCapRehearsalV2:
             proof_ref = write_proof("rehearse_live_cap_v2", "no_trade", payload)
             return {**payload, "proof_reference": proof_ref}
 
+        if (
+            proposal.market_ticker != market_ticker
+            or proposal.contract_ticker != contract_ticker
+            or base_forecast.market_ticker != proposal.market_ticker
+            or base_forecast.contract_ticker != proposal.contract_ticker
+            or orderbook.market_ticker != proposal.market_ticker
+            or orderbook.contract_ticker != proposal.contract_ticker
+        ):
+            payload = {
+                **base_payload,
+                "status": "blocked",
+                "source": details["source"],
+                "model_mode": details["model_mode"],
+                "credentials_present": details["credentials_present"],
+                "rejected_by": "context_integrity",
+                "reason": "Final proposal identity does not match forecast and orderbook",
+                "live_submitted": False,
+            }
+            proof_ref = write_proof("rehearse_live_cap_v2", "blocked", payload)
+            return {**payload, "proof_reference": proof_ref}
+        if not (
+            has_prediction_target_authority(
+                proposal.market_ticker,
+                category=market_category,
+            )
+            and has_prediction_target_authority(
+                proposal.contract_ticker,
+                category=market_category,
+            )
+        ):
+            payload = {
+                **base_payload,
+                "status": "blocked",
+                "source": details["source"],
+                "model_mode": details["model_mode"],
+                "credentials_present": details["credentials_present"],
+                "rejected_by": "prediction_target_authority",
+                "reason": "Final proposal lacks verified prediction-target authority",
+                "live_submitted": False,
+            }
+            proof_ref = write_proof("rehearse_live_cap_v2", "blocked", payload)
+            return {**payload, "proof_reference": proof_ref}
+
         proposal.compliance_verdict = compliance_verdict
         risk_verdict = assess_trade_risk(proposal, caps)
         if not risk_verdict.passed:
@@ -391,16 +829,29 @@ class HybridLiveCapRehearsalV2:
             proof_ref = write_proof("rehearse_live_cap_v2", "blocked", payload)
             return {**payload, "proof_reference": proof_ref}
 
+        request_fields = {
+            "proposal_id": proposal.id,
+            "market_ticker": proposal.market_ticker,
+            "contract_ticker": proposal.contract_ticker,
+            "side": proposal.side,
+            "price_cents": proposal.price_cents,
+            "size": proposal.size,
+            "strategy_proof_reference": proposal.proof_reference,
+            # The request is bound to the exact Forecast object evaluated by
+            # the firewall; the LLM opinion proof remains supporting evidence.
+            "forecast_proof_reference": base_forecast.proof_reference,
+            "adapter_name": self.adapter_name,
+        }
         request = LiveOrderRequest(
-            proposal_id=proposal.id,
-            market_ticker=proposal.market_ticker,
-            contract_ticker=proposal.contract_ticker,
-            side=proposal.side,
-            price_cents=proposal.price_cents,
-            size=proposal.size,
-            strategy_proof_reference=proposal.proof_reference,
-            forecast_proof_reference=opinion.proof_reference,
-            adapter_name=self.adapter_name,
+            **request_fields,
+            model_influence_attestation=build_model_influence_attestation(
+                base_forecast,
+                request_fields,
+                authority_decision=authority_decision,
+                market_category=market_category,
+                live_phase=live_phase,
+                supporting_model_output_reference=opinion.proof_reference,
+            ),
         )
 
         if not request.strategy_proof_reference or not request.forecast_proof_reference:
@@ -463,6 +914,24 @@ class HybridLiveCapRehearsalV2:
         proof_ref = write_proof("rehearse_live_cap_v2", payload["status"], payload)
         return {**payload, "proof_reference": proof_ref}
 
+    def _authorized_panel_no_trade_reason(
+        self,
+        *,
+        opinion: ForecastOpinion,
+        review: dict[str, Any],
+        model_operationally_authorized: bool,
+    ) -> str | None:
+        """Return a hard-veto reason only for an authorized, valid panel."""
+        if not model_operationally_authorized:
+            return None
+        if self.loop._review_contract_failures(review):
+            return None
+        reason = opinion.no_trade_reason
+        if not isinstance(reason, str):
+            return None
+        normalized = reason.strip()
+        return normalized or None
+
     def _select_intelligence_result(
         self,
         results: list[Any],
@@ -498,9 +967,12 @@ class HybridLiveCapRehearsalV2:
     ) -> TradeProposal | None:
         side = "yes" if opinion.probability_delta >= Decimal("0") else "no"
         if side == "yes":
-            price = orderbook.asks[0].price if orderbook.asks else 50
+            # Rehearsal proposals are passive maker limits. Crossing the ask
+            # would be a taker order and must be modeled by the separate
+            # executable-depth path instead of mislabeled here.
+            price = orderbook.bids[-1].price if orderbook.bids else 50
         else:
-            price = 100 - (orderbook.bids[-1].price if orderbook.bids else 50)
+            price = 100 - (orderbook.asks[0].price if orderbook.asks else 50)
         size = 1
         from core.ontology import EdgeEstimate
 

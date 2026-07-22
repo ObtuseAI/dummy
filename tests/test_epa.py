@@ -35,7 +35,10 @@ def _seed(tmp_path):
         gid = f"g{i}"
         st.upsert_game({"game_id": gid, "league": "nfl", "season": 2025,
                         "start_time": f"2025-09-{i + 1:02d}T00:00:00Z", "home": "AAA", "away": "BBB",
-                        "home_score": 31, "away_score": 17, "status": "final", "source": "t"})
+                        "home_score": 31, "away_score": 17, "status": "final", "source": "t",
+                        "result_available_at": f"2025-09-{i + 1:02d}T03:00:00Z",
+                        "received_at": f"2025-09-{i + 1:02d}T03:05:00Z",
+                        "provenance_quality": "source_reported"})
         st.record_team_boxscores([_epa_box(gid, "AAA", 0.15, 65, -0.05, 63),
                                   _epa_box(gid, "BBB", 0.00, 62, 0.10, 66)])
     return st

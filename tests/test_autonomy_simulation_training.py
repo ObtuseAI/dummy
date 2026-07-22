@@ -4,10 +4,14 @@ import hashlib
 import json
 from datetime import datetime, timedelta, timezone
 
+import pytest
+
 from autonomy.ledger import AutonomyLedger
 from autonomy.ontology import Decision, DecisionAction, Forecast
 from autonomy.simulation_training import (
+    bounded_database_liveness,
     compounding_stress,
+    connect_readonly,
     execution_curriculum,
     forecast_curriculum,
     load_order_rows,
@@ -121,7 +125,11 @@ def test_execution_loader_rejects_settlement_without_prior_fill(tmp_path):
     assert rows[0]["settled_pnl_cents"] is None
 
 
-def test_training_opens_ledger_read_only_and_quarantines_simulation(tmp_path):
+def test_training_opens_ledger_read_only_and_quarantines_simulation(
+    tmp_path, monkeypatch,
+):
+    from autonomy import simulation_training
+
     db = tmp_path / "ledger.db"
     ledger = AutonomyLedger(db)
     start = datetime(2025, 1, 1, tzinfo=timezone.utc)
@@ -153,10 +161,32 @@ def test_training_opens_ledger_read_only_and_quarantines_simulation(tmp_path):
     finally:
         ledger.close()
     before = hashlib.sha256(db.read_bytes()).hexdigest()
+    traced_statements: list[str] = []
+
+    def _traced_readonly(path):
+        connection = connect_readonly(path)
+        connection.set_trace_callback(traced_statements.append)
+        return connection
+
+    monkeypatch.setattr(simulation_training, "connect_readonly", _traced_readonly)
     report = run_simulation_training(db, simulations=100)
     after = hashlib.sha256(db.read_bytes()).hexdigest()
     assert before == after
     assert report["sqlite_access"] == "mode=ro; PRAGMA query_only=ON"
+    assert report["database_liveness"]["status"] == "PASS"
+    assert report["database_liveness"]["global_integrity_scan_performed"] is False
+    assert report["database_liveness"]["structural_integrity_verified"] is False
+    assert report["integrity_check"] == "NOT_RUN"
+    assert report["integrity_check_method"] == "offline_maintenance_only"
+    assert (
+        report["offline_integrity_attestation"]["status"]
+        == "NOT_VERIFIED_BY_HOURLY_TRAINER"
+    )
+    assert report["offline_integrity_attestation"]["full_scan_performed"] is False
+    assert report["offline_integrity_attestation"]["counts_toward_readiness"] is False
+    traced = "\n".join(traced_statements).casefold()
+    assert "quick_check" not in traced
+    assert "integrity_check" not in traced
     assert report["execution_authority"] is False
     assert report["weights_written"] is False
     assert report["readiness_evidence_written"] is False
@@ -168,6 +198,37 @@ def test_training_opens_ledger_read_only_and_quarantines_simulation(tmp_path):
     assert report["improvement_queue"]["status"] == "ATTACKING_WEAKNESSES"
     assert report["improvement_queue"]["execution_authority"] is False
     assert "order_submission" in report["improvement_queue"]["automatic_actions_forbidden"]
+
+
+def test_hourly_liveness_probe_is_bounded_and_never_runs_global_integrity(tmp_path):
+    db = tmp_path / "ledger.db"
+    ledger = AutonomyLedger(db)
+    ledger.close()
+    connection = connect_readonly(db)
+    statements: list[str] = []
+    connection.set_trace_callback(statements.append)
+    try:
+        result = bounded_database_liveness(connection)
+    finally:
+        connection.close()
+
+    assert result["status"] == "PASS"
+    assert result["global_integrity_scan_performed"] is False
+    assert result["structural_integrity_verified"] is False
+    traced = "\n".join(statements).casefold()
+    assert "quick_check" not in traced
+    assert "integrity_check" not in traced
+
+
+def test_hourly_liveness_probe_fails_closed_when_required_schema_is_missing():
+    import sqlite3
+
+    connection = sqlite3.connect(":memory:")
+    try:
+        with pytest.raises(RuntimeError, match="missing tables"):
+            bounded_database_liveness(connection)
+    finally:
+        connection.close()
 
 
 def test_training_report_writes_atomic_latest_pointer(tmp_path):

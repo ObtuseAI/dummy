@@ -25,6 +25,7 @@ def make_forecast():
 
 class AlwaysPropose:
     name = "always_propose"
+    PREDICTION_AUTHORITY = True
 
     def evaluate(self, forecast, orderbook):
         return TradeProposal(
@@ -51,6 +52,7 @@ class AlwaysPropose:
 
 class NeverPropose:
     name = "never_propose"
+    PREDICTION_AUTHORITY = True
 
     def evaluate(self, forecast, orderbook):
         return None

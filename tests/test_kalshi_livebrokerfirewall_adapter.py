@@ -163,7 +163,7 @@ async def test_credentials_redacted_in_diagnostics(kalshi_env) -> None:
     assert "BEGIN PRIVATE KEY" not in diag_text
 
 
-async def test_raw_secrets_not_returned_in_submit_result(kalshi_env) -> None:
+async def test_retired_submit_path_returns_no_secrets_or_transport(kalshi_env) -> None:
     requests: list[dict[str, Any]] = []
     responses = {
         ("POST", "/portfolio/orders"): (
@@ -177,8 +177,10 @@ async def test_raw_secrets_not_returned_in_submit_result(kalshi_env) -> None:
         order = _base_order()
         result = await adapter.submit_limit_order(order)
 
-    assert result.submitted is True
-    assert result.order_id == "ord-123"
+    assert result.submitted is False
+    assert result.order_id is None
+    assert result.errors == [BrokerErrorCode.LEGACY_SUBMIT_PATH_RETIRED]
+    assert requests == []
     # Raw broker response should contain order fields, not headers/signatures.
     raw_text = str(result.raw)
     assert kalshi_env["KALSHI_API_KEY_ID"] not in raw_text
@@ -273,7 +275,7 @@ async def test_incomplete_proof_lock_rejected(kalshi_env) -> None:
 # ---------------------------------------------------------------------------
 
 
-async def test_limit_order_accepted_into_mocked_transport(kalshi_env) -> None:
+async def test_valid_limit_order_is_blocked_by_retired_adapter(kalshi_env) -> None:
     requests: list[dict[str, Any]] = []
     responses = {
         ("POST", "/portfolio/orders"): (
@@ -287,16 +289,14 @@ async def test_limit_order_accepted_into_mocked_transport(kalshi_env) -> None:
         order = _base_order()
         result = await adapter.submit_limit_order(order)
 
-    assert result.submitted is True
-    assert result.order_id == "ord-abc"
-    assert result.state == OrderState.OPEN
-    assert result.errors == []
-    assert len(requests) == 1
-    assert requests[0]["method"] == "POST"
-    assert requests[0]["path"] == "/portfolio/orders"
+    assert result.submitted is False
+    assert result.order_id is None
+    assert result.state == OrderState.REJECTED
+    assert result.errors == [BrokerErrorCode.LEGACY_SUBMIT_PATH_RETIRED]
+    assert requests == []
 
 
-async def test_mocked_submit_returns_normalized_submit_result(kalshi_env) -> None:
+async def test_retired_adapter_never_normalizes_fake_submit(kalshi_env) -> None:
     requests: list[dict[str, Any]] = []
     responses = {
         ("POST", "/portfolio/orders"): (
@@ -310,13 +310,15 @@ async def test_mocked_submit_returns_normalized_submit_result(kalshi_env) -> Non
         order = _base_order()
         result = await adapter.submit_limit_order(order)
 
-    assert isinstance(result.submitted, bool)
-    assert result.order_id == "ord-norm"
-    assert result.state == OrderState.FILLED
-    assert result.raw.get("status") == "filled"
+    assert result.submitted is False
+    assert result.order_id is None
+    assert result.state == OrderState.REJECTED
+    assert result.raw == {}
+    assert result.errors == [BrokerErrorCode.LEGACY_SUBMIT_PATH_RETIRED]
+    assert requests == []
 
 
-async def test_mocked_reject_returns_structured_error(kalshi_env) -> None:
+async def test_retired_adapter_does_not_contact_mocked_reject_transport(kalshi_env) -> None:
     requests: list[dict[str, Any]] = []
     responses = {
         ("POST", "/portfolio/orders"): (
@@ -332,8 +334,9 @@ async def test_mocked_reject_returns_structured_error(kalshi_env) -> None:
 
     assert result.submitted is False
     assert result.state == OrderState.REJECTED
-    assert any("BROKER" in err for err in result.errors)
-    assert result.raw.get("status_code") == 400
+    assert result.errors == [BrokerErrorCode.LEGACY_SUBMIT_PATH_RETIRED]
+    assert result.raw == {}
+    assert requests == []
 
 
 # ---------------------------------------------------------------------------
@@ -381,7 +384,7 @@ async def test_get_order_status_maps_states(
 # ---------------------------------------------------------------------------
 
 
-async def test_no_real_network_used(kalshi_env) -> None:
+async def test_retired_submit_path_uses_no_network(kalshi_env) -> None:
     """Confirm that an injected transport is the only transport used."""
     requests: list[dict[str, Any]] = []
     responses = {
@@ -398,9 +401,10 @@ async def test_no_real_network_used(kalshi_env) -> None:
         adapter = _armed_adapter(client)
         result = await adapter.submit_limit_order(_base_order())
 
-    assert result.submitted is True
-    assert result.order_id == "net-check"
-    assert requests[0]["path"] == "/portfolio/orders"
+    assert result.submitted is False
+    assert result.order_id is None
+    assert result.errors == [BrokerErrorCode.LEGACY_SUBMIT_PATH_RETIRED]
+    assert requests == []
 
 
 # ---------------------------------------------------------------------------

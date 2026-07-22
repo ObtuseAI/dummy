@@ -20,6 +20,9 @@ def main() -> int:
     parser.add_argument("--max-positions", type=int, default=10)
     parser.add_argument("--max-group-cost-cents", type=int)
     parser.add_argument("--max-group-positions", type=int, default=1)
+    parser.add_argument("--max-factor-cost-cents", type=int)
+    parser.add_argument("--max-factor-positions", type=int, default=2)
+    parser.add_argument("--max-portfolio-loss-cents", type=int)
     parser.add_argument("--out-dir", type=Path,
                         default=Path("artifacts/dummy/portfolio_challengers"))
     args = parser.parse_args()
@@ -31,6 +34,9 @@ def main() -> int:
             max_positions=args.max_positions,
             max_group_cost_cents=args.max_group_cost_cents,
             max_group_positions=args.max_group_positions,
+            max_factor_cost_cents=args.max_factor_cost_cents,
+            max_factor_positions=args.max_factor_positions,
+            max_portfolio_loss_cents=args.max_portfolio_loss_cents,
         )
     finally:
         ledger.close()

@@ -48,6 +48,8 @@ def main() -> int:
     try:
         report = run_backtest(ledger, bootstrap_weights=args.bootstrap)
         if not args.no_write and report.get("settled_markets", 0) > 0:
+            report["evidence_split"] = ledger.evidence_split()
+            report["bootstrapped_weights"] = ledger.all_weights()
             report["report_path"] = str(write_backtest_report(report))
             # Emit the dedicated adverse-selection artifact alongside the
             # backtest summary (measurement only; no live behavior touched).

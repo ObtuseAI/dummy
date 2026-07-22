@@ -15,26 +15,41 @@ from strategies.correlated_contract_arbitrage import CorrelatedContractArbitrage
 from strategies.volume_dislocation import VolumeDislocation
 from strategies.implied_probability_reversion import ImpliedProbabilityReversion
 from strategies.repo_derived import (
-    KalshiWeatherForecastStrategy,
     SportsMomentumStrategy,
     CryptoEventMarketStrategy,
-    StockMacroMomentumStrategy,
-    CommoditiesEnergyStrategy,
     RepoDerivedCrossMarketArbitrage,
     OrderbookSpreadCaptureStrategy,
     StaleQuoteDetectionStrategy,
 )
 
 REPO_DERIVED_STRATEGIES = [
-    KalshiWeatherForecastStrategy(),
     SportsMomentumStrategy(),
     CryptoEventMarketStrategy(),
-    StockMacroMomentumStrategy(),
-    CommoditiesEnergyStrategy(),
     RepoDerivedCrossMarketArbitrage(),
     OrderbookSpreadCaptureStrategy(),
     StaleQuoteDetectionStrategy(),
 ]
+
+
+def has_prediction_authority(strategy: object) -> bool:
+    """Return whether a strategy may be evaluated for a trade proposal.
+
+    Authority must be explicit (including an inherited declaration from
+    ``StrategyGenome``).  An injected duck-typed strategy with no declaration
+    is unknown authority and therefore inactive.
+    """
+    return (
+        not bool(getattr(strategy, "DATA_ONLY", False))
+        and getattr(strategy, "PREDICTION_AUTHORITY", None) is True
+    )
+
+
+ACTIVE_REPO_DERIVED_FAMILY_NAMES = tuple(
+    strategy.name
+    for strategy in REPO_DERIVED_STRATEGIES
+    if has_prediction_authority(strategy)
+)
+ACTIVE_REPO_DERIVED_FAMILY_COUNT = len(ACTIVE_REPO_DERIVED_FAMILY_NAMES)
 
 STRATEGIES = [
     ProbabilityDisagreement(),
@@ -53,10 +68,18 @@ STRATEGIES = [
     CorrelatedContractArbitrage(),
     VolumeDislocation(),
     ImpliedProbabilityReversion(),
-    *REPO_DERIVED_STRATEGIES,
+    *[
+        strategy
+        for strategy in REPO_DERIVED_STRATEGIES
+        if has_prediction_authority(strategy)
+    ],
 ]
 
 
 def get_repo_derived_strategies() -> list:
-    """Return the 8 repo-derived strategy instances."""
-    return list(REPO_DERIVED_STRATEGIES)
+    """Return active repo-derived strategies (data-only targets excluded)."""
+    return [
+        strategy
+        for strategy in REPO_DERIVED_STRATEGIES
+        if has_prediction_authority(strategy)
+    ]

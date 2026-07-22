@@ -14,7 +14,7 @@ def test_malformed_shape_gate_output_requires_shape_repair() -> None:
     gate = RealTerrainRetryGateV2(repair_engine=repair, conflict_resolver=resolver)
     matrix = LiquidityLaunchReadinessMatrixV2(forensics_report=forensics.to_report(), retry_gate=gate)
     result = matrix.gate_output()
-    assert result == MicroOrderLaunchGateV2.READY_ONLY_AFTER_CREDENTIAL_SHAPE_REPAIR
+    assert result == MicroOrderLaunchGateV2.BLOCKED_CAPS_AUTHORITY_MIGRATION_REQUIRED
 
 
 def test_gate_never_returns_ready_without_live_submit_disabled_check() -> None:
@@ -23,6 +23,10 @@ def test_gate_never_returns_ready_without_live_submit_disabled_check() -> None:
     report = matrix.to_report()
     assert report["live_submit_disabled"] is True
     assert report["caps_unmodified"] is True
+    assert report["caps_authority"]["state"] == "REVIEW_REQUIRED"
+    assert report["caps_authority"]["authority_registration_valid"] is False
+    assert report["legacy_caps_authority_invalidated"] is True
+    assert report["execution_authority"] is False
     assert report["not_a_live_order_trigger"] is True
 
 
@@ -43,5 +47,6 @@ def test_gate_output_values_are_exact_enum_members() -> None:
         "READY_ONLY_AFTER_REAL_TERRAIN_PROOF",
         "BLOCKED_LIVE_SUBMIT_DISABLED",
         "BLOCKED_CAPS_NOT_VERIFIED",
+        "BLOCKED_CAPS_AUTHORITY_MIGRATION_REQUIRED",
         "NOT_READY",
     }

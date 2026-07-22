@@ -123,11 +123,13 @@ class EdgeIntelligenceEngine:
             min(
                 1.0,
                 (
-                    conviction * 0.30
-                    + abs(risk_adjusted_return) * 0.30
-                    + anomaly * 0.25
-                    + (1.0 - divergence) * 0.15
+                    conviction * 0.40
+                    + abs(strength) * confidence * 0.30
+                    + anomaly * 0.20
+                    + time_horizon * 0.10
                 )
+                # Terrain is charged once here. Divergence is already present
+                # in conviction and is not added as a second penalty/bonus.
                 - penalty,
             ),
         )

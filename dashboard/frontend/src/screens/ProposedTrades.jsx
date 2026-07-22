@@ -17,6 +17,12 @@ export default function ProposedTrades() {
     <div className="space-y-6">
       <h1 className="text-2xl font-bold">Proposed Trades</h1>
 
+      {data.source !== 'live' && (
+        <div className="rounded border-2 border-amber-500 bg-amber-950 p-4 font-bold text-amber-200">
+          DEMO DATA — synthetic order book; not live and not executable evidence
+        </div>
+      )}
+
       <div className="grid grid-cols-2 gap-4">
         <Card label="Market" value={data.market_ticker} />
         <Card label="Contract" value={data.contract_ticker} />
@@ -28,17 +34,18 @@ export default function ProposedTrades() {
           <div className="space-y-3">
             {(data.proposals || []).map((p, i) => (
               <div key={i} className="bg-gray-900 p-3 rounded text-sm">
-                <div className="font-semibold">{p.side?.toUpperCase()} {p.quantity} @ {p.price_cents}¢</div>
-                <div className="text-gray-400">Strategy: {p.strategy_name || 'unknown'} &middot; Market: {p.market_ticker}</div>
+                <div className="font-semibold">{p.side?.toUpperCase()} {p.size} @ {p.price_cents}¢</div>
+                <div className="text-gray-400">Proposal: {p.id || 'unknown'} &middot; Market: {p.market_ticker}</div>
                 <div className="mt-2 grid grid-cols-2 md:grid-cols-3 gap-2 text-xs">
-                  <KeyValue label="Edge" value={p.edge?.estimate} />
-                  <KeyValue label="Confidence" value={p.confidence?.estimate} />
-                  <KeyValue label="Liquidity" value={p.liquidity?.estimate} />
-                  <KeyValue label="Spread" value={p.spread?.estimate} />
-                  <KeyValue label="Settlement Risk" value={p.settlement_risk?.estimate} />
-                  <KeyValue label="Cap Impact" value={p.cap_impact?.cents} />
-                  <KeyValue label="Compliance" value={p.compliance?.verdict} />
-                  <KeyValue label="Proof" value={p.proof_ref} />
+                  <KeyValue label="Expected Edge" value={p.edge_estimate?.expected_edge_bps != null ? `${p.edge_estimate.expected_edge_bps} bps` : null} />
+                  <KeyValue label="After Fees" value={p.edge_estimate?.edge_after_fees_bps != null ? `${p.edge_estimate.edge_after_fees_bps} bps` : null} />
+                  <KeyValue label="Confidence" value={p.confidence_estimate} />
+                  <KeyValue label="Risk" value={p.risk_estimate} />
+                  <KeyValue label="Fill Behavior" value={p.expected_fill_behavior} />
+                  <KeyValue label="Cap Impact" value={p.cap_impact ? JSON.stringify(p.cap_impact) : null} />
+                  <KeyValue label="Compliance" value={p.compliance_verdict?.passed == null ? null : p.compliance_verdict.passed ? 'PASS' : `BLOCKED: ${p.compliance_verdict.reason}`} />
+                  <KeyValue label="Forecast" value={p.forecast_reference} />
+                  <KeyValue label="Proof" value={p.proof_reference} />
                 </div>
               </div>
             ))}

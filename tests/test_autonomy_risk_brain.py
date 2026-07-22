@@ -2,12 +2,20 @@
 
 from __future__ import annotations
 
+import asyncio
+import os
+
+import pytest
+
+from autonomy.brain import PredatorBrain
 from autonomy.ontology import Stage
+from autonomy.ontology import SessionMode
 from autonomy.risk_brain import (
     DRAWDOWN_LADDER,
     PROMOTION_MIN_SETTLED,
     RiskBrain,
     RiskState,
+    RiskStatePersistenceError,
     kalshi_taker_fee_cents,
     kelly_fraction_yes,
 )
@@ -117,3 +125,116 @@ def test_state_roundtrip(tmp_path):
     assert loaded.open_exposure_cents == 123
     assert loaded.bankroll_cents == 55_555
     assert loaded.equity_peak_cents >= 55_555 or loaded.equity_peak_cents >= 100_000
+
+
+def test_corrupt_existing_state_is_shadow_only_hard_stop(tmp_path):
+    path = tmp_path / "risk_state.json"
+    path.write_text("{", encoding="utf-8")
+    brain = RiskBrain(path)
+
+    state = brain.load_state(25_000)
+
+    assert state.stage is Stage.SHADOW_ONLY
+    assert state.hard_stopped is True
+    assert state.stop_reason == "risk state unavailable: JSONDecodeError"
+    assert brain.persistence_error == "JSONDecodeError"
+    assert brain.order_budget(state, "KXTEST", 0, kelly=1.0).allowed is False
+
+
+def test_save_state_uses_atomic_sibling_replace(tmp_path, monkeypatch):
+    brain, state = _state(tmp_path)
+    real_replace = os.replace
+    calls = []
+
+    def traced_replace(source, target):
+        calls.append((source, target))
+        return real_replace(source, target)
+
+    monkeypatch.setattr("autonomy.risk_brain.os.replace", traced_replace)
+    brain.save_state(state)
+
+    assert calls == [(brain.state_path.with_suffix(".json.tmp"), brain.state_path)]
+    assert brain.state_path.exists()
+    assert not brain.state_path.with_suffix(".json.tmp").exists()
+
+
+def test_failed_atomic_replace_preserves_previous_state(tmp_path, monkeypatch):
+    brain, state = _state(tmp_path)
+    brain.save_state(state)
+    previous = brain.state_path.read_text(encoding="utf-8")
+    state.stage = Stage.RAMP
+
+    def fail_replace(_source, _target):
+        raise PermissionError("simulated persistence failure")
+
+    monkeypatch.setattr("autonomy.risk_brain.os.replace", fail_replace)
+    with pytest.raises(RiskStatePersistenceError, match="PermissionError"):
+        brain.save_state(state)
+
+    assert brain.state_path.read_text(encoding="utf-8") == previous
+    assert brain.persistence_error == "PermissionError"
+    assert not brain.state_path.with_suffix(".json.tmp").exists()
+
+
+class _SpyExecutor:
+    execution_policy = None
+
+    def __init__(self, kill_path):
+        self.kill_path = kill_path
+        self.calls = 0
+
+    async def execute(self, *_args, **_kwargs):
+        self.calls += 1
+        raise AssertionError("executor must not be reached")
+
+
+def _minimal_brain(tmp_path, risk_brain, executor):
+    return PredatorBrain(
+        mode=SessionMode.SHADOW,
+        ledger=object(),
+        registry=object(),
+        scanner=object(),
+        risk_brain=risk_brain,
+        executor=executor,
+        reconciler=object(),
+        learner=object(),
+    )
+
+
+def test_corrupt_state_halts_cycle_before_executor(tmp_path):
+    path = tmp_path / "risk_state.json"
+    path.write_text("not-json", encoding="utf-8")
+    risk_brain = RiskBrain(path)
+    executor = _SpyExecutor(tmp_path / "KILL")
+
+    report = asyncio.run(_minimal_brain(tmp_path, risk_brain, executor).run_cycle())
+
+    assert report.status == "HALTED_RISK_STATE_UNAVAILABLE"
+    assert report.stage == int(Stage.SHADOW_ONLY)
+    assert report.notes == ["risk_state_load_error=JSONDecodeError"]
+    assert executor.calls == 0
+    assert path.read_text(encoding="utf-8") == "not-json"
+
+
+def test_unwritable_risk_sink_halts_before_executor(tmp_path, monkeypatch):
+    from autonomy.switches import Switches
+
+    monkeypatch.delenv("DUMMY_MAIN_ENABLED", raising=False)
+    monkeypatch.setattr(
+        Switches,
+        "load",
+        classmethod(lambda cls, path=None: cls({"main": True})),
+    )
+    risk_brain = RiskBrain(tmp_path / "risk_state.json")
+
+    def fail_save(_state):
+        raise RiskStatePersistenceError("risk state persistence failed: PermissionError")
+
+    monkeypatch.setattr(risk_brain, "save_state", fail_save)
+    executor = _SpyExecutor(tmp_path / "KILL")
+
+    report = asyncio.run(_minimal_brain(tmp_path, risk_brain, executor).run_cycle())
+
+    assert report.status == "HALTED_RISK_STATE_PERSISTENCE"
+    assert report.notes == ["risk state persistence failed: PermissionError"]
+    assert executor.calls == 0

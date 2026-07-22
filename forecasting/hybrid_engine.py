@@ -9,6 +9,8 @@ from forecasting.engine import ForecastEngine
 from model_router.router import ModelRouter
 from model_router.tasks import ModelTask
 
+HYBRID_REVIEW_CALL_CAP = 7
+
 
 class HybridForecastEngine:
     def __init__(self, base_engine: ForecastEngine | None = None, router: ModelRouter | None = None):
@@ -70,7 +72,11 @@ class HybridForecastEngine:
         )
 
     async def market_thesis(self, market_ticker: str, contract_ticker: str, context: dict[str, Any]) -> MarketThesis:
-        prompt = f"Write a concise market thesis for {market_ticker}/{contract_ticker}. Context: {context}"
+        prompt = (
+            f"Write a concise market thesis for {market_ticker}/{contract_ticker}. "
+            f"Context: {context}. Return STRICT JSON with keys thesis (string), "
+            "confidence (0..1), bullish_signals (list), and bearish_signals (list)."
+        )
         envelope = await self.router.call(ModelTask.MARKET_THESIS, prompt, context=context)
         try:
             data = json.loads(envelope.content)
@@ -102,13 +108,14 @@ class HybridForecastEngine:
         """Route a single model task through the underlying router."""
         return await self.router.call(task, prompt, context=context)
 
-    def _build_deepseek_v2_prompt(
+    def _build_primary_forecast_prompt(
         self,
         base: Forecast,
         orderbook: OrderBook,
         scores: dict[str, Any],
     ) -> str:
         return (
+            "Role: Gemini high-volume event/data extractor and rapid independent probability forecaster.\n"
             f"Market: {base.market_ticker}\n"
             f"Contract: {base.contract_ticker}\n"
             f"Title: {base.event_title}\n"
@@ -121,8 +128,35 @@ class HybridForecastEngine:
             f"Quality scores: spread={scores.get('spread_score')}, "
             f"depth={scores.get('depth_score')}, liquidity={scores.get('liquidity_score')}, "
             f"freshness={scores.get('freshness_score')}, settlement_risk={scores.get('settlement_risk_score')}\n"
-            "Return a JSON object with keys: dummy_probability, confidence_score, "
-            "uncertainty_band [low, high], reasoning, no_trade_reason (optional), calibration_notes (list)."
+            "First identify only the supplied evidence that materially changes the base rate; never invent "
+            "news, injuries, prices, statistics, or unavailable context. Return a JSON object with keys: "
+            "dummy_probability, confidence_score, uncertainty_band [low, high], reasoning, "
+            "evidence_used (list of supplied facts), no_trade_reason (optional), calibration_notes (list)."
+        )
+
+    def _build_rapid_forecast_prompt(
+        self,
+        base: Forecast,
+        orderbook: OrderBook,
+        scores: dict[str, Any],
+    ) -> str:
+        return (
+            "Role: GPT-5.6 Luna low-latency independent structured forecast and trade-draft pass.\n"
+            f"Market: {base.market_ticker}\nContract: {base.contract_ticker}\n"
+            f"Title: {base.event_title}\n"
+            f"Market-implied probability: {base.market_implied_probability}\n"
+            f"Dummy statistical estimate: {base.dummy_probability}\n"
+            f"Edge after fees: {base.edge_after_fees}\n"
+            f"Best bid/ask (cents): "
+            f"{orderbook.bids[-1].price if orderbook.bids else None} / "
+            f"{orderbook.asks[0].price if orderbook.asks else None}\n"
+            f"Quality scores: spread={scores.get('spread_score')}, "
+            f"depth={scores.get('depth_score')}, liquidity={scores.get('liquidity_score')}, "
+            f"freshness={scores.get('freshness_score')}.\n"
+            "Make an independent estimate without seeing another model's response. Return JSON with keys: "
+            "dummy_probability, confidence_score, uncertainty_band [low, high], reasoning, "
+            "action (hold/consider_yes/consider_no), entry_condition (string). This is a research draft, "
+            "never an order instruction."
         )
 
     def _build_no_trade_prompt(
@@ -132,6 +166,7 @@ class HybridForecastEngine:
         scores: dict[str, Any],
     ) -> str:
         return (
+            "Role: GLM-5.2 adversarial no-trade and missing-evidence gate. "
             f"Assess whether {base.market_ticker}/{base.contract_ticker} should be traded. "
             f"Dummy probability: {base.dummy_probability}, liquidity score: {scores.get('liquidity_score')}, "
             f"freshness score: {scores.get('freshness_score')}. "
@@ -145,6 +180,7 @@ class HybridForecastEngine:
         scores: dict[str, Any],
     ) -> str:
         return (
+            "Role: Claude Sonnet 5 deep strategy critic. Seek structural edge and failure modes. "
             f"Critique the strategy for {base.market_ticker}/{base.contract_ticker}. "
             f"Edge after fees: {base.edge_after_fees}, liquidity: {scores.get('liquidity_score')}, "
             f"settlement risk: {scores.get('settlement_risk_score')}. "
@@ -159,6 +195,7 @@ class HybridForecastEngine:
         scores: dict[str, Any],
     ) -> str:
         return (
+            "Role: GLM-5.2 adversarial risk and hypothesis falsification critic. "
             f"Assess market and settlement risk for {base.market_ticker}/{base.contract_ticker}. "
             f"Settlement risk score: {scores.get('settlement_risk_score')}, "
             f"freshness score: {scores.get('freshness_score')}. "
@@ -175,10 +212,24 @@ class HybridForecastEngine:
         category = getattr(market, "category", "unknown")
         title = getattr(market, "title", base.event_title)
         return (
+            "Role: Claude Sonnet 5 deep market-thesis and strategy synthesis specialist. "
             f"Write a concise market thesis for {base.market_ticker}/{base.contract_ticker}. "
             f"Title: {title}. Category: {category}. "
             f"Market-implied probability: {base.market_implied_probability}. "
             "Return JSON with keys: thesis, bullish_signals (list), bearish_signals (list), confidence (0-1)."
+        )
+
+    def _build_calibration_prompt(
+        self,
+        base: Forecast,
+        scores: dict[str, Any],
+    ) -> str:
+        return (
+            "Role: GLM-5.2 adversarial calibration and hypothesis critic. "
+            f"For {base.market_ticker}/{base.contract_ticker}, assess whether the supplied "
+            f"statistical estimate {base.dummy_probability} is likely overconfident, underconfident, "
+            f"or missing a falsifying condition. Data-quality scores: {scores}. "
+            "Return JSON with key note (a concise calibration/falsification note)."
         )
 
     async def hybrid_review(
@@ -190,35 +241,57 @@ class HybridForecastEngine:
         scores: dict[str, Any] | None = None,
         model_mode: str = "MOCK_ONLY",
     ) -> dict[str, Any]:
-        """Run DeepSeekV4Flash first-pass and MinimaxM3 critique tasks for a market.
+        """Run the bounded four-model OpenRouter research panel for a market.
 
-        The underlying :class:`model_router.router.ModelRouter` maps each
-        :class:`model_router.tasks.ModelTask` to its configured default provider
-        (DeepSeekV4Flash or MinimaxM3).  If credentials are missing or live calls
-        are disabled, the router falls back to MockProvider and this method
-        still returns all required envelopes.
+        Seven statically routed, role-specific calls are made in parallel. The
+        voices remain independent: no model sees another model's response.
+        Callers must validate every envelope before synthesizing. Missing,
+        malformed, substituted, or fallback responses invalidate the whole
+        batch and retain the quantitative baseline.
         """
         scores = scores or {}
         context = {"market_ticker": base.market_ticker, "contract_ticker": base.contract_ticker}
-        deep_prompt = self._build_deepseek_v2_prompt(base, orderbook, scores)
+        primary_prompt = self._build_primary_forecast_prompt(base, orderbook, scores)
+        rapid_prompt = self._build_rapid_forecast_prompt(base, orderbook, scores)
         no_trade_prompt = self._build_no_trade_prompt(base, orderbook, scores)
         critique_prompt = self._build_critique_prompt(base, orderbook, scores)
         risk_prompt = self._build_risk_prompt(base, orderbook, scores)
         thesis_prompt = self._build_thesis_prompt(base, market, contract, scores)
+        calibration_prompt = self._build_calibration_prompt(base, scores)
 
-        deep_env, no_trade_env, critique_env, risk_env, thesis_env = await asyncio.gather(
-            self.router.call(ModelTask.FORECAST_OPINION, deep_prompt, context=context),
-            self.router.call(ModelTask.NO_TRADE_REASON, no_trade_prompt, context=context),
-            self.router.call(ModelTask.STRATEGY_CRITIQUE, critique_prompt, context=context),
-            self.router.call(ModelTask.RISK_CRITIQUE, risk_prompt, context=context),
-            self.router.call(ModelTask.MARKET_THESIS, thesis_prompt, context=context),
+        call_specs = (
+            (ModelTask.FORECAST_OPINION, primary_prompt),
+            (ModelTask.RAPID_FORECAST, rapid_prompt),
+            (ModelTask.NO_TRADE_REASON, no_trade_prompt),
+            (ModelTask.STRATEGY_CRITIQUE, critique_prompt),
+            (ModelTask.RISK_CRITIQUE, risk_prompt),
+            (ModelTask.MARKET_THESIS, thesis_prompt),
+            (ModelTask.CALIBRATION_NOTE, calibration_prompt),
+        )
+        if len(call_specs) > HYBRID_REVIEW_CALL_CAP:
+            raise RuntimeError("hybrid review call cap exceeded")
+        (
+            primary_env,
+            rapid_env,
+            no_trade_env,
+            critique_env,
+            risk_env,
+            thesis_env,
+            calibration_env,
+        ) = await asyncio.gather(
+            *(
+                self.router.call(task, prompt, context=context)
+                for task, prompt in call_specs
+            )
         )
 
         return {
             "model_mode": model_mode,
-            "deepseek_forecast": deep_env,
+            "primary_forecast": primary_env,
+            "rapid_forecast": rapid_env,
             "no_trade": no_trade_env,
             "critique": critique_env,
             "risk": risk_env,
             "thesis": thesis_env,
+            "calibration": calibration_env,
         }

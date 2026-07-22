@@ -13,12 +13,13 @@ Pure + Qt-free so it unit-tests without a GUI toolkit; the app wires
 from __future__ import annotations
 
 import json
-import os
 import sqlite3
 from pathlib import Path
 from typing import Any
 
-RUNTIME_DIR = Path(os.environ.get("DUMMY_RUNTIME_DIR") or r"D:\DummyRuntime\autonomy")
+from desktop.dummy_tote.data import resolve_runtime_dir
+
+RUNTIME_DIR = resolve_runtime_dir()
 LEDGER_PATH = RUNTIME_DIR / "ledger.db"
 STATE_PATH = RUNTIME_DIR / "bet_notify_state.json"
 
@@ -36,28 +37,41 @@ def _usd(cents: Any) -> str:
     return ("-" if c < 0 else "+") + "$" + f"{abs(c) / 100:.2f}"
 
 
-def format_event(kind: str, ticker: str, pnl_cents: Any) -> dict[str, Any] | None:
+def format_event(kind: str, ticker: str, pnl_cents: Any, market_title: str | None = None) -> dict[str, Any] | None:
     """A notify-worthy outcome -> {title, body, warning}; None if not notify-worthy."""
     ticker = str(ticker or "")
+    body = str(market_title or ticker)
     if kind in _OPENED:
         tag = "Shadow bet opened" if kind == "SHADOW" else "Bet opened"
-        return {"title": tag, "body": ticker, "warning": False}
+        return {"title": tag, "body": body, "warning": False}
     if kind in _SETTLED:
         won = kind == "SETTLED_WIN"
         pnl = _usd(pnl_cents)
         title = ("Bet won " if won else "Bet lost ") + pnl if pnl else ("Bet won" if won else "Bet lost")
-        return {"title": title, "body": ticker, "warning": not won}
+        return {"title": title, "body": body, "warning": not won}
     return None
 
 
 def fetch_new(conn: sqlite3.Connection, last_id: int, limit: int = 40) -> list[dict[str, Any]]:
     """Outcomes with id greater than ``last_id`` (oldest first)."""
+    columns = {str(row[1]) for row in conn.execute("PRAGMA table_info(outcomes)").fetchall()}
+    title_column = next((name for name in ("market_title", "title", "event_title") if name in columns), None)
+    title_select = f", {title_column}" if title_column else ""
     rows = conn.execute(
-        "SELECT id, kind, market_ticker, pnl_cents FROM outcomes "
+        f"SELECT id, kind, market_ticker, pnl_cents{title_select} FROM outcomes "
         "WHERE id > ? ORDER BY id LIMIT ?",
         (int(last_id), int(limit)),
     ).fetchall()
-    return [{"id": int(r[0]), "kind": str(r[1]), "ticker": r[2], "pnl_cents": r[3]} for r in rows]
+    return [
+        {
+            "id": int(row[0]),
+            "kind": str(row[1]),
+            "ticker": row[2],
+            "pnl_cents": row[3],
+            "market_title": row[4] if title_column else None,
+        }
+        for row in rows
+    ]
 
 
 def max_outcome_id(conn: sqlite3.Connection) -> int:
@@ -113,7 +127,7 @@ def collect_events(last_id: int, *, ledger: Path | None = None) -> tuple[list[di
     new_last = last_id
     for row in rows:
         new_last = max(new_last, row["id"])
-        ev = format_event(row["kind"], row["ticker"], row["pnl_cents"])
+        ev = format_event(row["kind"], row["ticker"], row["pnl_cents"], row.get("market_title"))
         if ev:
             events.append(ev)
     return events, new_last

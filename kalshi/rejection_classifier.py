@@ -59,7 +59,14 @@ LOCAL_GATE_CODES: frozenset[str] = frozenset(
     }
 )
 
-_LOCAL_EXCEPTION_PREFIXES = ("RUNNER_EXCEPTION", "ADAPTER_EXCEPTION")
+_LOCAL_EXCEPTION_PREFIXES = (
+    "RUNNER_EXCEPTION",
+    "ADAPTER_EXCEPTION",
+    # Retired compatibility runners/adapters deliberately fail before any
+    # transport.  Keep their evidence labelled as a local gate instead of an
+    # unclassified broker event.
+    "LEGACY_",
+)
 
 
 class RejectionCategory(str, Enum):

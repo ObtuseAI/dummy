@@ -7,7 +7,7 @@ class KalshiRateLimiter:
         self.max_retries = max_retries
         self.base_delay = base_delay
 
-    async def execute(self, coro_factory):
+    async def execute(self, coro_factory, deadline: float | None = None):
         last_exc = None
         for attempt in range(self.max_retries + 1):
             try:
@@ -17,8 +17,12 @@ class KalshiRateLimiter:
                 cat = classify(e.response.status_code, e.response.text)
                 if cat != KalshiErrorCategory.RATE_LIMIT and cat != KalshiErrorCategory.NETWORK:
                     raise
-                await asyncio.sleep(self.base_delay * (2 ** attempt))
             except httpx.RequestError as e:
                 last_exc = e
-                await asyncio.sleep(self.base_delay * (2 ** attempt))
+            if attempt >= self.max_retries:
+                break
+            delay = self.base_delay * (2 ** attempt)
+            if deadline is not None and asyncio.get_running_loop().time() + delay >= deadline:
+                break
+            await asyncio.sleep(delay)
         raise last_exc

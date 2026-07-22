@@ -64,32 +64,113 @@ def generate_model_provider_config_audit_report_v1() -> dict[str, Any]:
 # -----------------------------------------------------------------------------
 
 
-async def _resolve_both() -> tuple[dict[str, Any], dict[str, Any]]:
+def _preflight_resolution(name: str) -> dict[str, Any]:
+    """Return redacted config/credential facts without constructing a resolver."""
+    from model_router.config import load_model_routing_config
+    from model_router.credential_source import ProviderCredentialSourceResolver
+
+    config = load_model_routing_config()
+    provider = config.provider_configs.get(name)
+    if provider is None:
+        return {
+            "provider_name": name,
+            "status": "PREFLIGHT_ONLY",
+            "api_base_present": False,
+            "api_key_env": None,
+            "api_key_present": False,
+            "credential_source": "missing",
+            "configured_model": "",
+            "resolved_model": None,
+            "resolved_by": None,
+            "error_category": "PROVIDER_CONFIG_MISSING",
+            "error_detail": "provider config is missing",
+            "route_mode": "unknown",
+            "intended_key_env": None,
+            "base_url_class": "not_checked",
+            "contact_mode": "PREFLIGHT_ONLY",
+            "network_contacted": False,
+        }
+    credential = ProviderCredentialSourceResolver().resolve(provider.api_key_env)
+    return {
+        "provider_name": name,
+        "status": "PREFLIGHT_ONLY",
+        "api_base_present": bool(provider.api_base),
+        "api_key_env": provider.api_key_env,
+        "api_key_present": credential.present,
+        "credential_source": credential.source.value,
+        "configured_model": provider.model_name,
+        "resolved_model": None,
+        "resolved_by": None,
+        "error_category": None,
+        "error_detail": "live resolution requires explicit allow_live=True",
+        "route_mode": provider.route_mode or "unknown",
+        "intended_key_env": provider.api_key_env,
+        "base_url_class": "not_checked",
+        "contact_mode": "PREFLIGHT_ONLY",
+        "network_contacted": False,
+    }
+
+
+def _configured_aliases(name: str) -> list[str]:
+    from model_router.config import load_model_routing_config
+
+    provider = load_model_routing_config().provider_configs.get(name)
+    if provider is None:
+        return []
+    aliases: list[str] = []
+    for value in [provider.model_name, *provider.model_aliases]:
+        if value and value not in aliases:
+            aliases.append(value)
+    return aliases
+
+
+async def _resolve_both(
+    *,
+    allow_live: bool = False,
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    if allow_live is not True:
+        return (
+            _preflight_resolution("deepseek_v4_flash"),
+            _preflight_resolution("minimax_m3"),
+        )
+
     from model_router.resolver import (
         ModelProviderResolver,
         _DEFAULT_ALIASES,
         _DEFAULT_BASE_URLS,
     )
     from model_router.smoke import _DEEPSEEK_SMOKE_PROMPT, _MINIMAX_SMOKE_PROMPT
+    from model_router.network_capability import issue_model_network_capability
 
     resolver = ModelProviderResolver()
+    network_capability = issue_model_network_capability(
+        allow_live=allow_live,
+        source="archive.v8_1.manual_resolution",
+    )
     ds = await resolver.resolve(
         "deepseek_v4_flash",
         default_base=_DEFAULT_BASE_URLS["deepseek_v4_flash"],
         default_aliases=_DEFAULT_ALIASES["deepseek_v4_flash"],
         smoke_prompt=_DEEPSEEK_SMOKE_PROMPT,
+        allow_live=True,
+        network_capability=network_capability,
     )
     mm = await resolver.resolve(
         "minimax_m3",
         default_base=_DEFAULT_BASE_URLS["minimax_m3"],
         default_aliases=_DEFAULT_ALIASES["minimax_m3"],
         smoke_prompt=_MINIMAX_SMOKE_PROMPT,
+        allow_live=True,
+        network_capability=network_capability,
     )
     return ds.redacted_metadata, mm.redacted_metadata
 
 
-async def generate_model_provider_resolution_report_v1() -> dict[str, Any]:
-    ds, mm = await _resolve_both()
+async def generate_model_provider_resolution_report_v1(
+    *,
+    allow_live: bool = False,
+) -> dict[str, Any]:
+    ds, mm = await _resolve_both(allow_live=allow_live)
     return {
         "generated_at": now_iso(),
         "workstream": "V8.1: Model Provider Resolution",
@@ -99,13 +180,13 @@ async def generate_model_provider_resolution_report_v1() -> dict[str, Any]:
     }
 
 
-async def generate_model_alias_resolution_report_v1() -> dict[str, Any]:
-    from model_router.resolver import ModelProviderResolver, _DEFAULT_ALIASES
-
-    resolver = ModelProviderResolver()
-    ds_aliases = [a.model_name for a in resolver._aliases("deepseek_v4_flash", _DEFAULT_ALIASES["deepseek_v4_flash"])]
-    mm_aliases = [a.model_name for a in resolver._aliases("minimax_m3", _DEFAULT_ALIASES["minimax_m3"])]
-    ds, mm = await _resolve_both()
+async def generate_model_alias_resolution_report_v1(
+    *,
+    allow_live: bool = False,
+) -> dict[str, Any]:
+    ds_aliases = _configured_aliases("deepseek_v4_flash")
+    mm_aliases = _configured_aliases("minimax_m3")
+    ds, mm = await _resolve_both(allow_live=allow_live)
     return {
         "generated_at": now_iso(),
         "workstream": "V8.1: Model Alias Resolution",
@@ -125,8 +206,11 @@ async def generate_model_alias_resolution_report_v1() -> dict[str, Any]:
     }
 
 
-async def generate_model_provider_error_resolution_report_v1() -> dict[str, Any]:
-    ds, mm = await _resolve_both()
+async def generate_model_provider_error_resolution_report_v1(
+    *,
+    allow_live: bool = False,
+) -> dict[str, Any]:
+    ds, mm = await _resolve_both(allow_live=allow_live)
     return {
         "generated_at": now_iso(),
         "workstream": "V8.1: Model Provider Error Resolution",
@@ -210,10 +294,13 @@ def generate_model_provider_operator_repair_recommendations_v1(
 # -----------------------------------------------------------------------------
 
 
-async def generate_live_model_smoke_report_v2() -> dict[str, Any]:
+async def generate_live_model_smoke_report_v2(
+    *,
+    allow_live: bool = False,
+) -> dict[str, Any]:
     from model_router.smoke import generate_live_model_smoke_report_v2 as _run
 
-    return await _run()
+    return await _run(allow_live=allow_live)
 
 
 def generate_live_model_prompt_safety_report_v2() -> dict[str, Any]:
@@ -385,14 +472,22 @@ def generate_no_live_submit_still_disabled_report_v8_1() -> dict[str, Any]:
 # -----------------------------------------------------------------------------
 
 
-async def main() -> dict[str, Any]:
+async def main(*, allow_live: bool = False) -> dict[str, Any]:
     reports: dict[str, dict[str, Any]] = {}
     paths: dict[str, Path] = {}
 
     reports["model_provider_config_audit_report_v1.json"] = generate_model_provider_config_audit_report_v1()
-    reports["model_provider_resolution_report_v1.json"] = await generate_model_provider_resolution_report_v1()
-    reports["model_alias_resolution_report_v1.json"] = await generate_model_alias_resolution_report_v1()
-    reports["model_provider_error_resolution_report_v1.json"] = await generate_model_provider_error_resolution_report_v1()
+    reports["model_provider_resolution_report_v1.json"] = (
+        await generate_model_provider_resolution_report_v1(allow_live=allow_live)
+    )
+    reports["model_alias_resolution_report_v1.json"] = (
+        await generate_model_alias_resolution_report_v1(allow_live=allow_live)
+    )
+    reports["model_provider_error_resolution_report_v1.json"] = (
+        await generate_model_provider_error_resolution_report_v1(
+            allow_live=allow_live
+        )
+    )
 
     # Operator repair depends on resolution report being on disk.
     _write_report(
@@ -405,7 +500,9 @@ async def main() -> dict[str, Any]:
         )
     )
 
-    reports["live_model_smoke_report_v2.json"] = await generate_live_model_smoke_report_v2()
+    reports["live_model_smoke_report_v2.json"] = (
+        await generate_live_model_smoke_report_v2(allow_live=allow_live)
+    )
     reports["live_model_prompt_safety_report_v2.json"] = generate_live_model_prompt_safety_report_v2()
     reports["live_model_output_safety_report_v1.json"] = await generate_live_model_output_safety_report_v1()
 

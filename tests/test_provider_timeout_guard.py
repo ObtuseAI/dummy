@@ -49,7 +49,9 @@ def test_provider_config_default_timeout_is_at_most_20s():
 
 
 @pytest.mark.asyncio
-async def test_deepseek_http_timeout_is_capped_at_20s(monkeypatch):
+async def test_deepseek_http_timeout_is_capped_at_20s(
+    monkeypatch, model_network_capability
+):
     """DeepSeekV4FlashProvider passes a timeout <= 20s to httpx."""
     monkeypatch.setenv("DEEPSEEK_API_KEY", "sk-test")
     cfg = ProviderConfig(
@@ -67,13 +69,19 @@ async def test_deepseek_http_timeout_is_capped_at_20s(monkeypatch):
         return _CapturingClient(timeout)
 
     with patch("model_router.providers.httpx.AsyncClient", new=_client_factory):
-        await provider.complete("test", ModelTask.FORECAST_OPINION)
+        await provider.complete(
+            "test",
+            ModelTask.FORECAST_OPINION,
+            network_capability=model_network_capability,
+        )
 
     assert captured["timeout"] <= 20.0
 
 
 @pytest.mark.asyncio
-async def test_minimax_http_timeout_is_capped_at_20s(monkeypatch):
+async def test_minimax_http_timeout_is_capped_at_20s(
+    monkeypatch, model_network_capability
+):
     """MinimaxM3Provider passes a timeout <= 20s to httpx."""
     monkeypatch.setenv("MINIMAX_API_KEY", "sk-test")
     cfg = ProviderConfig(
@@ -91,13 +99,19 @@ async def test_minimax_http_timeout_is_capped_at_20s(monkeypatch):
         return _CapturingClient(timeout)
 
     with patch("model_router.providers.httpx.AsyncClient", new=_client_factory):
-        await provider.complete("test", ModelTask.STRATEGY_CRITIQUE)
+        await provider.complete(
+            "test",
+            ModelTask.STRATEGY_CRITIQUE,
+            network_capability=model_network_capability,
+        )
 
     assert captured["timeout"] <= 20.0
 
 
 @pytest.mark.asyncio
-async def test_provider_complete_does_not_wait_indefinitely(monkeypatch):
+async def test_provider_complete_does_not_wait_indefinitely(
+    monkeypatch, model_network_capability
+):
     """A failing provider call must surface promptly without blocking forever."""
     monkeypatch.setenv("DEEPSEEK_API_KEY", "sk-test")
     cfg = ProviderConfig(
@@ -114,6 +128,10 @@ async def test_provider_complete_does_not_wait_indefinitely(monkeypatch):
     start = asyncio.get_event_loop().time()
     with patch.object(provider, "_call_api", new=_fail_fast):
         with pytest.raises(Exception):  # ProviderError
-            await provider.complete("test", ModelTask.FORECAST_OPINION)
+            await provider.complete(
+                "test",
+                ModelTask.FORECAST_OPINION,
+                network_capability=model_network_capability,
+            )
     elapsed = asyncio.get_event_loop().time() - start
     assert elapsed < 10, f"provider.complete blocked for {elapsed:.1f}s"

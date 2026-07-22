@@ -1,6 +1,7 @@
 """AutoPromotionEngine: ladder criteria, rails, cap, hysteresis, determinism."""
 from __future__ import annotations
 
+import hashlib
 from datetime import datetime, timedelta, timezone
 
 from autonomy.auto_promotion import (
@@ -52,6 +53,38 @@ def _rows(
 
 def _now_ts(n: int = 360, hours_step: float = 1.0) -> float:
     return (BASE + timedelta(hours=n * hours_step + 1)).timestamp()
+
+
+def _forward_realized(scope: str) -> dict:
+    fingerprint = hashlib.sha256(scope.encode("utf-8")).hexdigest()
+    pnl = {f"forward-{i}": [1.0] for i in range(60)}
+    timestamps = [
+        (BASE + timedelta(hours=4 * i)).isoformat() for i in range(60)
+    ]
+    return {
+        "n_trades": 60,
+        "pnl_by_cluster": pnl,
+        "evidence_origin": "ledger_verified",
+        "receipt_bounded": True,
+        "witnessed_fill_net_pnl": True,
+        "forward_evidence": {
+            "evidence_version": "promotion_forward_fill_v1",
+            "evidence_origin": "ledger_verified",
+            "receipt_bounded": True,
+            "witnessed_fill_net_pnl": True,
+            "out_of_sample_after_registration": True,
+            "isolated_candidate_decisions": True,
+            "registered_at": (BASE - timedelta(days=1)).isoformat(),
+            "candidate_fingerprint": fingerprint,
+            "n_trades": 60,
+            "pnl_by_cluster": pnl,
+            "trade_timestamps": timestamps,
+        },
+    }
+
+
+def _forward_map(scopes) -> dict:
+    return {scope: _forward_realized(scope) for scope in scopes}
 
 
 # -- counterfactual P&L math ----------------------------------------------------
@@ -192,7 +225,7 @@ def test_criterion_b_beat_rate_blocks_lucky_few_hits():
     assert "contested_beat_rate" in ev.failing_criteria()
 
 
-def test_criterion_c_proof_of_profit_gate_blocks_alone():
+def test_criterion_c_counterfactual_diagnostic_gate_blocks_alone():
     # The P&L gate is its own criterion: everything else green, pnl CI red.
     import dataclasses
 
@@ -271,6 +304,7 @@ def test_criterion_f_correlation_routes_to_replacement_not_promotion():
         scope_rows={SCOPE: rows}, promoted={}, now_ts=_now_ts(),
         now_iso="2026-07-16T09:00:00+00:00", rails=RailsVerdict(abort=False),
         clv_by_scope={SCOPE: CLV_OK},
+        realized_by_scope=_forward_map([SCOPE]),
         fused_probs_by_source={"crypto_spot_vol": incumbent_tape})
     assert result.promotions == []
     assert [d.scope for d in result.replacement_candidates] == [SCOPE]
@@ -419,18 +453,21 @@ def test_daily_cap_defers_beyond_two_and_counts_prior_actions():
 
     full = engine.decide(scope_rows=scope_rows, promoted={}, now_ts=_now_ts(),
                          now_iso="x", rails=RailsVerdict(abort=False),
-                         clv_by_scope=clv)
+                         clv_by_scope=clv,
+                         realized_by_scope=_forward_map(scope_rows))
     assert len(full.promotions) == 2 and len(full.deferred) == 1
     assert all("daily promotion cap" in d.reason for d in full.deferred)
 
     one_used = engine.decide(scope_rows=scope_rows, promoted={}, now_ts=_now_ts(),
                              now_iso="x", rails=RailsVerdict(abort=False),
-                             promotions_used_today=1, clv_by_scope=clv)
+                             promotions_used_today=1, clv_by_scope=clv,
+                             realized_by_scope=_forward_map(scope_rows))
     assert len(one_used.promotions) == 1 and len(one_used.deferred) == 2
 
     spent = engine.decide(scope_rows=scope_rows, promoted={}, now_ts=_now_ts(),
                           now_iso="x", rails=RailsVerdict(abort=False),
-                          promotions_used_today=2, clv_by_scope=clv)
+                          promotions_used_today=2, clv_by_scope=clv,
+                          realized_by_scope=_forward_map(scope_rows))
     assert spent.promotions == [] and len(spent.deferred) == 3
 
 
@@ -439,9 +476,10 @@ def test_cap_is_shared_between_promotions_and_escalations():
     promoted_scope = "already|btc|fam|15m"
     scope_rows[promoted_scope] = _rows(promoted_scope, source="already",
                                        ticker_prefix="KXBTCALREADY")
-    realized = {promoted_scope: {
+    realized = _forward_map(scope_rows)
+    realized[promoted_scope] = {
         "n_trades": 90,
-        "pnl_by_cluster": {f"c{i}": [2.0] for i in range(60)}}}
+        "pnl_by_cluster": {f"c{i}": [2.0] for i in range(60)}}
     result = AutoPromotionEngine().decide(
         scope_rows=scope_rows, promoted={promoted_scope: {"stage": 1}},
         now_ts=_now_ts(), now_iso="x", rails=RailsVerdict(abort=False),
@@ -455,7 +493,8 @@ def test_decisions_are_deterministic_and_capped_weight_is_stamped():
     scope_rows, clv = _three_strong_scopes()
     engine = AutoPromotionEngine()
     kwargs = dict(scope_rows=scope_rows, promoted={}, now_ts=_now_ts(),
-                  now_iso="x", rails=RailsVerdict(abort=False), clv_by_scope=clv)
+                  now_iso="x", rails=RailsVerdict(abort=False), clv_by_scope=clv,
+                  realized_by_scope=_forward_map(scope_rows))
     a = engine.decide(**kwargs)
     b = engine.decide(**kwargs)
     assert [d.to_dict() for d in a.promotions] == [d.to_dict() for d in b.promotions]

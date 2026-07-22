@@ -33,6 +33,8 @@ def test_pieces_are_populated(monkeypatch):
     assert h["matchup"] == "CONN vs PHX"
     assert h["market"] == "2H total 76"
     assert h["date"] == "Jul 19"
+    assert h["event_date"] == "2026-07-19"
+    assert h["event_id"] == "26JUL19CONNPHX"
     assert h["line"] == "76"
 
 
@@ -52,3 +54,32 @@ def test_crypto_ticker_has_no_matchup_but_never_crashes(monkeypatch):
     # crypto isn't in the sports registry -> label falls back to the raw ticker
     lbl = ml.market_label("KXBTCD-26JUL1922-B64350")
     assert isinstance(lbl, str) and lbl
+
+
+def test_prop_title_preserves_player_and_threshold(monkeypatch):
+    _teams(monkeypatch)
+    h = ml.humanize_market(
+        "KXMLBHIT-26JUL211910BALBOS-BALPALONSO25-1",
+        "Pete Alonso: 1+ hits?",
+    )
+    assert h["subject"] == "Pete Alonso"
+    assert h["subject_team"] == "BAL"
+    assert h["market"] == "Pete Alonso · 1+ hits"
+    assert h["label"] == "BAL vs BOS · Pete Alonso · 1+ hits"
+
+
+def test_prop_without_title_uses_ticker_player_abbreviation(monkeypatch):
+    _teams(monkeypatch)
+    h = ml.humanize_market("KXMLBHIT-26JUL211910BALBOS-BALPALONSO25-1")
+    assert h["subject"] == "P Alonso"
+    assert h["subject_team"] == "BAL"
+    assert h["market"] == "P Alonso · 1+ hits"
+
+
+def test_compound_ticker_player_abbreviation_is_readable(monkeypatch):
+    _teams(monkeypatch)
+    h = ml.humanize_market(
+        "KXMLBHIT-26JUL221540CINSEA-CINEDELACRUZ44-3"
+    )
+    assert h["subject"] == "E De La Cruz"
+    assert h["subject_team"] == "CIN"
