@@ -449,6 +449,12 @@ def build_brain(
     from autonomy.signals.sports_live_wp import SportsLiveWpSignal
 
     registry.register(SportsLiveWpSignal(seasons=seasons))
+    # Referee/official total adjustment (challenger): nudges the expected
+    # total by the assigned crew's historical over/under lean when officials
+    # are posted; abstains otherwise.
+    from autonomy.signals.sports_referee import SportsRefereeSignal
+
+    registry.register(SportsRefereeSignal(seasons=seasons))
     # De-vigged sportsbook moneyline + open->close steam: the sharpest public
     # game forecast, and the trap detector when Elo fights the book.
     registry.register(SportsbookConsensusSignal())
