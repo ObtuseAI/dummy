@@ -45,9 +45,16 @@ PBP_SOURCES: dict[str, tuple[str, str, int]] = {
     "wnba": ("wehoop-data", "wnba", 4),
     "nba": ("hoopR-data", "nba", 4),
     "ncaamb": ("hoopR-data", "mbb", 2),
+    # NFL rides the nflverse release assets (different URL + column names;
+    # see _NFLVERSE_PBP_URL and the column mapping in stream_pbp_rows).
+    "nfl": ("nflverse-data", "nfl", 4),
 }
 _URL = ("https://raw.githubusercontent.com/sportsdataverse/{repo}/main/"
         "{path}/pbp/csv/play_by_play_{season}.csv.gz")
+_NFLVERSE_PBP_URL = (
+    "https://github.com/nflverse/nflverse-data/releases/download/pbp/"
+    "play_by_play_{season}.csv.gz"
+)
 
 # Home-lead buckets entering a period (upper-exclusive edges, cents-free).
 LEAD_BUCKET_EDGES: tuple[int, ...] = (-15, -10, -6, -3, -1, 1, 3, 6, 10, 15)
@@ -64,8 +71,35 @@ def lead_bucket(lead: int) -> str:
 
 
 def pbp_season_url(league: str, season: int) -> str:
+    if league == "nfl":
+        return _NFLVERSE_PBP_URL.format(season=int(season))
     repo, path, _periods = PBP_SOURCES[league]
     return _URL.format(repo=repo, path=path, season=int(season))
+
+
+def _map_pbp_row(league: str, row: dict[str, str]) -> dict[str, Any]:
+    """Normalize one raw CSV row to the fold schema (per-source columns)."""
+    if league == "nfl":
+        # nflverse pbp: qtr, play_id, total_home_score/total_away_score are
+        # running scores; every row with a play_type counts as an event.
+        return {
+            "game_id": (row.get("game_id") or "").strip(),
+            "sequence_number": _int(row.get("play_id")),
+            "period_number": _int(row.get("qtr")),
+            "home_score": _int(row.get("total_home_score")),
+            "away_score": _int(row.get("total_away_score")),
+            "scoring_play": str(row.get("sp") or row.get("scoring_play")).strip() in ("1", "1.0", "TRUE", "True", "true"),
+            "shooting_play": (row.get("play_type") or "").strip() in ("pass", "run"),
+        }
+    return {
+        "game_id": (row.get("game_id") or "").strip(),
+        "sequence_number": _int(row.get("sequence_number")),
+        "period_number": _int(row.get("period_number") or row.get("period")),
+        "home_score": _int(row.get("home_score")),
+        "away_score": _int(row.get("away_score")),
+        "scoring_play": str(row.get("scoring_play")).strip().lower() == "true",
+        "shooting_play": str(row.get("shooting_play")).strip().lower() == "true",
+    }
 
 
 def _int(value: Any) -> int | None:
@@ -108,15 +142,7 @@ def stream_pbp_rows(
         sleep(POLITE_SLEEP_SECONDS)
         with gzip.open(spool_path, "rt", encoding="utf-8", errors="replace") as text:
             for row in csv.DictReader(text):
-                yield {
-                    "game_id": (row.get("game_id") or "").strip(),
-                    "sequence_number": _int(row.get("sequence_number")),
-                    "period_number": _int(row.get("period_number") or row.get("period")),
-                    "home_score": _int(row.get("home_score")),
-                    "away_score": _int(row.get("away_score")),
-                    "scoring_play": str(row.get("scoring_play")).strip().lower() == "true",
-                    "shooting_play": str(row.get("shooting_play")).strip().lower() == "true",
-                }
+                yield _map_pbp_row(league, row)
     finally:
         try:
             os.unlink(spool_path)
