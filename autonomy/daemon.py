@@ -23,9 +23,53 @@ CYCLE_LOG_PATH = RUNTIME_DIR / "cycles.jsonl"
 RECAL_STAMP_PATH = RUNTIME_DIR / "last_recalibration.json"
 RECAL_INTERVAL_HOURS = 6.0
 
+# The scheduled launcher (scripts/tasks/launch_shadow_predator.vbs) HARD-KILLS
+# the whole Python process tree 13 minutes after start. A cycle that runs past
+# that is terminated mid-write, so it never reaches the heartbeat write below --
+# freezing last_cycle_at at the last un-killed cycle and leaving a permanent
+# CYCLE_ERROR + staleness that aborts the promotion runner forever. To stay
+# watchdog-safe, the cycle honors a COOPERATIVE soft deadline well under 13 min:
+# it aborts cleanly at the next await boundary, records a real status, and WRITES
+# the heartbeat -- so liveness stays visible and promotion is never held hostage
+# to a silent kill. Budget: 13min watchdog - one max ledger lock-wait - margin.
+def _cycle_soft_deadline_s() -> float:
+    import os
+
+    try:
+        value = float(os.environ.get("DUMMY_CYCLE_SOFT_DEADLINE_S", "540"))
+        return value if value > 0 else 540.0
+    except (TypeError, ValueError):
+        return 540.0
+
+
+class _CycleDeadlineExceeded(Exception):
+    """The cycle passed its watchdog-safe soft deadline and was aborted."""
+
+
+async def _run_cycle_with_deadline(brain: Any, deadline_s: float) -> Any:
+    try:
+        return await asyncio.wait_for(brain.run_cycle(), timeout=deadline_s)
+    except asyncio.TimeoutError as exc:  # noqa: UP041 - asyncio.TimeoutError pre-3.11 alias
+        raise _CycleDeadlineExceeded(
+            f"cycle exceeded {deadline_s:g}s soft deadline (watchdog-safe abort)"
+        ) from exc
+
 
 def _utc_now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
+
+
+def _read_heartbeat() -> dict[str, Any]:
+    try:
+        return json.loads(HEARTBEAT_PATH.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+
+
+def _is_healthy_status(status: str | None) -> bool:
+    """A cycle that priced + wrote normally (not an error, kill, or halt)."""
+    s = str(status or "")
+    return bool(s) and not s.startswith(("CYCLE_ERROR", "HALTED", "ERROR"))
 
 
 def _maybe_recalibrate(now_iso: str) -> dict[str, Any] | None:
@@ -115,9 +159,14 @@ def run_one_cycle(now_iso: str, mode: SessionMode = SessionMode.SHADOW) -> dict[
 
     try:
         brain = build_brain(mode)
-        report = asyncio.run(brain.run_cycle())
+        report = asyncio.run(_run_cycle_with_deadline(brain, _cycle_soft_deadline_s()))
         record = report.to_dict()
         record["at"] = now_iso
+    except _CycleDeadlineExceeded as exc:
+        # Clean, watchdog-safe abort: record it and fall through to WRITE the
+        # heartbeat (below) so last_cycle_at advances and the promotion runner
+        # sees a live -- if erroring -- system rather than a frozen one.
+        record = {"status": "CYCLE_ERROR:CycleDeadline", "error": str(exc)[:300], "at": now_iso}
     except Exception as exc:  # a bad cycle must never wedge the daemon
         record = {"status": f"CYCLE_ERROR:{type(exc).__name__}", "error": str(exc)[:300], "at": now_iso}
     finally:
@@ -148,10 +197,21 @@ def run_one_cycle(now_iso: str, mode: SessionMode = SessionMode.SHADOW) -> dict[
     completed_at = _utc_now_iso()
     record["completed_at"] = completed_at
     _append_cycle_log(record)
+    # Track the last HEALTHY cycle separately from the last completion. The
+    # promotion runner uses it to tell a transient infra hiccup (a recent
+    # success, latest cycle errored on a DB lock) apart from a genuine sustained
+    # outage (no success in hours) -- so a single locked cycle no longer
+    # permanently vetoes promotion while a real failure still does.
+    prior = _read_heartbeat()
+    last_success_at = (
+        completed_at if _is_healthy_status(record.get("status"))
+        else prior.get("last_success_at")
+    )
     _write_heartbeat({
         "alive": True,
         "last_cycle_at": completed_at,
         "last_cycle_started_at": now_iso,
+        "last_success_at": last_success_at,
         "last_status": record.get("status"),
         "last_orders_placed": record.get("orders_placed"),
         "last_signals": record.get("signals_generated"),

@@ -774,6 +774,22 @@ class RailsInputs:
     weight_saturation_flagged: bool = False
     exchange_anomaly: bool = False
     artifact_age_hours: float | None = None
+    # Hours since the last HEALTHY cycle (None if never / unknown). Lets a
+    # transient infra cycle-error be tolerated when the system was fine minutes
+    # ago, while a sustained outage still trips the rail.
+    last_success_age_hours: float | None = None
+
+
+# Cycle-error classes that are transient INFRA contention, not a logic fault:
+# a "database is locked" OperationalError or the watchdog-safe cooperative
+# deadline. These do not corrupt the settled-evidence promotion evaluates, so
+# they are tolerated IF a healthy cycle happened within the window below.
+_TRANSIENT_CYCLE_ERRORS = ("OperationalError", "CycleDeadline", "TimeoutError")
+TRANSIENT_CYCLE_ERROR_TOLERANCE_HOURS = 2.0
+
+
+def _is_transient_cycle_error(status: str) -> bool:
+    return any(marker in status for marker in _TRANSIENT_CYCLE_ERRORS)
 
 
 @dataclass(frozen=True)
@@ -793,7 +809,17 @@ def evaluate_rails(inputs: RailsInputs, *,
         reasons.append("kill_file_present")
     status = str(inputs.heartbeat_status or "")
     if status.startswith("CYCLE_ERROR"):
-        reasons.append("heartbeat_cycle_error")
+        # A transient infra error (DB-lock contention / watchdog-safe deadline)
+        # does NOT invalidate the settled evidence, so it is tolerated when a
+        # healthy cycle happened recently -- otherwise a single locked cycle
+        # would veto promotion indefinitely even on a fundamentally sound system.
+        # A non-transient (logic) error, OR no recent success, still aborts.
+        recently_healthy = (
+            inputs.last_success_age_hours is not None
+            and inputs.last_success_age_hours <= TRANSIENT_CYCLE_ERROR_TOLERANCE_HOURS
+        )
+        if not (_is_transient_cycle_error(status) and recently_healthy):
+            reasons.append("heartbeat_cycle_error")
     if not inputs.heartbeat_alive:
         reasons.append("heartbeat_not_alive")
     if inputs.health_error:

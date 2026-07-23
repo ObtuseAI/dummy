@@ -425,6 +425,35 @@ def test_every_rail_aborts_alone():
     assert clean.abort is False and clean.reasons == []
 
 
+def test_transient_cycle_error_tolerated_only_with_recent_success():
+    # A DB-lock OperationalError with a healthy cycle minutes ago is transient
+    # infra contention -> promotion is NOT vetoed.
+    ok = evaluate_rails(RailsInputs(
+        heartbeat_status="CYCLE_ERROR:OperationalError",
+        artifact_age_hours=0.2, last_success_age_hours=0.3))
+    assert ok.abort is False and ok.reasons == []
+    # The watchdog-safe cooperative deadline is likewise transient.
+    ok2 = evaluate_rails(RailsInputs(
+        heartbeat_status="CYCLE_ERROR:CycleDeadline",
+        artifact_age_hours=0.2, last_success_age_hours=1.0))
+    assert ok2.abort is False and ok2.reasons == []
+    # Same transient error but NO recent success = a sustained outage -> abort.
+    stale = evaluate_rails(RailsInputs(
+        heartbeat_status="CYCLE_ERROR:OperationalError",
+        artifact_age_hours=0.2, last_success_age_hours=6.0))
+    assert stale.abort is True and stale.reasons == ["heartbeat_cycle_error"]
+    # Never succeeded (fail-closed) -> abort.
+    never = evaluate_rails(RailsInputs(
+        heartbeat_status="CYCLE_ERROR:OperationalError",
+        artifact_age_hours=0.2, last_success_age_hours=None))
+    assert never.abort is True and never.reasons == ["heartbeat_cycle_error"]
+    # A NON-transient (logic) error is never tolerated, even with a recent success.
+    logic = evaluate_rails(RailsInputs(
+        heartbeat_status="CYCLE_ERROR:ValueError",
+        artifact_age_hours=0.2, last_success_age_hours=0.1))
+    assert logic.abort is True and logic.reasons == ["heartbeat_cycle_error"]
+
+
 def test_tripped_rails_abort_the_entire_run_before_any_decision():
     result = AutoPromotionEngine().decide(
         scope_rows={SCOPE: _rows()}, promoted={}, now_ts=_now_ts(),

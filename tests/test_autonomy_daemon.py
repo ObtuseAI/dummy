@@ -70,4 +70,66 @@ def test_heartbeat_and_log_written_on_success(monkeypatch, tmp_path):
     assert hb["last_orders_placed"] == 2
     assert hb["last_cycle_started_at"] == "2026-07-09T00:00:00+00:00"
     assert hb["last_cycle_at"] == "2026-07-09T00:08:00+00:00"
+    assert hb["last_success_at"] == "2026-07-09T00:08:00+00:00"
     assert record["completed_at"] == "2026-07-09T00:08:00+00:00"
+
+
+def _fake_brain(run_cycle_impl):
+    class FakeBrain:
+        class _L:
+            def close(self):
+                pass
+
+        ledger = _L()
+        run_cycle = run_cycle_impl
+
+    return FakeBrain()
+
+
+def test_cooperative_deadline_records_clean_error_and_updates_heartbeat(monkeypatch, tmp_path):
+    # A cycle that runs past its watchdog-safe soft deadline must abort CLEANLY
+    # (recording a status and writing the heartbeat), never hang until the
+    # launcher hard-kills it and freezes liveness.
+    monkeypatch.setattr(daemon, "RUNTIME_DIR", tmp_path)
+    monkeypatch.setattr(daemon, "HEARTBEAT_PATH", tmp_path / "hb.json")
+    monkeypatch.setattr(daemon, "CYCLE_LOG_PATH", tmp_path / "c.jsonl")
+    monkeypatch.setattr(daemon, "kill_switch_active", lambda: False)
+    monkeypatch.setenv("DUMMY_CYCLE_SOFT_DEADLINE_S", "0.05")
+
+    async def _slow(self):
+        import asyncio
+
+        await asyncio.sleep(5.0)  # far past the 0.05s deadline
+        raise AssertionError("should have been deadline-aborted")
+
+    monkeypatch.setattr("autonomy.session.build_brain", lambda m: _fake_brain(_slow))
+    record = daemon.run_one_cycle("2026-07-09T00:00:00+00:00")
+    assert record["status"] == "CYCLE_ERROR:CycleDeadline"
+    hb = json.loads((tmp_path / "hb.json").read_text(encoding="utf-8"))
+    assert hb["alive"] is True
+    assert hb["last_status"] == "CYCLE_ERROR:CycleDeadline"
+
+
+def test_last_success_at_carried_forward_across_an_errored_cycle(monkeypatch, tmp_path):
+    monkeypatch.setattr(daemon, "RUNTIME_DIR", tmp_path)
+    monkeypatch.setattr(daemon, "HEARTBEAT_PATH", tmp_path / "hb.json")
+    monkeypatch.setattr(daemon, "CYCLE_LOG_PATH", tmp_path / "c.jsonl")
+    monkeypatch.setattr(daemon, "kill_switch_active", lambda: False)
+    # Seed a prior healthy heartbeat.
+    (tmp_path / "hb.json").write_text(json.dumps({
+        "last_success_at": "2026-07-09T00:00:00+00:00",
+        "last_cycle_at": "2026-07-09T00:00:00+00:00",
+    }), encoding="utf-8")
+    monkeypatch.setattr(daemon, "_utc_now_iso", lambda: "2026-07-09T00:05:00+00:00")
+
+    def boom(_m):
+        raise RuntimeError("db locked")
+
+    monkeypatch.setattr("autonomy.session.build_brain", boom)
+    record = daemon.run_one_cycle("2026-07-09T00:04:00+00:00")
+    assert record["status"].startswith("CYCLE_ERROR")
+    hb = json.loads((tmp_path / "hb.json").read_text(encoding="utf-8"))
+    # last_cycle_at advances (liveness), but last_success_at is preserved so the
+    # promotion rail can see a healthy cycle happened 5 minutes ago.
+    assert hb["last_cycle_at"] == "2026-07-09T00:05:00+00:00"
+    assert hb["last_success_at"] == "2026-07-09T00:00:00+00:00"
