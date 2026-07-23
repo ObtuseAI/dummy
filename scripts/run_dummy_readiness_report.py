@@ -358,6 +358,20 @@ def main() -> int:
     except Exception:
         pass
 
+    # Wave-77 (ablation science): each source's MARGINAL contribution to the
+    # fused ensemble via disclosed leave-one-out approximation; redundancy
+    # candidates surface for roster review. Fail-soft, report-only.
+    try:
+        from autonomy.fusion_ablation import write_fusion_ablation
+
+        ablation = write_fusion_ablation(args.db)
+        if ablation.get("redundancy_candidates"):
+            summary["fusion_redundancy_candidates"] = (
+                ablation["redundancy_candidates"]
+            )
+    except Exception:
+        pass
+
     # Wave-69: edge-concentration / selection-bias audit (report-only lens on
     # which sources' edge is dangerously narrow). Fail-soft.
     try:
