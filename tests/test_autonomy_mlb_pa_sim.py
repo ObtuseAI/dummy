@@ -697,3 +697,26 @@ def test_all_intelligence_absent_equals_baseline():
     hits = d["single"] + d["double"] + d["triple"] + d["hr"]
     assert d["hr"] <= 0.045                    # HR/PA near real ~0.033, not 2x
     assert d["hr"] / hits <= 0.22              # HR share of hits near real ~0.15
+
+
+def test_parallel_workers_opt_in_and_bounded(monkeypatch):
+    from autonomy.sports.mlb_pa_sim import _resolved_workers
+
+    monkeypatch.delenv("MLB_PA_SIM_WORKERS", raising=False)
+    # Default stays serial regardless of size: parallelism is opt-in.
+    assert _resolved_workers(None, 5000) == 1
+    # Small runs never fan out even when asked.
+    assert _resolved_workers(8, 1999) == 1
+    # Explicit requests are honored but bounded by cores and the hard cap.
+    assert _resolved_workers(3, 5000) in (1, 2, 3)
+    monkeypatch.setenv("MLB_PA_SIM_WORKERS", "4")
+    assert _resolved_workers(None, 5000) in (1, 2, 3, 4)
+    monkeypatch.setenv("MLB_PA_SIM_WORKERS", "not-a-number")
+    assert _resolved_workers(None, 5000) == 1
+
+
+def test_serial_default_stream_unchanged_by_workers_parameter():
+    ctx = _context(home_batter_iso=0.15, away_batter_iso=0.15)
+    a = simulate_game_markets(ctx, seed=2026, sims=400)
+    b = simulate_game_markets(ctx, seed=2026, sims=400, workers=1)
+    assert a == b

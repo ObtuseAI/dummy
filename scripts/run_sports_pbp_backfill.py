@@ -24,7 +24,7 @@ from autonomy.ingest.pbp_lake import (  # noqa: E402
 
 # Latest season currently published per source repo (checked 2026-07-22);
 # --last counts back from here. Refresh when the repos advance.
-LATEST_PUBLISHED_SEASON = {"wnba": 2022, "nba": 2023, "ncaamb": 2023}
+LATEST_PUBLISHED_SEASON = {"wnba": 2022, "nba": 2023, "ncaamb": 2023, "nfl": 2025}
 MAX_SEASONS_PER_RUN = 8
 
 

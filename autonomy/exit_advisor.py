@@ -117,7 +117,19 @@ def _optional_nonnegative_int(value: Any) -> int | None:
 
 
 def _exit_bid_depth(market: MarketView, side: str) -> int | None:
-    """Return top-bid quantity only when the snapshot explicitly carries it."""
+    """Return top-bid quantity only when the snapshot explicitly carries it.
+
+    Kalshi's current market schema reports quote sizes as YES-named
+    ``*_size_fp`` fields; the canonical fail-closed parser in tier_policy
+    normalizes both queue names. Legacy integer keys remain as a fallback so
+    older snapshots keep verifying.
+    """
+    from autonomy.tier_policy import normalized_quote_sizes
+
+    sizes = normalized_quote_sizes(market)
+    canonical = sizes.get(f"{side}_bid_size_fp")
+    if isinstance(canonical, (int, float)) and canonical > 0:
+        return int(canonical)
     raw = market.raw if isinstance(market.raw, dict) else {}
     for key in (f"{side}_bid_size", f"{side}_bid_count", f"{side}_bid_quantity"):
         value = raw.get(key)

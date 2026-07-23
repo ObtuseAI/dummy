@@ -296,6 +296,48 @@ def walk_forward_scoring(
     return report
 
 
+def collect_scoring_residuals(
+    store: SportsHistoryStore, league: str, *, min_games: int = 5,
+) -> list[tuple[float, float]]:
+    """(margin residual, total residual) per point-in-time-eligible game.
+
+    One pass over the lake so a sigma grid can be scored offline: winner hit
+    rate is invariant to sigma (a monotone transform), so sigma must be chosen
+    by out-of-sample likelihood of the realized margins/totals instead.
+    """
+    from autonomy.sports.scoring_model import LakeScoringModel
+
+    model = LakeScoringModel(store, league=league, require_known_availability=True)
+    residuals: list[tuple[float, float]] = []
+    for game in store.evaluation_games(league=league):
+        home, away, t = game.get("home"), game.get("away"), game["start_time"]
+        hs, as_ = game.get("home_score"), game.get("away_score")
+        if not home or not away or hs is None or as_ is None:
+            continue
+        rh, ra = model._rates(home, t), model._rates(away, t)
+        if rh is None or ra is None or rh[2] < min_games or ra[2] < min_games:
+            continue
+        exp = model.expected_scores(home, away, t)
+        if exp is None:
+            continue
+        residuals.append((
+            float((exp[0] - exp[1]) - (hs - as_)),
+            float((exp[0] + exp[1]) - (hs + as_)),
+        ))
+    return residuals
+
+
+def sigma_log_likelihood(residuals: list[float], sigma: float) -> float | None:
+    """Mean normal log-likelihood of residuals under N(0, sigma)."""
+    import math
+
+    if not residuals or sigma <= 0.0:
+        return None
+    constant = -0.5 * math.log(2.0 * math.pi) - math.log(sigma)
+    total = sum(constant - 0.5 * (r / sigma) ** 2 for r in residuals)
+    return total / len(residuals)
+
+
 def walk_forward_epa(store: SportsHistoryStore, league: str = "nfl", *, min_games: int = 4) -> dict[str, Any]:
     """Grade EPA/play point-in-time (predict each game before it is played)."""
     games = store.evaluation_games(league=league)

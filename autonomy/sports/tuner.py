@@ -59,7 +59,73 @@ def tune_league(store: SportsHistoryStore, league: str) -> dict[str, Any]:
         best = tune_param(store, league, fn, pname, grid)
         if best is not None:
             out[name] = best
+    scoring = tune_scoring_sigmas(store, league)
+    out.update(scoring)
     return out
+
+
+# Sigma grid multipliers around each league's reviewable prior. Winner hit
+# rate cannot select sigma (monotone transform), so the objective is the
+# out-of-sample mean normal log-likelihood of realized margins/totals.
+_SIGMA_MULTIPLIERS = (0.7, 0.8, 0.9, 1.0, 1.1, 1.2, 1.35)
+_SIGMA_MIN_GAMES = 40
+
+
+def tune_scoring_sigmas(
+    store: SportsHistoryStore, league: str,
+) -> dict[str, Any]:
+    from autonomy.sports.scoring_model import _LEAGUE_PARAMS
+    from autonomy.sports.walk_forward import (
+        collect_scoring_residuals,
+        sigma_log_likelihood,
+    )
+
+    _edge, prior_margin, prior_total = _LEAGUE_PARAMS.get(league, (2.0, 12.0, 14.0))
+    residuals = collect_scoring_residuals(store, league)
+    if len(residuals) < _SIGMA_MIN_GAMES:
+        return {}
+    margins = [m for m, _t in residuals]
+    totals = [t for _m, t in residuals]
+    out: dict[str, Any] = {}
+    for key, param, prior, values in (
+        ("scoring_sigma_margin", "sigma_margin", prior_margin, margins),
+        ("scoring_sigma_total", "sigma_total", prior_total, totals),
+    ):
+        best_value: float | None = None
+        best_ll: float | None = None
+        for multiplier in _SIGMA_MULTIPLIERS:
+            sigma = round(prior * multiplier, 3)
+            ll = sigma_log_likelihood(values, sigma)
+            if ll is None:
+                continue
+            if best_ll is None or ll > best_ll:
+                best_ll, best_value = ll, sigma
+        if best_value is not None:
+            entry: dict[str, Any] = {
+                "param": param, "value": best_value,
+                "edge": round(best_ll, 5), "objective": "mean_normal_loglik",
+                "n": len(values), "prior": prior,
+            }
+            pbp = _pbp_sigma_disclosure(league, param)
+            if pbp is not None:
+                entry["pbp_empirical_sigma"] = pbp
+            out[key] = entry
+    return out
+
+
+def _pbp_sigma_disclosure(league: str, param: str) -> float | None:
+    """Empirical PBP-lake sigma for cross-checking, never for selection."""
+    try:
+        from autonomy.sports.pbp_params import load_pbp_params
+
+        block = load_pbp_params(league)
+        if block is None:
+            return None
+        metric = block.get("margin" if param == "sigma_margin" else "total")
+        sigma = (metric or {}).get("sigma")
+        return float(sigma) if isinstance(sigma, (int, float)) else None
+    except Exception:  # noqa: BLE001
+        return None
 
 
 def tune_all(store: SportsHistoryStore, leagues: list[str], *, path: Path | None = None) -> dict[str, Any]:

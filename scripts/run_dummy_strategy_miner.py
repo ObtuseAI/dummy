@@ -37,13 +37,34 @@ def main() -> int:
     if not args.db.exists():
         print(json.dumps({"status": "NO_DB", "db": str(args.db)}))
         return 1
+    now_iso = datetime.now(timezone.utc).isoformat()
+    registry_status = "SKIPPED"
     conn = sqlite3.connect(f"file:{args.db}?mode=ro", uri=True)
     try:
         report = mining_report(
             conn,
             sources=tuple(args.sources) if args.sources else None,
-            now_iso=datetime.now(timezone.utc).isoformat(),
+            now_iso=now_iso,
         )
+        # Wave-63: mined candidates auto-register for forward tracking so
+        # out-of-sample evidence starts accruing the same day they are found.
+        # Registration is disclosure, never adoption (fail-soft: a registry
+        # problem must not cost the mining report).
+        try:
+            from autonomy.strategy_miner import (
+                load_settled_rows,
+                update_mined_rule_forward_registry,
+            )
+
+            rows = load_settled_rows(
+                conn, sources=tuple(args.sources) if args.sources else None,
+            )
+            registry = update_mined_rule_forward_registry(
+                rows, report, now_iso=now_iso,
+            )
+            registry_status = f"{len(registry.get('rules', {}))}_tracked"
+        except Exception as exc:  # noqa: BLE001
+            registry_status = f"ERROR:{type(exc).__name__}"
     finally:
         conn.close()
     write_report(report, OUT_PATH)
@@ -52,6 +73,7 @@ def main() -> int:
         "settled_rows": report["settled_rows"],
         "rules": len(report["rules"]),
         "candidates": report["candidate_count"],
+        "forward_registry": registry_status,
         "out": str(OUT_PATH),
     }))
     return 0

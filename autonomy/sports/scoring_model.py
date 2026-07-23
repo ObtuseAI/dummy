@@ -32,12 +32,29 @@ class LakeScoringModel:
     def __init__(
         self, store: SportsHistoryStore, league: str, *,
         require_known_availability: bool = False,
+        sigma_margin: float | None = None,
+        sigma_total: float | None = None,
     ) -> None:
         self.store = store
         self.league = league
         self.require_known_availability = require_known_availability
         self.home_edge, self.sigma_margin, self.sigma_total = _LEAGUE_PARAMS.get(
             league, (2.0, 12.0, 14.0))
+        # Walk-forward-tuned sigmas (out-of-sample margin/total likelihood)
+        # override the hand-set priors when the daily tuner has produced one;
+        # explicit constructor values (the tuner's own grid search) win last.
+        from autonomy.sports.tuner import load_tuned
+
+        self.sigma_margin = load_tuned(
+            league, "scoring_sigma_margin", "sigma_margin", self.sigma_margin,
+        )
+        self.sigma_total = load_tuned(
+            league, "scoring_sigma_total", "sigma_total", self.sigma_total,
+        )
+        if sigma_margin is not None:
+            self.sigma_margin = float(sigma_margin)
+        if sigma_total is not None:
+            self.sigma_total = float(sigma_total)
 
     def _rates(self, team: str, as_of: str, n: int = 200) -> tuple[float, float, int] | None:
         """(avg scored, avg allowed, games) from the team's completed games

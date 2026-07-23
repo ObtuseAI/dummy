@@ -30,6 +30,7 @@ Discipline (propose-then-promote, spec section 3.4):
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import math
 import sqlite3
@@ -581,6 +582,17 @@ def mine_rules(
                 "test_win_rate": round(
                     sum(1 for row in test_hits if row.result_yes) / len(test_hits), 4,
                 ),
+                # Machine-applicable spec so a later pass can re-apply the
+                # exact rule to rows settled AFTER registration (Wave-63
+                # forward tracking) without re-parsing the description.
+                "rule_spec": [
+                    {
+                        "feature": predicate.feature,
+                        "op": predicate.op,
+                        "threshold": predicate.threshold,
+                    }
+                    for predicate in rule.predicates
+                ],
             },
         ))
     rules_tested = len(results)
@@ -678,3 +690,112 @@ def write_report(report: dict[str, Any], path: Path) -> None:
     temporary = path.with_suffix(".tmp")
     temporary.write_text(json.dumps(report, indent=2, sort_keys=True), encoding="utf-8")
     temporary.replace(path)
+
+
+# --- Wave-63: automatic forward tracking of mined candidates -----------------
+
+MINED_RULE_REGISTRY_PATH = Path("runtime/autonomy/mined_rule_forward_registry.json")
+
+
+def _rule_fingerprint(rule_spec: list[dict[str, Any]]) -> str:
+    canonical = json.dumps(rule_spec, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
+def rule_from_spec(rule_spec: list[dict[str, Any]]) -> Rule:
+    return Rule(tuple(
+        Predicate(
+            feature=str(item["feature"]),
+            op=str(item["op"]),
+            threshold=float(item["threshold"]),
+        )
+        for item in rule_spec
+    ))
+
+
+def update_mined_rule_forward_registry(
+    rows: list[MinedRow],
+    report: dict[str, Any],
+    *,
+    now_iso: str,
+    path: Path = MINED_RULE_REGISTRY_PATH,
+) -> dict[str, Any]:
+    """Auto-register mined ``candidate`` rules and accrue forward evidence.
+
+    Before this, a mined candidate earned nothing until a human transcribed
+    it. Registration is a timestamped precondition, never adoption: each
+    registered rule is re-applied ONLY to rows created strictly after its
+    registration, scored with the same event-cluster machinery, and the
+    result is disclosure for governance review. No fusion membership, no
+    weights, no execution.
+    """
+    document: dict[str, Any] = {"schema_version": 1, "rules": {}}
+    if path.exists():
+        try:
+            loaded = json.loads(path.read_text(encoding="utf-8"))
+            if isinstance(loaded, dict) and isinstance(loaded.get("rules"), dict):
+                document = loaded
+        except (OSError, ValueError):
+            pass
+    rules: dict[str, Any] = document.setdefault("rules", {})
+
+    for entry in report.get("rules", []):
+        if entry.get("verdict") != "candidate":
+            continue
+        rule_spec = entry.get("rule_spec")
+        if not isinstance(rule_spec, list) or not rule_spec:
+            continue
+        fingerprint = _rule_fingerprint(rule_spec)
+        if fingerprint not in rules:
+            rules[fingerprint] = {
+                "rule": entry.get("rule"),
+                "rule_spec": rule_spec,
+                "registered_at": now_iso,
+                "mined_test_edge": entry.get("test_brier_edge"),
+                "status": "TRACKING",
+            }
+
+    for fingerprint, entry in rules.items():
+        registered_at = str(entry.get("registered_at") or "")
+        rule = rule_from_spec(entry.get("rule_spec") or [])
+        matched = [
+            row for row in rows
+            if row.created_at > registered_at and rule.matches(row)
+        ]
+        edges = _cluster_mean_edges(matched)
+        forward: dict[str, Any] = {
+            "as_of": now_iso,
+            "n_rows": len(matched),
+            "n_clusters": len(edges),
+        }
+        stats = mean_ci95(edges) or {}
+        if stats.get("lower") is not None and stats.get("upper") is not None:
+            forward.update({
+                "mean_edge": round(float(stats.get("mean") or 0.0), 6),
+                "ci95": [
+                    round(float(stats["lower"]), 6),
+                    round(float(stats["upper"]), 6),
+                ],
+            })
+            if len(edges) >= 20 and float(stats["lower"]) > 0.0:
+                entry["status"] = "FORWARD_POSITIVE"
+            elif len(edges) >= 20 and float(stats["upper"]) < 0.0:
+                entry["status"] = "FORWARD_NEGATIVE"
+            else:
+                entry["status"] = "TRACKING"
+        entry["forward"] = forward
+
+    document["generated_at"] = now_iso
+    document["authority"] = {
+        "fusion_membership": False,
+        "weights": False,
+        "execution": False,
+        "adoption": "explicit_governance_action_only",
+    }
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_suffix(".tmp")
+    temporary.write_text(
+        json.dumps(document, indent=2, sort_keys=True), encoding="utf-8",
+    )
+    temporary.replace(path)
+    return document

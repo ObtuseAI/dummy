@@ -169,3 +169,29 @@ def test_artifact_merge_preserves_other_leagues(tmp_path):
     write_pbp_artifact({"wnba": {"games": 7, "seasons": [2022]}}, path=artifact)
     document = json.loads(artifact.read_text(encoding="utf-8"))
     assert set(document["leagues"]) == {"nba", "wnba"}
+
+
+def test_nfl_rows_map_from_nflverse_columns():
+    from autonomy.ingest.pbp_lake import _map_pbp_row, pbp_season_url
+
+    assert "nflverse-data/releases" in pbp_season_url("nfl", 2024)
+    row = _map_pbp_row("nfl", {
+        "game_id": "2024_01_BAL_KC", "play_id": "55", "qtr": "2",
+        "total_home_score": "14", "total_away_score": "7",
+        "sp": "1", "play_type": "pass",
+    })
+    assert row == {
+        "game_id": "2024_01_BAL_KC", "sequence_number": 55,
+        "period_number": 2, "home_score": 14, "away_score": 7,
+        "scoring_play": True, "shooting_play": True,
+    }
+
+
+def test_nhl_team_map_is_total_and_fail_closed():
+    from autonomy.ingest.nhl_team_map import NHL_NAME_TO_ESPN, espn_abbreviation
+
+    assert len(set(NHL_NAME_TO_ESPN.values())) == 32
+    assert espn_abbreviation("Boston Bruins") == "BOS"
+    assert espn_abbreviation("Montréal Canadiens") == "MTL"
+    assert espn_abbreviation("Hartford Whalers") is None
+    assert espn_abbreviation(None) is None
