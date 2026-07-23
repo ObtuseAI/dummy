@@ -289,6 +289,21 @@ def main() -> int:
     except Exception:
         pass
 
+    # Wave-65: build the model-authority evidence artifact + eligibility
+    # report (measurement only; never authors the dossier, so no authority
+    # can be self-granted). Fail-soft.
+    try:
+        from forecasting.model_evidence_builder import build_and_write
+
+        evidence = build_and_write(args.db)
+        summary["model_authority_evidence"] = {
+            "scopes_measured": len(evidence["scopes"]),
+            "governance_eligible_scopes": evidence["governance_eligible_scopes"],
+            "dossier_authored": evidence["dossier_authored"],
+        }
+    except Exception:
+        pass
+
     # Wave-61: paired quant-vs-LLM incremental-value evidence (report-only;
     # the model authority registry keeps its own stricter dossier).
     try:
