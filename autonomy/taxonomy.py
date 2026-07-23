@@ -63,6 +63,14 @@ SOURCE_TAXONOMY: dict[str, str] = {
     "sports_scoring": "sports_elo",
     # Wave-56: EPA/play challenger (nflfastR), same lake-sports home.
     "sports_epa": "sports_elo",
+    # Wave-67: rest/travel mean-shift + live win-prob (PBP comeback matrices);
+    # both price the game winner, same lake-sports home, own scopes.
+    "sports_rest": "sports_elo",
+    "sports_live_wp": "sports_elo",
+    # Wave-68: referee/official total adjustment (challenger on totals).
+    "sports_referee": "sports_elo",
+    # Wave-69: player-prop projection (minutes/usage), same lake-sports home.
+    "sports_player_prop": "sports_elo",
     "sportsbook_consensus": "sportsbook",
     # Wave-9: licensed multi-book (The Odds API) de-vig consensus. Same
     # specialist home as the single-book ESPN consensus; graded head-to-head
