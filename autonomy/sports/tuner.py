@@ -61,6 +61,16 @@ def tune_league(store: SportsHistoryStore, league: str) -> dict[str, Any]:
             out[name] = best
     scoring = tune_scoring_sigmas(store, league)
     out.update(scoring)
+    # Rest mean-shift coefficient (challenger): 0.0 is always a candidate, so a
+    # league where rest does not predict the winner keeps the σ-only fallback.
+    from autonomy.sports.walk_forward import walk_forward_rest
+
+    rest_best = tune_param(
+        store, league, walk_forward_rest, "coefficient",
+        [0.0, 0.03, 0.06, 0.09, 0.12, 0.16],
+    )
+    if rest_best is not None:
+        out["rest_shift"] = rest_best
     if league == "nfl":
         # EPA covers NFL only today; the walk-forward returns n=0 elsewhere
         # so other leagues would just be wasted grid passes.

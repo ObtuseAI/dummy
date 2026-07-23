@@ -338,6 +338,44 @@ def sigma_log_likelihood(residuals: list[float], sigma: float) -> float | None:
     return total / len(residuals)
 
 
+def walk_forward_rest(
+    store: SportsHistoryStore, league: str, *, coefficient: float = 0.0,
+    min_games: int = 5,
+) -> dict[str, Any]:
+    """Grade rest-shifted market prior vs realized winner, point-in-time.
+
+    The benchmark is the pure scoring-model home win prob; rest applies its
+    logit shift on top. A coefficient earns its keep only if the shifted
+    prediction beats the unshifted one out of sample (the tuner selects it).
+    """
+    from autonomy.sports.rest import apply_rest_shift, rest_days, rest_logit_shift
+    from autonomy.sports.scoring_model import LakeScoringModel
+
+    model = LakeScoringModel(store, league=league, require_known_availability=True)
+    preds: list[tuple[float, int]] = []
+    for game in store.evaluation_games(league=league):
+        home, away, t = game.get("home"), game.get("away"), game["start_time"]
+        hs, as_ = game.get("home_score"), game.get("away_score")
+        if not home or not away or hs == as_ or hs is None or as_ is None:
+            continue
+        rh, ra = model._rates(home, t), model._rates(away, t)
+        if rh is None or ra is None or rh[2] < min_games or ra[2] < min_games:
+            continue
+        base = model.p_home_covers(home, away, t, 0.0)
+        if base is None:
+            continue
+        home_rest = rest_days(store, home, t, league)
+        away_rest = rest_days(store, away, t, league)
+        shift = rest_logit_shift(home_rest, away_rest, coefficient)
+        preds.append((apply_rest_shift(base, shift), 1 if hs > as_ else 0))
+
+    report = _grade(preds)
+    report["league"] = league
+    report["model"] = "rest"
+    report["coefficient"] = coefficient
+    return report
+
+
 def walk_forward_epa(
     store: SportsHistoryStore, league: str = "nfl", *, min_games: int = 4,
     home_edge_epa: float | None = None, scale: float | None = None,

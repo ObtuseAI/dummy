@@ -272,6 +272,58 @@ class SportsHistoryStore:
         self.conn.commit()
         return len(tuples)
 
+    def record_player_boxscores(self, rows: Iterable[dict[str, Any]]) -> int:
+        """Upsert player-level boxscore rows: {game_id, team, player, stat, value}."""
+        tuples = [
+            (r["game_id"], r["team"], r["player"], r["stat"], float(r["value"]),
+             r.get("as_of"), r.get("source", "espn"))
+            for r in rows
+            if r.get("player")
+        ]
+        if not tuples:
+            return 0
+        self.conn.executemany(
+            """INSERT INTO boxscores(game_id,team,player,stat,value,as_of,source)
+               VALUES(?,?,?,?,?,?,?)
+               ON CONFLICT(game_id,team,player,stat) DO UPDATE SET
+                   value=excluded.value, as_of=excluded.as_of, source=excluded.source""",
+            tuples,
+        )
+        self.conn.commit()
+        return len(tuples)
+
+    def player_game_log(
+        self, player: str, as_of: str, *, league: str | None = None, n: int = 20,
+    ) -> list[dict[str, Any]]:
+        """A player's recent games (most recent first) as pivoted stat dicts.
+
+        Point-in-time: only games that started before ``as_of``. Each entry
+        carries ``game_id``, ``start_time`` and every recorded stat (minutes,
+        points, rebounds, ...). The prop model consumes this directly.
+        """
+        params: list[Any] = [player, as_of]
+        league_clause = ""
+        if league is not None:
+            league_clause = " AND g.league = ?"
+            params.append(league)
+        rows = self.conn.execute(
+            "SELECT b.game_id, g.start_time, b.stat, b.value "
+            "FROM boxscores b JOIN games g ON g.game_id = b.game_id "
+            "WHERE b.player = ? AND g.start_time < ?" + league_clause +
+            " ORDER BY g.start_time DESC",
+            params,
+        ).fetchall()
+        by_game: dict[str, dict[str, Any]] = {}
+        order: list[str] = []
+        for game_id, start_time, stat, value in rows:
+            entry = by_game.get(game_id)
+            if entry is None:
+                entry = {"game_id": game_id, "start_time": start_time}
+                by_game[game_id] = entry
+                order.append(game_id)
+            entry[str(stat)] = float(value)
+        return [by_game[g] for g in order[:int(n)]]
+
     def game_ids_missing_boxscores(self, league: str, limit: int | None = None) -> list[str]:
         """Completed game_ids in ``league`` that have no boxscore rows yet
         (newest first) -- the resumable work-list for the boxscore backfill."""

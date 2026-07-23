@@ -289,6 +289,17 @@ def main() -> int:
     except Exception:
         pass
 
+    # Wave-69: edge-concentration / selection-bias audit (report-only lens on
+    # which sources' edge is dangerously narrow). Fail-soft.
+    try:
+        from autonomy.edge_concentration import write_edge_concentration
+
+        concentration = write_edge_concentration(args.db)
+        if concentration.get("narrow_edge_sources"):
+            summary["narrow_edge_sources"] = concentration["narrow_edge_sources"]
+    except Exception:
+        pass
+
     # Wave-65: build the model-authority evidence artifact + eligibility
     # report (measurement only; never authors the dossier, so no authority
     # can be self-granted). Fail-soft.

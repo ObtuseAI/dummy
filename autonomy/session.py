@@ -358,6 +358,12 @@ def build_brain(
     from autonomy.signals.crypto_equities import CryptoEquitiesSignal
 
     registry.register(CryptoEquitiesSignal(fetch_state=crypto_hub.state))
+    # On-chain liquidity (DefiLlama stablecoin supply momentum): expanding
+    # stablecoin supply = dry powder / risk-on drift; challenger-only,
+    # abstains without the keyless supply feed.
+    from autonomy.signals.crypto_onchain import CryptoOnchainLiquiditySignal
+
+    registry.register(CryptoOnchainLiquiditySignal(fetch_state=crypto_hub.state))
     # Volatility triangulation (blended flat/EWMA/implied sigma + settlement-
     # proximity guard) and the VRP mean-reversion regime, both challenger-only
     # over the shared hub state. The blend + guard reach execution only via a
@@ -437,6 +443,29 @@ def build_brain(
     from autonomy.signals.sports_epa import SportsEpaSignal
 
     registry.register(SportsEpaSignal(seasons=seasons))
+    # Rest/travel mean shift (challenger): moves the winner point estimate by
+    # the tuned per-league rest coefficient; abstains where rest is
+    # un-predictive (coefficient 0) so it never duplicates the scoring winner.
+    from autonomy.signals.sports_rest import SportsRestSignal
+
+    registry.register(SportsRestSignal(seasons=seasons))
+    # Live win probability from the empirical PBP comeback matrices: for an
+    # in-progress game, the historical hold/comeback rate at the current
+    # period + lead bucket. Non-parametric, tens of thousands of games.
+    from autonomy.signals.sports_live_wp import SportsLiveWpSignal
+
+    registry.register(SportsLiveWpSignal(seasons=seasons))
+    # Referee/official total adjustment (challenger): nudges the expected
+    # total by the assigned crew's historical over/under lean when officials
+    # are posted; abstains otherwise.
+    from autonomy.signals.sports_referee import SportsRefereeSignal
+
+    registry.register(SportsRefereeSignal(seasons=seasons))
+    # Player prop over/under from a minutes/usage projection (challenger):
+    # self-scopes to prop markets with enough player game-log history.
+    from autonomy.signals.sports_player_prop import SportsPlayerPropSignal
+
+    registry.register(SportsPlayerPropSignal(seasons=seasons))
     # De-vigged sportsbook moneyline + open->close steam: the sharpest public
     # game forecast, and the trap detector when Elo fights the book.
     registry.register(SportsbookConsensusSignal())

@@ -150,6 +150,60 @@ def _parse_stat_row(league: str, name: str, display_value: Any, out: dict[str, f
                 pass
 
 
+# Player counting-stat labels we keep, mapped from ESPN's boxscore column
+# labels to canonical prop stat names. Basketball leagues share this schema.
+_PLAYER_STAT_LABELS = {
+    "MIN": "minutes", "PTS": "points", "REB": "rebounds", "AST": "assists",
+    "STL": "steals", "BLK": "blocks", "3PT": "threes", "TO": "turnovers",
+}
+
+
+def parse_player_boxscores(
+    league: str, summary: dict[str, Any] | None,
+) -> list[dict[str, Any]]:
+    """Per-player counting stats from a summary's ``boxscore.players``.
+
+    Returns rows shaped for the lake boxscores table
+    ({game_id, team, player, stat, value}). Basketball only (the label schema
+    is NBA/WNBA/NCAAMB); other leagues return []. ``3PT`` is recorded as made
+    threes (the ``M-A`` string's made count). Fail-closed on odd payloads.
+    """
+    payload = summary or {}
+    game_id = str((payload.get("header") or {}).get("id") or "")
+    if not game_id or str(league).lower() not in {"nba", "wnba", "ncaamb"}:
+        return []
+    rows: list[dict[str, Any]] = []
+    for block in ((payload.get("boxscore") or {}).get("players")) or []:
+        team = ((block or {}).get("team") or {}).get("abbreviation")
+        stat_groups = (block or {}).get("statistics") or []
+        if not team or not stat_groups:
+            continue
+        group = stat_groups[0]
+        labels = group.get("labels") or []
+        index = {label: i for i, label in enumerate(labels)}
+        for athlete in group.get("athletes") or []:
+            name = (athlete.get("athlete") or {}).get("displayName")
+            values = athlete.get("stats") or []
+            if not name or not values:
+                continue
+            for label, canonical in _PLAYER_STAT_LABELS.items():
+                pos = index.get(label)
+                if pos is None or pos >= len(values):
+                    continue
+                raw = str(values[pos]).strip()
+                if canonical == "threes" and "-" in raw:
+                    raw = raw.split("-", 1)[0]  # made count from "M-A"
+                try:
+                    value = float(raw)
+                except (TypeError, ValueError):
+                    continue
+                rows.append({
+                    "game_id": game_id, "team": team, "player": name,
+                    "stat": canonical, "value": value,
+                })
+    return rows
+
+
 def parse_team_boxscores(league: str, summary: dict[str, Any] | None) -> list[TeamBoxscore]:
     """Parse both teams' boxscores from a summary payload; [] when absent.
 
