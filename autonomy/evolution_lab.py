@@ -632,6 +632,18 @@ def trace_replay_audit(order_rows: Sequence[dict[str, Any]]) -> dict[str, Any]:
     }
 
 
+def _active_candidate_robustness(
+    rows: Sequence[dict[str, Any]], genome: "ResearchGenome",
+) -> dict[str, Any] | None:
+    """Parameter-jitter robustness for the active candidate (lazy import)."""
+    try:
+        from autonomy.robustness import parameter_jitter_robustness
+
+        return parameter_jitter_robustness(rows, genome)
+    except Exception:  # noqa: BLE001 - disclosure must never break the lab
+        return None
+
+
 def run_evolution_lab(
     rows: Sequence[dict[str, Any]],
     *,
@@ -972,6 +984,10 @@ def run_evolution_lab(
             "epoch_started_at": active_since,
             "rotated_this_generation": rotated,
             "rotation_reason": rotation_reason,
+            # Parameter-jitter robustness: is the active candidate durable, or
+            # a knife-edge fit that collapses under a small parameter change?
+            # Disclosure only (lazy import avoids the module cycle).
+            "robustness": _active_candidate_robustness(rows, active),
         } if active else None,
         "forward_ratchet": {
             "availability_rule": "decision created at or after research epoch start",
