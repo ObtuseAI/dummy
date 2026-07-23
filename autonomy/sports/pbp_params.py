@@ -14,10 +14,12 @@ from autonomy.ingest.pbp_lake import ARTIFACT_VERSION, DEFAULT_ARTIFACT_PATH
 
 
 def load_pbp_params(
-    league: str, *, path: Path | str = DEFAULT_ARTIFACT_PATH,
+    league: str, *, path: Path | str | None = None,
 ) -> dict[str, Any] | None:
     """Return the league's PBP knowledge block, or None when unavailable."""
-    target = Path(path)
+    # Resolve the default at call time so the artifact path stays overridable
+    # (tests, alternate runtimes) after import.
+    target = Path(path if path is not None else DEFAULT_ARTIFACT_PATH)
     try:
         document = json.loads(target.read_text(encoding="utf-8"))
     except (OSError, ValueError):
@@ -40,7 +42,7 @@ def in_game_home_win_prior(
     *,
     period_completed: int,
     home_lead: int,
-    path: Path | str = DEFAULT_ARTIFACT_PATH,
+    path: Path | str | None = None,
     min_cell_n: int = 30,
 ) -> dict[str, Any] | None:
     """Empirical P(home win | lead entering next period), or None.

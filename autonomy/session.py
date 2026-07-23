@@ -437,6 +437,18 @@ def build_brain(
     from autonomy.signals.sports_epa import SportsEpaSignal
 
     registry.register(SportsEpaSignal(seasons=seasons))
+    # Rest/travel mean shift (challenger): moves the winner point estimate by
+    # the tuned per-league rest coefficient; abstains where rest is
+    # un-predictive (coefficient 0) so it never duplicates the scoring winner.
+    from autonomy.signals.sports_rest import SportsRestSignal
+
+    registry.register(SportsRestSignal(seasons=seasons))
+    # Live win probability from the empirical PBP comeback matrices: for an
+    # in-progress game, the historical hold/comeback rate at the current
+    # period + lead bucket. Non-parametric, tens of thousands of games.
+    from autonomy.signals.sports_live_wp import SportsLiveWpSignal
+
+    registry.register(SportsLiveWpSignal(seasons=seasons))
     # De-vigged sportsbook moneyline + open->close steam: the sharpest public
     # game forecast, and the trap detector when Elo fights the book.
     registry.register(SportsbookConsensusSignal())
