@@ -455,6 +455,11 @@ def build_brain(
     from autonomy.signals.sports_referee import SportsRefereeSignal
 
     registry.register(SportsRefereeSignal(seasons=seasons))
+    # Player prop over/under from a minutes/usage projection (challenger):
+    # self-scopes to prop markets with enough player game-log history.
+    from autonomy.signals.sports_player_prop import SportsPlayerPropSignal
+
+    registry.register(SportsPlayerPropSignal(seasons=seasons))
     # De-vigged sportsbook moneyline + open->close steam: the sharpest public
     # game forecast, and the trap detector when Elo fights the book.
     registry.register(SportsbookConsensusSignal())
