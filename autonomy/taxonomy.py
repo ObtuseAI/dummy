@@ -71,6 +71,9 @@ SOURCE_TAXONOMY: dict[str, str] = {
     "sports_referee": "sports_elo",
     # Wave-69: player-prop projection (minutes/usage), same lake-sports home.
     "sports_player_prop": "sports_elo",
+    # Wave-79: MLB player props (HR/hits/TB/pitcher K) off the StatsAPI matchup
+    # context + plate-appearance engine. Baseball specialist home, own scope.
+    "mlb_player_prop": "mlb",
     "sportsbook_consensus": "sportsbook",
     # Wave-9: licensed multi-book (The Odds API) de-vig consensus. Same
     # specialist home as the single-book ESPN consensus; graded head-to-head
