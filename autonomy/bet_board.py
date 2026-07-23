@@ -751,6 +751,11 @@ def write_board_artifact(
             "quote_fetched_at": assessment.quote_fetched_at,
             "quote_age_seconds": assessment.quote_age_seconds,
             "uncertainty": round(float(forecast.uncertainty), 3),
+            # Wave-61 coaching: the fused rationale is the honest "why this
+            # number" text (source contributions; includes the LLM panel's
+            # bounded note when a debate actually ran). Display-only.
+            "why": (str(forecast.rationale)[:240] or None)
+            if getattr(forecast, "rationale", None) else None,
             # Wave-26: the cycle's live book, captured point-in-time so the
             # vNext shadow runtime issues episodes from this artifact with
             # zero additional network reads.

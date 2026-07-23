@@ -220,11 +220,21 @@ def main() -> int:
     # No market benchmark enters this section -- ground truth is settlements.
     # Fail-open: a picks failure must never cost the readiness report.
     try:
-        from autonomy.picks import pick_accuracy_report  # noqa: E402
+        from autonomy.picks import (  # noqa: E402
+            FUSED_SOURCE,
+            llm_voice_sources,
+            pick_accuracy_report,
+        )
 
         picks_conn = sqlite3.connect(f"file:{args.db}?mode=ro", uri=True)
         try:
-            built["report"]["picks"] = pick_accuracy_report(picks_conn)
+            # Wave-61: grade every LLM voice that has settled observational
+            # evidence alongside the fused headline, so "which model is
+            # actually accurate" is a report fact instead of a guess.
+            voices = llm_voice_sources(picks_conn)
+            built["report"]["picks"] = pick_accuracy_report(
+                picks_conn, sources=(FUSED_SOURCE, *voices),
+            )
         finally:
             picks_conn.close()
     except Exception as exc:
@@ -276,6 +286,26 @@ def main() -> int:
                 "rejection_reasons": row["rejection_reasons"],
             }
         summary["holdout_eligibility"] = eligibility
+    except Exception:
+        pass
+
+    # Wave-61: paired quant-vs-LLM incremental-value evidence (report-only;
+    # the model authority registry keeps its own stricter dossier).
+    try:
+        from autonomy.llm_value_report import write_llm_value_report
+
+        value = write_llm_value_report(args.db)
+        graded = [v for v in value.get("voices", []) if v.get("status") == "OK"]
+        if graded:
+            summary["llm_value"] = {
+                v["voice"]: {
+                    "paired_rows": v["paired_rows"],
+                    "voice_brier": v["voice_brier"],
+                    "fused_brier": v["fused_brier"],
+                    "adds_value_over_fused": v["adds_value_over_fused"],
+                }
+                for v in graded
+            }
     except Exception:
         pass
 

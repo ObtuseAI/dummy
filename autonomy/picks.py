@@ -308,3 +308,29 @@ def pick_accuracy_report(
         "focus": "correct picks and probability (operator directive 2026-07-17)",
         "sources": [grade_source_picks(conn, source, days=days) for source in sources],
     }
+
+
+def llm_voice_sources(
+    conn: sqlite3.Connection, *, days: float | None = 90.0, limit: int = 12,
+) -> tuple[str, ...]:
+    """Distinct settled LLM panel/debate sources, most-recent first.
+
+    Every sealed panel opinion is already graded per settlement under a
+    stable per-voice source (``llm_panel_v3_{provider}_{digest}`` plus the
+    bounded ``llm_debate`` aggregate); this surfaces which voices exist so
+    the nightly picks report can grade each one. Observational only.
+    """
+    clause = ""
+    params: list[Any] = []
+    if days is not None:
+        clause = " AND s.created_at >= datetime('now', ?)"
+        params.append(f"-{float(days)} day")
+    rows = conn.execute(
+        "SELECT s.source, MAX(s.created_at) AS latest FROM signal_history s"
+        " JOIN settlements t ON t.market_ticker = s.market_ticker"
+        " WHERE (s.source LIKE 'llm_panel%' OR s.source LIKE 'llm_debate%')"
+        + clause +
+        " GROUP BY s.source ORDER BY latest DESC LIMIT ?",
+        (*params, int(limit)),
+    ).fetchall()
+    return tuple(str(row[0]) for row in rows)

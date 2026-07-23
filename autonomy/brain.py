@@ -3,6 +3,7 @@ execute -> reconcile -> learn. Honest status enums out of every cycle."""
 from __future__ import annotations
 
 import asyncio
+import json
 import math
 import os
 import time
@@ -833,6 +834,17 @@ class PredatorBrain:
         if self.router is not None and scored:
             await self._adjudicate_top_k(forecaster, scored, report)
             scored.sort(key=lambda t: edge_velocity(t[0], t[1]), reverse=True)
+            # Real spend/health telemetry per voice (observational): the
+            # tracker aggregates provider-reported cost and counts fallback
+            # failures without ever changing the roster contract.
+            try:
+                tracker = getattr(self.router, "cost_tracker", None)
+                if tracker is not None and tracker.calls:
+                    report.notes.append(
+                        "llm_router=" + json.dumps(tracker.summary(), sort_keys=True)
+                    )
+            except Exception:
+                pass
         report.phase_seconds["debate"] = round(time.perf_counter() - _t, 2)
 
         # One immutable v2 classification is shared by signals, board rows,
