@@ -84,6 +84,22 @@ def incorporate_adapter_plans(require_tests: bool = True):
         if plan.get("verdict") != RepoVerdict.ADAPTER_TARGET.value:
             skipped.append({"repo": plan["repo"], "reason": "not adapter target"})
             continue
+        # Security gate: a repo whose scan raised a BLOCK verdict
+        # (credential-harvesting / obfuscated RCE) never enters the adoption
+        # pipeline, regardless of how useful its strategy looks. Fail-closed.
+        security = plan.get("security") or {}
+        if str(security.get("verdict")) == "BLOCK":
+            registry["transient_failures"].append({
+                "repo": plan.get("repo"),
+                "verdict": "SECURITY_BLOCK",
+                "reason": "security gate: " + ",".join(security.get("block_reasons") or []),
+            })
+            skipped.append({
+                "repo": plan.get("repo"),
+                "reason": "security_block",
+                "block_reasons": security.get("block_reasons") or [],
+            })
+            continue
         for p in plan.get("plans", []):
             entry = _pending_entry(plan, p)
             if not require_tests:

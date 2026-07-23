@@ -289,6 +289,75 @@ def main() -> int:
     except Exception:
         pass
 
+    # Wave-74 (age-curve watch, "cut a year early"): promoted scopes whose
+    # newer-half contested edge fell materially below their older half go on a
+    # proactive watch list BEFORE auto-demotion fires. Disclosure only.
+    try:
+        watch: list[dict] = []
+        for scope in sorted(promoted):
+            entries = sorted(scope_rows.get(scope) or [])
+            if len(entries) < 40:
+                continue
+            half = len(entries) // 2
+            older = [edge for _ts, _cl, edge in entries[:half]]
+            newer = [edge for _ts, _cl, edge in entries[half:]]
+            older_mean = sum(older) / len(older)
+            newer_mean = sum(newer) / len(newer)
+            if newer_mean < older_mean - 0.01 and newer_mean < 0.005:
+                watch.append({
+                    "scope": scope,
+                    "older_half_edge": round(older_mean, 5),
+                    "newer_half_edge": round(newer_mean, 5),
+                    "decline": round(older_mean - newer_mean, 5),
+                })
+        if watch:
+            summary["age_curve_watch"] = sorted(
+                watch, key=lambda item: -item["decline"],
+            )
+    except Exception:
+        pass
+
+    # Wave-76 (Dodgers "development never silently stops"): watch the tuner
+    # and lake-ingestion machinery itself; a dead development lab becomes a
+    # daily headline. Fail-soft.
+    try:
+        from autonomy.development_tracker import write_development_tracker
+        from autonomy.sports.history_store import SportsHistoryStore as _Lake
+
+        _dev_store = _Lake()
+        try:
+            development = write_development_tracker(_dev_store)
+        finally:
+            _dev_store.close()
+        if development.get("warnings"):
+            summary["development_warnings"] = development["warnings"]
+    except Exception:
+        pass
+
+    # Wave-74 football-organization reports (self-scout, film room, recruiting
+    # board): all report-only, all fail-soft.
+    try:
+        from autonomy.self_scout import write_self_scout
+
+        scout = write_self_scout(args.db)
+        if scout.get("warnings"):
+            summary["self_scout_warnings"] = scout["warnings"]
+    except Exception:
+        pass
+    try:
+        from autonomy.film_room import write_film_room
+
+        write_film_room(args.db)
+    except Exception:
+        pass
+    try:
+        from autonomy.recruiting_board import write_recruiting_board
+
+        board = write_recruiting_board()
+        summary["recruiting_class"] = board.get("by_stage", {})
+    except Exception:
+        pass
+
     # Wave-69: edge-concentration / selection-bias audit (report-only lens on
     # which sources' edge is dangerously narrow). Fail-soft.
     try:

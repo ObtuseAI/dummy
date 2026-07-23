@@ -299,11 +299,13 @@ async def scan_repo(owner: str, name: str, max_files: int = 50) -> dict[str, Any
         "websocket_hits": [],
     }
 
+    texts: dict[str, str] = {}
     for f in files:
         try:
             text = await fetch_file(owner, name, f["path"])
         except Exception:
             continue
+        texts[f["path"]] = text
         result["files_scanned"] += 1
         if scan_text(text, DIRECT_ORDER_PATTERNS):
             result["direct_order_hits"].append(f["path"])
@@ -321,6 +323,12 @@ async def scan_repo(owner: str, name: str, max_files: int = 50) -> dict[str, Any
             result["dashboard_hits"].append(f["path"])
         if scan_text(text, RISK_PATTERNS):
             result["risk_hits"].append(f["path"])
+    # Security-inspection gate: credential-harvesting / RCE red flags. A BLOCK
+    # verdict must keep the repo out of the adoption pipeline (checked at
+    # incorporation), never adopted silently.
+    from repo_harvester.security_gate import assess_repo_security
+
+    result["security"] = assess_repo_security(texts)
     return result
 
 
