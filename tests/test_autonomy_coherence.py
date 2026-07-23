@@ -463,3 +463,36 @@ def test_two_subject_mlb_spreads_through_parser_fabricate_no_structural_violatio
     # Core assertions: NO fabricated structural violation, NO structural tier.
     assert ladder_violations(lattice.cells, "spread") == []
     assert lattice_conviction(lattice, assessments)["conviction_tier"] != TIER_STRUCTURAL
+
+
+# --------------------------------------------------------------------------
+# Wave-65: cross-family grouping via the ticker event segment
+# --------------------------------------------------------------------------
+
+def test_generic_sport_winner_spread_total_group_into_one_lattice():
+    """NFL winner (abbrev competitors) + spread/total (title-name competitors)
+    used to land in different game_keys; the shared ticker event segment now
+    joins them into one lattice."""
+    winner = _market("KXNFLGAME-26SEP13KCBUF-KC", "Chiefs vs Bills Winner?")
+    spread = _market(
+        "KXNFLSPREAD-26SEP13KCBUF-KC3", "Chiefs vs Bills Spread",
+        floor_strike=2.5,
+    )
+    total = _market(
+        "KXNFLTOTAL-26SEP13KCBUF-T45", "Chiefs vs Bills Total Points?",
+        floor_strike=45.5,
+    )
+    assessments = {
+        market.ticker: _assessment(
+            market.ticker, side="yes", model_prob=0.6,
+            market_prob=0.5, agreement=True,
+        )
+        for market in (winner, spread, total)
+    }
+    lattices = build_game_lattices([winner, spread, total], assessments)
+    assert len(lattices) == 1
+    lattice = lattices[0]
+    assert lattice.game_key == "nfl:20260913:KCBUF"
+    assert sorted(cell.family for cell in lattice.cells) == [
+        "spread", "total", "winner",
+    ]

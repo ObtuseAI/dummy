@@ -64,16 +64,25 @@ class SportsEpaSignal:
             return None
         subject_home = None if game is None else (game.home.upper() == subject)
 
-        model = LakeEpa(store, league=league)
+        # Daily-tuned parameters (walk-forward grid in DummyTune) with the
+        # shipped priors as fallback -- same auto-improve pattern as the
+        # ratings signals.
+        from autonomy.sports.tuner import load_tuned
+
+        tuned_edge = load_tuned(league, "epa_home_edge", "home_edge_epa", 0.06)
+        tuned_scale = load_tuned(league, "epa_scale", "scale", 8.0)
+        model = LakeEpa(store, league=league, home_edge_epa=tuned_edge)
         as_of = self._now()
         try:
             if subject_home is True:
-                p = model.matchup_prob(subject, opponent, as_of)
+                p = model.matchup_prob(subject, opponent, as_of, scale=tuned_scale)
             elif subject_home is False:
-                q = model.matchup_prob(opponent, subject, as_of)
+                q = model.matchup_prob(opponent, subject, as_of, scale=tuned_scale)
                 p = None if q is None else 1.0 - q
             else:
-                p = model.matchup_prob(subject, opponent, as_of, home_advantage=0.0)
+                p = model.matchup_prob(
+                    subject, opponent, as_of, scale=tuned_scale, home_advantage=0.0,
+                )
         except Exception:  # noqa: BLE001
             p = None
         if p is None:                                    # no EPA data for this scope

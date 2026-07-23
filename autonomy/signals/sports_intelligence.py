@@ -169,6 +169,10 @@ class SportsContract:
     subject: str | None = None
     threshold: float | None = None
     fight_code: str | None = None
+    # Raw ticker event segment (date-stripped remainder, e.g. "KCBUF"):
+    # identical across a game's winner/spread/total series, so coherence can
+    # join families without reconciling abbreviation vs title name spaces.
+    event_code: str | None = None
 
 
 def _date_and_remainder(token: str) -> tuple[str, str] | None:
@@ -215,6 +219,7 @@ def parse_sports_contract(market: MarketView) -> SportsContract | None:
         return SportsContract(
             parsed["league"], "winner", parsed["date_yyyymmdd"],
             (parsed["subject"], parsed["opponent"]), subject=parsed["subject"],
+            event_code=remainder,
         )
 
     if series in _TEAM_TOTAL_SERIES:
@@ -230,6 +235,7 @@ def parse_sports_contract(market: MarketView) -> SportsContract | None:
         return SportsContract(
             _TEAM_TOTAL_SERIES[series], "total", date_yyyymmdd,
             (names[0].strip(), names[1].strip()), threshold=parsed_threshold,
+            event_code=remainder,
         )
 
     if series in _TEAM_SPREAD_SERIES:
@@ -254,6 +260,7 @@ def parse_sports_contract(market: MarketView) -> SportsContract | None:
             _TEAM_SPREAD_SERIES[series], "spread", date_yyyymmdd,
             (names[0].strip(), names[1].strip()),
             subject=subject_match.group(1), threshold=parsed_threshold,
+            event_code=remainder,
         )
 
     if series in {"KXMLBGAME", "KXMLBTOTAL", "KXMLBRFI", "KXMLBSPREAD"}:
@@ -266,6 +273,7 @@ def parse_sports_contract(market: MarketView) -> SportsContract | None:
             return SportsContract(
                 "mlb", "winner", date_yyyymmdd, teams,
                 subject=canonical_team("mlb", parts[2]),
+                event_code=_strip_start_time(remainder),
             )
         if series == "KXMLBTOTAL":
             threshold = market.raw.get("floor_strike")
@@ -274,7 +282,9 @@ def parse_sports_contract(market: MarketView) -> SportsContract | None:
             except (TypeError, ValueError):
                 return None
             return SportsContract(
-                "mlb", "total_runs", date_yyyymmdd, teams, threshold=parsed_threshold,
+                "mlb", "total_runs", date_yyyymmdd, teams,
+                threshold=parsed_threshold,
+                event_code=_strip_start_time(remainder),
             )
         if series == "KXMLBSPREAD":
             # e.g. KXMLBSPREAD-26JUL112110AZLAD-AZ8 -> subject "AZ", floor 7.5
@@ -294,8 +304,12 @@ def parse_sports_contract(market: MarketView) -> SportsContract | None:
                 "mlb", "spread", date_yyyymmdd, teams,
                 subject=canonical_team("mlb", subject_match.group(1)),
                 threshold=parsed_threshold,
+                event_code=_strip_start_time(remainder),
             )
-        return SportsContract("mlb", "yrfi", date_yyyymmdd, teams)
+        return SportsContract(
+            "mlb", "yrfi", date_yyyymmdd, teams,
+            event_code=_strip_start_time(remainder),
+        )
 
     return None
 
