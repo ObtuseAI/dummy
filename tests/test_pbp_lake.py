@@ -195,3 +195,64 @@ def test_nhl_team_map_is_total_and_fail_closed():
     assert espn_abbreviation("Montréal Canadiens") == "MTL"
     assert espn_abbreviation("Hartford Whalers") is None
     assert espn_abbreviation(None) is None
+
+
+class _FakeResponse:
+    def __init__(self, data: bytes):
+        self._data = data
+    def read(self, *_a):
+        return self._data
+    def __enter__(self):
+        return self
+    def __exit__(self, *a):
+        return False
+
+
+def test_mlb_linescore_rows_fold_innings_as_periods():
+    import json as _json
+    from autonomy.ingest.pbp_lake import (
+        aggregate_league_season, fold_pbp_rows, stream_mlb_linescore_rows,
+    )
+    payload = {"dates": [{"games": [{
+        "gamePk": 778001, "status": {"abstractGameState": "Final"},
+        "linescore": {"innings": [
+            {"num": 1, "home": {"runs": 2}, "away": {"runs": 0}},
+            {"num": 2, "home": {"runs": 0}, "away": {"runs": 1}},
+            {"num": 9, "home": {"runs": 1}, "away": {"runs": 0}},
+        ]},
+    }]}]}
+    rows = list(stream_mlb_linescore_rows(
+        2025, opener=lambda _u: _FakeResponse(_json.dumps(payload).encode()),
+        sleep=lambda _s: None,
+    ))
+    # cumulative: after 1 -> 2-0, after 2 -> 2-1, after 9 -> 3-1
+    assert rows[0]["home_score"] == 2 and rows[0]["away_score"] == 0
+    assert rows[-1]["home_score"] == 3 and rows[-1]["away_score"] == 1
+    block = aggregate_league_season(fold_pbp_rows(rows), regulation_periods=9)
+    assert block["games"] == 1
+    assert block["margin"]["mean"] == 2.0  # 3 - 1
+    assert block["total"]["mean"] == 4.0
+
+
+def test_nhl_score_rows_fold_goals_into_period_scores():
+    import json as _json
+    from autonomy.ingest.pbp_lake import fold_pbp_rows, stream_nhl_linescore_rows
+    payload = {"games": [{
+        "id": 2024020001, "gameState": "OFF",
+        "goals": [
+            {"period": 1, "homeScore": 0, "awayScore": 1},
+            {"period": 1, "homeScore": 1, "awayScore": 1},
+            {"period": 3, "homeScore": 2, "awayScore": 1},
+        ],
+    }]}
+    rows = list(stream_nhl_linescore_rows(
+        2024, dates=["2024-11-01"],
+        opener=lambda _u: _FakeResponse(_json.dumps(payload).encode()),
+        sleep=lambda _s: None,
+    ))
+    folded = fold_pbp_rows(rows)
+    fold = folded["2024020001"]
+    assert (fold.home, fold.away) == (2, 1)
+    # period 2 had no goal -> carries period 1's 1-1 forward
+    assert fold.period_end[2][1:] == (1, 1)
+    assert fold.period_end[3][1:] == (2, 1)

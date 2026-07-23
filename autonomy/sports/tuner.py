@@ -61,6 +61,18 @@ def tune_league(store: SportsHistoryStore, league: str) -> dict[str, Any]:
             out[name] = best
     scoring = tune_scoring_sigmas(store, league)
     out.update(scoring)
+    if league == "nfl":
+        # EPA covers NFL only today; the walk-forward returns n=0 elsewhere
+        # so other leagues would just be wasted grid passes.
+        from autonomy.sports.walk_forward import walk_forward_epa
+
+        for name, pname, grid in (
+            ("epa_home_edge", "home_edge_epa", [0.0, 0.03, 0.06, 0.09, 0.12]),
+            ("epa_scale", "scale", [4.0, 6.0, 8.0, 10.0, 12.0]),
+        ):
+            best = tune_param(store, league, walk_forward_epa, pname, grid)
+            if best is not None:
+                out[name] = best
     return out
 
 

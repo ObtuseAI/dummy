@@ -48,6 +48,10 @@ PBP_SOURCES: dict[str, tuple[str, str, int]] = {
     # NFL rides the nflverse release assets (different URL + column names;
     # see _NFLVERSE_PBP_URL and the column mapping in stream_pbp_rows).
     "nfl": ("nflverse-data", "nfl", 4),
+    # MLB and NHL use their own JSON feeds (StatsAPI linescore / NHL score);
+    # the repo tuple is unused for them, only the regulation-period count.
+    "mlb": ("statsapi", "mlb", 9),
+    "nhl": ("nhle", "nhl", 3),
 }
 _URL = ("https://raw.githubusercontent.com/sportsdataverse/{repo}/main/"
         "{path}/pbp/csv/play_by_play_{season}.csv.gz")
@@ -111,6 +115,135 @@ def _int(value: Any) -> int | None:
         return None
 
 
+_MLB_SCHEDULE_URL = (
+    "https://statsapi.mlb.com/api/v1/schedule?sportId=1&season={season}"
+    "&gameType=R&hydrate=linescore"
+)
+
+
+def _default_opener(target: str) -> io.BufferedIOBase:  # pragma: no cover - network
+    request = urllib.request.Request(target, headers={"User-Agent": USER_AGENT})
+    return urllib.request.urlopen(request, timeout=FETCH_TIMEOUT_SECONDS)
+
+
+def stream_mlb_linescore_rows(
+    season: int,
+    *,
+    opener: Callable[[str], io.BufferedIOBase] | None = None,
+    sleep: Callable[[float], None] = time.sleep,
+) -> Iterator[dict[str, Any]]:
+    """MLB PBP via the StatsAPI schedule+linescore feed (innings as periods).
+
+    One bounded call per season yields every final game's per-inning runs;
+    each inning becomes a fold row carrying the cumulative score, so the same
+    aggregation machinery produces MLB margin/total distributions and a
+    comeback-by-inning matrix. Runs, not points; 9 regulation innings.
+    """
+    url = _MLB_SCHEDULE_URL.format(season=int(season))
+    read = opener or _default_opener
+    with read(url) as response:
+        payload = json.loads(response.read().decode("utf-8", errors="replace"))
+    sleep(POLITE_SLEEP_SECONDS)
+    for date_block in payload.get("dates", []):
+        for game in date_block.get("games", []):
+            if str((game.get("status") or {}).get("abstractGameState")) != "Final":
+                continue
+            game_id = str(game.get("gamePk") or "")
+            innings = ((game.get("linescore") or {}).get("innings")) or []
+            if not game_id or not innings:
+                continue
+            home_cum = away_cum = 0
+            for inning in innings:
+                num = _int(inning.get("num"))
+                if num is None:
+                    continue
+                home_cum += _int((inning.get("home") or {}).get("runs")) or 0
+                away_cum += _int((inning.get("away") or {}).get("runs")) or 0
+                yield {
+                    "game_id": game_id,
+                    "sequence_number": num,
+                    "period_number": num,
+                    "home_score": home_cum,
+                    "away_score": away_cum,
+                    "scoring_play": (
+                        ((inning.get("home") or {}).get("runs") or 0) > 0
+                        or ((inning.get("away") or {}).get("runs") or 0) > 0
+                    ),
+                    "shooting_play": False,
+                }
+
+
+_NHL_SCORE_URL = "https://api-web.nhle.com/v1/score/{date}"
+
+
+def _nhl_season_dates(season: int) -> Iterator[str]:
+    """Calendar dates for an NHL season (Oct 1 of `season` -> Jun 30 next)."""
+    from datetime import date, timedelta
+
+    day = date(int(season), 10, 1)
+    end = date(int(season) + 1, 6, 30)
+    while day <= end:
+        yield day.isoformat()
+        day = day + timedelta(days=1)
+
+
+def stream_nhl_linescore_rows(
+    season: int,
+    *,
+    opener: Callable[[str], io.BufferedIOBase] | None = None,
+    sleep: Callable[[float], None] = time.sleep,
+    dates: Iterable[str] | None = None,
+) -> Iterator[dict[str, Any]]:
+    """NHL PBP via the api-web.nhle.com per-date score feed (3 periods).
+
+    Each final game's ``goals`` array carries the running home/away score and
+    its period, so the period-end cumulative score folds exactly like the
+    other leagues. One polite call per calendar date; ``dates`` overrides the
+    default season span (used by tests).
+    """
+    read = opener or _default_opener
+    for iso_date in (dates if dates is not None else _nhl_season_dates(season)):
+        url = _NHL_SCORE_URL.format(date=iso_date)
+        try:
+            with read(url) as response:
+                payload = json.loads(response.read().decode("utf-8", errors="replace"))
+        except Exception:  # noqa: BLE001 - one bad date never aborts the season
+            sleep(POLITE_SLEEP_SECONDS)
+            continue
+        sleep(POLITE_SLEEP_SECONDS)
+        for game in payload.get("games", []):
+            if str(game.get("gameState")) not in ("OFF", "FINAL"):
+                continue
+            game_id = str(game.get("id") or "")
+            goals = game.get("goals") or []
+            if not game_id or not goals:
+                continue
+            # Period-end cumulative score = the last running score seen in
+            # each period; periods with no goal carry the prior period forward.
+            period_end: dict[int, tuple[int, int]] = {}
+            for goal in goals:
+                period = _int(goal.get("period"))
+                home = _int(goal.get("homeScore"))
+                away = _int(goal.get("awayScore"))
+                if period is None or home is None or away is None:
+                    continue
+                period_end[period] = (home, away)
+            if not period_end:
+                continue
+            carry = (0, 0)
+            for period in range(1, max(period_end) + 1):
+                carry = period_end.get(period, carry)
+                yield {
+                    "game_id": game_id,
+                    "sequence_number": period,
+                    "period_number": period,
+                    "home_score": carry[0],
+                    "away_score": carry[1],
+                    "scoring_play": period in period_end,
+                    "shooting_play": False,
+                }
+
+
 def stream_pbp_rows(
     league: str,
     season: int,
@@ -122,14 +255,17 @@ def stream_pbp_rows(
 
     The gz body is spooled to a temporary file (25-70MB compressed for the
     big leagues) and deleted afterwards; rows never accumulate in memory.
+    MLB and NHL use their own JSON feeds (see the per-league streamers).
     """
+    if league == "mlb":
+        yield from stream_mlb_linescore_rows(season, opener=opener, sleep=sleep)
+        return
+    if league == "nhl":
+        yield from stream_nhl_linescore_rows(season, opener=opener, sleep=sleep)
+        return
     url = pbp_season_url(league, season)
     if opener is None:
-        def opener(target: str) -> io.BufferedIOBase:  # pragma: no cover
-            request = urllib.request.Request(
-                target, headers={"User-Agent": USER_AGENT},
-            )
-            return urllib.request.urlopen(request, timeout=FETCH_TIMEOUT_SECONDS)
+        opener = _default_opener
 
     handle, spool_path = tempfile.mkstemp(suffix=".csv.gz")
     try:

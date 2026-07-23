@@ -106,30 +106,62 @@ class ActionNetworkProvider(_JsonProvider):
         return f"https://api.actionnetwork.com/web/v2/scoreboard/{token}?period=game"
 
     def parse(self, payload: Any, *, now: float) -> list[SplitsRead]:
+        """Parse the v2 scoreboard (confirmed live 2026-07-23).
+
+        Real shape: each game carries ``home_team_id``/``away_team_id`` and a
+        ``teams`` list (id -> full_name); splits live per-book under
+        ``markets[book_id]["event"]["moneyline"]`` as a two-entry list, each
+        entry tagged ``side``/``team_id`` with ``bet_info.tickets.percent`` and
+        ``bet_info.money.percent``. The first book carrying complete home+away
+        splits wins (they agree across books; AN publishes one split feed).
+        """
         games = payload.get("games") if isinstance(payload, dict) else None
         out: list[SplitsRead] = []
         for game in games or []:
             if not isinstance(game, dict):
                 continue
-            teams = game.get("teams") or []
-            home = away = None
-            for team in teams:
-                if not isinstance(team, dict):
-                    continue
-                if str(team.get("side") or team.get("home_away")).lower() in ("home", "true"):
-                    home = team.get("full_name") or team.get("display_name")
-                else:
-                    away = team.get("full_name") or team.get("display_name")
-            # Splits live under a bet_info/odds block keyed by side.
-            info = game.get("bet_info") or game.get("splits") or {}
-            ml = info.get("moneyline") or info.get("ml") or info
-            ht = _pct(_dig(ml, "home", "tickets", "percent"))
-            at = _pct(_dig(ml, "away", "tickets", "percent"))
-            hm = _pct(_dig(ml, "home", "money", "percent"))
-            am = _pct(_dig(ml, "away", "money", "percent"))
-            if home and away and (ht is not None or hm is not None):
+            names = {
+                team.get("id"): team.get("full_name") or team.get("display_name")
+                for team in (game.get("teams") or [])
+                if isinstance(team, dict)
+            }
+            home = names.get(game.get("home_team_id"))
+            away = names.get(game.get("away_team_id"))
+            if not home or not away:
+                continue
+            split = self._first_complete_moneyline_split(game.get("markets"))
+            if split is None:
+                continue
+            ht, at, hm, am = split
+            if ht is not None or hm is not None:
                 out.append(SplitsRead(self.name, str(home), str(away), ht, at, hm, am, now))
         return out
+
+    @staticmethod
+    def _first_complete_moneyline_split(
+        markets: Any,
+    ) -> tuple[float | None, float | None, float | None, float | None] | None:
+        """(home_tickets, away_tickets, home_money, away_money) or None."""
+        if not isinstance(markets, dict):
+            return None
+        for book in markets.values():
+            moneyline = _dig(book, "event", "moneyline")
+            if not isinstance(moneyline, list):
+                continue
+            by_side: dict[str, dict] = {}
+            for entry in moneyline:
+                if isinstance(entry, dict) and entry.get("side") in ("home", "away"):
+                    by_side[str(entry["side"])] = entry.get("bet_info") or {}
+            home_info, away_info = by_side.get("home"), by_side.get("away")
+            if not home_info or not away_info:
+                continue
+            ht = _pct(_dig(home_info, "tickets", "percent"))
+            at = _pct(_dig(away_info, "tickets", "percent"))
+            hm = _pct(_dig(home_info, "money", "percent"))
+            am = _pct(_dig(away_info, "money", "percent"))
+            if ht is not None or hm is not None:
+                return ht, at, hm, am
+        return None
 
 
 class VsinProvider(_JsonProvider):
@@ -197,16 +229,63 @@ class _NextDataProvider(_JsonProvider):
         return out
 
 
-class CoversProvider(_NextDataProvider):
+class CoversProvider(_JsonProvider):
+    """Covers consensus (confirmed live 2026-07-23). The __NEXT_DATA__ page was
+    retired; the legacy contests table endpoint still serves a clean HTML
+    consensus grid: league | away | home | date | time | away% | home% | ...
+    Ticket-only source (its documented role)."""
     name = "covers"
+    _row = re.compile(r"<tr[^>]*>(.*?)</tr>", re.DOTALL)
 
     def page_url(self, sport_league: str) -> str | None:
         if sport_league not in _AN_LEAGUE:
             return None
-        return f"https://www.covers.com/sport/{sport_league}/matchups?selectedConsensus=true"
+        return f"https://contests.covers.com/consensus/topconsensus/{sport_league}"
 
-    def rows_from_blob(self, blob: dict) -> list[dict]:
-        return _dig(blob, "props", "pageProps", "consensus") or []
+    def fetch(self, sport_league: str, fetcher: PoliteFetcher, *, now: float) -> list[SplitsRead]:
+        url = self.page_url(sport_league)
+        if not url:
+            return []
+        html = fetcher.get_text(url)
+        if not html:
+            return []
+        try:
+            return self._parse_html(html, now=now)
+        except Exception:
+            return []
+
+    _LEAGUE_TOKENS = frozenset({
+        "MLB", "NFL", "NBA", "NHL", "NCAAF", "NCAAB", "WNBA", "CFB", "CBB",
+    })
+
+    def _parse_html(self, html: str, *, now: float) -> list[SplitsRead]:
+        out: list[SplitsRead] = []
+        for raw in self._row.findall(html):
+            text = re.sub(r"<[^>]+>", " ", raw)
+            # The two consensus percentages are the first two "NN%" tokens,
+            # in away-then-home order (matches the rendered grid).
+            pcts = re.findall(r"(\d{1,3})\s*%", text)
+            if len(pcts) < 2:
+                continue
+            # Team abbreviations are the two alpha tokens right after the
+            # league tag in the first cell (e.g. "MLB Sd Atl").
+            tokens = re.findall(r"[A-Za-z]{2,4}", text)
+            teams = [
+                tok for tok in tokens
+                if tok.upper() not in self._LEAGUE_TOKENS
+                and tok.lower() not in {"pm", "am", "et", "details", "thu", "mon",
+                                        "tue", "wed", "fri", "sat", "sun", "jan",
+                                        "feb", "mar", "apr", "jun", "jul", "aug",
+                                        "sep", "oct", "nov", "dec", "may"}
+            ]
+            if len(teams) < 2:
+                continue
+            away, home = teams[0], teams[1]
+            at = _pct(pcts[0])
+            ht = _pct(pcts[1])
+            if home and away and ht is not None:
+                out.append(SplitsRead(self.name, home, away, ht, at, None, None, now))
+        return out
 
 
 class SbrProvider(_NextDataProvider):

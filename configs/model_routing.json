@@ -118,27 +118,6 @@
       "timeout_seconds": 20.0,
       "route_mode": "openrouter"
     },
-    "panel_llama": {
-      "api_base": "https://openrouter.ai/api",
-      "api_key_env": "OPENROUTER_API_KEY",
-      "model_name": "meta-llama/llama-3.3-70b-instruct",
-      "rpm": 60, "tpm": 100000, "timeout_seconds": 20.0,
-      "route_mode": "openrouter"
-    },
-    "panel_gpt": {
-      "api_base": "https://openrouter.ai/api",
-      "api_key_env": "OPENROUTER_API_KEY",
-      "model_name": "openai/gpt-4o-mini",
-      "rpm": 60, "tpm": 100000, "timeout_seconds": 20.0,
-      "route_mode": "openrouter"
-    },
-    "panel_qwen": {
-      "api_base": "https://openrouter.ai/api",
-      "api_key_env": "OPENROUTER_API_KEY",
-      "model_name": "qwen/qwen-2.5-72b-instruct",
-      "rpm": 60, "tpm": 100000, "timeout_seconds": 20.0,
-      "route_mode": "openrouter"
-    },
     "claude_cli": {
       "api_base": "", "api_key_env": "",
       "model_name": "claude-sonnet-5",

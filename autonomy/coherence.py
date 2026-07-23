@@ -115,7 +115,18 @@ class GameLattice:
     cells: list[LatticeCell]
 
 
-def _canonical_game_key(sport: str, date_yyyymmdd: str, competitors: tuple[str, str]) -> str:
+def _canonical_game_key(
+    sport: str,
+    date_yyyymmdd: str,
+    competitors: tuple[str, str],
+    event_code: str | None = None,
+) -> str:
+    if event_code:
+        # The ticker's event segment is identical across a game's winner/
+        # spread/total series, so it joins families exactly even where
+        # competitors come from different string spaces (abbreviations vs
+        # title names).
+        return f"{sport}:{date_yyyymmdd}:{event_code}"
     left, right = sorted(competitors)
     return f"{sport}:{date_yyyymmdd}:{left}@{right}"
 
@@ -156,7 +167,10 @@ def build_game_lattices(
         family = _FAMILY_BY_MARKET_TYPE.get(contract.market_type)
         if family is None:
             continue
-        game_key = _canonical_game_key(contract.sport, contract.date_yyyymmdd, contract.competitors)
+        game_key = _canonical_game_key(
+            contract.sport, contract.date_yyyymmdd, contract.competitors,
+            getattr(contract, "event_code", None),
+        )
         cell = LatticeCell(
             family=family, ticker=ticker, subject=contract.subject,
             line=contract.threshold,

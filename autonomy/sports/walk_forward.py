@@ -338,10 +338,20 @@ def sigma_log_likelihood(residuals: list[float], sigma: float) -> float | None:
     return total / len(residuals)
 
 
-def walk_forward_epa(store: SportsHistoryStore, league: str = "nfl", *, min_games: int = 4) -> dict[str, Any]:
-    """Grade EPA/play point-in-time (predict each game before it is played)."""
+def walk_forward_epa(
+    store: SportsHistoryStore, league: str = "nfl", *, min_games: int = 4,
+    home_edge_epa: float | None = None, scale: float | None = None,
+) -> dict[str, Any]:
+    """Grade EPA/play point-in-time (predict each game before it is played).
+
+    ``home_edge_epa`` and ``scale`` are exposed so the daily tuner can grid
+    them the same way it tunes the ratings' home advantage.
+    """
     games = store.evaluation_games(league=league)
-    model = LakeEpa(store, league=league, require_known_availability=True)
+    model = LakeEpa(
+        store, league=league, require_known_availability=True,
+        **({"home_edge_epa": home_edge_epa} if home_edge_epa is not None else {}),
+    )
     preds: list[tuple[float, int]] = []
     for game in games:
         home, away, t = game.get("home"), game.get("away"), game["start_time"]
@@ -350,7 +360,9 @@ def walk_forward_epa(store: SportsHistoryStore, league: str = "nfl", *, min_game
             continue
         if model.games_seen(home, t) < min_games or model.games_seen(away, t) < min_games:
             continue
-        p = model.matchup_prob(home, away, t)
+        p = model.matchup_prob(
+            home, away, t, **({"scale": scale} if scale is not None else {}),
+        )
         if p is not None:
             preds.append((p, 1 if hs > as_ else 0))
     report = _grade(preds)

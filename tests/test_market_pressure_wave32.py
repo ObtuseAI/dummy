@@ -52,12 +52,22 @@ def test_fusion_empty_without_tickets():
 # ---- providers -------------------------------------------------------------
 
 def test_action_network_parse():
-    payload = {"games": [{"teams": [
-        {"side": "home", "full_name": "Boston Red Sox"},
-        {"side": "away", "full_name": "Tampa Bay Rays"}],
-        "bet_info": {"moneyline": {
-            "home": {"tickets": {"percent": 62}, "money": {"percent": 41}},
-            "away": {"tickets": {"percent": 38}, "money": {"percent": 59}}}}}]}
+    # Confirmed live shape (2026-07-23): per-book markets.event.moneyline is a
+    # two-entry list tagged side/team_id with bet_info.tickets/money.percent;
+    # teams resolve through home_team_id/away_team_id.
+    payload = {"games": [{
+        "home_team_id": 1, "away_team_id": 2,
+        "teams": [
+            {"id": 1, "full_name": "Boston Red Sox"},
+            {"id": 2, "full_name": "Tampa Bay Rays"},
+        ],
+        "markets": {"15": {"event": {"moneyline": [
+            {"side": "home", "team_id": 1,
+             "bet_info": {"tickets": {"percent": 62}, "money": {"percent": 41}}},
+            {"side": "away", "team_id": 2,
+             "bet_info": {"tickets": {"percent": 38}, "money": {"percent": 59}}},
+        ]}}},
+    }]}
     reads = ActionNetworkProvider().parse(payload, now=NOW)
     assert len(reads) == 1
     r = reads[0]
@@ -65,15 +75,24 @@ def test_action_network_parse():
     assert r.home_money_pct == 0.41 and r.has_money()
 
 
-def test_vsin_parse_and_covers_nextdata_parse():
+def test_vsin_parse_and_covers_html_parse():
     v = VsinProvider().parse({"data": [{"home_team": "Yankees", "away_team": "Dodgers",
         "home_bets_pct": 55, "away_bets_pct": 45,
         "home_handle_pct": 48, "away_handle_pct": 52}]}, now=NOW)
     assert v[0].home_money_pct == 0.48
-    blob = {"props": {"pageProps": {"consensus": [
-        {"home_team": "Cubs", "away_team": "Twins", "home_consensus": 70, "away_consensus": 30}]}}}
-    c = CoversProvider().parse(blob, now=NOW)
-    assert c[0].home_ticket_pct == 0.70 and not c[0].has_money()
+    # Confirmed live shape (2026-07-23): Covers serves a legacy HTML consensus
+    # grid (league | away | home | date | time | away% | home% | ...).
+    html = (
+        "<table><tr><th>Matchup</th></tr>"
+        "<tr><td><div>MLB</div><div>Min</div><div>Cle</div></td>"
+        "<td>Thu. Jul 23<span>6:40 pm ET</span></td>"
+        "<td>42%<span>58%</span></td><td>+120 -140</td></tr></table>"
+    )
+    c = CoversProvider()._parse_html(html, now=NOW)
+    assert len(c) == 1
+    assert c[0].away_team == "Min" and c[0].home_team == "Cle"
+    assert c[0].home_ticket_pct == 0.58 and c[0].away_ticket_pct == 0.42
+    assert not c[0].has_money()
 
 
 def test_provider_parse_is_fail_closed_on_junk():
