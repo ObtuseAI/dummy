@@ -906,6 +906,22 @@ class PredatorBrain:
         except Exception:
             pass
 
+        # Wave-75 coordinator reports (fail-soft, report-only): the defensive
+        # top-threat decomposition of the open book, and the offensive matchup
+        # lens over the fresh board's letter-tier rows.
+        try:
+            from autonomy.top_threat import write_top_threat
+
+            write_top_threat(self.ledger)
+        except Exception:
+            pass
+        try:
+            from autonomy.matchup_lens import write_matchup_report
+
+            write_matchup_report()
+        except Exception:
+            pass
+
         # Exit logic remains an observational challenger until it has enough
         # forward evidence and complete live sell/reconciliation proof. It may
         # recommend EXIT, but this cycle never turns that advice into an order.
