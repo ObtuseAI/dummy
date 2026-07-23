@@ -50,6 +50,8 @@ data class LeaguePick(
     val probability: Double?,
     val marketProbability: Double?,
     val gameDate: String?,
+    // ISO calendar date (YYYY-MM-DD) for reliable soonest-first ordering.
+    val eventDate: String?,
     val why: String?,
     // Wave-78: the independent model view -- our own model's both-sides call,
     // surfaced even when the promotion ladder keeps it out of the traded number.
@@ -208,6 +210,7 @@ class DummyRepository(context: Context) {
                     marketProbability = r.optDoubleOrNull("market_probability"),
                     gameDate = r.optString("game_date").ifBlank { r.optString("event_date") }
                         .ifBlank { null },
+                    eventDate = r.optString("event_date").ifBlank { null },
                     why = r.optString("why").ifBlank { null },
                     modelProbability = r.optDoubleOrNull("model_probability"),
                     modelEdge = r.optDoubleOrNull("model_edge"),
@@ -222,11 +225,22 @@ class DummyRepository(context: Context) {
                 }
             }
         }
+        // Soonest-first: a daily guide should lead with the nearest slate, not
+        // jump to a far-future date just because it has a strong pick. Within a
+        // day, rank by tier then edge (picks) / model disagreement (leans).
         val tierRank = mapOf("A" to 0, "B" to 1, "C" to 2)
+        val farFuture = "9999-99-99"
         picks.sortWith(
-            compareBy({ tierRank[it.tier] ?: 9 }, { -(it.edge ?: -1.0) })
+            compareBy(
+                { it.eventDate ?: farFuture },
+                { tierRank[it.tier] ?: 9 },
+                { -(it.edge ?: -1.0) },
+            )
         )
-        leans.sortByDescending { kotlin.math.abs(it.modelEdge ?: 0.0) }
+        leans.sortWith(
+            compareBy<LeaguePick> { it.eventDate ?: farFuture }
+                .thenByDescending { kotlin.math.abs(it.modelEdge ?: 0.0) }
+        )
         return LeagueGuide(
             league = group.uppercase(),
             coverageDate = board.optString("coverage_date").ifBlank { null },
