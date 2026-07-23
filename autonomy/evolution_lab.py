@@ -150,6 +150,41 @@ def _bounded_genome(
     )
 
 
+def crossover_genomes(
+    parent_a: ResearchGenome, parent_b: ResearchGenome,
+) -> list[ResearchGenome]:
+    """Deterministic recombinant children mixing two parents' genes.
+
+    Single-parent grid mutation cannot reach a genome that combines proven
+    building blocks from two DIFFERENT lineages -- e.g. one parent's tight
+    shrinkage with another's permissive entry price. Uniform crossover emits
+    the two complementary allele swaps; the midpoint blend covers the
+    recombinant centre. All children are clamped into the valid genome box,
+    so a cross never produces an out-of-bounds architecture. Deterministic
+    (no RNG) to preserve the lab's causal-replay reproducibility.
+    """
+    children = [
+        # Two complementary uniform-crossover children (alternate the source
+        # of each gene between the parents).
+        _bounded_genome(
+            parent_a.shrinkage, parent_b.edge_threshold_cents,
+            parent_a.max_uncertainty, parent_b.max_entry_price_cents,
+        ),
+        _bounded_genome(
+            parent_b.shrinkage, parent_a.edge_threshold_cents,
+            parent_b.max_uncertainty, parent_a.max_entry_price_cents,
+        ),
+        # Midpoint blend of every gene -- the recombinant centroid.
+        _bounded_genome(
+            (parent_a.shrinkage + parent_b.shrinkage) / 2.0,
+            round((parent_a.edge_threshold_cents + parent_b.edge_threshold_cents) / 2.0),
+            (parent_a.max_uncertainty + parent_b.max_uncertainty) / 2.0,
+            round((parent_a.max_entry_price_cents + parent_b.max_entry_price_cents) / 2.0),
+        ),
+    ]
+    return children
+
+
 def candidate_population(
     previous_active: ResearchGenome | None,
     *,
@@ -182,6 +217,18 @@ def candidate_population(
                 archive_parent.max_uncertainty + direction * 0.03 * scale,
                 archive_parent.max_entry_price_cents + round(direction * 5 * scale),
             ))
+
+    # Sexual recombination: cross the active parent with each retained elite,
+    # and adjacent elites with each other, so building blocks from distinct
+    # lineages combine before the broad lattice fills remaining slots. These
+    # get priority over generic lattice exploration for exactly that reason.
+    cross_partners = list(archive_parents[:8])
+    for partner in cross_partners:
+        for child in crossover_genomes(parent, partner):
+            add(child)
+    for left, right in zip(cross_partners, cross_partners[1:]):
+        for child in crossover_genomes(left, right):
+            add(child)
     for ds, de, du, dp in product(
         (-0.20, -0.08, 0.08, 0.20),
         (-3, 0, 3),

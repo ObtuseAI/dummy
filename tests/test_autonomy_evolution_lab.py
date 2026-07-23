@@ -189,3 +189,37 @@ def test_trace_replay_fingerprints_truth_and_fails_closed_on_gaps():
     assert first["orders_missing_queue_snapshot"] == 1
     assert first["complete_for_execution_optimization"] is False
     assert first["execution_authority"] is False
+
+
+def test_crossover_recombines_building_blocks_from_both_parents():
+    from autonomy.evolution_lab import crossover_genomes
+
+    a = ResearchGenome(0.30, 5, 0.12, 50)   # tight, cheap-entry lineage
+    b = ResearchGenome(1.20, 16, 0.38, 88)  # loose, permissive lineage
+    children = crossover_genomes(a, b)
+    assert all(child.is_bounded() for child in children)
+    # The two complementary uniform-crossover children each mix one parent's
+    # shrinkage with the OTHER parent's entry price -- a combination neither a
+    # nor b holds and grid mutation around one parent cannot land on.
+    combos = {(c.shrinkage, c.max_entry_price_cents) for c in children}
+    assert (0.30, 88) in combos or (1.20, 50) in combos
+    # Midpoint blend is the recombinant centroid.
+    assert any(
+        abs(c.shrinkage - 0.75) < 1e-6 and c.max_entry_price_cents == 69
+        for c in children
+    )
+    # Deterministic.
+    assert crossover_genomes(a, b) == children
+
+
+def test_population_contains_cross_lineage_recombinants():
+    from autonomy.evolution_lab import crossover_genomes
+
+    active = ResearchGenome(0.30, 5, 0.12, 50)
+    elite = ResearchGenome(1.20, 16, 0.38, 88)
+    population = candidate_population(
+        active, generation=7, limit=64, archive_parents=(elite,),
+    )
+    expected = crossover_genomes(active, elite)
+    assert any(child in population for child in expected)
+    assert all(genome.is_bounded() for genome in population)
