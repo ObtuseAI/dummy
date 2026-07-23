@@ -112,3 +112,82 @@ def test_matchup_report_orders_prime_before_bait(tmp_path):
     assert "FIRM-1" in report["bait_suspects"]
     # Non-tier rows never graded.
     assert all(g["ticker"] != "WATCH-1" for g in report["graded"])
+
+
+# ------------------------------------------------- development tracker (W76)
+
+def test_development_tracker_flags_stale_tuner_and_lake(tmp_path):
+    import json as _json
+    from datetime import datetime, timezone
+    from autonomy.development_tracker import build_development_tracker
+    from autonomy.sports.history_store import SportsHistoryStore
+
+    now = datetime(2026, 7, 23, 12, 0, tzinfo=timezone.utc)
+    tuned = tmp_path / "tuned.json"
+    tuned.write_text(_json.dumps(
+        {"generated_at": "2026-07-20T01:00:00+00:00", "leagues": {}},
+    ), encoding="utf-8")
+    store = SportsHistoryStore(tmp_path / "lake.db")
+    store.upsert_games([{
+        "game_id": "old1", "league": "mlb", "start_time": "2026-07-19T23:00:00+00:00",
+        "status": "final", "home": "AZ", "away": "STL",
+        "home_score": 4, "away_score": 2,
+    }])
+    report = build_development_tracker(
+        store, active_leagues=("mlb",), now=now, tuned_path=tuned,
+    )
+    assert "tuner_output_stale_or_missing" in report["warnings"]
+    assert "lake_ingestion_stale_mlb" in report["warnings"]
+    assert report["development_machine_healthy"] is False
+    assert report["lake_forward_growth"]["mlb"]["age_days"] > 3
+
+
+def test_development_tracker_healthy_when_fresh(tmp_path):
+    import json as _json
+    from datetime import datetime, timedelta, timezone
+    from autonomy.development_tracker import build_development_tracker
+    from autonomy.sports.history_store import SportsHistoryStore
+
+    now = datetime(2026, 7, 23, 12, 0, tzinfo=timezone.utc)
+    tuned = tmp_path / "tuned.json"
+    tuned.write_text(_json.dumps(
+        {"generated_at": (now - timedelta(hours=6)).isoformat(), "leagues": {}},
+    ), encoding="utf-8")
+    store = SportsHistoryStore(tmp_path / "lake.db")
+    store.upsert_games([{
+        "game_id": "new1", "league": "mlb",
+        "start_time": (now - timedelta(hours=14)).isoformat(),
+        "status": "final", "home": "AZ", "away": "STL",
+        "home_score": 4, "away_score": 2,
+    }])
+    report = build_development_tracker(
+        store, active_leagues=("mlb",), now=now, tuned_path=tuned,
+    )
+    assert report["development_machine_healthy"] is True
+
+
+def test_matchup_lens_fat_side_tiebreak(tmp_path):
+    import json as _json
+    board = tmp_path / "bet_board.json"
+    recal = tmp_path / "last_recalibration.json"
+    # Two prime-isolation rows, identical edge; the cheap-miss entry wins.
+    common = {
+        "tier": "C", "after_fee_edge": 0.02, "league": "mlb",
+        "yes_bid": 40, "yes_ask": 50,
+        "selected_bid_size_fp": 5.0, "selected_ask_size_fp": 6.0,
+        "quote_age_seconds": 400.0,
+    }
+    board.write_text(_json.dumps({"top": [
+        {"ticker": "PRICEY", "entry_price_cents": 78, **common},
+        {"ticker": "CHEAP", "entry_price_cents": 35, **common},
+    ]}), encoding="utf-8")
+    recal.write_text(_json.dumps(
+        {"weights": {"market_debias|mlb|na|pre": 1.5}},
+    ), encoding="utf-8")
+    from autonomy.matchup_lens import build_matchup_report
+
+    report = build_matchup_report(board_path=board, recal_path=recal)
+    assert [g["ticker"] for g in report["graded"]] == ["CHEAP", "PRICEY"]
+    pricey = report["graded"][1]
+    assert pricey["expensive_miss"] is True
+    assert report["graded"][0]["loss_given_wrong_cents"] == 35

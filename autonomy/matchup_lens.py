@@ -121,6 +121,13 @@ def build_matchup_report(
         strength = source_strength(weights, hint)
         softness = market_softness(row)
         matchup = grade_matchup(strength, softness.get("softness"))
+        # Golf course management ("aim at the fat side of the green"): at
+        # similar edge, prefer the entry whose MISS is cheap. For a binary
+        # contract the loss-given-wrong is the entry price itself.
+        entry_price = row.get("entry_price_cents")
+        loss_given_wrong = (
+            int(entry_price) if isinstance(entry_price, (int, float)) else None
+        )
         graded.append({
             "ticker": row.get("ticker"),
             "label": row.get("label") or row.get("market"),
@@ -129,11 +136,18 @@ def build_matchup_report(
             "source_strength": strength,
             **softness,
             "matchup": matchup,
+            "loss_given_wrong_cents": loss_given_wrong,
+            "expensive_miss": (
+                loss_given_wrong is not None and loss_given_wrong > 70
+            ),
         })
     order = {"prime_isolation": 0, "neutral": 1, "unassessed": 2,
              "firm_market_edge": 3, "bait_suspect": 4}
-    graded.sort(key=lambda g: (order.get(g["matchup"], 9),
-                               -(g.get("after_fee_edge") or 0.0)))
+    graded.sort(key=lambda g: (
+        order.get(g["matchup"], 9),
+        -(g.get("after_fee_edge") or 0.0),
+        g.get("loss_given_wrong_cents") or 100,   # cheap miss breaks ties
+    ))
     return {
         "report_version": "matchup_lens_v1",
         "generated_at": datetime.now(timezone.utc).isoformat(),

@@ -317,6 +317,23 @@ def main() -> int:
     except Exception:
         pass
 
+    # Wave-76 (Dodgers "development never silently stops"): watch the tuner
+    # and lake-ingestion machinery itself; a dead development lab becomes a
+    # daily headline. Fail-soft.
+    try:
+        from autonomy.development_tracker import write_development_tracker
+        from autonomy.sports.history_store import SportsHistoryStore as _Lake
+
+        _dev_store = _Lake()
+        try:
+            development = write_development_tracker(_dev_store)
+        finally:
+            _dev_store.close()
+        if development.get("warnings"):
+            summary["development_warnings"] = development["warnings"]
+    except Exception:
+        pass
+
     # Wave-74 football-organization reports (self-scout, film room, recruiting
     # board): all report-only, all fail-soft.
     try:
