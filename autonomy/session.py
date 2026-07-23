@@ -358,6 +358,12 @@ def build_brain(
     from autonomy.signals.crypto_equities import CryptoEquitiesSignal
 
     registry.register(CryptoEquitiesSignal(fetch_state=crypto_hub.state))
+    # On-chain liquidity (DefiLlama stablecoin supply momentum): expanding
+    # stablecoin supply = dry powder / risk-on drift; challenger-only,
+    # abstains without the keyless supply feed.
+    from autonomy.signals.crypto_onchain import CryptoOnchainLiquiditySignal
+
+    registry.register(CryptoOnchainLiquiditySignal(fetch_state=crypto_hub.state))
     # Volatility triangulation (blended flat/EWMA/implied sigma + settlement-
     # proximity guard) and the VRP mean-reversion regime, both challenger-only
     # over the shared hub state. The blend + guard reach execution only via a
