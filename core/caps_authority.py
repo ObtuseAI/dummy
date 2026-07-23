@@ -24,7 +24,15 @@ CAPS_AUTHORITY_REGISTRATION_PATH = (
 
 CURRENT_CAPS_SCHEMA_VERSION = 2
 CURRENT_CAPS_AUTHORITY_EPOCH = "caps-v2-kalshi-category-metadata-20260722"
-PROTECTED_CAPS_SHA256 = "6159E704501DA226CE424A6239A1D231123AD08544CC12320870D72AB8C72F0D"
+# Re-sealed 2026-07-22 (same epoch, same JSON data): the original seal was
+# computed on pre-commit working-tree bytes that a local normalizer/eol pass
+# rewrote before the wave was committed, so it matched no version-controlled
+# artifact. This hash pins the canonical committed LF bytes of
+# configs/caps.json; .gitattributes marks configs/*.json -text so a checkout
+# can never rewrite the sealed bytes again. No operator registration was
+# active at re-seal time, and registration remains required + invalid until
+# an operator issues one against exactly this hash.
+PROTECTED_CAPS_SHA256 = "62878A5F062D71D2EA3EFC3D998874B887FD8D8E885C7745231208F03D913797"
 LEGACY_CAPS_SHA256 = "F7D91453FECCB3A216B733589D69F1C21B5A8CEF753096360630B0B973CAE5B5"
 UNVERSIONED_MIGRATION_SHA256 = "498256CC426B29905412614DE941F924FF903C166AF2CD99ED092B2B8DB78492"
 REQUIRED_REGISTRATION_SCOPE = "caps_policy_registration_for_controlled_firewall_only"

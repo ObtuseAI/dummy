@@ -37,5 +37,5 @@ def test_installer_runs_the_grader_after_the_miner():
     assert miner_at < grader_at
     # And the effective ScheduledTask action is an ARRAY containing both
     # actions in order (Task Scheduler runs array actions sequentially).
-    action_array_at = text.index("-Action @($minerAction, $graderAction, $lossEngineAction)")
+    action_array_at = text.index("-Action @($minerAction, $graderAction, $lossEngineAction, $exitEvaluatorAction)")
     assert action_array_at > 0

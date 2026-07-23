@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 import time
 from collections import defaultdict
@@ -19,6 +20,32 @@ from typing import Any, Callable, Sequence
 ROOT = Path(__file__).resolve().parent.parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
+
+
+def _redirect_supervised_stdio() -> object | None:
+    """Duplicate both OS descriptors into the scheduler-supplied log.
+
+    ``WScript.Shell.Exec`` exposes bounded pipes; a supervisor that waits
+    without draining them can deadlock. Redirecting before any autonomy
+    import keeps the pipes empty (same contract as the shadow daemon).
+    """
+    raw_path = os.environ.get("DUMMY_CRYPTO_HORIZON_STDIO_LOG", "").strip()
+    if not raw_path:
+        return None
+    log_path = Path(raw_path).resolve()
+    log_path.parent.mkdir(parents=True, exist_ok=True)
+    handle = log_path.open("a", encoding="utf-8", buffering=1)
+    sys.stdout.flush()
+    sys.stderr.flush()
+    os.dup2(handle.fileno(), 1)
+    os.dup2(handle.fileno(), 2)
+    sys.stdout = handle
+    sys.stderr = handle
+    return handle
+
+
+_SUPERVISED_LOG_HANDLE = _redirect_supervised_stdio()
+
 
 from autonomy.crypto_horizon_evidence import (  # noqa: E402
     CryptoHorizonEvidenceMatrix,
@@ -37,8 +64,11 @@ from autonomy.scanner import (  # noqa: E402
 from autonomy.signals.crypto_indicators import CryptoDataHub  # noqa: E402
 
 
-DEFAULT_MAX_SETTLEMENT_TICKERS = 12
-DEFAULT_SETTLEMENT_TIME_BUDGET_SECONDS = 45.0
+# Raised from 12/45s (2026-07-22): at 12 tickers/manual run the 517-ticker
+# settlement backlog effectively never drained. Still bounded and fair —
+# the persistent cursor wraps, and the scheduled task adds a hard time limit.
+DEFAULT_MAX_SETTLEMENT_TICKERS = 48
+DEFAULT_SETTLEMENT_TIME_BUDGET_SECONDS = 120.0
 DEFAULT_MAX_SCAN_SERIES = 4
 DEFAULT_SCAN_TIME_BUDGET_SECONDS = 60.0
 DEFAULT_MAX_CYCLE_MARKETS = 300

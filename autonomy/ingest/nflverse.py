@@ -17,6 +17,7 @@ import io
 from typing import Any, Iterable
 
 from autonomy.ingest.fetcher import PoliteFetcher
+from autonomy.ingest.provenance import stamp_retro_source_reported
 from autonomy.sports.history_store import SportsHistoryStore
 
 # The canonical open games table (schedule + results, 1999-present).
@@ -72,6 +73,7 @@ def ingest_nflverse_games(
                             rows=0, http=dict(fetcher.stats))
         return {"rows": 0, "ok": False, "status": resp.status}
     games = parse_nflverse_games(resp.text, url=url, seasons=season_set)
+    stamp_retro_source_reported(games)
     store.upsert_games(games)
     date_range = (
         f"{min(season_set)}-{max(season_set)}" if season_set else "all"

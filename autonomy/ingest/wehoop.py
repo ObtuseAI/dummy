@@ -13,6 +13,7 @@ import io
 from typing import Any, Iterable
 
 from autonomy.ingest.fetcher import PoliteFetcher
+from autonomy.ingest.provenance import stamp_retro_source_reported
 from autonomy.sports.history_store import SportsHistoryStore
 
 WEHOOP_WNBA_URL = (
@@ -60,7 +61,9 @@ def ingest_wehoop_wnba(
         resp = fetcher.get(url)
         if not resp.ok:
             continue
-        total += store.upsert_games(parse_wehoop_schedule(resp.text, int(season), url=url))
+        rows = parse_wehoop_schedule(resp.text, int(season), url=url)
+        stamp_retro_source_reported(rows)
+        total += store.upsert_games(rows)
         ok_seasons += 1
     store.record_ingest("wehoop", "wnba", f"{min(seasons)}-{max(seasons)}" if seasons else "all",
                         status="ok", rows=total, http={"seasons": ok_seasons})

@@ -14,6 +14,7 @@ import io
 from typing import Any, Iterable
 
 from autonomy.ingest.fetcher import PoliteFetcher
+from autonomy.ingest.provenance import stamp_retro_source_reported
 from autonomy.sports.history_store import SportsHistoryStore
 
 # league -> (repo, path prefix, file prefix). ESPN-schema repos ONLY: the rows
@@ -85,7 +86,9 @@ def ingest_sdv_schedule(
         resp = fetcher.get(url)
         if not resp.ok:
             continue
-        total += store.upsert_games(parse_sdv_schedule(resp.text, league, int(season), url=url))
+        rows = parse_sdv_schedule(resp.text, league, int(season), url=url)
+        stamp_retro_source_reported(rows)
+        total += store.upsert_games(rows)
         ok += 1
     store.record_ingest("sportsdataverse", league,
                         f"{min(seasons)}-{max(seasons)}" if seasons else "all",

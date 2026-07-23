@@ -58,17 +58,19 @@ from autonomy.ontology import SessionMode
 from autonomy.session import PAPER_RESULTS_AUTHORITY
 
 
-def _retired_status() -> dict[str, object]:
-    return {
-        "at": datetime.now(timezone.utc).isoformat(),
-        "status": PAPER_RESULTS_AUTHORITY,
-        "mode": SessionMode.SHADOW.value,
-        "orders_placed": 0,
-        "signals_generated": 0,
-        "settlements": 0,
-        "execution_authority": False,
-        "note": "Paper/shadow result production is retired; raw history remains audit-only.",
-    }
+def _stamp_research_only(record: object) -> object:
+    """Disclose on every emitted record that shadow output carries no authority.
+
+    The paper-results authority retirement is about *authority*, not
+    production: shadow cycles must keep accruing forward settlement evidence
+    (the readiness proof plan depends on it), while their results can never
+    enable or block live trading. Canary and firewall enforce that separately;
+    this stamp makes the contract visible on the artifact itself.
+    """
+    if isinstance(record, dict):
+        record["paper_results_authority"] = PAPER_RESULTS_AUTHORITY
+        record["execution_authority"] = False
+    return record
 
 
 def main() -> int:
@@ -78,12 +80,10 @@ def main() -> int:
     parser.add_argument("--max-cycles", type=int, default=0, help="Stop after N cycles (0 = unbounded)")
     args = parser.parse_args()
 
-    if PAPER_RESULTS_AUTHORITY == "RETIRED_NON_AUTHORITATIVE":
-        print(json.dumps(_retired_status(), indent=2, sort_keys=True))
-        return 0
-
     if not args.loop:
-        record = run_one_cycle(datetime.now(timezone.utc).isoformat(), SessionMode.SHADOW)
+        record = _stamp_research_only(
+            run_one_cycle(datetime.now(timezone.utc).isoformat(), SessionMode.SHADOW)
+        )
         print(json.dumps(record, indent=2, sort_keys=True, default=str))
         return 0
 
@@ -92,7 +92,9 @@ def main() -> int:
         if kill_switch_active():
             print("kill switch active — daemon exiting")
             return 0
-        record = run_one_cycle(datetime.now(timezone.utc).isoformat(), SessionMode.SHADOW)
+        record = _stamp_research_only(
+            run_one_cycle(datetime.now(timezone.utc).isoformat(), SessionMode.SHADOW)
+        )
         cycles += 1
         print(f"[{record.get('at')}] {record.get('status')} "
               f"orders={record.get('orders_placed')} signals={record.get('signals_generated')} "

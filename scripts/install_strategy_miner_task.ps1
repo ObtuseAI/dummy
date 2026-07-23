@@ -19,6 +19,9 @@ if (-not (Test-Path -LiteralPath $graderScript)) {
 if (-not (Test-Path -LiteralPath $lossEngineScript)) {
     throw "Loss engine not found: $lossEngineScript"
 }
+if (-not (Test-Path -LiteralPath $exitEvaluatorScript)) {
+    throw "Exit policy evaluator not found: $exitEvaluatorScript"
+}
 
 # Nightly pass after the overnight settlement sweep. Three sequential task
 # actions in ONE task so the CLV grader and the loss engine run right after
@@ -28,6 +31,10 @@ if (-not (Test-Path -LiteralPath $lossEngineScript)) {
 #   2. CLV grader (WS-8) -> grades the day's persisted paper entries against
 #      the de-vigged closing line into runtime/autonomy/clv_report.json (reads
 #      the book-tape / paper-entry JSONL the mispricing monitor persists).
+#   4 (Wave-58). exit-policy evaluator -> settlement-backed, point-in-time
+#      scoring of the five pre-registered exit policies against verified
+#      hold-to-settlement PnL (runtime/autonomy/exit_policy_evaluation.json).
+#      Research-only; execution authority stays false.
 #   3. loss engine (WS-B, Phenon Harness) -> deconstructs where the system
 #      loses to the market into runtime/autonomy/loss_attribution.json (an
 #      optional, fail-closed LLM narration pass over that artifact), which
@@ -39,6 +46,7 @@ if (-not (Test-Path -LiteralPath $lossEngineScript)) {
 $minerArguments = "`"$minerScript`""
 $graderArguments = "`"$graderScript`""
 $lossEngineArguments = "`"$lossEngineScript`""
+$exitEvaluatorArguments = "`"$exitEvaluatorScript`""
 $minerAction = New-ScheduledTaskAction `
     -Execute $python `
     -Argument $minerArguments `
@@ -50,6 +58,10 @@ $graderAction = New-ScheduledTaskAction `
 $lossEngineAction = New-ScheduledTaskAction `
     -Execute $python `
     -Argument $lossEngineArguments `
+    -WorkingDirectory $repo
+$exitEvaluatorAction = New-ScheduledTaskAction `
+    -Execute $python `
+    -Argument $exitEvaluatorArguments `
     -WorkingDirectory $repo
 $settings = New-ScheduledTaskSettingsSet `
     -MultipleInstances IgnoreNew `
@@ -64,7 +76,7 @@ $trigger = New-ScheduledTaskTrigger -Daily -At $DailyTime
 # Scheduler runs multiple actions sequentially in array order: miner first,
 # then grader, then loss engine.
 Register-ScheduledTask -TaskName $TaskName `
-    -Action @($minerAction, $graderAction, $lossEngineAction) `
+    -Action @($minerAction, $graderAction, $lossEngineAction, $exitEvaluatorAction) `
     -Trigger $trigger -Settings $settings -Force | Out-Null
 
 $task = Get-ScheduledTask -TaskName $TaskName
@@ -80,6 +92,7 @@ $info = Get-ScheduledTaskInfo -TaskName $TaskName
     ProposalArtifactOnly = $true
     ClvGraderChained = $true
     LossEngineChained = $true
+    ExitPolicyEvaluatorChained = $true
     ExecutionAuthority = $false
     CapitalAuthority = $false
 }

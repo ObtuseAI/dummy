@@ -69,8 +69,16 @@ def test_ingest_all_leagues_point_in_time(tmp_path):
     assert store.games(league="wnba")[0]["home"] == "LV"
     strict = store.evaluation_games()
     assert {game["game_id"] for game in strict} == {"n1", "w1"}
-    assert all(game["provenance_quality"] == "observed_at_receipt" for game in strict)
-    assert all(game["result_available_at"] == game["received_at"] for game in strict)
+    by = {game["game_id"]: game for game in strict}
+    # n1 was observed the day after it started: a genuine live observation.
+    assert by["n1"]["provenance_quality"] == "observed_at_receipt"
+    assert by["n1"]["result_available_at"] == by["n1"]["received_at"]
+    # w1 was observed ~3 months after it started: a retro backfill must not
+    # claim today's receipt as first availability — it carries the derived
+    # source-reported bound (start + 12h) and stays evaluation-eligible.
+    assert by["w1"]["provenance_quality"] == "source_reported"
+    assert by["w1"]["result_available_at"] == "2025-08-01T12:00:00+00:00"
+    assert by["w1"]["received_at"] == "2025-11-02T00:00:00+00:00"
     store.close()
 
 
