@@ -8,6 +8,7 @@ games yields coherent market probabilities. Pure, offline, deterministic.
 """
 from __future__ import annotations
 
+import os
 import random
 from dataclasses import dataclass
 from typing import Any
@@ -456,6 +457,54 @@ def regress_home_win_for_matchup(
     return 0.5 + (float(probability) - 0.5) * (1.0 - regression)
 
 
+def _simulate_shard(
+    context: MlbGameContext,
+    seed: int,
+    runs: int,
+    total_line: float,
+    weather: tuple[float, float] | None,
+) -> tuple[float, int, int, int, int, int, int]:
+    """One deterministic shard of games; additive counters for merging."""
+    rng = random.Random(seed)
+    home_wins = 0.0
+    total_over = yrfi = home_f5 = 0
+    total_runs_sum = home_runs_sum = away_runs_sum = 0
+    for _ in range(runs):
+        game = simulate_one_game(context, rng, weather=weather)
+        if game.home_runs > game.away_runs:
+            home_wins += 1.0
+        elif game.home_runs == game.away_runs:
+            home_wins += 0.5
+        combined = game.home_runs + game.away_runs
+        home_runs_sum += game.home_runs
+        away_runs_sum += game.away_runs
+        total_runs_sum += combined
+        if combined > total_line:
+            total_over += 1
+        if game.home_first_inning_runs + game.away_first_inning_runs >= 1:
+            yrfi += 1
+        if game.home_runs_through_5 > game.away_runs_through_5:
+            home_f5 += 1
+    return (
+        home_wins, total_over, yrfi, home_f5,
+        total_runs_sum, home_runs_sum, away_runs_sum,
+    )
+
+
+def _resolved_workers(workers: int | None, runs: int) -> int:
+    """Parallelism is opt-in: default stays the exact legacy serial stream."""
+    if workers is None:
+        raw = os.environ.get("MLB_PA_SIM_WORKERS", "").strip()
+        try:
+            workers = int(raw) if raw else 1
+        except ValueError:
+            workers = 1
+    workers = max(1, int(workers))
+    if runs < 2000:
+        return 1
+    return min(workers, max(1, (os.cpu_count() or 2) - 1), 8)
+
+
 def simulate_game_markets(
     context: MlbGameContext,
     *,
@@ -465,6 +514,7 @@ def simulate_game_markets(
     weather: tuple[float, float] | None = None,
     divisional: bool = False,
     rivalry: bool = False,
+    workers: int | None = None,
 ) -> dict[str, Any]:
     """Run N deterministic games; return coherent market probabilities.
 
@@ -473,8 +523,55 @@ def simulate_game_markets(
     historically closer (see DIVISIONAL_REGRESSION / RIVALRY_REGRESSION). When
     both hold, the larger (rivalry) regression is used, not their sum. With both
     False (the defaults) the output is byte-identical to the pre-Task-5 behavior.
+
+    ``workers`` (or env ``MLB_PA_SIM_WORKERS``) splits the simulations across
+    processes with per-shard seeds -- deterministic for a given (seed, shard
+    plan), opt-in, and byte-identical to the serial stream when 1.
     """
     runs = max(1, int(sims))
+    resolved = _resolved_workers(workers, runs)
+    if resolved > 1:
+        from concurrent.futures import ProcessPoolExecutor
+
+        base = runs // resolved
+        shard_runs = [
+            base + (1 if index < runs % resolved else 0)
+            for index in range(resolved)
+        ]
+        shard_runs = [count for count in shard_runs if count > 0]
+        totals = [0.0, 0, 0, 0, 0, 0, 0]
+        with ProcessPoolExecutor(max_workers=len(shard_runs)) as pool:
+            futures = [
+                pool.submit(
+                    _simulate_shard,
+                    context,
+                    seed + 1_000_003 * index,
+                    count,
+                    total_line,
+                    weather,
+                )
+                for index, count in enumerate(shard_runs)
+            ]
+            for future in futures:
+                for slot, value in enumerate(future.result()):
+                    totals[slot] += value
+        home_wins, total_over, yrfi, home_f5 = totals[0], int(totals[1]), int(totals[2]), int(totals[3])
+        total_runs_sum, home_runs_sum, away_runs_sum = int(totals[4]), int(totals[5]), int(totals[6])
+        home_win = regress_home_win_for_matchup(
+            home_wins / runs, divisional=divisional, rivalry=rivalry,
+        )
+        return {
+            "home_win": home_win,
+            "total_over": total_over / runs,
+            "total_line": total_line,
+            "yrfi": yrfi / runs,
+            "home_f5_lead": home_f5 / runs,
+            "expected_total_runs": total_runs_sum / runs,
+            "expected_home_runs": home_runs_sum / runs,
+            "expected_away_runs": away_runs_sum / runs,
+            "sims": runs,
+            "workers": len(shard_runs),
+        }
     rng = random.Random(seed)
     home_wins = 0.0
     total_over = 0

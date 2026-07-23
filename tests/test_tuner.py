@@ -26,8 +26,15 @@ def test_tune_league_and_persist(tmp_path):
     st = _seed(tmp_path)
     tuned = tune_league(st, "nfl")
     assert "glicko" in tuned and "mov_elo" in tuned
+    home_grids = (20.0, 30.0, 40.0, 50.0, 60.0, 0.0, 0.02, 0.04, 0.06, 0.08)
     for name, best in tuned.items():
-        assert best["value"] in (20.0, 30.0, 40.0, 50.0, 60.0, 0.0, 0.02, 0.04, 0.06, 0.08)
+        if name.startswith("scoring_sigma"):
+            # Wave-62: sigmas tune on out-of-sample likelihood over a
+            # multiplier grid around the league prior, not the home grids.
+            assert best["objective"] == "mean_normal_loglik"
+            assert best["value"] > 0.0
+        else:
+            assert best["value"] in home_grids
         assert best["n"] > 0
 
     p = tmp_path / "tuned.json"
