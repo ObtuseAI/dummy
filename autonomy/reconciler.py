@@ -384,6 +384,19 @@ class Reconciler:
                         "fill_witness_at": now.isoformat(),
                         "conservative_fill_price_cents": int(pending["price_cents"]),
                     }
+                    if liquidity_role == "taker":
+                        # Depth truth at the witness, not just at submit: the
+                        # displayed ask size when the executable ask appears
+                        # caps how many contracts this witness can honestly
+                        # simulate. Absent sizes keep the submit-time evidence
+                        # cap but are disclosed as unverified-at-witness.
+                        depth = self._taker_witness_depth(
+                            market, str(pending["side"]), int(pending["count"]),
+                        )
+                        if depth.get("witness_depth_insufficient"):
+                            detail = None
+                        else:
+                            detail.update(depth)
             if detail is None:
                 detail = self._shadow_candle_cross(
                     pending, int(created.timestamp()), int(min(now.timestamp(), expires))
@@ -405,12 +418,27 @@ class Reconciler:
                 }
             else:
                 continue
+            fill_count = int(pending["count"]) if kind is OutcomeKind.FILLED else 0
+            if kind is OutcomeKind.FILLED:
+                witnessed = detail.get("witnessed_fill_count")
+                if isinstance(witnessed, int) and 0 < witnessed < fill_count:
+                    # Shadow partial-fill truth: only the witnessed size fills;
+                    # the remainder is conservatively canceled (never carried as
+                    # a live-style resting remainder) so evidence undercounts
+                    # rather than overcounts. FILLED stays the terminal kind --
+                    # PARTIALLY_FILLED is the live remainder-rests state and
+                    # would leave a shadow order active forever.
+                    fill_count = witnessed
+                    detail["partial_fill_truth"] = True
+                    detail["remainder_canceled_conservative"] = (
+                        int(pending["count"]) - witnessed
+                    )
             outcomes.append(TradeOutcome(
                 decision_id=str(pending["decision_id"]),
                 market_ticker=str(pending["market_ticker"]),
                 kind=kind,
                 order_id=str(pending.get("order_id") or ""),
-                fill_count=int(pending["count"]) if kind is OutcomeKind.FILLED else 0,
+                fill_count=fill_count,
                 fill_price_cents=int(pending["price_cents"]) if kind is OutcomeKind.FILLED else None,
                 pnl_cents=None,
                 broker_contacted=False,
@@ -484,16 +512,61 @@ class Reconciler:
             return None
         queue_ahead = max(0.0, float(submission.get("queue_ahead_contracts") or 0))
         required = queue_ahead + int(pending["count"])
-        if exact_volume + 1e-9 < required:
+        if exact_volume + 1e-9 >= required:
+            return {
+                "reason": "shadow_maker_public_trade_queue_consumed",
+                "queue_ahead_contracts": queue_ahead,
+                "order_contracts": int(pending["count"]),
+                "matching_trade_volume": round(exact_volume, 4),
+                "matching_trade_ids": matching_ids[:20],
+                "fill_witness_at": last_matching_at,
+                "conservative_fill_price_cents": limit,
+            }
+        # Partial-fill truth: taker volume cleared the queue ahead of us and
+        # then consumed part of the simulated order. Credit exactly the
+        # witnessed remainder -- never the full size an uncleared queue could
+        # not have delivered.
+        witnessed = int(exact_volume + 1e-9 - queue_ahead)
+        if witnessed <= 0:
             return None
         return {
-            "reason": "shadow_maker_public_trade_queue_consumed",
+            "reason": "shadow_maker_public_trade_queue_partially_consumed",
             "queue_ahead_contracts": queue_ahead,
             "order_contracts": int(pending["count"]),
             "matching_trade_volume": round(exact_volume, 4),
             "matching_trade_ids": matching_ids[:20],
             "fill_witness_at": last_matching_at,
             "conservative_fill_price_cents": limit,
+            "witnessed_fill_count": witnessed,
+        }
+
+    @staticmethod
+    def _taker_witness_depth(
+        market: Any, side: str, requested: int,
+    ) -> dict[str, Any]:
+        """Cap a taker witness by the displayed ask size at witness time.
+
+        Uses the same canonical quote-size parser and safety haircut as the
+        submit-time evidence plan. Missing sizes fall back to the submit-time
+        cap but are disclosed as unverified; a displayed size too small to
+        cover even one haircut contract yields no fill this pass.
+        """
+        from autonomy.executable_liquidity import DISPLAYED_DEPTH_SAFETY_FRACTION
+        from autonomy.tier_policy import normalized_quote_sizes
+
+        sizes = normalized_quote_sizes(market) if market is not None else {}
+        ask_size = sizes.get(f"{side}_ask_size_fp")
+        if not isinstance(ask_size, (int, float)) or ask_size <= 0:
+            return {"witness_depth_unverified": True}
+        fillable = int(min(
+            float(requested), ask_size * DISPLAYED_DEPTH_SAFETY_FRACTION,
+        ))
+        if fillable <= 0:
+            return {"witness_depth_insufficient": True}
+        return {
+            "witness_ask_size_fp": round(float(ask_size), 4),
+            "witness_depth_safety_fraction": DISPLAYED_DEPTH_SAFETY_FRACTION,
+            "witnessed_fill_count": fillable,
         }
 
     def _shadow_candle_cross(
