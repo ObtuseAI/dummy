@@ -385,7 +385,7 @@ def _rankings(conn: sqlite3.Connection, limit: int = 12) -> dict[tuple[str, str]
           AND d.action IN ('BUY_YES', 'BUY_NO')
         """
     ).fetchall()
-    from autonomy.market_labels import humanize_market
+    from autonomy.market_labels import humanize_market, recommend_side
 
     by_scope: dict[tuple[str, str], list[dict[str, Any]]] = {}
     for ticker, action, side, prob, market, ev_cents, price_cents, created_at in rows:
@@ -397,6 +397,8 @@ def _rankings(conn: sqlite3.Connection, limit: int = 12) -> dict[tuple[str, str]
             "matchup": hl["matchup"],
             "game_date": hl["date"],
             "side": str(side),
+            # Plain, unmistakable recommended action (incl. YRFI YES/NO).
+            "recommendation": recommend_side(str(ticker), str(side)),
             "bet_type": bet_type_of(str(ticker)),
             "prob": round(float(prob), 3) if prob is not None else None,
             "market": round(float(market), 3) if market is not None else None,

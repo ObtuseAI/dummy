@@ -275,6 +275,12 @@ def gather_rails_inputs(
     else:
         artifact_age_hours = max(0.0, (now_ts - last_cycle) / 3600.0)
 
+    last_success = _parse_ts(heartbeat.get("last_success_at"))
+    last_success_age_hours = (
+        None if last_success is None
+        else max(0.0, (now_ts - last_success) / 3600.0)
+    )
+
     return RailsInputs(
         kill_file_present=kill_present,
         heartbeat_status=heartbeat_status,
@@ -283,6 +289,7 @@ def gather_rails_inputs(
         weight_saturation_flagged=saturated,
         exchange_anomaly=bool(exchange_anomaly_check()),
         artifact_age_hours=artifact_age_hours,
+        last_success_age_hours=last_success_age_hours,
     )
 
 

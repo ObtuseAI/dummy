@@ -1086,11 +1086,15 @@ function accuracyPanel(){
   return h+'</div>';
 }
 function pickRows(picks){
-  return '<div style="max-height:300px;overflow:auto"><table><thead><tr><th>Market</th><th>Side</th><th>Model</th><th>Mkt</th><th>Edge¢</th></tr></thead><tbody>'
-    +picks.map(p=>'<tr><td title="'+esc(p.ticker)+'">'+esc(p.label||p.ticker)+dateTag(p.game_date)+'</td>'
-      +'<td><span class="pill '+((p.side||'').toUpperCase().includes('NO')?'no':'yes')+'">'+esc(p.side||'')+'</span></td>'
+  return '<div style="max-height:340px;overflow:auto"><table><thead><tr><th>Matchup</th><th>Take</th><th>Model</th><th>Mkt</th><th>Edge¢</th></tr></thead><tbody>'
+    +picks.map(p=>{
+      const rec=p.recommendation||((p.market_phrase||'')+' '+(p.side||'').toUpperCase());
+      const isNo=(p.side||'').toUpperCase().includes('NO');
+      return '<tr><td title="'+esc(p.ticker)+'">'+esc(p.matchup||p.label||p.ticker)+dateTag(p.game_date)+'</td>'
+      +'<td><span class="pill '+(isNo?'no':'yes')+'" style="font-weight:700;white-space:normal">'+esc(rec)+'</span></td>'
       +'<td>'+num(p.prob,2)+'</td><td>'+(p.market==null?'—':num(p.market,2))+'</td>'
-      +'<td class="'+(p.edge_cents>=0?'pos':'neg')+'">'+(p.edge_cents>0?'+':'')+num(p.edge_cents,1)+'</td></tr>').join('')
+      +'<td class="'+(p.edge_cents>=0?'pos':'neg')+'">'+(p.edge_cents>0?'+':'')+num(p.edge_cents,1)+'</td></tr>';
+    }).join('')
     +'</tbody></table></div>';
 }
 function pickBoardCard(scope){
@@ -1228,14 +1232,26 @@ function revealGuideTab(tab,smooth){
   const left=Math.max(0,tab.offsetLeft-(strip.clientWidth-tab.offsetWidth)/2);
   strip.scrollTo({left:left,behavior:smooth&&!REDUCE?'smooth':'auto'});
 }
+function modelCell(r){
+  // The independent model view: our own model's both-sides call, present even
+  // when the promotion ladder keeps it out of the traded number. Shows the
+  // recommended action + model-vs-market edge, or an em dash when no model
+  // priced this market (e.g. a prop with no batter model yet).
+  if(!r.has_independent_model||r.model_recommendation==null)return '<span class="tier-badge" style="border-style:dashed">no model</span>';
+  const e=r.model_edge,cls=(e==null?'':(e>=0?'pos':'neg'));
+  return '<span class="pill '+(String(r.model_side||'').toUpperCase()==='NO'?'no':'yes')+'" style="white-space:normal">'+esc(r.model_recommendation)+'</span>'
+    +(e==null?'':' <b class="'+cls+'">'+signed(e,3)+'</b>');
+}
 function gameBreakdown(rows){
   rows=[...rows].sort((a,b)=>opportunity(b)-opportunity(a));
-  return '<div style="overflow:auto"><table><thead><tr><th>Category</th><th>Market</th><th>Value side</th><th>Model P</th><th>Market P</th><th>Net edge</th><th>Tier / reason</th></tr></thead><tbody>'
+  return '<div style="overflow:auto"><table><thead><tr><th>Category</th><th>Market</th><th>Value side</th><th>Traded P</th><th>Market P</th><th>Net edge</th><th>Independent model</th><th>Tier / reason</th></tr></thead><tbody>'
     +rows.map(r=>{const side=sideFor(r),edge=opportunity(r);
       return '<tr><td>'+esc(prettyBet(r.bet_type))+'</td><td title="'+esc(r.ticker)+'">'+esc(marketName(r))+'</td>'
         +'<td>'+(side?'<span class="pill '+(side==='NO'?'no':'yes')+'">'+side+'</span>':'—')+'</td>'
         +'<td>'+num(sideProb(r,'probability'),2)+'</td><td>'+num(sideProb(r,'market_probability'),2)+'</td>'
-        +'<td class="'+(!Number.isFinite(edge)?'':(edge>=0?'pos':'neg'))+'">'+opportunityLabel(r)+'</td><td title="'+esc(r.tier_reason||r.tier_display_reason||'')+'">'+tierBadge(boardTier(r))+'<span class="tier-sample">'+esc(boardTierReason(r))+'</span></td></tr>';}).join('')
+        +'<td class="'+(!Number.isFinite(edge)?'':(edge>=0?'pos':'neg'))+'">'+opportunityLabel(r)+'</td>'
+        +'<td>'+modelCell(r)+'</td>'
+        +'<td title="'+esc(r.tier_reason||r.tier_display_reason||'')+'">'+tierBadge(boardTier(r))+'<span class="tier-sample">'+esc(boardTierReason(r))+'</span></td></tr>';}).join('')
     +'</tbody></table></div>';
 }
 function dayGames(rows,key,filterLabel,isAll){

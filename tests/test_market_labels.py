@@ -83,3 +83,20 @@ def test_compound_ticker_player_abbreviation_is_readable(monkeypatch):
     )
     assert h["subject"] == "E De La Cruz"
     assert h["subject_team"] == "CIN"
+
+
+def test_recommend_side_is_unambiguous_per_market():
+    from autonomy.market_labels import recommend_side
+
+    # Winner
+    assert recommend_side("KXMLBGAME-26JUL26LADNYM-NYM", "yes") == "NYM to win"
+    assert recommend_side("KXMLBGAME-26JUL26LADNYM-NYM", "no") == "NYM NOT to win"
+    # Total over/under
+    assert recommend_side("KXMLBTOTAL-26JUL26LADNYM-T8", "yes").startswith("OVER")
+    assert recommend_side("KXMLBTOTAL-26JUL26LADNYM-T8", "no").startswith("UNDER")
+    # YRFI as YES / NO (with NRFI clarification)
+    assert recommend_side("KXMLBRFI-26JUL26LADNYM", "yes") == "YES — a run in the 1st"
+    assert recommend_side("KXMLBRFI-26JUL26LADNYM", "no") == "NO — no run in the 1st (NRFI)"
+    # Unknown side -> None
+    assert recommend_side("KXMLBRFI-26JUL26LADNYM", None) is None
+    assert recommend_side("KXMLBRFI-26JUL26LADNYM", "") is None

@@ -506,6 +506,14 @@ def build_brain(
     from autonomy.signals.mlb_segments import MlbSegmentSignal
 
     registry.register(MlbSegmentSignal())
+    # Wave-79: MLB player props (home runs, hits, total bases, pitcher
+    # strikeouts) priced from the hydrated StatsAPI matchup context + the same
+    # plate-appearance engine the game sim uses. Fills the one prop-market model
+    # gap; batter props abstain until lineups post, pitcher K prices a day
+    # ahead. Challenger-only, fail-closed -- surfaces as the model view.
+    from autonomy.signals.mlb_props import MlbPlayerPropSignal
+
+    registry.register(MlbPlayerPropSignal())
     # Wave-13/18: the full segment + team-total surface (3-way segment
     # winners, segment totals/spreads, team totals) off the same
     # TeamScoreModel state the full-game signal warms, one instance per

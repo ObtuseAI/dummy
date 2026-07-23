@@ -674,7 +674,7 @@ def write_board_artifact(
     touched, atomic replace so the dashboard never reads a torn file."""
     from datetime import datetime, timezone
 
-    from autonomy.market_labels import humanize_market
+    from autonomy.market_labels import humanize_market, model_view_fields, recommend_side
     from autonomy.tier_policy import assign_cycle_tiers, normalized_quote_sizes
 
     assignments = (
@@ -720,8 +720,22 @@ def write_board_artifact(
             # ``pick`` is the quoted value side, not the most-likely outcome.
             # The latter is exposed separately as forecast_lean.
             "pick": assessment.side if assessment.tier else None,
+            # A plain-English recommended action so the chosen side is
+            # unmistakable on every surface (incl. YRFI as YES/NO).
+            "recommendation": (
+                recommend_side(market.ticker, assessment.side)
+                if assessment.tier else None
+            ),
             "value_side": assessment.side,
             "forecast_lean": "yes" if probability >= 0.5 else "no",
+            # Wave-78: independent model view -- our models' both-sides read even
+            # when the promotion ladder keeps them out of the traded number.
+            **model_view_fields(
+                market.ticker,
+                getattr(forecast, "model_probability_yes", None),
+                market_prob if isinstance(market_prob, (int, float)) else None,
+                getattr(forecast, "model_sources", None),
+            ),
             "tier": assessment.tier,
             "tier_base": assessment.base_tier,
             "tier_policy_version": assessment.policy_version,
@@ -1261,7 +1275,7 @@ def assemble_bet_board(
             features = {}
         latest[ticker] = (str(created_at), float(probability), float(uncertainty), features)
 
-    from autonomy.market_labels import humanize_market
+    from autonomy.market_labels import humanize_market, model_view_fields, recommend_side
     from autonomy.tier_policy import assessment_from_features
 
     board_rows: list[dict[str, Any]] = []
@@ -1294,8 +1308,20 @@ def assemble_bet_board(
                 if isinstance(market_prob, (int, float)) else None),
             "edge": round(edge, 4) if edge is not None else None,
             "pick": assessment.side if assessment.tier else None,
+            "recommendation": (
+                recommend_side(ticker, assessment.side)
+                if assessment.tier else None
+            ),
             "value_side": assessment.side,
             "forecast_lean": "yes" if probability >= 0.5 else "no",
+            # Wave-78: independent model view carried in the persisted fused
+            # features (display-refresh / ledger-fallback path).
+            **model_view_fields(
+                ticker,
+                features.get("model_probability_yes"),
+                market_prob if isinstance(market_prob, (int, float)) else None,
+                features.get("model_sources"),
+            ),
             "tier": assessment.tier,
             "tier_base": assessment.base_tier,
             "tier_policy_version": assessment.policy_version,

@@ -17,6 +17,12 @@ from autonomy.target_policy import is_prediction_quarantined_target
 MARKET_PRIOR_MIN_SHARE = 0.05
 CRYPTO_MARKET_PRIOR_MIN_SHARE = 0.25
 
+
+def _honest_implied(market: MarketView) -> float | None:
+    from autonomy.quote_quality import honest_implied_yes
+
+    return honest_implied_yes(market.yes_bid, market.yes_ask)
+
 # Inverse-variance fusion scaled by trust can drive the fused uncertainty to a
 # tiny floor even when every input honors its own uncertainty floor: a
 # high-trust source contributes an enormous precision weight, and correlated
@@ -106,23 +112,91 @@ class EnsembleForecaster:
             vertical=market.vertical,
         ):
             return None
+        def _authorized(signal: Signal) -> bool:
+            # Model observations are governed by the dedicated exact-scope
+            # authority dossier, not the generic strategy-promotion file.
+            # No autonomy Signal currently carries an authorized dossier
+            # weight, so these rows remain gradeable but cannot enter an
+            # executable ensemble through a hand-written promotion row.
+            if str((signal.features or {}).get("llm_probability_authority", "")).startswith(
+                ("quarantined_", "zero_")
+            ):
+                return False
+            return not self._floor_excluded(signal, market)
+
         active_signals = [
             signal for signal in signals
-            if (
-                # Model observations are governed by the dedicated exact-scope
-                # authority dossier, not the generic strategy-promotion file.
-                # No autonomy Signal currently carries an authorized dossier
-                # weight, so these rows remain gradeable but cannot enter an
-                # executable ensemble through a hand-written promotion row.
-                not str((signal.features or {}).get("llm_probability_authority", "")).startswith(
-                    ("quarantined_", "zero_")
-                )
-            )
+            if _authorized(signal)
             and (not bool((signal.features or {}).get("challenger_only"))
                  or self.promotion.is_promoted_signal(
                      signal.source, market.ticker, signal.features or {}))
-            and not self._floor_excluded(signal, market)
         ]
+        # Model view (Wave-78): the pure MODEL consensus -- every authorized
+        # predictive signal, whether or not the promotion ladder has cleared it
+        # to trade, with ``market_prior`` EXCLUDED. Anchoring the view to the
+        # market defeats its purpose (it would just echo the price); the point
+        # is to show what our own models independently believe about both sides,
+        # and ``model_edge = model_prob - market_implied`` is their disagreement
+        # with the market. Display-only: never changes the traded number.
+        model_signals = [
+            signal for signal in signals
+            if _authorized(signal) and signal.source != "market_prior"
+        ]
+        if not active_signals:
+            # No champion or promoted source priced this market. Challengers
+            # alone must NEVER produce a forecast (execution keys off a non-None
+            # return), so abstain entirely -- the model view is only meaningful
+            # alongside a traded number, and the real cycle always carries the
+            # ``market_prior`` anchor that keeps this branch from firing.
+            return None
+        traded = self._fuse_active(market, active_signals)
+        if traded is None:
+            return None
+        probability, fused_sigma, normalized = traded
+
+        # Independent model view: the same fusion over the challenger-inclusive
+        # set. When challengers exist beyond the promoted set, this diverges from
+        # the traded number and reveals what our models actually think. When the
+        # two sets are identical (no unpromoted challengers), it equals the
+        # traded number -- harmless, and the board simply shows model == traded.
+        model_probability = model_uncertainty = None
+        model_sources: dict[str, float] | None = None
+        if model_signals:
+            model_view = self._fuse_active(market, model_signals)
+            if model_view is not None:
+                model_probability, model_uncertainty, model_sources = model_view
+
+        # Honest-quote gate (Wave-5): a dead/wide book yields NO implied
+        # probability rather than a fabricated ~50c mid. Downstream this means
+        # no claimed edge, no decision benchmark, and no adverse-selection
+        # phantom on markets nobody is actually quoting.
+        implied = _honest_implied(market)
+        edge = probability - implied if implied is not None else 0.0
+
+        rationale = "; ".join(
+            f"{s.source}:{s.probability_yes:.2f}±{s.uncertainty:.2f}" for s in active_signals
+        )
+        return Forecast(
+            market_ticker=market.ticker,
+            probability_yes=probability,
+            uncertainty=fused_sigma,
+            sources_used=normalized,
+            market_implied_yes=implied,
+            edge_yes=edge,
+            rationale=rationale[:600],
+            model_probability_yes=model_probability,
+            model_uncertainty=model_uncertainty,
+            model_sources=model_sources,
+        )
+
+    def _fuse_active(
+        self, market: MarketView, active_signals: list[Signal]
+    ) -> tuple[float, float, dict[str, float]] | None:
+        """Inverse-variance, trust-weighted, family-deduplicated fusion of one
+        signal set. Returns ``(probability, fused_sigma, normalized_shares)`` or
+        ``None`` when the set carries no usable weight. Called twice per market:
+        once over the promoted set (the traded number) and once over the
+        challenger-inclusive set (the display-only model view)."""
         if not active_signals:
             return None
         weighted: dict[str, float] = {}
@@ -216,26 +290,5 @@ class EnsembleForecaster:
             else GLOBAL_FUSED_UNCERTAINTY_FLOOR
         )
         fused_sigma = min(0.5, max(sigma_floor, inverse_precision, disagreement))
-
-        # Honest-quote gate (Wave-5): a dead/wide book yields NO implied
-        # probability rather than a fabricated ~50c mid. Downstream this means
-        # no claimed edge, no decision benchmark, and no adverse-selection
-        # phantom on markets nobody is actually quoting.
-        from autonomy.quote_quality import honest_implied_yes
-
-        implied = honest_implied_yes(market.yes_bid, market.yes_ask)
-        edge = probability - implied if implied is not None else 0.0
-
         normalized = {source: round(share, 4) for source, share in normalized.items()}
-        rationale = "; ".join(
-            f"{s.source}:{s.probability_yes:.2f}±{s.uncertainty:.2f}" for s in active_signals
-        )
-        return Forecast(
-            market_ticker=market.ticker,
-            probability_yes=probability,
-            uncertainty=fused_sigma,
-            sources_used=normalized,
-            market_implied_yes=implied,
-            edge_yes=edge,
-            rationale=rationale[:600],
-        )
+        return probability, fused_sigma, normalized

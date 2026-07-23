@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Cleartext is permitted because all traffic reaches Dummy over the Tailscale
+  WireGuard tunnel (100.x.y.z tailnet), which is already encrypted end to end.
+  The dashboard is HTTP on the tailnet interface only; its write endpoints stay
+  loopback-guarded on the host, so this app is read-only over the wire.
+-->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="true" />
+</network-security-config>
