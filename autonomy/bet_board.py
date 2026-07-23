@@ -674,7 +674,7 @@ def write_board_artifact(
     touched, atomic replace so the dashboard never reads a torn file."""
     from datetime import datetime, timezone
 
-    from autonomy.market_labels import humanize_market
+    from autonomy.market_labels import humanize_market, recommend_side
     from autonomy.tier_policy import assign_cycle_tiers, normalized_quote_sizes
 
     assignments = (
@@ -720,6 +720,12 @@ def write_board_artifact(
             # ``pick`` is the quoted value side, not the most-likely outcome.
             # The latter is exposed separately as forecast_lean.
             "pick": assessment.side if assessment.tier else None,
+            # A plain-English recommended action so the chosen side is
+            # unmistakable on every surface (incl. YRFI as YES/NO).
+            "recommendation": (
+                recommend_side(market.ticker, assessment.side)
+                if assessment.tier else None
+            ),
             "value_side": assessment.side,
             "forecast_lean": "yes" if probability >= 0.5 else "no",
             "tier": assessment.tier,
@@ -1261,7 +1267,7 @@ def assemble_bet_board(
             features = {}
         latest[ticker] = (str(created_at), float(probability), float(uncertainty), features)
 
-    from autonomy.market_labels import humanize_market
+    from autonomy.market_labels import humanize_market, recommend_side
     from autonomy.tier_policy import assessment_from_features
 
     board_rows: list[dict[str, Any]] = []
@@ -1294,6 +1300,10 @@ def assemble_bet_board(
                 if isinstance(market_prob, (int, float)) else None),
             "edge": round(edge, 4) if edge is not None else None,
             "pick": assessment.side if assessment.tier else None,
+            "recommendation": (
+                recommend_side(ticker, assessment.side)
+                if assessment.tier else None
+            ),
             "value_side": assessment.side,
             "forecast_lean": "yes" if probability >= 0.5 else "no",
             "tier": assessment.tier,

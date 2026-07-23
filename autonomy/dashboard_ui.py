@@ -1086,11 +1086,15 @@ function accuracyPanel(){
   return h+'</div>';
 }
 function pickRows(picks){
-  return '<div style="max-height:300px;overflow:auto"><table><thead><tr><th>Market</th><th>Side</th><th>Model</th><th>Mkt</th><th>Edge¢</th></tr></thead><tbody>'
-    +picks.map(p=>'<tr><td title="'+esc(p.ticker)+'">'+esc(p.label||p.ticker)+dateTag(p.game_date)+'</td>'
-      +'<td><span class="pill '+((p.side||'').toUpperCase().includes('NO')?'no':'yes')+'">'+esc(p.side||'')+'</span></td>'
+  return '<div style="max-height:340px;overflow:auto"><table><thead><tr><th>Matchup</th><th>Take</th><th>Model</th><th>Mkt</th><th>Edge¢</th></tr></thead><tbody>'
+    +picks.map(p=>{
+      const rec=p.recommendation||((p.market_phrase||'')+' '+(p.side||'').toUpperCase());
+      const isNo=(p.side||'').toUpperCase().includes('NO');
+      return '<tr><td title="'+esc(p.ticker)+'">'+esc(p.matchup||p.label||p.ticker)+dateTag(p.game_date)+'</td>'
+      +'<td><span class="pill '+(isNo?'no':'yes')+'" style="font-weight:700;white-space:normal">'+esc(rec)+'</span></td>'
       +'<td>'+num(p.prob,2)+'</td><td>'+(p.market==null?'—':num(p.market,2))+'</td>'
-      +'<td class="'+(p.edge_cents>=0?'pos':'neg')+'">'+(p.edge_cents>0?'+':'')+num(p.edge_cents,1)+'</td></tr>').join('')
+      +'<td class="'+(p.edge_cents>=0?'pos':'neg')+'">'+(p.edge_cents>0?'+':'')+num(p.edge_cents,1)+'</td></tr>';
+    }).join('')
     +'</tbody></table></div>';
 }
 function pickBoardCard(scope){

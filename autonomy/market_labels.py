@@ -161,6 +161,64 @@ def _ticker_player_abbreviation(token: str, team: str | None) -> str | None:
     return f"{match.group(1)} {display_surname}"
 
 
+def recommend_side(ticker: str, side: str | None) -> str | None:
+    """A plain, unambiguous recommended action for a ticker + chosen side.
+
+    ``side`` is the value side to take ("yes"/"no"). Returns a short imperative
+    phrase a person reads without decoding the market: e.g. "NYM to win",
+    "OVER 8.5", "UNDER 8.5", "YES — a run in the 1st", "NO — no run in the 1st
+    (NRFI)", "AZ team total OVER 4.5", "2+ hits: YES". None when the side is
+    unknown.
+    """
+    s = str(side or "").strip().lower()
+    if s not in ("yes", "no"):
+        return None
+    spec = spec_for(str(ticker))
+    pieces = humanize_ticker(str(ticker))
+    subject = pieces.get("subject")
+    line = pieces.get("line")
+    seg = _SEGMENT.get(spec.segment) if spec is not None else None
+    seg_prefix = f"{seg} " if seg else ""
+
+    if spec is None:
+        # Non-sports (crypto price ladders, misc): the market phrase + YES/NO.
+        market = pieces.get("market") or "this market"
+        return f"{market}: {s.upper()}"
+
+    mt = spec.market_type
+    if mt == WINNER:
+        if subject and subject != "tie":
+            return f"{seg_prefix}{subject} to win" if s == "yes" \
+                else f"{seg_prefix}{subject} NOT to win"
+        return f"{seg_prefix}winner: {s.upper()}"
+    if mt == TOTAL:
+        ln = line or ""
+        return f"{seg_prefix}OVER {ln}".strip() if s == "yes" \
+            else f"{seg_prefix}UNDER {ln}".strip()
+    if mt == TEAM_TOTAL:
+        who = subject or "team"
+        ln = line or ""
+        dir_ = "OVER" if s == "yes" else "UNDER"
+        return f"{who} team total {dir_} {ln}".strip()
+    if mt == SPREAD:
+        who = subject or "fav"
+        ln = line or ""
+        return f"{seg_prefix}{who} to cover {ln}".strip() if s == "yes" \
+            else f"{seg_prefix}{who} NOT to cover {ln}".strip()
+    if mt == YRFI:
+        return "YES — a run in the 1st" if s == "yes" \
+            else "NO — no run in the 1st (NRFI)"
+    if mt == PROP:
+        stat = spec.stat or "prop"
+        ln = line or ""
+        name = pieces.get("subject_team") or subject or ""
+        prefix = f"{name} " if name else ""
+        dir_ = "OVER" if s == "yes" else "UNDER"
+        return f"{prefix}{dir_} {ln} {stat}".strip()
+    # Fallback: market phrase + side.
+    return f"{pieces.get('market') or mt}: {s.upper()}"
+
+
 def humanize_ticker(ticker: str) -> dict[str, Any]:
     """Readable pieces for a ticker: ``{matchup, market, line, date, label}``.
 
