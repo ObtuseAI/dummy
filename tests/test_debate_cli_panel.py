@@ -9,8 +9,11 @@ from autonomy.brain import (
 )
 from autonomy.debate import _panel_configs
 
-_REALS = ["glm_5_2", "minimax_m3", "deepseek_v4_flash", "panel_llama",
-          "panel_gpt", "panel_qwen", "claude_cli", "codex_cli"]
+# Synthetic provider list (a fake router; never reads the real config) sized
+# past the 5-slot panel so CLI prioritization is exercised. The extra HTTP
+# names are arbitrary fillers, not live-configured providers.
+_REALS = ["glm_5_2", "gemini_3_6_flash", "gpt_5_6_luna", "claude_sonnet_5",
+          "extra_http_a", "extra_http_b", "claude_cli", "codex_cli"]
 
 
 class _Router:
