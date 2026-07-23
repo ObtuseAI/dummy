@@ -96,6 +96,15 @@ class Forecast:
     market_implied_yes: float | None
     edge_yes: float  # probability_yes - implied (fee-unadjusted)
     rationale: str
+    # Independent "model view" (Wave-78): the challenger-INCLUSIVE fusion, i.e.
+    # what our own models collectively think BEFORE the promotion ladder filters
+    # unpromoted challengers out of the traded ``probability_yes``. Display-only:
+    # surfaces an independent both-sides read + model-vs-market edge on every
+    # market/coin, even for challengers that cannot yet move the traded number.
+    # ``None`` when no independent (non-market_prior) source priced the market.
+    model_probability_yes: float | None = None
+    model_uncertainty: float | None = None
+    model_sources: dict[str, float] | None = None
 
 
 @dataclass(frozen=True)

@@ -1232,14 +1232,26 @@ function revealGuideTab(tab,smooth){
   const left=Math.max(0,tab.offsetLeft-(strip.clientWidth-tab.offsetWidth)/2);
   strip.scrollTo({left:left,behavior:smooth&&!REDUCE?'smooth':'auto'});
 }
+function modelCell(r){
+  // The independent model view: our own model's both-sides call, present even
+  // when the promotion ladder keeps it out of the traded number. Shows the
+  // recommended action + model-vs-market edge, or an em dash when no model
+  // priced this market (e.g. a prop with no batter model yet).
+  if(!r.has_independent_model||r.model_recommendation==null)return '<span class="tier-badge" style="border-style:dashed">no model</span>';
+  const e=r.model_edge,cls=(e==null?'':(e>=0?'pos':'neg'));
+  return '<span class="pill '+(String(r.model_side||'').toUpperCase()==='NO'?'no':'yes')+'" style="white-space:normal">'+esc(r.model_recommendation)+'</span>'
+    +(e==null?'':' <b class="'+cls+'">'+signed(e,3)+'</b>');
+}
 function gameBreakdown(rows){
   rows=[...rows].sort((a,b)=>opportunity(b)-opportunity(a));
-  return '<div style="overflow:auto"><table><thead><tr><th>Category</th><th>Market</th><th>Value side</th><th>Model P</th><th>Market P</th><th>Net edge</th><th>Tier / reason</th></tr></thead><tbody>'
+  return '<div style="overflow:auto"><table><thead><tr><th>Category</th><th>Market</th><th>Value side</th><th>Traded P</th><th>Market P</th><th>Net edge</th><th>Independent model</th><th>Tier / reason</th></tr></thead><tbody>'
     +rows.map(r=>{const side=sideFor(r),edge=opportunity(r);
       return '<tr><td>'+esc(prettyBet(r.bet_type))+'</td><td title="'+esc(r.ticker)+'">'+esc(marketName(r))+'</td>'
         +'<td>'+(side?'<span class="pill '+(side==='NO'?'no':'yes')+'">'+side+'</span>':'—')+'</td>'
         +'<td>'+num(sideProb(r,'probability'),2)+'</td><td>'+num(sideProb(r,'market_probability'),2)+'</td>'
-        +'<td class="'+(!Number.isFinite(edge)?'':(edge>=0?'pos':'neg'))+'">'+opportunityLabel(r)+'</td><td title="'+esc(r.tier_reason||r.tier_display_reason||'')+'">'+tierBadge(boardTier(r))+'<span class="tier-sample">'+esc(boardTierReason(r))+'</span></td></tr>';}).join('')
+        +'<td class="'+(!Number.isFinite(edge)?'':(edge>=0?'pos':'neg'))+'">'+opportunityLabel(r)+'</td>'
+        +'<td>'+modelCell(r)+'</td>'
+        +'<td title="'+esc(r.tier_reason||r.tier_display_reason||'')+'">'+tierBadge(boardTier(r))+'<span class="tier-sample">'+esc(boardTierReason(r))+'</span></td></tr>';}).join('')
     +'</tbody></table></div>';
 }
 function dayGames(rows,key,filterLabel,isAll){

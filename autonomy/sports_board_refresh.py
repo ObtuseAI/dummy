@@ -1142,6 +1142,11 @@ def refresh_sports_display_board(
         uncertainty = _finite(row.get("uncertainty"))
         forecast_at = _utc(row.get("forecast_generated_at"))
         sources_used = _governed_sources(row.get("forecast_sources_used"))
+        # Wave-78: the independent model view carried on the prior cycle row.
+        model_probability = _finite(row.get("model_probability"))
+        model_uncertainty = _finite(row.get("model_uncertainty"))
+        model_sources = row.get("model_sources")
+        model_sources = model_sources if isinstance(model_sources, dict) else None
         if (
             row.get("model_status") == "MARKET_PRIOR_ONLY"
             and forecast_at is not None
@@ -1186,7 +1191,10 @@ def refresh_sports_display_board(
         elif model_source != "cycle_artifact":
             cache_status[ticker] = "UNTRUSTED_SOURCE"
             continue
-        cache[ticker] = (probability, uncertainty, forecast_at, sources_used)
+        cache[ticker] = (
+            probability, uncertainty, forecast_at, sources_used,
+            model_probability, model_uncertainty, model_sources,
+        )
         cache_status[ticker] = "FRESH"
 
     scored: list[tuple[Any, Forecast]] = []
@@ -1205,7 +1213,8 @@ def refresh_sports_display_board(
         if cached is None:
             model_status_by_ticker[ticker] = cache_status.get(ticker, "MISSING")
             continue
-        probability, uncertainty, forecast_at, sources_used = cached
+        (probability, uncertainty, forecast_at, sources_used,
+         model_probability, model_uncertainty, model_sources) = cached
         forecast_at_by_ticker[ticker] = forecast_at
         sources_at_by_ticker[ticker] = sources_used
         implied = honest_implied_yes(market.yes_bid, market.yes_ask)
@@ -1219,6 +1228,11 @@ def refresh_sports_display_board(
                 market_implied_yes=implied,
                 edge_yes=(probability - implied) if implied is not None else 0.0,
                 rationale="display-only reassessment of cached cycle forecast",
+                # Model view is stable model output; the tier re-grade against a
+                # moved quote re-derives model_edge/side from the fresh implied.
+                model_probability_yes=model_probability,
+                model_uncertainty=model_uncertainty,
+                model_sources=model_sources,
             ),
         ))
 

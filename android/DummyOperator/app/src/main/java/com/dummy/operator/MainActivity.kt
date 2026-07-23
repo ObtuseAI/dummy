@@ -324,16 +324,30 @@ private fun GuideScreen(
                 is GuideState.Loading -> CenterNote("loading ${group.uppercase()} guide…", true)
                 is GuideState.Error -> CenterNote("couldn't load guide: ${state.message}", false)
                 is GuideState.Ok -> {
-                    if (state.guide.picks.isEmpty()) {
-                        CenterNote("no tiered picks for ${group.uppercase()} right now", false)
+                    val guide = state.guide
+                    if (guide.picks.isEmpty() && guide.modelLeans.isEmpty()) {
+                        CenterNote("no tradeable picks or model leans for " +
+                            "${group.uppercase()} right now", false)
                     } else {
                         Column(
                             Modifier.fillMaxSize().verticalScroll(rememberScrollState())
                                 .padding(12.dp),
                             verticalArrangement = Arrangement.spacedBy(8.dp),
                         ) {
-                            state.guide.picks.forEach { PickCard(it) }
-                            Text("read-only · not advice · $0 auto-capital",
+                            if (guide.picks.isNotEmpty()) {
+                                SectionHeader("TRADEABLE PICKS",
+                                    "${guide.picks.size} · cleared the tier gate")
+                                guide.picks.forEach { PickCard(it) }
+                            }
+                            if (guide.modelLeans.isNotEmpty()) {
+                                Spacer(Modifier.height(6.dp))
+                                SectionHeader("MODEL LEANS",
+                                    "${guide.modelLeans.size} · our model disagrees with " +
+                                        "the market (not yet tradeable)")
+                                guide.modelLeans.forEach { LeanCard(it) }
+                            }
+                            Text("read-only · not advice · $0 auto-capital · model " +
+                                "view is our own forecast, not the traded number",
                                 color = PhosphorDim, fontSize = 10.sp,
                                 modifier = Modifier.padding(top = 4.dp))
                             Spacer(Modifier.height(24.dp))
@@ -388,14 +402,91 @@ private fun PickCard(p: LeaguePick) {
             Text(p.market, color = PhosphorDim, fontSize = 11.sp)
             Spacer(Modifier.height(8.dp))
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Stat("MODEL", pct(p.probability), Modifier.weight(1f))
+                Stat("TRADED", pct(p.probability), Modifier.weight(1f))
                 Stat("MARKET", pct(p.marketProbability), Modifier.weight(1f))
                 EdgeStat("EDGE", p.edge, Modifier.weight(1f))
+            }
+            // Independent model view: our own model's both-sides call, shown
+            // when it exists and diverges from the traded/market number.
+            if (p.hasIndependentModel && p.modelRecommendation != null) {
+                Spacer(Modifier.height(6.dp))
+                ModelViewLine(p)
             }
             p.why?.takeIf { it.isNotBlank() }?.let {
                 Spacer(Modifier.height(8.dp))
                 Text(it, color = PhosphorDim, fontSize = 11.sp, maxLines = 3,
                     overflow = TextOverflow.Ellipsis)
+            }
+        }
+    }
+}
+
+@Composable
+private fun SectionHeader(title: String, sub: String) {
+    Column(Modifier.padding(top = 4.dp, bottom = 2.dp)) {
+        Text(title, color = PhosphorGreen, fontWeight = FontWeight.Bold,
+            fontSize = 13.sp, letterSpacing = 2.sp)
+        Text(sub, color = PhosphorDim, fontSize = 10.sp)
+    }
+}
+
+@Composable
+private fun ModelViewLine(p: LeaguePick) {
+    val e = p.modelEdge
+    val edgeColor = when {
+        e == null -> PhosphorDim
+        e > 0 -> PhosphorGreen
+        e < 0 -> PhosphorRed
+        else -> PhosphorDim
+    }
+    Row(
+        Modifier.fillMaxWidth().clip(RoundedCornerShape(6.dp))
+            .background(PhosphorLine).padding(horizontal = 8.dp, vertical = 6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text("MODEL SEES", color = PhosphorDim, fontSize = 9.sp, letterSpacing = 1.sp)
+        Spacer(Modifier.width(8.dp))
+        Text(p.modelRecommendation ?: "—", color = edgeColor, fontSize = 13.sp,
+            fontWeight = FontWeight.Bold, maxLines = 2, overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f))
+        Text(signed(e, 3), color = edgeColor, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+    }
+}
+
+/** A market with no tradeable tier where the independent model leans hard. */
+@Composable
+private fun LeanCard(p: LeaguePick) {
+    val e = p.modelEdge
+    val edgeColor = if ((e ?: 0.0) >= 0) PhosphorGreen else PhosphorRed
+    Card(
+        Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = PhosphorPanel),
+        shape = RoundedCornerShape(8.dp),
+    ) {
+        Column(Modifier.padding(12.dp)) {
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Text(p.matchup.ifBlank { p.market }, color = PhosphorDim, fontSize = 12.sp,
+                    maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+                p.gameDate?.let { Text(it, color = PhosphorDim, fontSize = 11.sp) }
+            }
+            Spacer(Modifier.height(6.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(
+                    Modifier.clip(RoundedCornerShape(4.dp))
+                        .background(edgeColor.copy(alpha = 0.18f))
+                        .padding(horizontal = 6.dp, vertical = 2.dp)
+                ) { Text("MODEL", color = edgeColor, fontWeight = FontWeight.Bold, fontSize = 10.sp) }
+                Spacer(Modifier.width(8.dp))
+                Text(p.modelRecommendation ?: p.market, color = edgeColor, fontSize = 16.sp,
+                    fontWeight = FontWeight.Bold, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            }
+            Spacer(Modifier.height(6.dp))
+            Text(p.market, color = PhosphorDim, fontSize = 11.sp)
+            Spacer(Modifier.height(8.dp))
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Stat("MODEL", pct(p.modelProbability), Modifier.weight(1f))
+                Stat("MARKET", pct(p.marketProbability), Modifier.weight(1f))
+                EdgeStat("EDGE", p.modelEdge, Modifier.weight(1f))
             }
         }
     }

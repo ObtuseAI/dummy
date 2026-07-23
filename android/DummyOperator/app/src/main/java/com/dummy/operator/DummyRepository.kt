@@ -51,12 +51,21 @@ data class LeaguePick(
     val marketProbability: Double?,
     val gameDate: String?,
     val why: String?,
+    // Wave-78: the independent model view -- our own model's both-sides call,
+    // surfaced even when the promotion ladder keeps it out of the traded number.
+    val modelProbability: Double?,
+    val modelEdge: Double?,
+    val modelRecommendation: String?,
+    val hasIndependentModel: Boolean,
 )
 
 data class LeagueGuide(
     val league: String,
     val coverageDate: String?,
     val picks: List<LeaguePick>,
+    // Markets with no tradeable tier where our independent model still leans
+    // hard against the market -- the model's strongest both-sides reads.
+    val modelLeans: List<LeaguePick>,
     val marketCount: Int,
 )
 
@@ -172,23 +181,26 @@ class DummyRepository(context: Context) {
         val groups = board.optJSONObject("groups")
         val g = groups?.optJSONObject(group.lowercase())
         val picks = mutableListOf<LeaguePick>()
+        val leans = mutableListOf<LeaguePick>()
         g?.keys()?.forEach { betType ->
             val arr = g.optJSONArray(betType) ?: return@forEach
             for (i in 0 until arr.length()) {
                 val r = arr.optJSONObject(i) ?: continue
-                // Only rows the current policy actually graded into a tier are a
-                // guide entry; WATCH/UNATTRIBUTED rows are the long tail.
                 val tier = r.optString("tier").ifBlank { null }
-                if (tier == null || tier !in setOf("A", "B", "C")) continue
+                val tradeable = tier in setOf("A", "B", "C")
+                val hasModel = r.optBoolean("has_independent_model", false)
+                // A row is a guide entry if the policy graded it into a tradeable
+                // tier, OR our independent model has a view on it (so every market
+                // with a model shows a both-sides read, not just the tradeable few).
+                if (!tradeable && !hasModel) continue
                 val side = r.optString("pick").ifBlank { r.optString("forecast_lean") }
                     .ifBlank { null }
-                picks += LeaguePick(
+                val pick = LeaguePick(
                     matchup = r.optString("matchup").ifBlank { r.optString("subject") },
                     market = r.optString("market").ifBlank { betType },
                     tier = tier,
                     pick = side,
                     recommendation = r.optString("recommendation").ifBlank {
-                        // Fallback if an older board lacks the field.
                         side?.let { r.optString("market") + " → " + it.uppercase() }
                     },
                     edge = r.optDoubleOrNull("after_fee_edge") ?: r.optDoubleOrNull("edge"),
@@ -197,17 +209,29 @@ class DummyRepository(context: Context) {
                     gameDate = r.optString("game_date").ifBlank { r.optString("event_date") }
                         .ifBlank { null },
                     why = r.optString("why").ifBlank { null },
+                    modelProbability = r.optDoubleOrNull("model_probability"),
+                    modelEdge = r.optDoubleOrNull("model_edge"),
+                    modelRecommendation = r.optString("model_recommendation").ifBlank { null },
+                    hasIndependentModel = hasModel,
                 )
+                if (tradeable) picks += pick
+                // Model leans: no tradeable tier, but the model disagrees with
+                // the market by >= 5c on either side. Capped + ranked below.
+                else if (hasModel && kotlin.math.abs(pick.modelEdge ?: 0.0) >= 0.05) {
+                    leans += pick
+                }
             }
         }
         val tierRank = mapOf("A" to 0, "B" to 1, "C" to 2)
         picks.sortWith(
             compareBy({ tierRank[it.tier] ?: 9 }, { -(it.edge ?: -1.0) })
         )
+        leans.sortByDescending { kotlin.math.abs(it.modelEdge ?: 0.0) }
         return LeagueGuide(
             league = group.uppercase(),
             coverageDate = board.optString("coverage_date").ifBlank { null },
             picks = picks,
+            modelLeans = leans.take(40),
             marketCount = board.optInt("current_market_count", 0),
         )
     }

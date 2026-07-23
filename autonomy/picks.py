@@ -66,6 +66,16 @@ def build_fused_signal(
             "market_implied_yes": forecast.market_implied_yes,
             "edge_yes": forecast.edge_yes,
             "sources_used": dict(forecast.sources_used),
+            # Wave-78: carry the independent model view so the display-refresh /
+            # ledger-fallback board path can surface it without the live
+            # signals. Display-only; never touches the traded probability.
+            "model_probability_yes": getattr(
+                forecast, "model_probability_yes", None),
+            "model_uncertainty": getattr(forecast, "model_uncertainty", None),
+            "model_sources": (
+                dict(forecast.model_sources)
+                if getattr(forecast, "model_sources", None) else None
+            ),
             **tier_features,
         },
     )

@@ -219,6 +219,56 @@ def recommend_side(ticker: str, side: str | None) -> str | None:
     return f"{pieces.get('market') or mt}: {s.upper()}"
 
 
+def model_view_fields(
+    ticker: str,
+    model_probability: float | None,
+    market_probability: float | None,
+    model_sources: dict[str, float] | None = None,
+) -> dict[str, Any]:
+    """Display fields for the independent model view (Wave-78).
+
+    The model view is our own models' consensus for a market, computed even when
+    the promotion ladder keeps those (challenger) models out of the traded
+    number. Surfaces an unambiguous both-sides call: the recommended side is
+    whichever way the model leans against the market (YES when the model prices
+    the contract richer than the market, NO when cheaper), with a plain-English
+    action. Every field is ``None`` when no independent model priced the market
+    (e.g. a prop with no batter model yet) -- which is exactly how the board
+    flags a genuine model gap.
+    """
+    if model_probability is None:
+        return {
+            "model_probability": None,
+            "model_edge": None,
+            "model_side": None,
+            "model_recommendation": None,
+            "has_independent_model": False,
+            "model_source_count": 0,
+            "model_sources": None,
+        }
+    mp = float(model_probability)
+    edge = (mp - float(market_probability)) if isinstance(
+        market_probability, (int, float)) else None
+    # Lean YES when the model thinks the contract is underpriced by the market,
+    # NO when overpriced. With no market anchor, fall back to the more-likely
+    # outcome. A dead-even read (edge exactly 0) defaults to the model's own lean.
+    if edge is not None and abs(edge) > 1e-9:
+        side = "yes" if edge > 0 else "no"
+    else:
+        side = "yes" if mp >= 0.5 else "no"
+    return {
+        "model_probability": round(mp, 4),
+        "model_edge": round(edge, 4) if edge is not None else None,
+        "model_side": side,
+        "model_recommendation": recommend_side(str(ticker), side),
+        "has_independent_model": True,
+        "model_source_count": len([
+            s for s in (model_sources or {}) if s != "market_prior"
+        ]),
+        "model_sources": dict(model_sources) if model_sources else None,
+    }
+
+
 def humanize_ticker(ticker: str) -> dict[str, Any]:
     """Readable pieces for a ticker: ``{matchup, market, line, date, label}``.
 
