@@ -9,7 +9,7 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/python-3.14-4b8bbe" alt="Python 3.14">
-  <img src="https://img.shields.io/badge/tests-6488%20passing-2ea44f" alt="6488 tests passing">
+  <img src="https://img.shields.io/badge/tests-7501%20passing-2ea44f" alt="7501 tests passing">
   <img src="https://img.shields.io/badge/mode-SHADOW%20·%20paper-1f9d55" alt="Shadow paper mode">
   <img src="https://img.shields.io/badge/promotion%20to%20capital-human--gated-e0a100" alt="Human-gated">
   <img src="https://img.shields.io/badge/execution-fail--closed-c0392b" alt="Fail-closed">
@@ -57,14 +57,26 @@ human is the only path from evidence to a real order.
   Each market is priced by a league-specific pregame and live kernel, cross-checked by a
   power-ratings ensemble and a de-vigged multi-book consensus. Leagues wake and sleep with
   their real season — out of season, a scope shows its last-season basis instead of vanishing.
-- **Sports history superstore** — a point-in-time lake of **95,810 real games** (NCAAMB,
-  NCAAF, NBA, NFL, WNBA, MLB) ingested from open public schedule feeds through a polite
-  cached/rate-limited fetcher — no paywall, no key. Six challenger analytics price the full
-  game surface off it: Glicko-2, 538-style MOV-Elo, Pythagenpat, Dean-Oliver Four Factors,
-  EPA/play, and a scoring model for spreads and totals. Each is graded by an event-purged
-  walk-forward that predicts before it updates, and a daily self-tuner re-optimizes every
-  league's home edge from the fresh lake. Deep history sharpens the edge — MOV-Elo hits
-  72.9% on NCAAF, Glicko-2 72.0% on 51.9k graded NCAAMB games.
+- **Sports history superstore** — a point-in-time lake of **162,915 real games**
+  (150,894 of them strictly evaluation-eligible under the provenance gate) across all seven
+  leagues, ingested from open public feeds through a polite cached fetcher — no paywall, no
+  key. **Eleven challenger analytics** price the full game surface off it: Glicko-2,
+  538-style MOV-Elo, Pythagenpat, Dean-Oliver Four Factors, EPA/play, a spread/total scoring
+  model with likelihood-tuned sigmas, a rest/travel mean shift, live win probability, a
+  referee/official total adjustment, and a minutes-and-usage player-prop projection. Each is
+  graded by an event-purged walk-forward that predicts before it updates, and a daily
+  self-tuner re-optimizes every league's parameters from the fresh lake.
+- **Play-by-play knowledge lake** — **32,298 games of real play-by-play** across all six
+  data-covered leagues (NBA, NCAAMB, WNBA, NFL, MLB innings, NHL periods), folded into
+  empirical margin/total distributions, per-period scoring profiles, and
+  **comeback matrices** — P(win | lead entering each period) from tens of thousands of real
+  games — that feed live re-pricing and simulator calibration cross-checks.
+
+An exact **four-model LLM panel** (Gemini 3.6 Flash, GPT-5.6 Luna, Claude Sonnet 5,
+GLM-5.2) reviews the top pick each cycle in a seven-call atomic contract — statically routed,
+fail-closed on any missing or malformed voice, double-locked behind a paid-call gate, and
+**structurally quarantined from fusion**: every voice is graded against settlements like any
+other source, and model influence requires its own 300-cluster forward-evidence dossier.
 
 Every model is a **challenger**: it accrues Brier and closing-line evidence but never reaches
 capital until an explicit human promotion.
@@ -136,6 +148,30 @@ by earned trust, ranks by capital velocity (edge per √hour-to-settlement), siz
 quarter-Kelly under a stage ladder, places maker-first LIMIT orders (shadow by default),
 reconciles settlements, and grades every source against reality.
 
+## The organization around the models
+
+The models compete; an instrumented organization coaches them, borrowed from the best
+front offices and labs:
+
+- **Self-scout** — the fused forecast's own tendencies (directional lean, favorite/longshot
+  calibration, overconfidence, post-loss drift) audited daily, before the market finds them.
+- **Film room** — the worst settled forecasts individually reconstructed: who dissented,
+  what the market knew, which sources saw it better.
+- **Recruiting board** — one ranked talent pipeline across mined rules, compiled strategy
+  claims, harvested repositories, and challenger scopes, staged PROSPECT → STARTER/CUT,
+  with position needs from the no-edge map.
+- **Matchup lens & top threat** — every letter-tier edge graded source-strength ×
+  market-softness (prime isolation vs bait), and the single book concentration that would
+  hurt most named every cycle.
+- **Development tracker** — watches the tuner and ingestion machinery itself, so a silent
+  outage becomes a next-morning headline.
+- **Strategy claim compiler** — prose claims (Reddit, video, README) formalized into
+  falsifiable specs; the unfalsifiable are rejected, the testable get faithful
+  interpretations and a reproducibility record.
+- **Evolution lab** — a quality-diversity archive with grid mutation **and true crossover**,
+  settlement-ratcheted mutation pressure, causal replay, and a parameter-jitter fragility
+  verdict on every generation's champion.
+
 ## Recursive improvement
 
 - **Contested-truth calibration** — every settlement Brier-scores every source that opined,
@@ -150,6 +186,11 @@ reconciles settlements, and grades every source against reality.
 - **Honest uncertainty** — backtests are event-cluster aware (adjacent strikes resampled
   together), report 95% Brier/log-loss intervals, and select thresholds by point-in-time
   walk-forward that only trains on outcomes settled before the test window.
+- **Ablation, property sweeps, chaos drills** — every source's *marginal* contribution to
+  the ensemble is measured leave-one-out (redundancy surfaces daily); thousands of seeded
+  randomized cases prove the fail-closed core's invariants universally; and injected faults
+  (NaN feeds, garbage payloads, corrupt artifacts) are permanent regression armor proving
+  the system degrades instead of guessing.
 
 ## Safety &amp; governance
 
@@ -173,11 +214,15 @@ capital authority. The guardrails are structural:
 
 | | |
 |---|--:|
-| Markets priced per cycle | ~3,500 |
+| Markets priced per cycle | 2,500–4,500 |
 | Verticals | 3 crypto coins · 7 sports leagues |
-| Sports history lake | 95,810 point-in-time games |
-| Challenger analytics (sports) | 6, walk-forward graded |
-| Tests | 6,490 passing |
+| Competing forecast sources | 45 registered |
+| Sports history lake | 162,915 point-in-time games (150,894 evaluation-eligible) |
+| Play-by-play knowledge lake | 32,298 games, 6 leagues, comeback matrices |
+| Sports challenger analytics | 11, walk-forward graded |
+| LLM panel | 4 exact models, 7-call atomic, double-locked |
+| Improvement waves shipped | 77 |
+| Tests | 7,501 passing |
 | Capital at risk | $0 — paper, human-gated |
 
 ## Operator quickstart
