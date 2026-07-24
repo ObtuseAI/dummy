@@ -45,3 +45,34 @@ def test_tune_league_and_persist(tmp_path):
     assert load_tuned("nfl", "nope", "x", 99.0, path=p) == 99.0
     assert load_tuned("mlb", "glicko", "home_advantage", 24.0, path=tmp_path / "absent.json") == 24.0
     st.close()
+
+
+def test_tune_all_persists_incrementally_and_preserves_prior(tmp_path, monkeypatch):
+    # A run cut short (task time limit) must still land the leagues it finished,
+    # and must not wipe leagues from a prior run that it did not reach.
+    import autonomy.sports.tuner as tuner
+
+    st = _seed(tmp_path)
+    p = tmp_path / "tuned.json"
+    # Seed a prior file with a league this run won't touch (wnba).
+    tuner._write_tuned(p, {"wnba": {"glicko": {"param": "home_advantage",
+                                               "value": 33.0, "n": 5}}})
+    # Simulate termination: nfl tunes, then the next league raises.
+    real = tuner.tune_league
+    calls = {"n": 0}
+
+    def flaky(store, lg):
+        calls["n"] += 1
+        if calls["n"] >= 2:
+            raise KeyboardInterrupt("simulated task-timeout kill")
+        return real(store, lg)
+
+    monkeypatch.setattr(tuner, "tune_league", flaky)
+    try:
+        tuner.tune_all(st, ["nfl", "mlb"], path=p)
+    except KeyboardInterrupt:
+        pass
+    # nfl (finished before the kill) persisted; wnba (prior, untouched) preserved.
+    assert load_tuned("nfl", "glicko", "home_advantage", 0.0, path=p) > 0.0
+    assert load_tuned("wnba", "glicko", "home_advantage", 0.0, path=p) == 33.0
+    st.close()

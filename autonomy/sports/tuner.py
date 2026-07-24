@@ -150,18 +150,39 @@ def _pbp_sigma_disclosure(league: str, param: str) -> float | None:
         return None
 
 
-def tune_all(store: SportsHistoryStore, leagues: list[str], *, path: Path | None = None) -> dict[str, Any]:
-    tuned = {lg: tune_league(store, lg) for lg in leagues}
-    tuned = {lg: v for lg, v in tuned.items() if v}
-    target = path or TUNED_PATH
-    target.parent.mkdir(parents=True, exist_ok=True)
-    tmp = target.with_suffix(".json.tmp")
+def _write_tuned(target: Path, tuned: dict[str, Any]) -> None:
     from datetime import datetime, timezone
 
+    target.parent.mkdir(parents=True, exist_ok=True)
+    tmp = target.with_suffix(".json.tmp")
     tmp.write_text(json.dumps({"generated_at": datetime.now(timezone.utc).isoformat(),
                                "leagues": tuned}), encoding="utf-8")
     tmp.replace(target)
-    return tuned
+
+
+def tune_all(store: SportsHistoryStore, leagues: list[str], *, path: Path | None = None) -> dict[str, Any]:
+    """Walk-forward tune each league, persisting after EVERY league.
+
+    The full 7-league grid search can exceed the tuner task's wall-clock limit
+    (which terminates it). Writing all leagues only at the end therefore lost the
+    WHOLE pass to a mid-run kill -- the tuned-params file went stale for days.
+    Now each finished league is persisted immediately and leagues not reached
+    keep their prior tuned values, so a run that is cut short still lands the
+    leagues it finished instead of losing everything.
+    """
+    target = path or TUNED_PATH
+    tuned: dict[str, Any] = {}
+    try:
+        blob = json.loads(target.read_text(encoding="utf-8"))
+        tuned = dict(blob.get("leagues") or {})
+    except Exception:  # noqa: BLE001 -- no/bad prior file => tune everything fresh
+        tuned = {}
+    for lg in leagues:
+        v = tune_league(store, lg)
+        if v:
+            tuned[lg] = v
+            _write_tuned(target, tuned)  # persist progress after each league
+    return {lg: tuned[lg] for lg in leagues if lg in tuned}
 
 
 def load_tuned(league: str, analytic: str, param: str, default: float,
