@@ -113,6 +113,18 @@ def _isolated_evidence_root(monkeypatch, tmp_path):
         "BOARD_PATH",
         tmp_path / "runtime" / "autonomy" / "bet_board.json",
     )
+    # The sports history lake defaults to runtime/autonomy/sports_history.db.
+    # Any component that opens it WITHOUT an injected store (the sports signals'
+    # lazy ``SportsHistoryStore()`` default, adapter warmups) would otherwise
+    # read/write the LIVE ~95 MB lake. A concurrent lake writer (the DummyTune
+    # scheduled task) can then hold its write lock long enough to hang a test to
+    # timeout (observed in history_store.upsert_games). Point the default at an
+    # isolated tmp DB so no test ever touches -- or is blocked by -- the
+    # production lake. Tests that need real fixtures still inject their own store.
+    from autonomy.sports import history_store as _history_store
+
+    monkeypatch.setattr(
+        _history_store, "DEFAULT_PATH", tmp_path / "sports_history.db")
 
 
 @pytest.fixture(autouse=True)
