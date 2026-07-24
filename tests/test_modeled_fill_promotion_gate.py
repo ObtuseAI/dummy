@@ -190,6 +190,31 @@ def test_minimal_bar_removes_the_time_gate_but_not_the_ci_gate():
     assert "positive_cluster_ci95_lower" in flat_out["failures"]
 
 
+def test_thresholds_report_the_bar_actually_applied():
+    """The thresholds block is what an auditor reads.
+
+    With the minimal bar armed it still reported the strict 50/30/7.0 while
+    the gate enforced 5/3/0 -- describing a run that did not happen. The
+    applied bar is now reported, with the strict constants kept alongside so
+    the SIZE of the concession stays visible rather than hidden.
+    """
+    strict = PromotionConfig().as_dict()
+    assert strict["bar"] == "standard"
+    assert strict["stage1_min_forward_span_days"] == 7.0
+    assert strict["allow_modeled_fill_evidence"] is False
+
+    minimal = PromotionConfig(minimal_bar=True, allow_modeled_fill_evidence=True).as_dict()
+    assert minimal["bar"] == "minimal"
+    assert minimal["stage1_min_forward_span_days"] == 0.0
+    assert minimal["stage1_min_forward_clusters"] == 3.0
+    assert minimal["stage1_min_forward_trades"] == 5.0
+    assert minimal["allow_modeled_fill_evidence"] is True
+    # The concession remains measurable against what was given up.
+    assert minimal["strict_stage1_min_forward_span_days"] == 7.0
+    assert minimal["strict_stage1_min_forward_clusters"] == 30
+    assert minimal["strict_stage1_min_forward_trades"] == 50
+
+
 def test_minimal_bar_is_off_unless_separately_armed(monkeypatch):
     """The two concessions arm independently."""
     import importlib

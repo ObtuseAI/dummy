@@ -172,9 +172,20 @@ class PromotionConfig:
             "min_corr_overlap": self.min_corr_overlap,
             "max_promotions_per_day": self.max_promotions_per_day,
             "stage2_min_trades": self.stage2_min_trades,
-            "stage1_min_forward_trades": self.stage1_min_forward_trades,
-            "stage1_min_forward_clusters": self.stage1_min_forward_clusters,
-            "stage1_min_forward_span_days": self.stage1_min_forward_span_days,
+            # Wave-86: report the bar that is ACTUALLY APPLIED, not the strict
+            # constants. With the minimal bar armed these fields still read
+            # 50/30/7.0 while the gate enforced 5/3/0 -- the thresholds block
+            # is what an auditor reads, so it must not describe a run that did
+            # not happen. The strict constants are kept alongside, named, so
+            # the size of the concession stays visible.
+            "stage1_min_forward_trades": self.resolved_forward_gates()["trades"],
+            "stage1_min_forward_clusters": self.resolved_forward_gates()["clusters"],
+            "stage1_min_forward_span_days": self.resolved_forward_gates()["span_days"],
+            "bar": "minimal" if self.minimal_bar else "standard",
+            "strict_stage1_min_forward_trades": self.stage1_min_forward_trades,
+            "strict_stage1_min_forward_clusters": self.stage1_min_forward_clusters,
+            "strict_stage1_min_forward_span_days": self.stage1_min_forward_span_days,
+            "allow_modeled_fill_evidence": self.allow_modeled_fill_evidence,
             "contested_disagreement": self.contested_disagreement,
             "roi_path_min_roi": self.roi_path_min_roi,
             "roi_path_min_clusters": self.roi_path_min_clusters,
