@@ -108,6 +108,55 @@ class PromotionConfig:
     # Counterfactual ROI is retained as a research diagnostic only. It can
     # nominate a human-review candidate, but can never add fusion authority.
     roi_path_min_roi: float = 0.05
+    # Owner directive 2026-07-24 (Wave-86). OFF by default: a fresh clone, CI,
+    # and every test keep the strict witnessed-fill rule.
+    #
+    # Auto-promotion required WITNESSED fills, witnessed fills required live
+    # trading, and live trading required auto-promotion -- a closed loop that
+    # had never promoted anything (45/45 declined). Arming this lets the
+    # challenger lane's MODELED taker-at-ask fills satisfy the stage-1 forward
+    # evidence flags instead.
+    #
+    # What it deliberately does NOT relax: min_clusters, the forward cluster
+    # count, the forward span, the positive bootstrap CI, the correlation cap,
+    # and the strictly-forward-of-registration rule. Those are what stop a
+    # single day of 88 correlated SOL 15m fills from reading as 88 independent
+    # results, which is the exact illusion this system exists to refuse. Only
+    # the PROVENANCE of a fill is relaxed, never the independence of the
+    # evidence -- and the dossier is stamped modeled so it can never be
+    # mistaken later for a witnessed record.
+    allow_modeled_fill_evidence: bool = False
+    # Owner directive 2026-07-24: "no more time gates ... if it has a minimal
+    # positive ROI it has a place". Armed together with the modeled-fill flag.
+    #
+    # These drop the SPAN and VOLUME bars to a minimum. What deliberately
+    # survives is the shape of the evidence: independent event clusters and a
+    # bootstrap CI whose lower bound is strictly positive. A point estimate is
+    # not an edge -- a CI lower bound above zero is the cheapest honest claim
+    # that something works, and it is the one thing not worth trading away.
+    #
+    # The safety that replaces the removed gates is the RATCHET
+    # (autonomy/promotion_ratchet.py): a demoted scope may return, but only at
+    # a strictly harder bar each time, and it retires after MAX_ATTEMPTS. A low
+    # entry price is only safe when failure is remembered and repriced.
+    minimal_bar: bool = False
+    minimal_forward_span_days: float = 0.0     # no time gate
+    minimal_forward_trades: int = 5
+    minimal_forward_clusters: int = 3
+
+    def resolved_forward_gates(self) -> dict[str, float]:
+        """The forward-evidence bar actually applied this run."""
+        if not self.minimal_bar:
+            return {
+                "trades": float(self.stage1_min_forward_trades),
+                "clusters": float(self.stage1_min_forward_clusters),
+                "span_days": float(self.stage1_min_forward_span_days),
+            }
+        return {
+            "trades": float(self.minimal_forward_trades),
+            "clusters": float(self.minimal_forward_clusters),
+            "span_days": float(self.minimal_forward_span_days),
+        }
     roi_path_min_clusters: int = 200
     roi_path_min_span_days: float = 7.0
 
@@ -133,7 +182,35 @@ class PromotionConfig:
         }
 
 
-DEFAULT_CONFIG = PromotionConfig()
+def _modeled_fills_armed() -> bool:
+    """Operator arming for modeled-fill promotion evidence (Wave-86).
+
+    Read from the environment rather than baked in, so the strict rule is what
+    a fresh clone, CI, and the whole test suite see. ``DUMMY_PROMOTION_ALLOW_
+    MODELED_FILLS=1`` is the single explicit act that lets the challenger
+    lane's modeled fills carry stage-1 forward evidence.
+    """
+    import os
+
+    return os.environ.get("DUMMY_PROMOTION_ALLOW_MODELED_FILLS", "0").strip() == "1"
+
+
+def _minimal_bar_armed() -> bool:
+    """``DUMMY_PROMOTION_MINIMAL_BAR=1`` drops the span/volume gates.
+
+    Separate from the modeled-fill arm on purpose: they are two distinct
+    concessions (fill PROVENANCE vs evidence VOLUME) and an operator should be
+    able to take one without the other.
+    """
+    import os
+
+    return os.environ.get("DUMMY_PROMOTION_MINIMAL_BAR", "0").strip() == "1"
+
+
+DEFAULT_CONFIG = PromotionConfig(
+    allow_modeled_fill_evidence=_modeled_fills_armed(),
+    minimal_bar=_minimal_bar_armed(),
+)
 
 
 # --------------------------------------------------------------------------
@@ -538,9 +615,19 @@ def forward_witnessed_fill_evidence(
         return base
 
     failures: list[str] = []
+    # Wave-86: with allow_modeled_fill_evidence armed, a challenger-lane
+    # MODELED fill satisfies the fill-provenance flag. Everything else below
+    # -- cluster counts, span, bootstrap CI, forward-of-registration -- is
+    # unchanged, so relaxing provenance never relaxes independence.
+    modeled_ok = bool(
+        config.allow_modeled_fill_evidence
+        and raw.get("fill_provenance") in ("modeled", "modeled_taker_at_ask")
+    )
     required_truth = {
         "receipt_bounded": raw.get("receipt_bounded") is True,
-        "witnessed_fill_net_pnl": raw.get("witnessed_fill_net_pnl") is True,
+        "witnessed_fill_net_pnl": (
+            raw.get("witnessed_fill_net_pnl") is True or modeled_ok
+        ),
         "out_of_sample_after_registration": (
             raw.get("out_of_sample_after_registration") is True
         ),
@@ -605,10 +692,14 @@ def forward_witnessed_fill_evidence(
     ci = cluster_bootstrap_ci(clean_clusters, seed=f"forward-fill:{scope}")
     lower = (ci or {}).get("lower")
     clusters = len(clean_clusters)
+    # Wave-86: the applied bar depends on whether the minimal bar is armed.
+    # positive_cluster_ci95_lower is NEVER relaxed -- it is the difference
+    # between "this works" and "this was a good week".
+    applied = config.resolved_forward_gates()
     gates = {
-        "minimum_trades": counted_trades >= config.stage1_min_forward_trades,
-        "minimum_event_clusters": clusters >= config.stage1_min_forward_clusters,
-        "minimum_span_days": span_days >= config.stage1_min_forward_span_days,
+        "minimum_trades": counted_trades >= applied["trades"],
+        "minimum_event_clusters": clusters >= applied["clusters"],
+        "minimum_span_days": span_days >= applied["span_days"],
         "positive_cluster_ci95_lower": lower is not None and float(lower) > 0.0,
     }
     failures.extend(name for name, passed in gates.items() if not passed)
@@ -620,15 +711,22 @@ def forward_witnessed_fill_evidence(
         "candidate_fingerprint": fingerprint or None,
         "registered_at": registered_at,
         "n_trades": counted_trades,
-        "minimum_trades": config.stage1_min_forward_trades,
+        "minimum_trades": applied["trades"],
         "event_clusters": clusters,
-        "minimum_event_clusters": config.stage1_min_forward_clusters,
+        "minimum_event_clusters": applied["clusters"],
         "span_days": round(span_days, 6),
-        "minimum_span_days": config.stage1_min_forward_span_days,
+        "minimum_span_days": applied["span_days"],
+        "bar": "minimal" if config.minimal_bar else "standard",
         "pnl_ci95": ci,
         "gates": gates,
         "failures": sorted(set(failures)),
         "evidence_origin": raw.get("evidence_origin"),
+        # Grade is stamped on EVERY dossier, passing or not, so a promotion
+        # that rested on modeled fills is permanently self-identifying and can
+        # never be re-read later as a witnessed-fill record.
+        "evidence_grade": "modeled" if modeled_ok else "witnessed",
+        "fill_provenance": raw.get("fill_provenance"),
+        "modeled_fill_evidence_allowed": bool(config.allow_modeled_fill_evidence),
         "receipt_bounded": raw.get("receipt_bounded") is True,
         "witnessed_fill_net_pnl": raw.get("witnessed_fill_net_pnl") is True,
         "out_of_sample_after_registration": (

@@ -163,12 +163,38 @@ def _write_json(path: Path, value: dict) -> None:
     temporary.replace(path)
 
 
-def _merge_demotions(path: Path, fresh: dict, now_iso: str) -> dict:
-    """Union new demotions with existing ones -- demotions never un-stick.
+def _record_ratchet(fresh: dict, existing: dict, now_iso: str) -> int:
+    """Charge every NEW demotion to the scope's promotion ratchet.
 
-    A promoted scope that recovers stays demoted until a HUMAN removes it from
-    promotions.json (or clears this file); otherwise a transient recovery would
-    silently re-promote it, defeating the human-only promotion rule.
+    Wave-86: under autonomous operation a demotion must raise the price of the
+    next promotion rather than ban the scope forever. Recorded here, at the one
+    place demotions are minted, so the ratchet cannot drift out of step with
+    the demotion list. Returns how many new demotions were charged.
+    """
+    from autonomy.promotion_ratchet import load_ratchet, record_demotion, save_ratchet
+
+    new_scopes = [
+        entry["scope"] for entry in fresh.get("demotions", [])
+        if isinstance(entry, dict) and entry.get("scope")
+        and entry["scope"] not in existing
+    ]
+    if not new_scopes:
+        return 0
+    state = load_ratchet()
+    for scope in new_scopes:
+        record_demotion(state, scope, reason="auto_demotion", at=now_iso)
+    save_ratchet(state)
+    return len(new_scopes)
+
+
+def _merge_demotions(path: Path, fresh: dict, now_iso: str) -> dict:
+    """Union new demotions with existing ones -- demotions never un-stick HERE.
+
+    A promoted scope that recovers stays in this file; it is not silently
+    re-promoted by a transient recovery. Wave-86 makes the return path
+    autonomous rather than human-only: each demotion charges the scope's
+    ratchet (autonomy/promotion_ratchet.py), and a later attempt may clear a
+    strictly harder bar. The door is repriced, not closed.
     """
     existing: dict[str, dict] = {}
     try:
@@ -178,10 +204,12 @@ def _merge_demotions(path: Path, fresh: dict, now_iso: str) -> dict:
                 existing[str(entry["scope"])] = entry
     except (OSError, json.JSONDecodeError, ValueError):
         pass
+    charged = _record_ratchet(fresh, existing, now_iso)
     for entry in fresh.get("demotions", []):
         existing.setdefault(entry["scope"], entry)  # keep original detected_at
     return {"demotions": sorted(existing.values(), key=lambda e: e["scope"]),
-            "generated_at": now_iso}
+            "generated_at": now_iso,
+            "ratchet_charged": charged}
 
 
 def main() -> int:
