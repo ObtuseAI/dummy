@@ -77,16 +77,51 @@ def _mark_in_flight(league: str, model: str, clear: bool = False) -> None:
     and killed forever, learning nothing. An in_flight marker surviving into
     the next run IS the measurement: it means that model did not survive its
     own budget.
+
+    Completing a model also clears it from ``overran``: a bigger budget or a
+    faster implementation earns it back automatically.
     """
     blob = _read_artifact()
     if clear:
         blob.pop("in_flight", None)
+        overran = blob.get("overran") or {}
+        if model in (overran.get(league) or []):
+            overran[league] = [m for m in overran[league] if m != model]
+            if not overran[league]:
+                overran.pop(league, None)
+            blob["overran"] = overran
     else:
         blob["in_flight"] = {"league": league, "model": model}
     ARTIFACT.parent.mkdir(parents=True, exist_ok=True)
     tmp = ARTIFACT.with_suffix(".json.tmp")
     tmp.write_text(json.dumps(blob), encoding="utf-8")
     tmp.replace(ARTIFACT)
+
+
+def _harvest_kill_marker() -> dict[str, list[str]]:
+    """Promote a surviving in_flight marker into the persistent overran set.
+
+    A SINGLE in_flight marker can only remember one bad model, so a league with
+    two of them oscillates forever: the run skips the remembered one, dies in
+    the other, and the marker swaps -- next run skips that one and dies in the
+    first. ncaamb has exactly this shape (four_factors AND epa), so the guard
+    would never have converged. The overran set accumulates instead, and a
+    model leaves it only by completing.
+    """
+    blob = _read_artifact()
+    marker = blob.get("in_flight") or {}
+    overran = {k: list(v) for k, v in (blob.get("overran") or {}).items()}
+    league, model = marker.get("league"), marker.get("model")
+    if league and model and model not in overran.get(league, []):
+        overran.setdefault(league, []).append(model)
+    if marker:
+        blob.pop("in_flight", None)
+        blob["overran"] = overran
+        ARTIFACT.parent.mkdir(parents=True, exist_ok=True)
+        tmp = ARTIFACT.with_suffix(".json.tmp")
+        tmp.write_text(json.dumps(blob), encoding="utf-8")
+        tmp.replace(ARTIFACT)
+    return overran
 
 
 def _prior_durations() -> dict[str, dict[str, float]]:
@@ -139,15 +174,20 @@ def _persist(
         (r or {}).get("status") == "PARTIAL" for r in runs.values()
     ) else "OK"
 
-    ARTIFACT.parent.mkdir(parents=True, exist_ok=True)
-    tmp = ARTIFACT.with_suffix(".json.tmp")
-    tmp.write_text(json.dumps({
+    # UPDATE the existing blob rather than rebuilding it. Rebuilding dropped
+    # ``overran`` and ``in_flight`` on every persist, which silently disarmed
+    # the kill-forensics the budget guard depends on -- the marker only ever
+    # survived because a killed run never reaches this function.
+    blob.update({
         "generated_at": now,
         "models": list(MODEL_NAMES),
         "status": rollup,
         "runs": runs,
         "leagues": prior,
-    }), encoding="utf-8")
+    })
+    ARTIFACT.parent.mkdir(parents=True, exist_ok=True)
+    tmp = ARTIFACT.with_suffix(".json.tmp")
+    tmp.write_text(json.dumps(blob), encoding="utf-8")
     tmp.replace(ARTIFACT)
 
 
@@ -171,8 +211,10 @@ def main() -> int:
     deadline = (time.monotonic() + budget) if budget > 0 else None
 
     prior_durations = _prior_durations()
-    # A marker left behind means the previous run was killed inside that model.
-    killed = (_read_artifact().get("in_flight") or {})
+    # Models a previous run was killed inside. Accumulated, not single-slot, or
+    # a league with two of them oscillates forever. A disabled budget
+    # (--budget-s 0) is the operator escape hatch: force everything to run.
+    overran = _harvest_kill_marker() if deadline is not None else {}
 
     store = SportsHistoryStore()
     leagues = [args.league] if args.league else list(LEAGUES)
@@ -208,11 +250,12 @@ def main() -> int:
                 # first run has no measurement and is attempted optimistically,
                 # which is how it learns; if it is killed there, the in_flight
                 # marker below is what stops it being retried forever.
-                if killed.get("league") == league and killed.get("model") == name:
+                if name in (overran.get(league) or []):
                     skipped.append({
                         "league": league, "model": name,
                         "reason": "killed_mid_run_previously; needs a larger "
-                                  "budget or a faster model, not another retry",
+                                  "budget or a faster model, not another retry "
+                                  "(re-run with --budget-s 0 to force)",
                     })
                     continue
                 previous = float((prior_durations.get(league, {}) or {}).get(name) or 0.0)
