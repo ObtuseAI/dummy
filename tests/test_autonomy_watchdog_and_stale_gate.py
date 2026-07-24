@@ -21,6 +21,7 @@ from autonomy.staleness import (
     to_epoch_seconds,
 )
 from autonomy.watchdog import (
+    DEFAULT_DISK_FLOOR_GB,
     DEFAULT_LEDGER_MAX_GB,
     DEFAULT_TASKS,
     TaskSpec,
@@ -565,6 +566,9 @@ def test_watchdog_covers_every_default_task(tmp_path):
         "DummyLedgerPrune", "DummyLogRotation", "DummyLiveAccountSnapshot",
         # Registered 2026-07-24; the audit found the lab unscheduled for 9 days.
         "DummyAutoresearch",
+        # Wave-85: both sat in uncovered_tasks while being killed at their
+        # execution-time limits on every run.
+        "DummyTune", "DummyWF",
     }
     status = evaluate_watchdog(tmp_path, now_epoch=NOW_EPOCH)
     assert {r["task_name"] for r in status["tasks"]} == names
@@ -590,7 +594,14 @@ def test_watchdog_cycle_error_streak_and_kill_file(tmp_path):
 
 
 def test_watchdog_ledger_and_disk_thresholds(tmp_path):
-    assert DEFAULT_LEDGER_MAX_GB == 16.0
+    # Pinned on purpose: the ceiling is a capacity DECISION, so it should only
+    # ever move with an explicit owner call and a justification in the comment
+    # beside the constant -- never as incidental drift. Wave-85 raised it
+    # 16.0 -> 20.0 alongside the 5d -> 3d retention cut.
+    assert DEFAULT_LEDGER_MAX_GB == 20.0
+    # It must stay well clear of the free-disk floor, or the two tripwires
+    # collapse into one and the ledger alarm stops meaning anything.
+    assert DEFAULT_LEDGER_MAX_GB > DEFAULT_DISK_FLOOR_GB
     rd = _runtime(tmp_path)
     (rd / "ledger.db").write_bytes(b"x" * 2_000_000)  # 0.002 GB
     over = evaluate_watchdog(rd, now_epoch=_real_now_epoch(), ledger_max_gb=0.001)
@@ -805,3 +816,65 @@ def test_api_autonomy_serves_stale_cache_when_recompute_is_slow(tmp_path, monkey
     r = client.get("/api/autonomy")
     assert r.status_code == 200
     assert r.json().get("stale_cache") is True
+
+
+def test_time_limit_kill_is_reported_as_failing():
+    """A scheduler time-limit kill must never read as healthy.
+
+    SCHED_S_TASK_TERMINATED (0x41306 / 267014) was in the OK set, described as
+    "terminated-by-user". Task Scheduler returns the same code when it kills a
+    task that outran its ExecutionTimeLimit, so DummyTune and DummyWF_ncaamb
+    both reported failing=False while being killed on every single run -- four
+    leagues had never been tuned once, and ncaamb never persisted a full
+    walk-forward. Either reading of the code means the run did not finish.
+    """
+    from autonomy.watchdog import _SCHEDULER_OK_RESULTS
+
+    assert 267014 not in _SCHEDULER_OK_RESULTS      # terminated
+    assert 0 in _SCHEDULER_OK_RESULTS               # success
+    assert 267009 in _SCHEDULER_OK_RESULTS          # currently running
+    assert 267011 in _SCHEDULER_OK_RESULTS          # has not run yet
+
+
+def test_tuner_and_walk_forward_are_watchdog_covered():
+    """Both were in uncovered_tasks while silently failing for days."""
+    from autonomy.watchdog import DEFAULT_TASKS
+
+    by_name = {spec.name: spec for spec in DEFAULT_TASKS}
+    assert by_name["DummyTune"].artifact == "sports_tuned_params.json"
+    assert by_name["DummyWF"].artifact == "sports_walk_forward.json"
+
+
+def test_watchdog_does_not_grade_its_own_exit_code(tmp_path):
+    """Otherwise "unhealthy" latches on and can never clear.
+
+    run_dummy_watchdog.py exits nonzero when the FLEET is unhealthy, so
+    DummyWatchdog's own scheduler result reports the verdict, not the
+    watchdog's health. Counting it made a self-sustaining loop: anything
+    unhealthy -> exit 1 -> inventory reads DummyWatchdog failing ->
+    uncovered_failing non-empty -> unhealthy, forever, even once the original
+    cause was fixed.
+    """
+    rd = _runtime(tmp_path)
+    inventory = [
+        {"task_name": "DummyWatchdog", "failing": True,
+         "scheduler_status": "Ready", "last_run_time": "x", "last_result": 1},
+    ]
+    status = evaluate_watchdog(
+        rd, now_epoch=_real_now_epoch(), tasks=[], inventory=inventory,
+    )
+    assert status["uncovered_failing_tasks"] == []
+    assert status["healthy"] is True
+    # It is still LISTED -- suppressed from the verdict, not hidden.
+    assert "DummyWatchdog" in status["uncovered_tasks"]
+
+    # Any other failing uncovered task still degrades health.
+    inventory.append(
+        {"task_name": "DummySomethingElse", "failing": True,
+         "scheduler_status": "Ready", "last_run_time": "x", "last_result": 267014},
+    )
+    degraded = evaluate_watchdog(
+        rd, now_epoch=_real_now_epoch(), tasks=[], inventory=inventory,
+    )
+    assert degraded["uncovered_failing_tasks"] == ["DummySomethingElse"]
+    assert degraded["healthy"] is False

@@ -97,3 +97,43 @@ def test_unsupported_target_policy_is_permanently_fail_closed():
     assert policy["execution_target"] is False
     assert policy["reason"] == "outside_supported_prediction_targets"
     assert all("valuation" not in key for key in policy)
+
+
+def test_prediction_authority_matches_caps_and_scanner():
+    """The three layers that decide "may we forecast this" must agree.
+
+    Before Wave-85 target_policy GRANTED prediction-target authority to
+    elections / politics / economic / economics / macro / entertainment while
+    configs/caps.json blocked Elections+Politics and the scanner never fetched
+    any of them. It failed closed only because the blocks won. This pins the
+    three surfaces to one intent so they cannot drift apart again silently.
+    """
+    import json
+    from pathlib import Path
+
+    from autonomy.ontology import Vertical
+    from autonomy.target_policy import has_prediction_target_authority
+
+    # Granted: exactly the two verticals the scanner actually prices.
+    assert has_prediction_target_authority("KXBTCD-X", category="Crypto")
+    assert has_prediction_target_authority("KXMLBGAME-X", category="Sports")
+    assert has_prediction_target_authority("KXBTCD-X", vertical=Vertical.CRYPTO)
+    assert has_prediction_target_authority("KXMLBGAME-X", vertical=Vertical.SPORTS)
+
+    # Refused: no pricing path exists for any of these.
+    for category in (
+        "Elections", "Politics", "Economic", "Economics", "Macro", "Entertainment",
+    ):
+        assert not has_prediction_target_authority(
+            "KXSOMETHING-X", category=category,
+        ), category
+
+    # Whatever caps.json blocks must not be grantable here.
+    caps = json.loads(
+        (Path(__file__).resolve().parents[1] / "configs" / "caps.json")
+        .read_text(encoding="utf-8")
+    )
+    for blocked in caps.get("blocked_categories", []):
+        assert not has_prediction_target_authority(
+            "KXSOMETHING-X", category=blocked,
+        ), blocked

@@ -2072,22 +2072,44 @@ class AutonomyLedger:
             return ordered[lower] * (1.0 - fraction) + ordered[upper] * fraction
 
         def wilson(successes: int, n: int) -> dict[str, Any] | None:
+            """Wilson 95% interval, guarded against successes > n.
+
+            2026-07-24 (Wave-85): this was crashing the LIVE dashboard snapshot.
+            ``filled`` can exceed ``submitted`` for a scope -- a fill witnessed
+            for an order whose submission row sits outside the same scope or
+            window -- which makes ``rate > 1``, so ``rate * (1 - rate)`` goes
+            negative and math.sqrt raises
+            ``ValueError: expected a nonnegative input``. Every
+            DummyDashboardSnapshot run died on it (rc=1), which is why the task
+            read stale.
+
+            A ratio above 1 is a real accounting inconsistency, so it is
+            REPORTED rather than silently normalised: ``rate`` keeps its raw
+            value and ``ratio_exceeds_one`` marks it. Only the interval maths is
+            clamped, because a proportion CI is undefined outside [0, 1].
+            """
             if n <= 0:
                 return None
             z = 1.96
             rate = successes / n
+            clamped = min(1.0, max(0.0, rate))
             denominator = 1.0 + z * z / n
-            center = (rate + z * z / (2.0 * n)) / denominator
+            center = (clamped + z * z / (2.0 * n)) / denominator
+            # max(0.0, ...) is belt-and-braces against float noise once clamped.
             margin = z * math.sqrt(
-                rate * (1.0 - rate) / n + z * z / (4.0 * n * n)
+                max(0.0, clamped * (1.0 - clamped) / n + z * z / (4.0 * n * n))
             ) / denominator
-            return {
+            result = {
                 "rate": round(rate, 6),
                 "lower": round(max(0.0, center - margin), 6),
                 "upper": round(min(1.0, center + margin), 6),
                 "method": "wilson_95",
                 "n": n,
             }
+            if rate > 1.0:
+                result["ratio_exceeds_one"] = True
+                result["successes"] = successes
+            return result
 
         resolved = filled + expired_unfilled
 

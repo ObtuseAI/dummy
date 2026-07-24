@@ -1,4 +1,3 @@
-from pathlib import Path
 from fastapi.testclient import TestClient
 
 from dashboard.backend.main import app
@@ -46,6 +45,3 @@ def test_v8_model_providers_redacted():
         assert "api_key" not in str(status).lower()
         assert "private_key" not in str(status).lower()
 
-
-def test_v8_frontend_dist_exists():
-    assert (Path("C:/src/engine/dummy/dashboard/frontend/dist/index.html")).exists()

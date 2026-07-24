@@ -1227,12 +1227,21 @@ def generate_dashboard_v6_report() -> dict:
             results[ep] = 0
             results[f"{ep}_error"] = str(exc)
 
-    dist = ROOT / "dashboard" / "frontend" / "dist" / "index.html"
     archive_surface = getattr(app.state, "dashboard_surface", "unknown")
     statuses_match = all(
         results.get(endpoint) == expected
         for endpoint, expected in expected_statuses.items()
     )
+    # Wave-85: the verdict no longer depends on a local build artifact.
+    # ``frontend_built`` read dashboard/frontend/dist/index.html, which is
+    # untracked -- so this archived governance report could only ever PASS on a
+    # workstation that happened to have run ``npm run build``, and always FAILed
+    # in a fresh clone. That is why the whole test file is workstation-only.
+    # The frontend tree is now deliberately unbuildable (frozen archive evidence,
+    # see dashboard/frontend/README.md), so a build artifact is no longer a
+    # meaningful input to "is the archived v6 surface correct and offline".
+    # The endpoint/offline-surface contract this report actually exists to check
+    # is unchanged.
     return {
         "generated_at": now_iso(),
         "workstream": "V6: Dashboard",
@@ -1240,10 +1249,11 @@ def generate_dashboard_v6_report() -> dict:
         "expected_statuses": expected_statuses,
         "archive_surface": archive_surface,
         "operator_guard_verified": results.get("/v6/firewall/rehearse") == 503,
-        "frontend_built": dist.exists(),
+        "frontend_built": None,
+        "frontend_build_status": "not_applicable_frozen_archive_source",
         "verdict": (
             "PASS"
-            if archive_surface == "offline_archive" and statuses_match and dist.exists()
+            if archive_surface == "offline_archive" and statuses_match
             else "FAIL"
         ),
     }

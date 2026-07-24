@@ -34,7 +34,22 @@ from typing import Any, Iterable, Iterator
 # ``signal_history`` view unions hot + archived rows and every consumer reads the
 # view, while the archive DB keeps rows permanently -- trimming the hot window
 # only moves rows to the archive sooner, it never loses history.
-DEFAULT_RETENTION_DAYS = 5.0
+#
+# Wave-85 (owner capacity decision 2026-07-24): 5 -> 3 days. The hot ledger had
+# plateaued at 16.25 GB against a 16.0 GB ceiling with PRAGMA freelist_count ~0
+# immediately after a successful retention pass -- the shadow daemon inserts
+# ~25k signals every ~10 minutes and reuses freed pages before VACUUM can
+# reclaim them, so VACUUM recovered only 0.35 GB on 2026-07-23. Trimming the
+# window is the lever that actually shrinks the hot working set.
+#
+# The "every consumer reads the view" claim above was NOT true when this
+# landed: autonomy/scope_analytics.py read the hot ``signals`` table directly,
+# so 42,083 already-archived fused forecasts had silently vanished from the
+# dashboard's per-scope accuracy, and this cut would have deepened that to ~26%
+# of settled markets. That consumer was moved onto the view in the same wave.
+# Before shortening this window again, re-audit for direct ``FROM signals``
+# reads -- the view is only a safety net for readers that actually use it.
+DEFAULT_RETENTION_DAYS = 3.0
 DEFAULT_BATCH_SIZE = 100_000
 ARCHIVE_NAME = "signals_archive.db"
 ARCHIVE_ALIAS = "signal_archive"
@@ -390,6 +405,22 @@ def enforce_retention(
         connection.execute(
             f"CREATE INDEX IF NOT EXISTS {ARCHIVE_ALIAS}.idx_archive_signal_identity "
             "ON signals(source,market_ticker,created_at,mode)"
+        )
+        # Wave-85: the archive must carry the hot table's READ indexes, not just
+        # an identity index. ``signal_history`` is a UNION, so a query is only as
+        # fast as its slowest arm: the identity index above leads with ``source``,
+        # so every per-market lookup (autoresearch provenance replay, film room,
+        # edge concentration) full-scanned the multi-million-row archive arm --
+        # measured at 2.38s per lookup versus 0.00s against the hot table, and it
+        # is what pushed llm_value_report past its 120s writer budget. These two
+        # mirror idx_signals_market_created / idx_signals_source_created.
+        connection.execute(
+            f"CREATE INDEX IF NOT EXISTS {ARCHIVE_ALIAS}.idx_archive_signals_market_created "
+            "ON signals(market_ticker,created_at)"
+        )
+        connection.execute(
+            f"CREATE INDEX IF NOT EXISTS {ARCHIVE_ALIAS}.idx_archive_signals_created "
+            "ON signals(created_at)"
         )
         connection.commit()
         source_integrity = str(connection.execute("PRAGMA main.integrity_check").fetchone()[0])

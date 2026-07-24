@@ -20,9 +20,13 @@ class FakeTransport:
         return self.script.pop(0)
 
 
-# ESPN-schema repos only (NHL's fastRhockey feed is NHL-API-keyed -> excluded).
+# Wave-85 added NHL. It had been excluded as "NHL-API-keyed rather than
+# ESPN-schema", but the field fallbacks already cover exactly that shape -- the
+# NAME_CSV case below is described as fastRhockey-style and has always passed.
+# Verified against the real feed: 16,578 completed games across 2011-2024, and
+# NHL went from 0 games in the lake (not_repriceable) to a graded walk-forward.
 def test_all_leagues_mapped():
-    assert set(SDV_SOURCES) == {"wnba", "nba", "ncaamb"}
+    assert set(SDV_SOURCES) == {"wnba", "nba", "ncaamb", "nhl"}
 
 
 # A name-keyed schema (fastRhockey-style) still parses via the field fallbacks.
@@ -46,3 +50,53 @@ def test_parse_and_ingest(tmp_path):
     assert res["ok"] and res["seasons"] == 1
     assert [g["game_id"] for g in store.games_before("2024-06-01T00:00:00Z", league="nba")] == ["401590001"]
     store.close()
+
+
+def test_schedule_prefers_timezone_aware_date_key():
+    """A naive date silently quarantines every row it parses.
+
+    stamp_retro_source_reported() derives result availability through
+    _parse_aware, which REJECTS a timezone-naive value, so rows keyed off a
+    bare "game_date" stay provenance_quality=unknown and the point-in-time
+    walk-forward excludes them outright. That is how 16,578 successfully
+    ingested NHL games still graded as "no completed games in the lake yet":
+    fastRhockey publishes both game_date ("2023-06-14") and game_date_time
+    ("2023-06-14T00:00:00Z"), and only the latter can be stamped.
+    """
+    from autonomy.ingest.provenance import stamp_retro_source_reported
+    from autonomy.ingest.sportsdataverse import parse_sdv_schedule
+
+    text = (
+        "game_id,home_team_name,away_team_name,game_date,game_date_time,"
+        "home_score,away_score,status_detailed_state\n"
+        "401,Bruins,Canucks,2023-06-14,2023-06-14T00:00:00Z,4,0,Final\n"
+    )
+    rows = parse_sdv_schedule(text, "nhl", 2023, url="u")
+    assert len(rows) == 1
+    assert rows[0]["start_time"] == "2023-06-14T00:00:00Z"   # aware key wins
+    assert rows[0]["status"] == "final"
+
+    # The whole point: it must actually stamp, or the row is invisible.
+    assert stamp_retro_source_reported(rows) == 1
+    assert rows[0]["provenance_quality"] == "source_reported"
+
+
+def test_schedule_still_accepts_date_only_repos():
+    """Tolerance is preserved: a repo with only a bare date still parses."""
+    from autonomy.ingest.sportsdataverse import parse_sdv_schedule
+
+    text = (
+        "game_id,home_team_name,away_team_name,game_date,"
+        "home_score,away_score,status_detailed_state\n"
+        "402,Bruins,Canucks,2023-06-14,4,0,Final\n"
+    )
+    rows = parse_sdv_schedule(text, "nhl", 2023, url="u")
+    assert len(rows) == 1
+    assert rows[0]["start_time"] == "2023-06-14"
+
+
+def test_nhl_is_a_registered_history_source():
+    """NHL was the one league with zero games in the lake."""
+    from autonomy.ingest.sportsdataverse import SDV_SOURCES
+
+    assert SDV_SOURCES["nhl"] == ("fastRhockey-data", "nhl", "nhl")

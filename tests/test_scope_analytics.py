@@ -129,6 +129,51 @@ def test_fused_forecast_wins_and_post_settlement_rows_never_grade(tmp_path):
     led.close()
 
 
+def test_archived_fused_forecast_still_grades(tmp_path):
+    """Retention must not silently shrink the per-scope accuracy window.
+
+    Retention archives a market's signal rows once that market settled past the
+    window, so ``_settled_records`` reading the HOT ``signals`` table made every
+    archived fused forecast vanish from the dashboard's accuracy numbers. That
+    is exactly the failure this module's docstring argues against: a market we
+    priced but never traded is supposed to still be counted, and instead it
+    disappeared on a timer. Measured at 42,083 already-invisible fused rows on
+    the live ledger before the fix, and the 5d -> 3d retention cut deepens it.
+
+    The ``signal_history`` union view exists for precisely this; it costs the
+    same (7.4s vs 7.5s on the live ledger) and recovered 27.5% more graded
+    markets. Note the view has no ``rowid`` -- the recency tiebreaker must use
+    ``id``, or the query dies with "no such column: sig.rowid".
+    """
+    from autonomy.retention import enforce_retention
+
+    db = tmp_path / "ledger.db"
+    led = AutonomyLedger(db_path=db)
+    ticker = "KXBTCD-ARCHIVED"
+    led._conn.execute(
+        "INSERT INTO signals(source,market_ticker,probability_yes,uncertainty,rationale,"
+        "features,created_at,mode,ingested_at) VALUES(?,?,?,?,?,?,?,?,?)",
+        ("fused_forecast", ticker, 0.80, 0.1, "priced, never traded",
+         '{"market_implied_yes": 0.5}', _iso(10.5), "live", _iso(10.5)),
+    )
+    led._conn.execute(
+        "INSERT INTO settlements(market_ticker,result_yes,settled_at) VALUES(?,?,?)",
+        (ticker, 1, _iso(10.0)),
+    )
+    led._conn.commit()
+    led.close()
+
+    # Settled 10 days ago -> eligible under any window shorter than that.
+    report = enforce_retention(db, retention_days=5, apply=True, now=NOW)
+    assert report.archived_rows == 1
+
+    led = AutonomyLedger(db_path=db)
+    btc = build_scope_analytics(led._conn)["verticals"][CRYPTO]["scopes"]["BTC"]["summary"]
+    assert btc["n"] == 1                  # graded from the archive, not lost
+    assert btc["brier"] == 0.04           # the fused 0.80 forecast, intact
+    led.close()
+
+
 def test_current_picks_are_unsettled_and_ranked(tmp_path):
     led = _ledger(tmp_path)
     # open (unsettled) BTC picks with different edges, plus a settled one to ignore

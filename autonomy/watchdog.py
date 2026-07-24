@@ -25,10 +25,22 @@ RUNTIME_DIR = Path("runtime/autonomy")
 STATUS_PATH = RUNTIME_DIR / "watchdog_status.json"
 WATCHDOG_STATE_PATH = RUNTIME_DIR / "watchdog_state.json"
 
-# Capacity ceiling is set above the measured seven-day hot-ledger steady state
-# (12.24 GB on 2026-07-22) while remaining far below available runtime-disk
-# capacity.  This keeps normal retained evidence healthy without weakening the
-# independent free-disk floor or allowing unbounded ledger growth.
+# Capacity ceiling. Wave-85 (owner decision 2026-07-24): 16.0 -> 20.0 GB,
+# taken together with the retention cut from 5 to 3 days, NOT instead of it.
+#
+# Why 20.0 and not "whatever clears the alarm": the file had plateaued at
+# 16.25 GB with freelist ~0 right after a successful retention pass, so the
+# 16.0 ceiling had become a permanent red that VACUUM could not clear (0.35 GB
+# reclaimed on 2026-07-23). A ceiling that is always breached trains the
+# operator to ignore the watchdog, which defeats the tripwire. 20.0 GB sits
+# ~23% above the current plateau -- roughly four days of measured gross growth
+# (~0.9 GB/day before retention) of headroom -- so it still trips well before
+# the independent 10 GB free-disk floor on a 145 GB volume, and it still trips
+# on genuinely unbounded growth rather than on steady state.
+#
+# The 3-day retention cut is expected to pull the steady state well below this;
+# if the measured plateau settles far under 20.0, lower this to match rather
+# than leaving slack that hides real growth.
 #
 # UNITS: decimal GB (bytes / 1e9), matching ``_ledger_size_gb`` below. The
 # heartbeat's ledger_health reports GiB (bytes / 1024**3) instead, so the two
@@ -36,7 +48,7 @@ WATCHDOG_STATE_PATH = RUNTIME_DIR / "watchdog_state.json"
 # GiB. Both are emitted with explicit names rather than silently reconciled:
 # changing which basis the threshold compares would move the alarm point, and
 # that is a capacity decision, not a units cleanup.
-DEFAULT_LEDGER_MAX_GB = 16.0
+DEFAULT_LEDGER_MAX_GB = 20.0
 DEFAULT_DISK_FLOOR_GB = 10.0
 DEFAULT_ERROR_STREAK_THRESHOLD = 3
 STALE_MULTIPLIER = 2.0
@@ -135,11 +147,27 @@ DEFAULT_TASKS: list[TaskSpec] = [
     # Registered 2026-07-24 after the audit found the lab unscheduled for 9
     # days. Read-only over the ledger, no network, no promotion authority.
     TaskSpec("DummyAutoresearch", "autoresearch_status.json", ("last_success_at",), 3600, "bounded real-ledger autoresearch"),
+    # Wave-85: both were in uncovered_tasks while being killed at their time
+    # limits every run, so the self-tuner and the walk-forward evaluation could
+    # rot indefinitely without a single alarm. The per-league DummyWF_<league>
+    # tasks share one artifact, so they are covered by the scheduler inventory
+    # (which now treats a time-limit kill as failing) plus this freshness spec.
+    TaskSpec("DummyTune", "sports_tuned_params.json", ("generated_at",), 86400, "sports self-tuner"),
+    TaskSpec("DummyWF", "sports_walk_forward.json", ("generated_at",), 86400, "sports walk-forward evaluation"),
 ]
 
 # Scheduler results that do not indicate failure: 0 success, 0x41301 running,
-# 0x41303 never-yet-run, 0x41306 terminated-by-user.
-_SCHEDULER_OK_RESULTS = {0, 267009, 267011, 267014}
+# 0x41303 never-yet-run.
+#
+# Wave-85 removed 0x41306 / 267014 (SCHED_S_TASK_TERMINATED). It was described
+# as "terminated-by-user", but Task Scheduler returns the SAME code when it
+# kills a task that outran its ExecutionTimeLimit -- so treating it as OK made
+# every time-limit kill invisible. DummyTune (PT1H) and DummyWF_ncaamb (PT20M)
+# had both been killed on every run while reporting failing=False, which is why
+# four leagues had never been tuned even once and ncaamb never persisted a full
+# walk-forward. An operator-terminated task is incomplete too, so surfacing it
+# is right in both readings of the code.
+_SCHEDULER_OK_RESULTS = {0, 267009, 267011}
 
 
 def _scheduled_task_inventory(prefix: str = "Dummy") -> list[dict[str, Any]]:
@@ -374,7 +402,18 @@ def evaluate_watchdog(
             inventory = []
     covered = {spec.name for spec in specs}
     uncovered = [row for row in inventory if row["task_name"] not in covered]
-    uncovered_failing = [row["task_name"] for row in uncovered if row["failing"]]
+    # The watchdog must not grade its OWN exit code. run_dummy_watchdog.py
+    # exits nonzero when the FLEET is unhealthy, so that result reports the
+    # verdict rather than the watchdog's health. Counting it created a latch:
+    # anything unhealthy -> watchdog exits 1 -> the inventory reads DummyWatchdog
+    # as failing -> uncovered_failing is non-empty -> unhealthy, forever, even
+    # after the original cause was fixed. It surfaced the moment Wave-85 stopped
+    # treating a terminated task as OK, because the watchdog had previously been
+    # caught mid-run (267009) more often than it was seen completing.
+    uncovered_failing = [
+        row["task_name"] for row in uncovered
+        if row["failing"] and row["task_name"] != "DummyWatchdog"
+    ]
 
     healthy = not (
         stale_tasks or ledger_over or disk_low or error_streak_alarm

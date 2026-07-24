@@ -55,5 +55,14 @@ def test_pyproject_name_is_dummy():
 
 
 def test_dashboard_title_is_dummy():
-    html = (ROOT / "dashboard" / "frontend" / "index.html").read_text(encoding="utf-8")
-    assert "Dummy Dashboard" in html
+    """Wave-85: assert the rename against the dashboard that actually exists.
+
+    This read dashboard/frontend/index.html, the Vite entry point of a React
+    tree that nothing serves and that no longer has build tooling. The live
+    operator dashboard is Python -- autonomy/dashboard_ui.py, served by the
+    DummyDashboard task on :8787 -- so that is where the Dumby -> Dummy rename
+    has to hold to mean anything.
+    """
+    html = (ROOT / "autonomy" / "dashboard_ui.py").read_text(encoding="utf-8")
+    assert "<title>DUMMY" in html
+    assert "Dumby" not in html

@@ -7,6 +7,7 @@ sports_tuned_params.json, which the live signals load automatically. Usage:
 from __future__ import annotations
 
 import argparse
+import os
 import sys
 from pathlib import Path
 
@@ -23,11 +24,19 @@ DEFAULT = ["nfl", "wnba", "mlb", "nba", "ncaamb", "ncaaf", "nhl"]
 def main() -> int:
     ap = argparse.ArgumentParser(description="Tune sports analytics on the lake.")
     ap.add_argument("--leagues", default=None, help="comma list; default all")
+    # Sits under DummyTune's PT1H execution-time limit so the run ends on its
+    # own terms and keeps its persisted progress, instead of being killed with
+    # SCHED_S_TASK_TERMINATED. tune_all() orders least-recently-tuned first, so
+    # whatever this budget cuts off is simply first in line on the next run.
+    ap.add_argument(
+        "--budget-s", type=float, default=float(os.environ.get("DUMMY_TUNE_BUDGET_S", 3000)),
+        help="wall-clock budget in seconds; 0 disables",
+    )
     args = ap.parse_args()
     leagues = args.leagues.split(",") if args.leagues else DEFAULT
     store = SportsHistoryStore()
     try:
-        tuned = tune_all(store, leagues)
+        tuned = tune_all(store, leagues, budget_s=args.budget_s or None)
         for lg, params in tuned.items():
             for name, best in params.items():
                 print(f"[{lg}] {name}: {best['param']}={best['value']} edge={best['edge']} (n={best['n']})")
