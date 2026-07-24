@@ -62,24 +62,90 @@ def _budget_s() -> float:
         return DEFAULT_BUDGET_S
 
 
-def _persist(leagues: dict, skipped: list[dict], status: str) -> None:
-    """Merge into the artifact the dashboard reads (keep leagues not re-run)."""
-    prior: dict = {}
+def _read_artifact() -> dict:
     try:
-        prior = json.loads(ARTIFACT.read_text(encoding="utf-8")).get("leagues", {})
+        return json.loads(ARTIFACT.read_text(encoding="utf-8"))
     except Exception:  # noqa: BLE001
-        prior = {}
+        return {}
+
+
+def _mark_in_flight(league: str, model: str, clear: bool = False) -> None:
+    """Record which model is mid-run so a KILL is diagnosable next time.
+
+    The fit-in-budget guard needs a measured duration, and a model that is
+    killed mid-flight never records one -- so without this it would be retried
+    and killed forever, learning nothing. An in_flight marker surviving into
+    the next run IS the measurement: it means that model did not survive its
+    own budget.
+    """
+    blob = _read_artifact()
+    if clear:
+        blob.pop("in_flight", None)
+    else:
+        blob["in_flight"] = {"league": league, "model": model}
+    ARTIFACT.parent.mkdir(parents=True, exist_ok=True)
+    tmp = ARTIFACT.with_suffix(".json.tmp")
+    tmp.write_text(json.dumps(blob), encoding="utf-8")
+    tmp.replace(ARTIFACT)
+
+
+def _prior_durations() -> dict[str, dict[str, float]]:
+    """Last measured seconds per (league, model), for the fit-in-budget guard."""
+    try:
+        blob = json.loads(ARTIFACT.read_text(encoding="utf-8"))
+    except Exception:  # noqa: BLE001
+        return {}
+    out: dict[str, dict[str, float]] = {}
+    for league, models in (blob.get("leagues") or {}).items():
+        for model, entry in (models or {}).items():
+            value = (entry or {}).get("duration_s")
+            if isinstance(value, (int, float)):
+                out.setdefault(league, {})[model] = float(value)
+    return out
+
+
+def _persist(
+    leagues: dict, skipped: list[dict], status: str, attempted: list[str],
+) -> None:
+    """Merge into the artifact the dashboard reads (keep leagues not re-run).
+
+    Status is tracked PER LEAGUE, not globally. Every DummyWF_<league> task
+    writes this one shared file, so a single top-level status meant the last
+    league to finish spoke for all of them -- a successful nhl run would report
+    "OK, 0 skipped" moments after a partial ncaamb run, erasing the very signal
+    the budget exists to surface. The top-level status is a rollup of the
+    per-league records so an operator glance is still truthful.
+    """
+    blob: dict = {}
+    try:
+        blob = json.loads(ARTIFACT.read_text(encoding="utf-8"))
+    except Exception:  # noqa: BLE001
+        blob = {}
+    prior = blob.get("leagues") or {}
+    runs = blob.get("runs") or {}
+    now = datetime.now(timezone.utc).isoformat()
+
     for league, models in leagues.items():
         merged = dict(prior.get(league) or {})
         merged.update(models)          # never drop a model this run didn't reach
         prior[league] = merged
+    for league in attempted:
+        runs[league] = {
+            "status": status,
+            "skipped": [e for e in skipped if e.get("league") == league],
+            "at": now,
+        }
+    rollup = "PARTIAL" if any(
+        (r or {}).get("status") == "PARTIAL" for r in runs.values()
+    ) else "OK"
+
     ARTIFACT.parent.mkdir(parents=True, exist_ok=True)
     tmp = ARTIFACT.with_suffix(".json.tmp")
     tmp.write_text(json.dumps({
-        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "generated_at": now,
         "models": list(MODEL_NAMES),
-        "status": status,
-        "skipped": skipped,
+        "status": rollup,
+        "runs": runs,
         "leagues": prior,
     }), encoding="utf-8")
     tmp.replace(ARTIFACT)
@@ -103,6 +169,10 @@ def main() -> int:
 
     budget = _budget_s() if args.budget_s is None else float(args.budget_s)
     deadline = (time.monotonic() + budget) if budget > 0 else None
+
+    prior_durations = _prior_durations()
+    # A marker left behind means the previous run was killed inside that model.
+    killed = (_read_artifact().get("in_flight") or {})
 
     store = SportsHistoryStore()
     leagues = [args.league] if args.league else list(LEAGUES)
@@ -129,18 +199,49 @@ def main() -> int:
                         "league": league, "model": name, "reason": "budget_exhausted",
                     })
                     continue
+                # The deadline alone only guards BETWEEN models -- once a model
+                # starts it runs to completion, so a single slow one still
+                # overruns and gets killed. ncaamb proved it: glicko persists in
+                # 2s, then pythagenpat alone outruns a 900s budget and the task
+                # dies anyway. Skip a model whose own last measured duration
+                # will not fit in the time left. First run has no measurement
+                # and is attempted optimistically, which is how it learns.
+                if killed.get("league") == league and killed.get("model") == name:
+                    skipped.append({
+                        "league": league, "model": name,
+                        "reason": "killed_mid_run_previously; needs a larger "
+                                  "budget or a faster model, not another retry",
+                    })
+                    continue
+                previous = float((prior_durations.get(league, {}) or {}).get(name) or 0.0)
+                if deadline is not None and previous > 0.0:
+                    remaining = deadline - time.monotonic()
+                    if previous * 1.25 > remaining:
+                        skipped.append({
+                            "league": league, "model": name,
+                            "reason": (
+                                f"would_not_fit_budget (last {previous:.0f}s,"
+                                f" {remaining:.0f}s left)"
+                            ),
+                        })
+                        continue
                 started = time.monotonic()
+                _mark_in_flight(league, name)
                 try:
                     result = build()
                 except Exception as exc:  # noqa: BLE001 -- one model never costs the rest
+                    _mark_in_flight(league, name, clear=True)
                     skipped.append({
                         "league": league, "model": name,
                         "reason": f"{type(exc).__name__}: {exc}"[:200],
                     })
                     continue
+                _mark_in_flight(league, name, clear=True)
+                result = dict(result)
+                result["duration_s"] = round(time.monotonic() - started, 2)
                 results.setdefault(league, {})[name] = result
                 # Persist per MODEL: a kill now costs the in-flight model only.
-                _persist(results, skipped, "RUNNING")
+                _persist(results, skipped, "RUNNING", leagues)
                 if result["n"]:
                     print(
                         f"[{league}] {name}: n={result['n']} hit={result['hit_rate']}"
@@ -153,7 +254,7 @@ def main() -> int:
         store.close()
 
     status = "PARTIAL" if skipped else "OK"
-    _persist(results, skipped, status)
+    _persist(results, skipped, status, leagues)
     print(f"wrote {ARTIFACT} status={status} skipped={len(skipped)}")
     for entry in skipped:
         print(f"  SKIPPED {entry['league']}/{entry['model']}: {entry['reason']}")
