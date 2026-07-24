@@ -10,7 +10,6 @@ import argparse
 import json
 import os
 import sys
-import time
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -24,15 +23,16 @@ from autonomy.simulation_training import (  # noqa: E402
 
 
 def _acquire_lock(path: Path, stale_seconds: int = 7200) -> int | None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    if path.exists() and time.time() - path.stat().st_mtime > stale_seconds:
-        path.unlink(missing_ok=True)
-    try:
-        descriptor = os.open(path, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
-    except FileExistsError:
-        return None
-    os.write(descriptor, f"pid={os.getpid()} created={time.time()}\n".encode())
-    return descriptor
+    """Delegates to autonomy.proclock: a DEAD holder never blocks the task.
+
+    The age-only guard this replaced turned every crash into a guaranteed
+    outage of ``stale_seconds`` -- on 2026-07-24 four locks were held by four
+    dead pids at once and the hourly simulation trainer had been skipping since
+    14:54 while reporting exit 0.
+    """
+    from autonomy.proclock import acquire_lock
+
+    return acquire_lock(path, stale_seconds)
 
 
 def _summary(report: dict, path: Path) -> dict:

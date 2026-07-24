@@ -51,13 +51,29 @@ def _now_iso() -> str:
 
 
 def _acquire_lock(stale_seconds: float) -> bool:
-    """Single instance per box: a fresh lock file means another session is
-    mid-poll (sessions are bounded, so a stale lock is a crash -- reclaim)."""
+    """Single instance per box, and a DEAD holder never blocks the poller.
+
+    The age-only rule this replaced assumed "fresh lock == another session is
+    mid-poll", which is false whenever the previous session crashed: the lock
+    then blocked every run for the whole stale window. On 2026-07-24 this
+    lock was held by pid 5312, which no longer existed.
+    """
+    from autonomy.proclock import pid_alive, read_lock
+
     RUNTIME_DIR.mkdir(parents=True, exist_ok=True)
     try:
         if LOCK_PATH.exists():
-            age = time.time() - LOCK_PATH.stat().st_mtime
-            if age < stale_seconds:
+            holder = read_lock(LOCK_PATH).get("pid")
+            try:
+                holder_pid: int | None = int(holder)
+            except (TypeError, ValueError):
+                holder_pid = None
+            fresh = time.time() - LOCK_PATH.stat().st_mtime < stale_seconds
+            # Only a LIVE holder blocks. An unknown pid keeps the age rule.
+            if holder_pid is not None:
+                if pid_alive(holder_pid):
+                    return False
+            elif fresh:
                 return False
         LOCK_PATH.write_text(json.dumps({"pid": os.getpid(), "at": _now_iso()}),
                              encoding="utf-8")

@@ -6,7 +6,6 @@ import hashlib
 import json
 import os
 import sys
-import time
 from collections import Counter
 from datetime import datetime, timezone
 from pathlib import Path
@@ -79,15 +78,10 @@ def _atomic_json(path: Path, value: dict[str, Any]) -> None:
 
 
 def _acquire_lock(path: Path, stale_seconds: int) -> int | None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    if path.exists() and time.time() - path.stat().st_mtime > stale_seconds:
-        path.unlink(missing_ok=True)
-    try:
-        descriptor = os.open(path, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
-    except FileExistsError:
-        return None
-    os.write(descriptor, f"pid={os.getpid()} created={time.time()}\n".encode())
-    return descriptor
+    """Delegates to autonomy.proclock: a DEAD holder never blocks the task."""
+    from autonomy.proclock import acquire_lock
+
+    return acquire_lock(path, stale_seconds)
 
 
 def _append_rotating_jsonl(
