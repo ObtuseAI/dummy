@@ -30,10 +30,16 @@ _VERTICAL_PREFIXES: list[tuple[str, Vertical]] = [
     ("KXMLB", Vertical.SPORTS),    # and was silently excluded from trading +
     ("KXNHL", Vertical.SPORTS),    # the board. Same for NCAA (KXNCAAF/KXNCAAMB).
     ("KXNCAA", Vertical.SPORTS),
-    ("KXWTA", Vertical.SPORTS),
-    ("KXATP", Vertical.SPORTS),
-    ("KXMVESPORTS", Vertical.SPORTS),
-    ("KXESPORTS", Vertical.SPORTS),
+    # Tennis (KXWTA/KXATP) and esports (KXESPORTS) were removed in Wave-85.
+    # They classified as SPORTS but were never in WATCHLIST_SERIES, so no
+    # pricing path was ever built (0 signals / 0 decisions on the live ledger).
+    # Keeping a retired prefix is only safe when it classifies into a vertical
+    # the scan-time {CRYPTO, SPORTS} gate EXCLUDES -- which is exactly why the
+    # commodities/econ prefixes below are kept. SPORTS is ADMITTED by that gate,
+    # so these three were a latent hazard: any route that surfaced a tennis
+    # market would have handed it to a sports pipeline with nothing behind it.
+    # Falling through to OTHER is the fail-closed behaviour.
+    ("KXMVESPORTS", Vertical.SPORTS),   # real multi-game parlay series; kept
     ("KXOIL", Vertical.COMMODITIES),
     ("KXWTI", Vertical.COMMODITIES),
     ("KXNATGAS", Vertical.COMMODITIES),

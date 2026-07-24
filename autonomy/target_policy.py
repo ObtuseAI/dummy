@@ -16,7 +16,7 @@ from typing import Any
 from autonomy.ontology import Vertical
 
 
-TARGET_POLICY_VERSION = "prediction_target_v3_supported_surfaces"
+TARGET_POLICY_VERSION = "prediction_target_v4_crypto_sports_only"
 
 
 DATA_ONLY_VERTICALS: frozenset[Vertical] = frozenset({
@@ -140,16 +140,26 @@ _EQUITY_INDEX_SERIES_TAGS: frozenset[str] = frozenset({
 # a non-quarantined contract is an intended prediction target.  Keep this an
 # allow-list: a new/opaque category is unknown authority until it is reviewed,
 # not permission merely because it is absent from the deny lists above.
+#
+# Wave-85: elections / politics / economic / economics / macro / entertainment
+# were removed. Three layers had been stating three different intents:
+#   * this list GRANTED prediction-target authority to all six,
+#   * configs/caps.json blocks categories ["Elections", "Politics"],
+#   * the scanner never fetches any of them and scan() filters to
+#     {CRYPTO, SPORTS}.
+# The system failed closed because the blocks won, so nothing was ever traded
+# on that authority -- but "harmless because a different layer stops it" is
+# exactly the arrangement that turns into a live incident the first time the
+# stopping layer moves. The allow-list now says the same thing the caps file
+# and the scanner already say, so the intent is stated once.
+#
+# This is deliberately narrower than "whatever Kalshi lists": econ and
+# commodities trading was retired 2026-07-11 for never demonstrating an edge,
+# and no politics/elections pricing path was ever built.
 _PREDICTION_TARGET_CATEGORIES: frozenset[str] = frozenset({
     "crypto",
     "cryptocurrency",
     "cryptocurrencies",
-    "elections",
-    "entertainment",
-    "economic",
-    "economics",
-    "macro",
-    "politics",
     "sports",
 })
 

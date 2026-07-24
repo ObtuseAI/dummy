@@ -65,6 +65,32 @@ def test_classify_verticals():
     assert classify_vertical("KXWHATEVER-1") is Vertical.OTHER
 
 
+def test_never_built_sports_prefixes_do_not_classify_as_tradeable():
+    """Tennis and esports must fall to OTHER, not SPORTS.
+
+    KXWTA / KXATP / KXESPORTS were mapped to Vertical.SPORTS but never appeared
+    in WATCHLIST_SERIES, so no pricing path was ever built for them (0 signals
+    and 0 decisions on the live ledger). That combination is a latent hazard
+    rather than merely dead code: the retired commodities/econ prefixes are
+    safe to keep because they classify into verticals the scan-time
+    {CRYPTO, SPORTS} gate EXCLUDES, whereas these classified into SPORTS, which
+    the gate ADMITS. A tennis market reaching the scanner by any route would
+    have been handed to a sports pipeline with nothing behind it.
+
+    KXMVESPORTS is deliberately NOT in this list: the multi-game parlay series
+    is real, carries real historical second-proof evidence, and is asserted
+    above.
+    """
+    for ticker in (
+        "KXWTAMATCH-26JUL20-SWI",
+        "KXATPMATCH-26JUL20-ALC",
+        "KXESPORTSLOL-26JUL20-T1",
+    ):
+        assert classify_vertical(ticker) is Vertical.OTHER, ticker
+    # The MVE parlay series is real evidence and must keep classifying SPORTS.
+    assert classify_vertical("KXMVESPORTSMULTIGAMEEXTENDED-X-Y") is Vertical.SPORTS
+
+
 def test_scanner_walks_watchlist_and_filters():
     by_series = {
         "KXHIGHNY": {"markets": [

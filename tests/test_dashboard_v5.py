@@ -21,7 +21,18 @@ def test_v5_kalshi_status_endpoint():
         assert "credentials_present" in r.json()
 
 
-def test_frontend_dist_built():
-    dist = ROOT / "dashboard" / "frontend" / "dist"
-    assert dist.exists()
-    assert (dist / "index.html").exists()
+def test_frontend_is_frozen_archive_source_not_a_build():
+    """Wave-85: dashboard/frontend is evidence, not a buildable app.
+
+    This used to assert a built dist/. That artifact was untracked, so the
+    assertion only ever passed on a workstation that had run ``npm run build``
+    -- which is why this file is workstation-only. The build tooling is gone
+    (it closed all four Dependabot alerts, and the tree had an unresolvable
+    vite/plugin-react peer conflict anyway), so assert what is actually true
+    and load-bearing: the archived React sources survive.
+    """
+    frontend = ROOT / "dashboard" / "frontend"
+    assert (frontend / "src" / "App.jsx").exists()
+    assert (frontend / "README.md").exists()
+    # No manifest may come back -- that is what reopens the alerts.
+    assert not (frontend / "package.json").exists()
