@@ -147,11 +147,27 @@ DEFAULT_TASKS: list[TaskSpec] = [
     # Registered 2026-07-24 after the audit found the lab unscheduled for 9
     # days. Read-only over the ledger, no network, no promotion authority.
     TaskSpec("DummyAutoresearch", "autoresearch_status.json", ("last_success_at",), 3600, "bounded real-ledger autoresearch"),
+    # Wave-85: both were in uncovered_tasks while being killed at their time
+    # limits every run, so the self-tuner and the walk-forward evaluation could
+    # rot indefinitely without a single alarm. The per-league DummyWF_<league>
+    # tasks share one artifact, so they are covered by the scheduler inventory
+    # (which now treats a time-limit kill as failing) plus this freshness spec.
+    TaskSpec("DummyTune", "sports_tuned_params.json", ("generated_at",), 86400, "sports self-tuner"),
+    TaskSpec("DummyWF", "sports_walk_forward.json", ("generated_at",), 86400, "sports walk-forward evaluation"),
 ]
 
 # Scheduler results that do not indicate failure: 0 success, 0x41301 running,
-# 0x41303 never-yet-run, 0x41306 terminated-by-user.
-_SCHEDULER_OK_RESULTS = {0, 267009, 267011, 267014}
+# 0x41303 never-yet-run.
+#
+# Wave-85 removed 0x41306 / 267014 (SCHED_S_TASK_TERMINATED). It was described
+# as "terminated-by-user", but Task Scheduler returns the SAME code when it
+# kills a task that outran its ExecutionTimeLimit -- so treating it as OK made
+# every time-limit kill invisible. DummyTune (PT1H) and DummyWF_ncaamb (PT20M)
+# had both been killed on every run while reporting failing=False, which is why
+# four leagues had never been tuned even once and ncaamb never persisted a full
+# walk-forward. An operator-terminated task is incomplete too, so surfacing it
+# is right in both readings of the code.
+_SCHEDULER_OK_RESULTS = {0, 267009, 267011}
 
 
 def _scheduled_task_inventory(prefix: str = "Dummy") -> list[dict[str, Any]]:

@@ -137,3 +137,62 @@ def test_tune_all_persists_incrementally_and_preserves_prior(tmp_path, monkeypat
     assert load_tuned("nfl", "glicko", "home_advantage", 0.0, path=p) > 0.0
     assert load_tuned("wnba", "glicko", "home_advantage", 0.0, path=p) == 33.0
     st.close()
+
+
+def test_tune_all_tunes_least_recently_tuned_first(tmp_path, monkeypatch):
+    """Wave-85: a fixed league order starves the tail forever.
+
+    tune_all persisting per-league (Wave-84) stopped the data loss but not the
+    starvation: DummyTune was still killed at its PT1H limit, so with a fixed
+    caller order the same leading leagues were re-tuned every run and the tail
+    was never tuned even once. The live artifact showed exactly that -- tuned
+    values for nfl/wnba/mlb and nothing at all for nba/ncaamb/ncaaf/nhl.
+
+    Least-recently-tuned goes first, so every league eventually gets its turn.
+    """
+    import autonomy.sports.tuner as tuner
+
+    st = _seed(tmp_path)
+    p = tmp_path / "tuned.json"
+    order: list[str] = []
+
+    real = tuner.tune_league
+    monkeypatch.setattr(
+        tuner, "tune_league",
+        lambda store, lg: (order.append(lg), real(store, lg))[1],
+    )
+
+    leagues = ["nfl", "mlb"]
+    tuner.tune_all(st, leagues, path=p)
+    first_pass = list(order)
+    assert set(first_pass) == {"nfl", "mlb"}
+
+    # Second pass: the league tuned FIRST last time is now the stalest, so it
+    # must come last -- i.e. the order flips rather than repeating.
+    order.clear()
+    tuner.tune_all(st, leagues, path=p)
+    assert order == list(reversed(first_pass)), (first_pass, order)
+    st.close()
+
+
+def test_tune_all_budget_stops_cleanly_without_losing_progress(tmp_path, monkeypatch):
+    """An exhausted budget must end the run, not raise and not wipe progress."""
+    import autonomy.sports.tuner as tuner
+
+    st = _seed(tmp_path)
+    p = tmp_path / "tuned.json"
+    tuner.tune_all(st, ["nfl"], path=p)          # nfl tuned and stamped
+    before = load_tuned("nfl", "glicko", "home_advantage", 0.0, path=p)
+    assert before > 0.0
+
+    # A budget already spent means no league is attempted at all this run.
+    called: list[str] = []
+    monkeypatch.setattr(
+        tuner, "tune_league",
+        lambda store, lg: called.append(lg) or {},
+    )
+    tuner.tune_all(st, ["mlb", "nfl"], path=p, budget_s=-1.0)
+    assert called == []
+    # Prior progress survives untouched.
+    assert load_tuned("nfl", "glicko", "home_advantage", 0.0, path=p) == before
+    st.close()

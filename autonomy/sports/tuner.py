@@ -13,6 +13,8 @@ Pure/offline; reads the lake, writes a small JSON the signals consume.
 from __future__ import annotations
 
 import json
+import time
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable
 
@@ -163,17 +165,29 @@ def _pbp_sigma_disclosure(league: str, param: str) -> float | None:
         return None
 
 
-def _write_tuned(target: Path, tuned: dict[str, Any]) -> None:
+def _write_tuned(
+    target: Path, tuned: dict[str, Any], tuned_at: dict[str, str] | None = None,
+) -> None:
     from datetime import datetime, timezone
 
     target.parent.mkdir(parents=True, exist_ok=True)
     tmp = target.with_suffix(".json.tmp")
+    # ``tuned_at`` is a SEPARATE top-level map, not a key inside each league:
+    # load_tuned() indexes leagues by analytic name, so a stamp stored beside
+    # the analytics would be reachable as a bogus "analytic".
     tmp.write_text(json.dumps({"generated_at": datetime.now(timezone.utc).isoformat(),
-                               "leagues": tuned}), encoding="utf-8")
+                               "leagues": tuned,
+                               "tuned_at": tuned_at or {}}), encoding="utf-8")
     tmp.replace(target)
 
 
-def tune_all(store: SportsHistoryStore, leagues: list[str], *, path: Path | None = None) -> dict[str, Any]:
+def tune_all(
+    store: SportsHistoryStore,
+    leagues: list[str],
+    *,
+    path: Path | None = None,
+    budget_s: float | None = None,
+) -> dict[str, Any]:
     """Walk-forward tune each league, persisting after EVERY league.
 
     The full 7-league grid search can exceed the tuner task's wall-clock limit
@@ -182,19 +196,43 @@ def tune_all(store: SportsHistoryStore, leagues: list[str], *, path: Path | None
     Now each finished league is persisted immediately and leagues not reached
     keep their prior tuned values, so a run that is cut short still lands the
     leagues it finished instead of losing everything.
+
+    Wave-85 -- that fix stopped the data loss but not the STARVATION. The caller
+    passed a fixed league order, and DummyTune was still being killed at PT1H
+    (SCHED_S_TASK_TERMINATED), so the same first few leagues were re-tuned on
+    every run and the tail was never tuned even once: the live artifact held
+    nfl/wnba/mlb and nothing for nba/ncaamb/ncaaf/nhl. Least-recently-tuned now
+    goes first (never-tuned leagues sort first), and an explicit budget ends the
+    run cleanly instead of letting the scheduler kill it. Over successive runs
+    every league gets its turn.
     """
     target = path or TUNED_PATH
     tuned: dict[str, Any] = {}
+    tuned_at: dict[str, str] = {}
     try:
         blob = json.loads(target.read_text(encoding="utf-8"))
         tuned = dict(blob.get("leagues") or {})
+        tuned_at = dict(blob.get("tuned_at") or {})
     except Exception:  # noqa: BLE001 -- no/bad prior file => tune everything fresh
         tuned = {}
-    for lg in leagues:
+        tuned_at = {}
+
+    # Never-tuned leagues sort first (""), then oldest stamp first. Ties keep
+    # the caller's order so the sequence stays deterministic.
+    order = sorted(
+        range(len(leagues)),
+        key=lambda i: (tuned_at.get(leagues[i], ""), i),
+    )
+    deadline = (time.monotonic() + float(budget_s)) if budget_s else None
+    for index in order:
+        lg = leagues[index]
+        if deadline is not None and time.monotonic() > deadline:
+            break
         v = tune_league(store, lg)
         if v:
             tuned[lg] = v
-            _write_tuned(target, tuned)  # persist progress after each league
+            tuned_at[lg] = datetime.now(timezone.utc).isoformat()
+            _write_tuned(target, tuned, tuned_at)  # persist after each league
     return {lg: tuned[lg] for lg in leagues if lg in tuned}
 
 

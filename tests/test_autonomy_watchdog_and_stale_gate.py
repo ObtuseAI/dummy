@@ -566,6 +566,9 @@ def test_watchdog_covers_every_default_task(tmp_path):
         "DummyLedgerPrune", "DummyLogRotation", "DummyLiveAccountSnapshot",
         # Registered 2026-07-24; the audit found the lab unscheduled for 9 days.
         "DummyAutoresearch",
+        # Wave-85: both sat in uncovered_tasks while being killed at their
+        # execution-time limits on every run.
+        "DummyTune", "DummyWF",
     }
     status = evaluate_watchdog(tmp_path, now_epoch=NOW_EPOCH)
     assert {r["task_name"] for r in status["tasks"]} == names
@@ -813,3 +816,30 @@ def test_api_autonomy_serves_stale_cache_when_recompute_is_slow(tmp_path, monkey
     r = client.get("/api/autonomy")
     assert r.status_code == 200
     assert r.json().get("stale_cache") is True
+
+
+def test_time_limit_kill_is_reported_as_failing():
+    """A scheduler time-limit kill must never read as healthy.
+
+    SCHED_S_TASK_TERMINATED (0x41306 / 267014) was in the OK set, described as
+    "terminated-by-user". Task Scheduler returns the same code when it kills a
+    task that outran its ExecutionTimeLimit, so DummyTune and DummyWF_ncaamb
+    both reported failing=False while being killed on every single run -- four
+    leagues had never been tuned once, and ncaamb never persisted a full
+    walk-forward. Either reading of the code means the run did not finish.
+    """
+    from autonomy.watchdog import _SCHEDULER_OK_RESULTS
+
+    assert 267014 not in _SCHEDULER_OK_RESULTS      # terminated
+    assert 0 in _SCHEDULER_OK_RESULTS               # success
+    assert 267009 in _SCHEDULER_OK_RESULTS          # currently running
+    assert 267011 in _SCHEDULER_OK_RESULTS          # has not run yet
+
+
+def test_tuner_and_walk_forward_are_watchdog_covered():
+    """Both were in uncovered_tasks while silently failing for days."""
+    from autonomy.watchdog import DEFAULT_TASKS
+
+    by_name = {spec.name: spec for spec in DEFAULT_TASKS}
+    assert by_name["DummyTune"].artifact == "sports_tuned_params.json"
+    assert by_name["DummyWF"].artifact == "sports_walk_forward.json"
