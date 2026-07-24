@@ -86,12 +86,21 @@ def _maybe_recalibrate(now_iso: str) -> dict[str, Any] | None:
 
     if os.environ.get("DUMMY_DAEMON_RECAL", "1") != "1":
         return None
-    # A full backtest bootstrap on a large ledger cannot finish inside the
-    # cycle's watchdog window (pricing alone is ~8 min; the launcher hard-kills
-    # at 13 min), so on a big ledger it only ever gets killed mid-run -- never
-    # refreshing weights and leaving a hot journal. Above the threshold, defer
-    # to the dedicated out-of-band DummyWeightsRecal task (no watchdog); below
-    # it, keep the fast in-cycle recal. Env-tunable; 0 disables the guard.
+    try:
+        if RECAL_STAMP_PATH.exists():
+            stamp = json.loads(RECAL_STAMP_PATH.read_text(encoding="utf-8"))
+            last = datetime.fromisoformat(str(stamp.get("at")))
+            age_h = (datetime.fromisoformat(now_iso) - last).total_seconds() / 3600.0
+            if age_h < RECAL_INTERVAL_HOURS:
+                return None
+    except Exception:
+        pass  # unreadable stamp -> recalibrate now
+    # The recal is DUE. A full backtest bootstrap on a large ledger cannot finish
+    # inside the cycle's watchdog window (pricing alone is ~8 min; the launcher
+    # hard-kills at 13 min), so on a big ledger it only ever gets killed mid-run
+    # -- never refreshing weights and leaving a hot journal. Above the threshold,
+    # defer to the dedicated out-of-band DummyWeightsRecal task (no watchdog);
+    # below it, keep the fast in-cycle recal. Env-tunable; 0 disables the guard.
     try:
         max_gib = float(os.environ.get("DUMMY_RECAL_MAX_LEDGER_GIB", "6"))
     except (TypeError, ValueError):
@@ -104,15 +113,6 @@ def _maybe_recalibrate(now_iso: str) -> dict[str, Any] | None:
                         "size_gib": round(size_gib, 2)}
         except OSError:
             pass
-    try:
-        if RECAL_STAMP_PATH.exists():
-            stamp = json.loads(RECAL_STAMP_PATH.read_text(encoding="utf-8"))
-            last = datetime.fromisoformat(str(stamp.get("at")))
-            age_h = (datetime.fromisoformat(now_iso) - last).total_seconds() / 3600.0
-            if age_h < RECAL_INTERVAL_HOURS:
-                return None
-    except Exception:
-        pass  # unreadable stamp -> recalibrate now
     try:
         from autonomy.backtest import run_backtest
         from autonomy.ledger import AutonomyLedger
