@@ -219,6 +219,63 @@ class KalshiLiveBook:
         return book.quote() if book else None
 
 
+BOOK_FETCH_FAILURES_PATH = "runtime/autonomy/book_fetch_failures.json"
+
+
+def record_book_fetch_failure(
+    ticker: str, exc: BaseException, *, path: str | None = None,
+) -> None:
+    """Attribute a pre-submit book read failure. Never raises.
+
+    ``fresh_best_quote`` used to swallow every exception into a bare ``return
+    None``, which the executor reports as ``taker_no_fresh_book``. Between
+    2026-07-19 and 07-21 that reason blocked 893 champion decisions (1,416 with
+    stale_market_snapshot) and there was NO way to tell whether the cause was a
+    rate limit, a timeout, a delisted ticker, or a parse error -- the exception
+    was destroyed at the point of failure. Same silent-swallow class Wave-84
+    removed from the report writers, still live in the execution path.
+
+    The quote still fails closed; only the DIAGNOSIS is preserved.
+    """
+    import json as _json
+    import os as _os
+    from datetime import datetime as _dt
+    from datetime import timezone as _tz
+
+    target = path or BOOK_FETCH_FAILURES_PATH
+    try:
+        try:
+            with open(target, encoding="utf-8") as handle:
+                blob = _json.load(handle)
+        except (OSError, ValueError):
+            blob = {}
+        kinds = blob.get("by_kind") or {}
+        kind = type(exc).__name__
+        kinds[kind] = int(kinds.get(kind, 0)) + 1
+        recent = list(blob.get("recent") or [])
+        recent.append({
+            "at": _dt.now(_tz.utc).isoformat(),
+            "ticker": str(ticker)[:80],
+            "kind": kind,
+            "error": str(exc)[:200],
+        })
+        blob.update({
+            "by_kind": kinds,
+            "recent": recent[-50:],          # bounded; counts are the authority
+            "total": int(blob.get("total", 0)) + 1,
+            "updated_at": _dt.now(_tz.utc).isoformat(),
+        })
+        directory = _os.path.dirname(target)
+        if directory:
+            _os.makedirs(directory, exist_ok=True)
+        temporary = f"{target}.tmp"
+        with open(temporary, "w", encoding="utf-8") as handle:
+            _json.dump(blob, handle, indent=2, sort_keys=True)
+        _os.replace(temporary, target)
+    except Exception:      # noqa: BLE001 -- diagnostics must never break submit
+        pass
+
+
 def fresh_best_quote(
     ticker: str, fetch_orderbook: Callable[[str], dict[str, Any]] | None = None,
 ) -> dict[str, Any] | None:
@@ -229,7 +286,8 @@ def fresh_best_quote(
         fetch_orderbook = default_fetch_orderbook
     try:
         ob = fetch_orderbook(ticker)
-    except Exception:
+    except Exception as exc:      # noqa: BLE001 -- fail closed, but say WHY
+        record_book_fetch_failure(ticker, exc)
         return None
     book = BookState(ticker)
     yes = normalize_orderbook_levels(ob, "yes")
