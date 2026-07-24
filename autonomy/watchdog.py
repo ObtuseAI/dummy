@@ -29,6 +29,13 @@ WATCHDOG_STATE_PATH = RUNTIME_DIR / "watchdog_state.json"
 # (12.24 GB on 2026-07-22) while remaining far below available runtime-disk
 # capacity.  This keeps normal retained evidence healthy without weakening the
 # independent free-disk floor or allowing unbounded ledger growth.
+#
+# UNITS: decimal GB (bytes / 1e9), matching ``_ledger_size_gb`` below. The
+# heartbeat's ledger_health reports GiB (bytes / 1024**3) instead, so the two
+# operator surfaces differ by ~7% for the same file -- 16.20 GB reads as 15.13
+# GiB. Both are emitted with explicit names rather than silently reconciled:
+# changing which basis the threshold compares would move the alarm point, and
+# that is a capacity decision, not a units cleanup.
 DEFAULT_LEDGER_MAX_GB = 16.0
 DEFAULT_DISK_FLOOR_GB = 10.0
 DEFAULT_ERROR_STREAK_THRESHOLD = 3
@@ -386,7 +393,11 @@ def evaluate_watchdog(
         "cycle_error_streak_threshold": error_streak_threshold,
         "latest_cycle_status": latest_status,
         "ledger_size_gb": ledger_gb,
+        "ledger_size_gib": (
+            None if ledger_gb is None else round(ledger_gb * 1e9 / 1024 ** 3, 3)
+        ),
         "ledger_max_gb": ledger_max_gb,
+        "ledger_size_units": "decimal_gb_bytes_over_1e9",
         "ledger_over_threshold": ledger_over,
         "disk_free_gb": disk_gb,
         "disk_floor_gb": disk_floor_gb,
