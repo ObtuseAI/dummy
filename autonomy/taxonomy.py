@@ -19,7 +19,8 @@ The grading scope is the tuple
                        promote another subject.
   * market_type     -- winner / spread / total / yrfi (sports, already stamped
                        in features) or the crypto contract family.
-  * horizon_or_phase-- crypto: 15m / hourly / daily+ ; sports: pre / live.
+  * horizon_or_phase-- crypto: 15m / hourly / daily+ / weekly ; sports:
+                       pre / live.
 
 Horizon is derived from the emission-time ``hours_to_close`` that crypto
 signals already persist in their features, so it is point-in-time correct
@@ -36,6 +37,12 @@ from autonomy.signals.crypto_spot import parse_crypto_ticker
 # scope; longer-dated ones as "daily+". The native 15-minute series is
 # detected by ticker and bypasses this threshold.
 CRYPTO_HOURLY_MAX_HOURS = 3.0
+# Wave-83: contracts beyond this split out of "daily+" into "weekly". The old
+# single daily+ bucket pooled 1d (~24h) and 1w (~168h) opinions, leaving the
+# weekly horizon permanently ungradeable for promotion (2026-07-24 audit:
+# 1.05M weekly attempts invisible). Scope labels re-derive from emission-time
+# features on every grading pass, so historical rows re-bucket retroactively.
+CRYPTO_WEEKLY_MIN_HOURS = 48.0
 
 # Exact emitted-source (and registry-name) -> specialist label. Sub-sources
 # that carry a league/asset prefix (mlb_*, nfl_*, crypto_*, ...) resolve via
@@ -222,6 +229,60 @@ def specialist_for(source: str) -> str:
     return "other"
 
 
+# Retired-vertical tokens for the Wave-82 dead-weight purge (extended
+# 2026-07-24 to every persisted key shape). Weather / commodities / econ
+# trading stopped 2026-07-11; UFC / Formula One retired 2026-07-12. The
+# scanner's Vertical enum only ever stamped WEATHER/COMMODITIES/ECON on
+# ``source@VERTICAL`` trust rows (UFC/F1 tickers classified SPORTS or OTHER),
+# but the UFC/F1 tokens are kept for defence in depth.
+RETIRED_VERTICALS: frozenset[str] = frozenset(
+    {"WEATHER", "COMMODITIES", "ECON", "UFC", "F1"}
+)
+
+# Contract-series prefixes (lowercased ``prediction_subject`` tokens) that
+# belong to retired verticals. Weather/commodities/econ mirror
+# ``autonomy.scanner._VERTICAL_PREFIXES``; the UFC/F1 series were never in
+# that table (they classified OTHER), so they are enumerated from their
+# historical Kalshi series. Frozen by design: retired verticals do not grow.
+_RETIRED_SUBJECT_PREFIXES: tuple[str, ...] = (
+    "kxufc", "kxf1",                                            # ufc / f1
+    "kxhigh", "kxlow", "kxrain", "kxsnow",                      # weather
+    "kxoil", "kxwti", "kxnatgas", "kxngas", "kxgas", "kxgold",  # commodities
+    "kxcpi", "kxfed", "kxgdp", "kxpayroll",                     # econ
+)
+
+
+def is_retired_trust_key(key: str) -> bool:
+    """True when a persisted trust/weight key belongs to a retired vertical.
+
+    Handles every key shape ``source_trust`` has ever used:
+
+      * bare source          -- ``weather_openmeteo``, ``ufc_fight_winner``
+      * calibrated shadow    -- ``weather_openmeteo::cal``
+      * per-vertical         -- ``market_debias@WEATHER``,
+                                ``ufc_fight_winner@SPORTS``
+      * exact grading scope  -- ``weather_openmeteo|kxhighlax|na|pre``
+      * persisted scope row  -- ``scope:market_debias|kxufcfight|na|pre``
+
+    A key is retired when its SOURCE resolves to the retired specialist home,
+    its ``@VERTICAL`` suffix names a retired vertical, or its scope SUBJECT is
+    a retired contract series (an active source graded on a retired market can
+    never use that weight either).
+    """
+    name = str(key or "")
+    if name.startswith("scope:"):
+        name = name[len("scope:"):]
+    parts = name.split("|")
+    source, _, vertical = parts[0].partition("@")
+    if vertical.upper() in RETIRED_VERTICALS:
+        return True
+    if specialist_for(source) == "retired":  # strips ::cal itself
+        return True
+    return len(parts) >= 2 and parts[1].strip().lower().startswith(
+        _RETIRED_SUBJECT_PREFIXES
+    )
+
+
 def prediction_subject(ticker: str) -> str:
     """Return the exact asset, league, or contract-series subject.
 
@@ -244,7 +305,7 @@ def prediction_subject(ticker: str) -> str:
 
 
 def horizon_bucket(ticker: str, hours_to_close: float | None) -> str:
-    """Crypto horizon scope: '15m' | 'hourly' | 'daily+' | 'unknown'.
+    """Crypto horizon scope: '15m' | 'hourly' | 'daily+' | 'weekly' | 'unknown'.
 
     15-minute contracts are recognized from the series token (robust to
     whether the ticker parses); everything else splits on the emission-time
@@ -260,7 +321,9 @@ def horizon_bucket(ticker: str, hours_to_close: float | None) -> str:
         hours = float(hours_to_close)
     except (TypeError, ValueError):
         return "unknown"
-    return "hourly" if hours <= CRYPTO_HOURLY_MAX_HOURS else "daily+"
+    if hours <= CRYPTO_HOURLY_MAX_HOURS:
+        return "hourly"
+    return "daily+" if hours <= CRYPTO_WEEKLY_MIN_HOURS else "weekly"
 
 
 def market_type_for(source: str, ticker: str, features: dict[str, Any] | None) -> str:

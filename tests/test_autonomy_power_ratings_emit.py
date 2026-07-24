@@ -8,6 +8,8 @@ model, ever touched here.
 """
 from __future__ import annotations
 
+import json
+import logging
 from datetime import datetime, timedelta, timezone
 
 import pytest
@@ -19,8 +21,11 @@ from autonomy.signals.sports_intelligence import (
     DISPERSION_UNCERTAINTY_SCALE,
     DIVERGENCE_THRESHOLD,
     POWER_RATINGS_BASE_UNCERTAINTY,
+    POWER_RATINGS_DEGRADED_STREAK_ENV,
     POWER_RATINGS_MODEL_VERSION,
+    POWER_RATINGS_WARM_STATE_FILENAME,
     PowerRatingsSignal,
+    _massey_colley_date_ranges,
 )
 from autonomy.sports.college import (
     margin_cover_probability as college_margin_cover_probability,
@@ -396,3 +401,196 @@ def test_injected_massey_colley_never_rewarmed(tmp_path):
     signal.on_cycle_start()               # ...injected sources are left alone
     assert massey.warmups == 0
     assert colley.warmups == 0
+
+
+# ---------------------------------------------------------------------------
+# Warm outcome triage + degraded-streak telemetry. Root cause of the ~800/day
+# "warmup produced no ratings" WARNING spam (2026-07): a preseason-woken
+# league (season gate wakes on SCHEDULED games up to 21 days ahead; NFL woke
+# 2026-07-20) has ZERO settled games inside the trailing 120-day
+# Massey/Colley window, and production constructs a fresh PowerRatingsSignal
+# every ~5-min cycle (build_brain in run_one_cycle), re-running the
+# construction-time warm each time. The empty-window drop is the correct
+# fail-closed outcome and now logs at DEBUG; a persisted per-league streak
+# counter emits one loud POWER_RATINGS_DEGRADED_STREAK line every N degraded
+# warms instead.
+# ---------------------------------------------------------------------------
+
+
+class _OneActiveSeason:
+    """Season-gate stub: exactly one league active, no network, no state IO."""
+
+    def __init__(self, league: str) -> None:
+        self.league = league
+
+    def active(self, league: str) -> bool:
+        return league == self.league
+
+
+def _settled_nfl(game_id: str, home: str, away: str, home_score: int, away_score: int) -> Game:
+    return Game(
+        game_id, "nfl", home, away, "post", home_score > away_score,
+        "2026-07-01T20:00Z", home_score=home_score, away_score=away_score,
+    )
+
+
+def _settled_round_robin() -> list[Game]:
+    """4 real NFL teams, full round-robin: every team has 3 settled games
+    (>= ratings_solvers.MIN_GAMES_PER_TEAM, so .rating() must return values)."""
+    return [
+        _settled_nfl("g1", "KC", "BUF", 27, 20),
+        _settled_nfl("g2", "KC", "DAL", 31, 17),
+        _settled_nfl("g3", "PHI", "KC", 24, 21),
+        _settled_nfl("g4", "BUF", "DAL", 28, 14),
+        _settled_nfl("g5", "BUF", "PHI", 23, 22),
+        _settled_nfl("g6", "DAL", "PHI", 13, 30),
+    ]
+
+
+def _warm_signal(tmp_path, games: list[Game] | None = None) -> PowerRatingsSignal:
+    """Owned-source signal warming through a hermetic ESPN client: the first
+    warm-window chunk serves ``games``, every other fetch parses to []."""
+    client = EspnClient(fetch_scoreboard=lambda _l, _d: {"events": []})
+    if games:
+        first_range = _massey_colley_date_ranges()[0]
+        client._cache[("nfl", first_range)] = list(games)
+    models = {lg: TeamScoreModel(lg) for lg in ("nfl", "ncaaf", "nba", "ncaamb")}
+    return PowerRatingsSignal(
+        espn=client, model_dir=tmp_path, elo_dir=tmp_path,
+        consensus_fn=_fixed_consensus(ensemble_margin=3.0, dispersion=1.0),
+        models=models, elo_models={}, seasons=_OneActiveSeason("nfl"),
+    )
+
+
+@pytest.fixture
+def quiet_log_sink():
+    """Detach the real jsonl sink (logs/dummy.jsonl) for log-assertion tests;
+    caplog still captures via propagation to the root logger."""
+    from core.logger import logger as dummy_logger
+
+    saved = dummy_logger.handlers[:]
+    dummy_logger.handlers = []
+    yield
+    dummy_logger.handlers = saved
+
+
+def _warm_state(tmp_path) -> dict:
+    path = tmp_path / POWER_RATINGS_WARM_STATE_FILENAME
+    if not path.exists():
+        return {}
+    return json.loads(path.read_text(encoding="utf-8")).get("degraded_streaks", {})
+
+
+def test_warm_with_settled_games_produces_ratings_quietly(tmp_path, caplog, quiet_log_sink):
+    caplog.set_level(logging.DEBUG, logger="dummy")
+    signal = _warm_signal(tmp_path, games=_settled_round_robin())
+
+    assert signal.massey_source._ratings["nfl"]
+    assert signal.colley_source._ratings["nfl"]
+    assert signal.massey_source.rating("nfl", "KC") is not None
+    assert signal.colley_source.rating("nfl", "KC") is not None
+    # No drop, no streak: nothing above DEBUG, and no degraded state on disk.
+    assert not [r for r in caplog.records if r.levelno >= logging.WARNING]
+    assert "dropped from ensemble" not in caplog.text
+    assert _warm_state(tmp_path) == {}
+
+
+def test_warm_empty_window_skips_quietly_without_warning(tmp_path, caplog, quiet_log_sink):
+    """The preseason-wake state (gate active, zero settled games in window)
+    must be a clean DEBUG skip, not the old per-cycle WARNING."""
+    caplog.set_level(logging.DEBUG, logger="dummy")
+    signal = _warm_signal(tmp_path, games=None)
+
+    assert signal.massey_source._ratings["nfl"] == {}
+    assert signal.colley_source._ratings["nfl"] == {}
+    assert not [r for r in caplog.records if r.levelno >= logging.WARNING]
+    assert "produced no ratings" not in caplog.text  # the old noisy line is gone
+    debug_lines = [
+        r.getMessage() for r in caplog.records if r.levelno == logging.DEBUG
+    ]
+    assert any(
+        "no settled games" in line and "nfl" in line for line in debug_lines
+    )
+    # The degraded streak advanced (one warm = one degraded cycle).
+    assert _warm_state(tmp_path) == {"nfl": 1}
+
+
+def test_degraded_streak_emits_loud_line_every_n(tmp_path, caplog, quiet_log_sink, monkeypatch):
+    monkeypatch.setenv(POWER_RATINGS_DEGRADED_STREAK_ENV, "3")
+    caplog.set_level(logging.DEBUG, logger="dummy")
+    signal = _warm_signal(tmp_path, games=None)  # streak 1 (construction warm)
+    signal._warm_massey_colley()                 # streak 2
+    assert "POWER_RATINGS_DEGRADED_STREAK" not in caplog.text
+    signal._warm_massey_colley()                 # streak 3 -> emit
+    warnings = [
+        r.getMessage() for r in caplog.records if r.levelno == logging.WARNING
+    ]
+    assert warnings.count("POWER_RATINGS_DEGRADED_STREAK league=nfl n=3") == 1
+    assert _warm_state(tmp_path) == {"nfl": 3}
+
+    for _ in range(3):                           # streaks 4, 5, 6 -> emit at 6
+        signal._warm_massey_colley()
+    warnings = [
+        r.getMessage() for r in caplog.records if r.levelno == logging.WARNING
+    ]
+    assert warnings.count("POWER_RATINGS_DEGRADED_STREAK league=nfl n=6") == 1
+    assert _warm_state(tmp_path) == {"nfl": 6}
+
+
+def test_degraded_streak_resets_on_healthy_warm(tmp_path, caplog, quiet_log_sink):
+    (tmp_path / POWER_RATINGS_WARM_STATE_FILENAME).write_text(
+        json.dumps({"degraded_streaks": {"nfl": 7, "nba": 2}}), encoding="utf-8")
+    caplog.set_level(logging.DEBUG, logger="dummy")
+    _warm_signal(tmp_path, games=_settled_round_robin())
+    # nfl warmed healthy -> reset (dropped from the file); nba was skipped by
+    # the season gate -> its streak is frozen, neither grown nor reset.
+    assert _warm_state(tmp_path) == {"nba": 2}
+    assert "POWER_RATINGS_DEGRADED_STREAK" not in caplog.text
+
+
+def test_warmup_exception_is_logged_with_class_and_message(tmp_path, caplog, quiet_log_sink):
+    """A raising warmup is no longer silently swallowed: the exception class
+    and message reach the log (and the league still counts as degraded)."""
+    caplog.set_level(logging.DEBUG, logger="dummy")
+    signal = _warm_signal(tmp_path, games=_settled_round_robin())
+    assert _warm_state(tmp_path) == {}
+
+    def _boom(league, date_ranges):
+        raise ValueError("scoreboard exploded")
+
+    signal.massey_source.warmup = _boom  # type: ignore[method-assign]
+    signal._warm_massey_colley(warm_massey=True, warm_colley=False)
+
+    warnings = [
+        r.getMessage() for r in caplog.records if r.levelno == logging.WARNING
+    ]
+    assert any(
+        "massey warmup failed for nfl" in line
+        and "ValueError" in line
+        and "scoreboard exploded" in line
+        for line in warnings
+    )
+    assert _warm_state(tmp_path) == {"nfl": 1}
+
+
+def test_solver_failure_with_settled_games_stays_loud(tmp_path, caplog, quiet_log_sink, monkeypatch):
+    """Settled games present but the solve yields nothing (non-convergence):
+    abnormal -> still a WARNING, distinct from the quiet empty-window skip."""
+    import autonomy.sports.ratings_solvers as ratings_solvers
+
+    monkeypatch.setattr(ratings_solvers, "solve_spd", lambda *a, **k: None)
+    caplog.set_level(logging.DEBUG, logger="dummy")
+    _warm_signal(tmp_path, games=_settled_round_robin())
+
+    warnings = [
+        r.getMessage() for r in caplog.records if r.levelno == logging.WARNING
+    ]
+    assert any(
+        "massey warmup solved no ratings for nfl despite settled games" in line
+        for line in warnings
+    )
+    assert any(
+        "colley warmup solved no ratings for nfl despite settled games" in line
+        for line in warnings
+    )
+    assert _warm_state(tmp_path) == {"nfl": 1}

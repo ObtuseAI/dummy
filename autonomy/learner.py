@@ -1,19 +1,20 @@
 """Learner: the recursive-improvement engine.
 
-Three loops, all evidence-driven:
+Two loops, both evidence-driven:
 1. Calibration: on every settlement, score each source's logged signal for
    that market (Brier) and update its trust weight multiplicatively —
    sources that beat the market gain influence, sources that lose it fade.
 2. Risk: settled P&L per contract feeds the risk brain's stage evidence, so
    position size is always downstream of demonstrated edge.
-3. Reflexion: periodically, losing decisions are summarized through the
-   model router into short structured "lessons" stored in the ledger and fed
-   back into the LLM analyst's context — verbal self-teaching, bounded and
-   auditable.
+
+A third "reflexion lessons" loop (LLM-summarized losing decisions) was
+removed in Wave-83: it had zero callers and zero consumers — dead at both
+ends — and documenting it as live was dishonest (2026-07-24 audit). The
+``lessons`` ledger table remains for any future scope that earns a real
+producer AND consumer.
 """
 from __future__ import annotations
 
-import json
 import os
 from datetime import datetime, timezone
 from typing import Any
@@ -336,48 +337,3 @@ class Learner:
             )
             self.ledger.update_weight(exact_key, exact_new, brier=score)
         return updated
-
-    # ------------------------------------------------------------------
-    # Loop 3: Reflexion lessons
-    # ------------------------------------------------------------------
-
-    def reflect(self, recent_losses: list[dict[str, Any]], max_lessons: int = 3) -> list[str]:
-        if not recent_losses or self._router is None:
-            return []
-        import asyncio
-
-        from model_router.tasks import ModelTask
-
-        prompt = (
-            "You are the self-critique module of an autonomous prediction-market trader. "
-            "Here are recent losing decisions with their forecasts and outcomes:\n"
-            + json.dumps(recent_losses[:10], default=str)[:4000]
-            + "\nExtract at most "
-            + str(max_lessons)
-            + ' concrete, testable lessons. Return STRICT JSON: {"lessons": ["...", ...]}'
-        )
-        try:
-            envelope = asyncio.run(
-                self._router.call(ModelTask.REFLECTION_LESSONS, prompt, context={})
-            )
-            decision = envelope.decision
-            expected_provider = self._router.config.default_provider.get(
-                ModelTask.REFLECTION_LESSONS.value
-            )
-            if (
-                envelope.blocked_by
-                or decision.fallback_reason
-                or decision.provider_name != expected_provider
-                or decision.provider_name in {"mock", "none"}
-            ):
-                return []
-            lessons = json.loads(envelope.content).get("lessons", [])
-        except Exception:
-            return []
-        stored: list[str] = []
-        for lesson in lessons[:max_lessons]:
-            text = str(lesson).strip()
-            if text:
-                self.ledger.record_lesson("reflexion", text, {"losses_considered": len(recent_losses)})
-                stored.append(text)
-        return stored

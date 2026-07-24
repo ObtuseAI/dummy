@@ -102,7 +102,7 @@ def test_health_snapshot_reports_size_and_journal(tmp_path: Path):
         info = ledger.health()
         assert info["size_bytes"] > 0
         assert info["bloat_warn"] is False
-        assert str(info["journal_mode"]).lower() != "wal"  # retention contract
+        assert str(info["journal_mode"]).lower() == "wal"  # Wave-83 concurrency contract
         assert info["lock_retries"] == 0
     finally:
         ledger.close()
@@ -145,7 +145,7 @@ def test_probe_reads_existing_db_read_only(tmp_path: Path):
     assert info["exists"] is True
     assert info["size_bytes"] > 0
     assert info["probe_error"] is None
-    assert str(info["journal_mode"]).lower() in {"delete", "truncate", "persist", "memory"}
+    assert str(info["journal_mode"]).lower() == "wal"
     assert db.stat().st_mtime_ns == before  # untouched
 
 

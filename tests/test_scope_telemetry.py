@@ -52,7 +52,8 @@ def test_improvement_detects_a_sharpening_trend():
 def _conn():
     conn = sqlite3.connect(":memory:")
     conn.execute(
-        """CREATE TABLE decisions(market_ticker TEXT, action TEXT, side TEXT,
+        """CREATE TABLE decisions(
+            decision_id TEXT DEFAULT '', market_ticker TEXT, action TEXT, side TEXT,
             probability_yes REAL, market_implied_yes REAL,
             ev_cents REAL, price_cents INTEGER, created_at TEXT)"""
     )
@@ -78,7 +79,7 @@ def _settle(conn, ticker, prob, result, days_ago, *, traded=True):
     _fused(conn, ticker, prob, days_ago)
     if traded:
         conn.execute(
-            "INSERT INTO decisions VALUES(?,?,?,?,?,?,?, datetime('now', ?))",
+            "INSERT INTO decisions(market_ticker,action,side,probability_yes,market_implied_yes,ev_cents,price_cents,created_at) VALUES(?,?,?,?,?,?,?, datetime('now', ?))",
             (ticker, "BUY_YES", "YES", prob, 0.5, 3.0, 55, f"-{days_ago + 1} days"),
         )
     conn.execute(
@@ -118,11 +119,11 @@ def test_pick_board_and_settled_today():
     for tick, prob, res, hrs in [("KXMLBGAME-A-NYYBOS", 0.72, 1, 5), ("KXMLBGAME-B-LADSF", 0.68, 0, 8)]:
         conn.execute("INSERT INTO signals VALUES('fused_forecast', ?, ?, datetime('now','-1 days'), ?)",
                      (tick, prob, '{"market_implied_yes": 0.5}'))
-        conn.execute("INSERT INTO decisions VALUES(?,?,?,?,?,?,?, datetime('now','-1 days'))",
+        conn.execute("INSERT INTO decisions(market_ticker,action,side,probability_yes,market_implied_yes,ev_cents,price_cents,created_at) VALUES(?,?,?,?,?,?,?, datetime('now','-1 days'))",
                      (tick, "BUY_YES", "YES", prob, 0.5, 3.0, 55))
         conn.execute("INSERT INTO settlements VALUES(?,?, datetime('now', ?))", (tick, res, f"-{hrs} hours"))
     # an OPEN pick (unsettled) on a total -> shows in the pick board
-    conn.execute("INSERT INTO decisions VALUES('KXMLBTOTAL-C-NYYBOS','BUY_YES','YES',0.61,0.53,4.2,49, datetime('now'))")
+    conn.execute("INSERT INTO decisions(market_ticker,action,side,probability_yes,market_implied_yes,ev_cents,price_cents,created_at) VALUES('KXMLBTOTAL-C-NYYBOS','BUY_YES','YES',0.61,0.53,4.2,49, datetime('now'))")
     conn.commit()
 
     mlb = build_scope_analytics(conn, season_active={"mlb": True})["verticals"]["SPORTS"]["scopes"]["MLB"]

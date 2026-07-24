@@ -7,8 +7,14 @@ rows may be moved into a companion SQLite archive.  Readers use the temporary
 the evidence available to research, calibration, or governance code.
 
 Archival is fail-closed: dry-run is the default, only signal rows are eligible,
-and an apply batch is deleted from the hot ledger only after an exact row count
-and SHA-256 digest match in the archive inside the same SQLite transaction.
+and each apply batch moves in two single-database transactions: (A) copy the
+batch into the archive with INSERT OR IGNORE and commit it durably after an
+exact row-count and SHA-256 digest match, then (B) re-verify the committed
+archive rows and delete the batch from the hot ledger. Each commit touches one
+database file, so both are atomic under any journal mode (WAL included). A
+crash between the phases leaves rows present in both databases; the next run
+re-selects them, the OR IGNOREs replay as no-ops, and phase B completes the
+move — no crash ordering can lose a row.
 """
 from __future__ import annotations
 
@@ -191,8 +197,9 @@ def enforce_retention(
     """Archive eligible rows, or report what would be archived.
 
     ``apply=False`` never creates an archive or mutates the source.  Apply mode
-    refuses WAL because SQLite cannot guarantee atomic multi-database commits
-    when the main database is WAL-backed.
+    uses the two-phase idempotent batch protocol described in the module
+    docstring, so it is safe under any journal mode — including a WAL main
+    ledger, where a single cross-database transaction would not be atomic.
     """
     source = Path(db_path).resolve()
     archive = Path(archive_path).resolve() if archive_path else default_archive_path(source).resolve()
@@ -229,19 +236,9 @@ def enforce_retention(
                 vacuumed=False,
             )
 
-        journal_mode = str(connection.execute("PRAGMA main.journal_mode").fetchone()[0]).lower()
-        if journal_mode == "wal":
-            raise RuntimeError("apply refused: main ledger uses WAL; atomic archive+delete is not guaranteed")
         archive.parent.mkdir(parents=True, exist_ok=True)
         uri = f"file:{archive.as_posix()}?mode=rwc"
         connection.execute(f"ATTACH DATABASE ? AS {ARCHIVE_ALIAS}", (uri,))
-        archive_journal_mode = str(
-            connection.execute(f"PRAGMA {ARCHIVE_ALIAS}.journal_mode").fetchone()[0]
-        ).lower()
-        if archive_journal_mode == "wal":
-            raise RuntimeError(
-                "apply refused: signal archive uses WAL; atomic archive+delete is not guaranteed"
-            )
         _ensure_archive_schema(connection)
         connection.commit()
         connection.execute("CREATE TEMP TABLE archive_candidates(id INTEGER PRIMARY KEY)")
@@ -249,6 +246,11 @@ def enforce_retention(
         archived_rows = 0
         batches = 0
         while True:
+            # Phase A — copy this batch into the archive and commit it durably.
+            # Only the archive database is modified (temp tables don't count),
+            # so the commit is atomic on its own regardless of the main
+            # ledger's journal mode. INSERT OR IGNORE plus the deterministic
+            # batch id make the whole phase safe to replay after a crash.
             connection.execute("BEGIN IMMEDIATE")
             try:
                 connection.execute("DELETE FROM temp.archive_candidates")
@@ -280,21 +282,38 @@ def enforce_retention(
                     or archive_count != candidate_count
                     or source_digest != archive_digest
                 ):
-                    raise RuntimeError("archive verification failed; source deletion rolled back")
-                deleted = connection.execute(
-                    "DELETE FROM main.signals WHERE id IN (SELECT id FROM temp.archive_candidates)"
-                ).rowcount
-                if deleted != candidate_count:
-                    raise RuntimeError("source delete count mismatch; batch rolled back")
+                    raise RuntimeError("archive verification failed; nothing deleted")
                 archived_at = datetime.now(timezone.utc).isoformat()
                 batch_id = f"{int(first_id)}-{int(last_id)}-{source_digest[:16]}"
                 connection.execute(
-                    f"INSERT INTO {ARCHIVE_ALIAS}.archive_batches VALUES (?,?,?,?,?,?,?,?)",
+                    f"INSERT OR IGNORE INTO {ARCHIVE_ALIAS}.archive_batches VALUES (?,?,?,?,?,?,?,?)",
                     (
                         batch_id, str(source), cutoff, int(first_id), int(last_id),
                         candidate_count, source_digest, archived_at,
                     ),
                 )
+                connection.commit()
+            except Exception:
+                connection.rollback()
+                raise
+
+            # Phase B — delete the batch from the hot ledger, only after
+            # re-verifying it against the archive rows committed above. Only
+            # the main database is modified here, so this commit is atomic
+            # too. A crash between the phases leaves the rows in both
+            # databases — safe, and repaired by the next run's replay.
+            connection.execute("BEGIN IMMEDIATE")
+            try:
+                archive_count, archive_digest = _candidate_digest(connection, ARCHIVE_ALIAS)
+                if archive_count != candidate_count or archive_digest != source_digest:
+                    raise RuntimeError(
+                        "post-commit archive verification failed; source deletion refused"
+                    )
+                deleted = connection.execute(
+                    "DELETE FROM main.signals WHERE id IN (SELECT id FROM temp.archive_candidates)"
+                ).rowcount
+                if deleted != candidate_count:
+                    raise RuntimeError("source delete count mismatch; batch rolled back")
                 connection.commit()
             except Exception:
                 connection.rollback()
@@ -315,6 +334,12 @@ def enforce_retention(
             raise RuntimeError(
                 f"post-archive integrity failure: source={source_integrity}, archive={archive_integrity}"
             )
+        journal_mode = str(connection.execute("PRAGMA main.journal_mode").fetchone()[0]).lower()
+        if journal_mode == "wal":
+            try:
+                connection.execute("PRAGMA main.wal_checkpoint(TRUNCATE)")
+            except sqlite3.OperationalError:
+                pass  # busy readers hold the WAL; a later checkpoint reclaims it
         archive_rows = int(
             connection.execute(f"SELECT COUNT(*) FROM {ARCHIVE_ALIAS}.signals").fetchone()[0]
         )

@@ -165,23 +165,37 @@ class CryptoSpotVolSignal:
         if horizon_sigma <= 0:
             return None
 
-        def p_above(strike: float) -> float:
+        def p_above(strike: float) -> float | None:
             # Driftless lognormal: P(S_T >= K) = Phi(ln(S/K)/sigma_T)
+            # A non-positive strike is malformed market metadata (e.g. a
+            # 15m-direction ticker whose missing floor_strike parses to 0).
+            # Abstain instead of emitting a fabricated near-certain YES —
+            # the old `return 1.0` was the audit's fail-open finding; the
+            # paper twin's equivalent path already abstains.
             if strike <= 0:
-                return 1.0
+                return None
             return _normal_cdf(math.log(spot / strike) / horizon_sigma)
 
         strike_type = str(market.raw.get("strike_type", "")).lower()
         floor = market.raw.get("floor_strike")
         cap = market.raw.get("cap_strike")
+        p_yes: float | None
         if strike_type in {"greater", "greater_or_equal"} and floor is not None:
             p_yes = p_above(float(floor))
         elif strike_type == "less" and cap is not None:
-            p_yes = 1.0 - p_above(float(cap))
+            above_cap = p_above(float(cap))
+            p_yes = None if above_cap is None else 1.0 - above_cap
         elif strike_type == "between" and floor is not None and cap is not None:
-            p_yes = p_above(float(floor)) - p_above(float(cap))
+            above_floor = p_above(float(floor))
+            above_cap = p_above(float(cap))
+            p_yes = (
+                None if above_floor is None or above_cap is None
+                else above_floor - above_cap
+            )
         else:
             p_yes = p_above(parsed["strike"])
+        if p_yes is None:
+            return None
         p_yes = min(0.995, max(0.005, p_yes))
         from autonomy.crypto_events import active_bump
 

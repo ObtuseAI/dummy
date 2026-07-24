@@ -64,6 +64,17 @@ _ASSET_FACTOR_WEIGHT: dict[str, dict[str, float]] = {
             "coin": 1.0, "mara": 0.5, "riot": 0.5},
 }
 
+# Forward-registered promotion-candidate scope (2026-07-22 elite audit;
+# runtime/autonomy/promotion_forward_registrations.json). promotion_eligible
+# is stamped True for EXACTLY this grading scope's emissions -- the
+# auto-promotion evaluator requires a majority per-scope opt-in before
+# forward evidence can promote anything, and no other scope of this source
+# is registered. The registration FINGERPRINT is never stamped here: the
+# ledger stamps it at record time from the immutable registrations file
+# (AutonomyLedger._stamp_forward_fingerprint), so a later re-implementation
+# of this module cannot silently inherit the old registration.
+PROMOTION_ELIGIBLE_SCOPE = "crypto_equities_flow|sol|15m_direction|15m"
+
 EQUITY_DAILY_DRIFT = 0.010      # max expected log-return over a day at score +/-1
 EQUITY_MAX_SHIFT_SIGMA = 0.35   # hard cap in horizon standard deviations
 # ETF volume surge (recent 5d vs prior 15d avg) above this reads as a flow
@@ -287,6 +298,33 @@ class CryptoEquitiesSignal:
                 (1.0 - coverage) * 0.30,
             ) + divergence_penalty,
         )
+        features: dict[str, Any] = {
+            "challenger_only": True,
+            "equities_model_version": 1,
+            "equity_score": score,
+            "equity_coverage": coverage,
+            "equity_components": components,
+            "equity_changes": changes,
+            "etf_volume_surges": surges,
+            "flow_amplifier": amplifier,
+            "spot_equity_divergence": bool(divergence_penalty),
+            "expected_log_return": expected_log_return,
+            "shift_in_horizon_sigma": expected_log_return / horizon_sigma,
+            "annual_vol_used": float(annual_vol),
+            "horizon_log_return_sigma": horizon_sigma,
+            "hours_to_close": hours,
+            "spot": spot,
+        }
+        try:
+            from autonomy.taxonomy import grading_scope
+
+            if (
+                grading_scope(self.name, market.ticker, features)
+                == PROMOTION_ELIGIBLE_SCOPE
+            ):
+                features["promotion_eligible"] = True
+        except Exception:  # noqa: BLE001 - fail closed: no opt-in stamp
+            pass
         return Signal(
             source=self.name,
             market_ticker=market.ticker,
@@ -298,21 +336,5 @@ class CryptoEquitiesSignal:
                 + ("; diverges from spot tape" if divergence_penalty else "")
                 + "; challenger-only"
             ),
-            features={
-                "challenger_only": True,
-                "equities_model_version": 1,
-                "equity_score": score,
-                "equity_coverage": coverage,
-                "equity_components": components,
-                "equity_changes": changes,
-                "etf_volume_surges": surges,
-                "flow_amplifier": amplifier,
-                "spot_equity_divergence": bool(divergence_penalty),
-                "expected_log_return": expected_log_return,
-                "shift_in_horizon_sigma": expected_log_return / horizon_sigma,
-                "annual_vol_used": float(annual_vol),
-                "horizon_log_return_sigma": horizon_sigma,
-                "hours_to_close": hours,
-                "spot": spot,
-            },
+            features=features,
         )

@@ -26,13 +26,17 @@ AS_OF = datetime(2026, 7, 22, 12, 0, tzinfo=timezone.utc)
 def _seed_closed_attempts(
     store: CryptoHorizonEvidenceStore,
     count: int,
+    *,
+    tickers: list[str] | None = None,
+    cycle_id: str = "bounded-work-fixture",
 ) -> list[str]:
-    cycle_id = "bounded-work-fixture"
     store.start_cycle(cycle_id, AS_OF.isoformat(), AS_OF.isoformat())
-    tickers: list[str] = []
-    for index in range(count):
-        ticker = f"KXBTC15M-22JUL2611{index:02}-T{index:02}"
-        tickers.append(ticker)
+    seeded = list(tickers or [])
+    if not seeded:
+        seeded = [
+            f"KXBTC15M-22JUL2611{index:02}-T{index:02}" for index in range(count)
+        ]
+    for ticker in seeded:
         provenance = {"ticker": ticker, "fixture": True}
         store.record_attempt(
             {
@@ -60,11 +64,11 @@ def _seed_closed_attempts(
         cycle_id,
         completed_at=AS_OF.isoformat(),
         status="CYCLE_OK",
-        markets_seen=count,
-        attempts_written=count,
+        markets_seen=len(seeded),
+        attempts_written=len(seeded),
         errors=[],
     )
-    return tickers
+    return seeded
 
 
 def test_fair_batch_resumes_after_cursor_and_wraps() -> None:
@@ -87,6 +91,7 @@ def test_reconciliation_is_bounded_persistent_and_fair(tmp_path) -> None:
     first_calls: list[str] = []
     first = matrix.reconcile_settlements(
         lambda ticker: first_calls.append(ticker) or {"result": "yes"},
+        fetch_settled_page=None,
         as_of=AS_OF,
         max_tickers=2,
         time_budget_seconds=10,
@@ -107,6 +112,7 @@ def test_reconciliation_is_bounded_persistent_and_fair(tmp_path) -> None:
     second_calls: list[str] = []
     second = resumed_matrix.reconcile_settlements(
         lambda ticker: second_calls.append(ticker) or {"result": "no"},
+        fetch_settled_page=None,
         as_of=AS_OF,
         max_tickers=2,
         time_budget_seconds=10,
@@ -118,6 +124,7 @@ def test_reconciliation_is_bounded_persistent_and_fair(tmp_path) -> None:
     final_calls: list[str] = []
     final = resumed_matrix.reconcile_settlements(
         lambda ticker: final_calls.append(ticker) or {"result": "yes"},
+        fetch_settled_page=None,
         as_of=AS_OF,
         max_tickers=2,
         time_budget_seconds=10,
@@ -142,6 +149,7 @@ def test_reconciliation_deadline_defers_and_advances_only_attempted_work(
     calls: list[str] = []
     result = matrix.reconcile_settlements(
         lambda ticker: calls.append(ticker) or {},
+        fetch_settled_page=None,
         as_of=AS_OF,
         max_tickers=3,
         time_budget_seconds=1,
@@ -151,6 +159,251 @@ def test_reconciliation_deadline_defers_and_advances_only_attempted_work(
     assert result["deferred_in_sweep"] == 2
     assert result["cursor"]["after"] == tickers[0]
     assert result["sweep_complete"] is False
+    matrix.close()
+
+
+def _sticky_clock(values: list[float]):
+    remaining = list(values)
+
+    def clock() -> float:
+        if len(remaining) > 1:
+            return remaining.pop(0)
+        return remaining[0]
+
+    return clock
+
+
+def test_batch_settled_listing_is_consumed_per_series(tmp_path) -> None:
+    store = CryptoHorizonEvidenceStore(tmp_path / "matrix.db")
+    btc = [f"KXBTC15M-22JUL2612{index:02}-T{index:02}" for index in range(3)]
+    eth = [f"KXETH15M-22JUL2612{index:02}-T{index:02}" for index in range(2)]
+    _seed_closed_attempts(store, 0, tickers=btc + eth)
+    matrix = CryptoHorizonEvidenceMatrix(store=store, now_fn=lambda: AS_OF)
+    page_calls: list[tuple[str, int, str | None]] = []
+
+    def fetch_page(series: str, min_close_ts: int, cursor: str | None = None):
+        page_calls.append((series, min_close_ts, cursor))
+        if series == "KXBTC15M":
+            if cursor is None:
+                return {
+                    "markets": [
+                        {"ticker": btc[0], "result": "yes"},
+                        {"ticker": "KXBTC15M-UNRELATED-T00", "result": "no"},
+                    ],
+                    "cursor": "page2",
+                }
+            return {
+                "markets": [
+                    {"ticker": btc[1], "result": "no"},
+                    # Listed but not yet resulted on the venue: falls back.
+                    {"ticker": btc[2], "result": ""},
+                ]
+            }
+        return {
+            "markets": [
+                {"ticker": eth[0], "result": "yes"},
+                {"ticker": eth[1], "result": "no"},
+            ]
+        }
+
+    per_ticker_calls: list[str] = []
+    result = matrix.reconcile_settlements(
+        lambda ticker: per_ticker_calls.append(ticker) or {"result": "yes"},
+        fetch_settled_page=fetch_page,
+        as_of=AS_OF,
+        max_tickers=4,
+        time_budget_seconds=30,
+    )
+    assert [call[0] for call in page_calls] == [
+        "KXBTC15M", "KXBTC15M", "KXETH15M"
+    ]
+    expected_min = int((AS_OF - timedelta(minutes=1)).timestamp()) - 60
+    assert all(call[1] == expected_min for call in page_calls)
+    assert page_calls[1][2] == "page2"
+    # Only the venue-unresolved ticker needed a per-ticker fallback GET.
+    assert per_ticker_calls == [btc[2]]
+    assert result["batch_sweep"]["settled_tickers"] == 4
+    assert result["batch_sweep"]["pages_fetched"] == 3
+    assert result["batch_sweep"]["series_attempted"] == ["KXBTC15M", "KXETH15M"]
+    assert result["batch_sweep"]["cap_reached"] is False
+    assert result["settled_tickers"] == 5
+    assert result["eligible_tickers_at_start"] == 5
+    assert result["deferred_in_sweep"] == 0
+    assert result["unresolved_eligible_tickers"] == 0
+    assert result["status"] == "RECONCILIATION_SWEEP_COMPLETE"
+    assert result["authority"] == AUTHORITY
+    matrix.close()
+
+
+def test_batch_settlement_cap_is_enforced_before_fallback(tmp_path) -> None:
+    store = CryptoHorizonEvidenceStore(tmp_path / "matrix.db")
+    tickers = _seed_closed_attempts(store, 6)
+    matrix = CryptoHorizonEvidenceMatrix(store=store, now_fn=lambda: AS_OF)
+
+    def fetch_page(series: str, min_close_ts: int, cursor: str | None = None):
+        return {
+            "markets": [{"ticker": ticker, "result": "yes"} for ticker in tickers],
+            "cursor": "endless",
+        }
+
+    calls: list[str] = []
+    result = matrix.reconcile_settlements(
+        lambda ticker: calls.append(ticker) or {},
+        fetch_settled_page=fetch_page,
+        as_of=AS_OF,
+        max_tickers=1,
+        time_budget_seconds=30,
+        max_batch_settlements=2,
+        max_pages_per_series=3,
+    )
+    assert result["batch_sweep"]["settled_tickers"] == 2
+    assert result["batch_sweep"]["cap_reached"] is True
+    assert result["batch_sweep"]["pages_fetched"] == 1
+    # Fallback stays bounded at max_tickers and resumes after the batch.
+    assert calls == [tickers[2]]
+    assert result["deferred_in_sweep"] == 3
+    assert result["unresolved_eligible_tickers"] == 4
+    assert result["status"] == "RECONCILIATION_PARTIAL"
+    matrix.close()
+
+
+def test_batch_page_cap_bounds_pagination(tmp_path) -> None:
+    store = CryptoHorizonEvidenceStore(tmp_path / "matrix.db")
+    tickers = _seed_closed_attempts(store, 1)
+    matrix = CryptoHorizonEvidenceMatrix(store=store, now_fn=lambda: AS_OF)
+    pages: list[str | None] = []
+
+    def fetch_page(series: str, min_close_ts: int, cursor: str | None = None):
+        pages.append(cursor)
+        return {"markets": [], "cursor": "more"}
+
+    result = matrix.reconcile_settlements(
+        lambda ticker: {"result": "yes"},
+        fetch_settled_page=fetch_page,
+        as_of=AS_OF,
+        max_tickers=1,
+        time_budget_seconds=30,
+        max_pages_per_series=3,
+    )
+    assert len(pages) == 3
+    assert result["batch_sweep"]["pages_fetched"] == 3
+    assert result["batch_sweep"]["settled_tickers"] == 0
+    # The listing missed the ticker; the per-ticker fallback settled it.
+    assert result["settled_tickers"] == 1
+    assert result["unresolved_eligible_tickers"] == 0
+    assert result["status"] == "RECONCILIATION_SWEEP_COMPLETE"
+    assert tickers
+    matrix.close()
+
+
+def test_batch_listing_error_fails_closed_to_per_ticker_fallback(
+    tmp_path,
+) -> None:
+    store = CryptoHorizonEvidenceStore(tmp_path / "matrix.db")
+    tickers = _seed_closed_attempts(store, 3)
+    matrix = CryptoHorizonEvidenceMatrix(store=store, now_fn=lambda: AS_OF)
+
+    def fetch_page(series: str, min_close_ts: int, cursor: str | None = None):
+        raise RuntimeError("venue down")
+
+    calls: list[str] = []
+    result = matrix.reconcile_settlements(
+        lambda ticker: calls.append(ticker) or {"result": "yes"},
+        fetch_settled_page=fetch_page,
+        as_of=AS_OF,
+        max_tickers=2,
+        time_budget_seconds=30,
+    )
+    assert calls == tickers[:2]
+    assert result["settled_tickers"] == 2
+    assert result["batch_sweep"]["settled_tickers"] == 0
+    assert "series:KXBTC15M:RuntimeError" in result["errors"]
+    assert result["status"] == "RECONCILIATION_PARTIAL"
+    matrix.close()
+
+
+def test_batch_deadline_stops_between_page_requests(tmp_path) -> None:
+    store = CryptoHorizonEvidenceStore(tmp_path / "matrix.db")
+    btc = [f"KXBTC15M-22JUL2612{index:02}-T{index:02}" for index in range(2)]
+    eth = [f"KXETH15M-22JUL2612{index:02}-T{index:02}" for index in range(2)]
+    _seed_closed_attempts(store, 0, tickers=btc + eth)
+    matrix = CryptoHorizonEvidenceMatrix(
+        store=store,
+        now_fn=lambda: AS_OF,
+        monotonic_fn=_sticky_clock([0.0, 0.0, 2.0]),
+    )
+
+    def fetch_page(series: str, min_close_ts: int, cursor: str | None = None):
+        return {
+            "markets": [{"ticker": ticker, "result": "yes"} for ticker in btc]
+        }
+
+    result = matrix.reconcile_settlements(
+        lambda ticker: {"result": "yes"},
+        fetch_settled_page=fetch_page,
+        as_of=AS_OF,
+        max_tickers=4,
+        time_budget_seconds=1,
+    )
+    assert result["batch_sweep"]["series_attempted"] == ["KXBTC15M"]
+    assert result["batch_sweep"]["settled_tickers"] == 2
+    assert result["deadline_reached"] is True
+    assert result["tickers_attempted"] == 0
+    assert result["deferred_in_sweep"] == 2
+    assert result["unresolved_eligible_tickers"] == 2
+    assert result["status"] == "RECONCILIATION_PARTIAL"
+    matrix.close()
+
+
+def test_batch_listing_not_contacted_when_idle(tmp_path) -> None:
+    store = CryptoHorizonEvidenceStore(tmp_path / "matrix.db")
+    matrix = CryptoHorizonEvidenceMatrix(store=store, now_fn=lambda: AS_OF)
+
+    def fetch_page(series: str, min_close_ts: int, cursor: str | None = None):
+        raise AssertionError("idle sweep must not contact the listing")
+
+    result = matrix.reconcile_settlements(
+        lambda ticker: {},
+        fetch_settled_page=fetch_page,
+        as_of=AS_OF,
+        max_tickers=4,
+        time_budget_seconds=10,
+    )
+    assert result["status"] == "RECONCILIATION_IDLE"
+    assert result["batch_sweep"]["pages_fetched"] == 0
+    matrix.close()
+
+
+def test_default_batch_fetch_uses_public_settled_listing(
+    tmp_path, monkeypatch
+) -> None:
+    import autonomy.reconciler as reconciler_module
+
+    store = CryptoHorizonEvidenceStore(tmp_path / "matrix.db")
+    tickers = _seed_closed_attempts(store, 1)
+    matrix = CryptoHorizonEvidenceMatrix(store=store, now_fn=lambda: AS_OF)
+    page_calls: list[tuple[str, str | None]] = []
+
+    def fake_page(series: str, min_close_ts: int, cursor: str | None = None):
+        page_calls.append((series, cursor))
+        return {"markets": [{"ticker": tickers[0], "result": "yes"}]}
+
+    monkeypatch.setattr(
+        reconciler_module, "default_fetch_settled_page", fake_page
+    )
+    per_ticker_calls: list[str] = []
+    result = matrix.reconcile_settlements(
+        lambda ticker: per_ticker_calls.append(ticker) or {},
+        as_of=AS_OF,
+        max_tickers=4,
+        time_budget_seconds=10,
+    )
+    # No fetch_settled_page argument: the scheduled runner's call signature.
+    assert page_calls == [("KXBTC15M", None)]
+    assert per_ticker_calls == []
+    assert result["batch_sweep"]["enabled"] is True
+    assert result["settled_tickers"] == 1
+    assert result["status"] == "RECONCILIATION_SWEEP_COMPLETE"
     matrix.close()
 
 

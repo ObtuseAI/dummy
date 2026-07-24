@@ -106,22 +106,35 @@ the reason, age, and threshold — never a silent skip — and counted on
 | everything else | 300 s |
 
 Unknown freshness is stale: a missing, unparseable, or future snapshot
-timestamp refuses the order. A LIVE submit additionally re-checks the venue
-halt state (`/exchange/status`) at the moment of submit, not just at cycle
-start; a status-fetch failure fails open (unknown is not down), matching the
-cycle-start doctrine.
+timestamp refuses the order. A LIVE submit additionally requires a positive,
+current venue-health witness at the moment of submit (`/exchange/status`), not
+just at cycle start. This check fails closed: a missing, failed, or malformed
+status fetch BLOCKS the order (`exchange_status_unavailable_at_submit` in
+`autonomy/executor.py`), as do maintenance (`exchange_maintenance_at_submit`)
+and halt (`trading_halted_at_submit`) states. Unknown is not permission at
+submit time. The fail-open doctrine (status probe failure → proceed) applies
+only to the cycle-start probe in `autonomy/exchange_status.py`, which decides
+whether the learning loop runs — never whether an order submits.
 
-## Retired paper/shadow results + going live (Tier 1)
+## Shadow paper-evidence engine + going live (Tier 1)
 
 ```bash
-# Historical shadow artifacts remain readable for audit. The scheduled shadow
-# entry point is now a RETIRED_NON_AUTHORITATIVE no-op and must not produce new
-# orders, signals, settlements, or promotion evidence.
+# The scheduled shadow entry point runs the FULL paper predator cycle on every
+# invocation (scripts/run_dummy_shadow_daemon.py -> autonomy.daemon.run_one_cycle
+# in SHADOW mode). It is the authoritative paper-evidence engine: it produces
+# new paper orders, signals, and settlements, and the autonomous promotion
+# evaluation treats its heartbeat as a mandatory rail
+# (autonomy/auto_promotion_runner.py). The watchdog labels DummyShadowPredator
+# "authoritative shadow cycle (paper evidence engine; promotion rail input)".
 python scripts/run_dummy_shadow_daemon.py
 
-# Grade historical research (retired; never grants or blocks LIVE):
+# What IS retired is paper-results AUTHORITY over live trading
+# (autonomy/session.py: PAPER_RESULTS_AUTHORITY = "RETIRED_NON_AUTHORITATIVE").
+# Every shadow record is stamped paper_results_authority +
+# execution_authority=false: shadow results can neither enable nor block a
+# LIVE start.
 python scripts/run_dummy_backtest.py --bootstrap
-python scripts/run_dummy_autonomous.py canary        # retired paper audit report
+python scripts/run_dummy_autonomous.py canary        # retired paper audit report (no live authority)
 
 # A LIVE session remains BLOCKED until the separate one-controlled-proof
 # live-submit config, typed/environment acknowledgements, command seal,
@@ -138,13 +151,13 @@ python scripts/run_dummy_autonomous.py start --live --hours 6 --ack "<exact ack>
 python scripts/run_dummy_autonomous.py stop
 ```
 
-`autonomy/canary.py` and prior paper/shadow files are retained as historical
-research. Their results are `RETIRED_NON_AUTHORITATIVE`: they can neither
-enable nor block a LIVE start. Production monitor runners do not append new
-paper-entry rows, and the paper/shadow scheduled producers are disabled or
-hard-no-op at their entry point. LIVE authority remains fail-closed under the
-explicit one-proof, operator, caps, command-seal, central-firewall, credential,
-and proof-lock contracts; there is no paper-results override flag.
+`autonomy/canary.py` results are `RETIRED_NON_AUTHORITATIVE`: they can neither
+enable nor block a LIVE start. The shadow daemon and the monitor loops keep
+producing new paper evidence — that production is deliberate (the promotion
+evaluation and readiness proof depend on it), and only its authority over live
+trading is retired. LIVE authority remains fail-closed under the explicit
+one-proof, operator, caps, command-seal, central-firewall, credential, and
+proof-lock contracts; there is no paper-results override flag.
 
 ## Commands
 
@@ -356,7 +369,7 @@ documented in full in `docs/MARKET_STATE_ROUTING.md`.
 | `autonomy/risk_brain.py` | Self-set dynamic caps: quarter-Kelly, stage ladder (SHADOW→CANARY→RAMP→CRUISE), drawdown ladder (-10% half size, -20% demote, -30% self-stop), stage close-horizon (CANARY 7d / RAMP 30d / CRUISE uncapped) so scarce early-stage slots never freeze on far-dated markets |
 | `autonomy/executor.py` | Shadow book, or live through `KalshiLiveBrokerFirewallAdapter` (LIMIT only, per-order validation, transport-witnessed truth) |
 | `autonomy/reconciler.py` | Cumulative/partial fill truth + settlement detection; shadow fills use public standard-book prints with captured queue depth, strict print-through, or observed quote/candle crosses; stale maker quotes expire via order-level `expiration_ts` |
-| `autonomy/learner.py` | Decision-time-aligned Brier trust weights (reward = beating the contemporaneous market prior), Reflexion lessons via ModelRouter |
+| `autonomy/learner.py` | Decision-time-aligned Brier trust weights (reward = beating the contemporaneous market prior) plus the recalibration saturation guard. The Reflexion-lessons loop was removed in Wave-83 (zero callers, zero consumers) |
 | `autonomy/ledger.py` | SQLite: feature-preserving signal provenance + quarantine, decisions, outcomes, settlements, trust, bankroll curve, lessons, intake-quality and execution-quality summaries |
 
 ### Ledger retention
@@ -404,10 +417,16 @@ and reports `execution_authority=false`.
    upstream outage degrades coverage instead of wedging the loop.
 3. **Risk**: realized P&L per contract is the only currency for stage
    promotion; drawdown demotes instantly with a 24h cooloff.
-4. **Reflexion**: losing decisions are periodically distilled into structured
-   lessons through the model router and stored in the ledger.
-5. **Rejection avoidance**: broker rejections carry classifier categories
-   (kalshi/rejection_classifier.py) back into decision filters.
+4. **Reflexion — removed (Wave-83)**: the LLM lesson-distillation loop had
+   zero callers and zero consumers (see the `autonomy/learner.py` module
+   docstring). The ledger `lessons` table remains for any future scope that
+   earns a real producer AND consumer.
+5. **Rejection classification (truth layer, not a feedback loop)**: broker
+   rejections are classified (`kalshi/rejection_classifier.py`) only by the
+   second-proof truth layer (`core/second_proof_runner.py`,
+   `core/second_proof_intake.py`) to separate genuine broker rejections from
+   local gate blocks in evidence reports. Nothing feeds the categories back
+   into decision filters.
 6. **Simulation curriculum**: an hourly read-only champion/challenger run
    rejects weak forecast, execution, and compounding policies before they
    consume scarce shadow fills. Simulated results are quarantined from canary
@@ -507,7 +526,7 @@ python scripts/run_dummy_autonomous.py start            # shadow — accumulate 
 python scripts/run_dummy_retro_backfill.py --bootstrap  # replay history + weights + gate report
 python scripts/run_dummy_backtest.py --bootstrap        # re-grade any time
 python scripts/run_dummy_backtest.py --summary          # compact uncertainty/intake/execution readout
-python scripts/run_dummy_autonomous.py canary            # statistically hardened tiny-live gate
+python scripts/run_dummy_autonomous.py canary            # retired paper audit report (no live authority)
 python scripts/run_dummy_autonomous.py status           # review weights + ROI, then go live
 python scripts/ingest_dummy_public_statistics.py        # public reads -> raw local facts
 python scripts/export_dummy_research_snapshot.py        # reproducible read-only corpus

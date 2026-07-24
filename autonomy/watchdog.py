@@ -55,13 +55,17 @@ class TaskSpec:
 
 # Cadences mirror scripts/install_*_task.ps1 (minutes -> seconds; daily -> 86400).
 DEFAULT_TASKS: list[TaskSpec] = [
+    # Wave-83: corrected from "retired non-authoritative". The shadow daemon
+    # runs the full paper cycle and the auto-promotion runner treats its
+    # heartbeat as a mandatory rail (auto_promotion_runner.py) — the two
+    # labels contradicted each other, and the promotion rail is the one that
+    # bites, so the watchdog now agrees with it.
     TaskSpec(
         "DummyShadowPredator",
         "heartbeat.json",
         ("last_cycle_at",),
         600,
-        "retired shadow research (non-authoritative)",
-        authoritative=False,
+        "authoritative shadow cycle (paper evidence engine; promotion rail input)",
     ),
     TaskSpec(
         "DummySportsModelSeed",
@@ -105,7 +109,75 @@ DEFAULT_TASKS: list[TaskSpec] = [
     TaskSpec("DummySimulationTrainer", "simulation_training_latest.json", ("created_at",), 3600, "simulation trainer"),
     TaskSpec("DummyStrategyMiner", "strategy_mining_report.json", ("generated_at",), 86400, "strategy miner"),
     TaskSpec("DummyReadinessReport", "readiness_report.json", ("generated_at",), 86400, "readiness report"),
+    # Wave-83 fleet expansion (audit: 9 specs vs ~43 live tasks). Artifact-
+    # backed tasks get real specs; everything else is surfaced through the
+    # scheduler inventory (see _scheduled_task_inventory) so nothing can die
+    # invisibly again. stdout logs count via file mtime — cheap but honest.
+    TaskSpec("DummyVnextShadow", "vnext_shadow_status.json", ("at",), 900, "vNext shadow organism"),
+    TaskSpec("DummyDashboardSnapshot", "latest_dashboard_snapshot.json", ("generated_at",), 1200, "dashboard snapshot"),
+    TaskSpec("DummyWeightsRecal", "last_recalibration.json", ("at",), 21600, "out-of-band weights recalibration"),
+    TaskSpec("DummyBacktestReport", "latest_backtest_summary.json", ("generated_at",), 43200, "backtest diagnostics"),
+    TaskSpec("DummySelfImprovement", "self_improvement_report.json", ("generated_at",), 86400, "nightly self-improvement chain"),
+    TaskSpec("DummyHealer", "healer_stdout.log", (), 300, "self-heal loop"),
+    TaskSpec("DummyLivePoller", "live_poller_status.json", ("at",), 300, "live game poller"),
+    TaskSpec("DummyCryptoHorizonEvidence", "crypto_horizon_evidence_stdout.log", (), 7200, "crypto horizon evidence"),
+    TaskSpec("DummyLedgerRetention", "ledger_retention_stdout.log", (), 86400, "ledger retention archive"),
+    TaskSpec("DummyLedgerPrune", "signal_prune_stdout.log", (), 86400, "ledger signal prune"),
+    TaskSpec("DummyLogRotation", "log_rotation_stdout.log", (), 86400, "log rotation"),
+    TaskSpec("DummyLiveAccountSnapshot", "live_account_snapshot.json", ("generated_at",), 900, "live account snapshot"),
 ]
+
+# Scheduler results that do not indicate failure: 0 success, 0x41301 running,
+# 0x41303 never-yet-run, 0x41306 terminated-by-user.
+_SCHEDULER_OK_RESULTS = {0, 267009, 267011, 267014}
+
+
+def _scheduled_task_inventory(prefix: str = "Dummy") -> list[dict[str, Any]]:
+    """Best-effort read-only scheduler inventory (Windows schtasks CSV).
+
+    Returns one row per matching task: name, scheduler status, last run time,
+    and last result. Empty on any failure or off-Windows — the watchdog's
+    artifact specs still work without it.
+    """
+    import csv
+    import io
+    import subprocess
+
+    try:
+        out = subprocess.run(
+            ["schtasks", "/Query", "/FO", "CSV", "/V"],
+            capture_output=True, text=True, timeout=60, check=True,
+        ).stdout
+    except Exception:
+        return []
+    rows: list[dict[str, Any]] = []
+    try:
+        for row in csv.DictReader(io.StringIO(out)):
+            name = str(row.get("TaskName") or "").lstrip("\\")
+            if not name.startswith(prefix):
+                continue
+            try:
+                last_result: int | None = int(str(row.get("Last Result") or "").strip())
+            except ValueError:
+                last_result = None
+            rows.append({
+                "task_name": name,
+                "scheduler_status": row.get("Status") or "",
+                "last_run_time": row.get("Last Run Time") or "",
+                "last_result": last_result,
+                "failing": last_result is not None and last_result not in _SCHEDULER_OK_RESULTS,
+            })
+    except Exception:
+        return []
+    # /V repeats tasks per trigger; keep first occurrence per name.
+    seen: set[str] = set()
+    unique = []
+    for row in rows:
+        if row["task_name"] in seen:
+            continue
+        seen.add(row["task_name"])
+        unique.append(row)
+    return unique
 
 
 def _now_epoch() -> float:
@@ -251,6 +323,7 @@ def evaluate_watchdog(
     disk_floor_gb: float = DEFAULT_DISK_FLOOR_GB,
     error_streak_threshold: int = DEFAULT_ERROR_STREAK_THRESHOLD,
     kill_path: Path | None = None,
+    inventory: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     """Assemble the full watchdog status (pure; writes nothing, fires nothing)."""
     rd = runtime_dir or RUNTIME_DIR
@@ -278,13 +351,34 @@ def evaluate_watchdog(
     disk_low = disk_gb is not None and disk_gb < disk_floor_gb
     error_streak_alarm = streak >= error_streak_threshold
 
-    healthy = not (stale_tasks or ledger_over or disk_low or error_streak_alarm or kill_present)
+    # Wave-83: the fleet is larger than the artifact-backed spec table, and a
+    # task outside it used to be able to die invisibly. Surface every Dummy*
+    # scheduled task; ones without a spec are listed as uncovered, and an
+    # uncovered task with a failing scheduler result degrades health.
+    if inventory is None:
+        # Injectable for tests; env-gated so unit runs never shell out to the
+        # scheduler (conftest exports DUMMY_WATCHDOG_INVENTORY=0).
+        if os.environ.get("DUMMY_WATCHDOG_INVENTORY", "1") == "1":
+            inventory = _scheduled_task_inventory()
+        else:
+            inventory = []
+    covered = {spec.name for spec in specs}
+    uncovered = [row for row in inventory if row["task_name"] not in covered]
+    uncovered_failing = [row["task_name"] for row in uncovered if row["failing"]]
+
+    healthy = not (
+        stale_tasks or ledger_over or disk_low or error_streak_alarm
+        or kill_present or uncovered_failing
+    )
     return {
         "generated_at": datetime.fromtimestamp(now, tz=timezone.utc).isoformat(),
         "healthy": healthy,
         "tasks": task_rows,
         "stale_tasks": stale_tasks,
         "observational_stale_tasks": observational_stale_tasks,
+        "scheduler_inventory": inventory,
+        "uncovered_tasks": [row["task_name"] for row in uncovered],
+        "uncovered_failing_tasks": uncovered_failing,
         "cycle_error_streak": streak,
         "cycle_error_streak_threshold": error_streak_threshold,
         "latest_cycle_status": latest_status,

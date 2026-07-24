@@ -13,6 +13,10 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+
+class _WatchdogCheckSkipped(Exception):
+    """Internal: the watchdog-staleness check is disabled for this run."""
+
 RUNTIME_DIR = Path("runtime/autonomy")
 ALERTS_LOG = RUNTIME_DIR / "alerts.jsonl"
 ALERTS_LATEST = RUNTIME_DIR / "alerts_latest.json"
@@ -183,6 +187,39 @@ def evaluate_alerts(cycle_record: dict[str, Any], risk_state: dict[str, Any] | N
                 ledger_health, now_iso,
             ))
         state["ledger_health_alert_active"] = unhealthy
+
+    # Watchdog liveness: the watchdog watches the fleet, so only the cycle can
+    # watch the watchdog. Its status file went 3 days stale unnoticed once
+    # (task never registered). Rising-edge alert on staleness/absence.
+    try:
+        import os as _os
+        from pathlib import Path as _Path
+
+        if _os.environ.get("DUMMY_WATCHDOG_STALE_ALERT", "1") != "1":
+            raise _WatchdogCheckSkipped
+        wd_path = _Path("runtime/autonomy/watchdog_status.json")
+        wd_stale_s = float(_os.environ.get("DUMMY_WATCHDOG_STALE_S", "1800"))
+        if wd_path.exists():
+            wd = json.loads(wd_path.read_text(encoding="utf-8"))
+            wd_at = datetime.fromisoformat(str(wd.get("generated_at")))
+            wd_age = (datetime.now(timezone.utc) - wd_at).total_seconds()
+            wd_stale = wd_age > wd_stale_s
+        else:
+            wd_age = None
+            wd_stale = True
+        if wd_stale and not state.get("watchdog_stale_alert_active"):
+            fired.append(emit_alert(
+                "WATCHDOG_STALE",
+                "watchdog_status.json is "
+                + (f"{round(wd_age)}s old" if wd_age is not None else "missing")
+                + f" (threshold {round(wd_stale_s)}s) — the fleet monitor itself is down",
+                {"age_seconds": wd_age, "threshold_seconds": wd_stale_s}, now_iso,
+            ))
+        state["watchdog_stale_alert_active"] = wd_stale
+    except _WatchdogCheckSkipped:
+        pass  # disabled (hermetic test runs)
+    except Exception:
+        pass  # a malformed status file must never break cycle alerting
 
     # Backtest evidence staleness: the authoritative summary went 6 days stale
     # once with no alarm. Fire on the rising edge of the stale episode.

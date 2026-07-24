@@ -22,6 +22,7 @@ from autonomy.risk_brain import RiskBrain, RiskState, RiskStatePersistenceError
 from autonomy.scanner import MarketScanner
 from autonomy.signals.base import SourceRegistry
 from autonomy.target_policy import has_prediction_target_authority
+from core.logger import logger
 
 SHADOW_BANKROLL_CENTS = 10_000
 MAX_CANDIDATES_EVALUATED = 100
@@ -158,7 +159,14 @@ def edge_velocity(market: MarketView, forecast: Any) -> float:
         close = datetime.fromisoformat(market.close_time.replace("Z", "+00:00"))
         hours = max(0.5, (close - datetime.now(timezone.utc)).total_seconds() / 3600.0)
     except Exception:
-        pass
+        # Unparseable close time silently ranked as 24h — leave the default
+        # but log once-per-cycle-ish so a malformed feed is visible, not a
+        # quiet mis-ranking (2026-07-24 audit).
+        logger.warning(
+            "edge_velocity close_time unparseable; defaulting to 24h",
+            extra={"component": "brain", "ticker": market.ticker,
+                   "close_time": str(market.close_time)},
+        )
     return abs(forecast.edge_yes) / math.sqrt(hours)
 
 
@@ -412,6 +420,11 @@ class PredatorBrain:
                 broker_contacted=self.mode is SessionMode.LIVE,
                 detail={
                     "result_yes": result_yes,
+                    # A zero-PnL settlement is a push/scratch, not a loss; the
+                    # terminal kind stays binary (10+ consumers key on
+                    # WIN/LOSS as "settled"), so win-rate consumers must
+                    # exclude push_scratch rows rather than trust the kind.
+                    "push_scratch": pnl == 0,
                     "liquidity_role": liquidity_role,
                     "fill_price_source": (
                         "witnessed_outcome"
@@ -1009,7 +1022,13 @@ class PredatorBrain:
                         # decimals. Persist that same canonical precision so
                         # harmless binary-float tails cannot de-attribute a
                         # genuine decision during forward performance grading.
-                        tier_score=round(float(tier_assessment.score), 6),
+                        # A scoreless assessment stays None (matches the
+                        # snapshot's null) instead of raising mid-cycle.
+                        tier_score=(
+                            round(float(tier_assessment.score), 6)
+                            if tier_assessment.score is not None
+                            else None
+                        ),
                         tier_reason=tier_assessment.reason,
                         tier_snapshot=frozen_tier,
                     )
@@ -1045,6 +1064,21 @@ class PredatorBrain:
                 state.open_markets += 1
                 cycle_group_cents[gkey] = cycle_group_cents.get(gkey, 0) + submitted_notional
                 cycle_group_count[gkey] = cycle_group_count.get(gkey, 0) + 1
+
+        # Isolated challenger forward-evidence lane (paper-only, fail-closed):
+        # books one tiny sources_used={candidate:1.0} probe per registered
+        # candidate so the auto-promotion forward gate is reachable. Never
+        # touches risk state, order counts, or the executor; runs in SHADOW
+        # and LIVE cycles alike (execution-mode gate lives inside the module).
+        try:
+            from autonomy.challenger_lane import emit_isolated_challenger_decisions
+
+            emit_isolated_challenger_decisions(
+                self.ledger, scored, mode=self.mode.value, notes=report.notes,
+                trading_active=trading_active,
+            )
+        except Exception as exc:
+            report.notes.append(f"challenger_lane_error:lane:{type(exc).__name__}")
 
         report.phase_seconds["decide"] = round(time.perf_counter() - _t, 2)
         state.equity_peak_cents = max(state.equity_peak_cents, bankroll)

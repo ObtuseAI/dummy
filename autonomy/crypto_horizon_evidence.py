@@ -458,6 +458,42 @@ def fair_batch(
     }
 
 
+# Reconciliation caps for the batch settled-markets phase.  The scheduled
+# runner's CLI is frozen by the task definition, so these defaults are the
+# live caps: one settled-markets page covers up to ~200 tickers, keeping the
+# public request budget flat while up to DEFAULT_MAX_BATCH_SETTLEMENTS
+# tickers settle per run (a ~26k backlog drains within a couple of 10-minute
+# task fires).  The cooperative wall-clock budget is still checked before
+# every public request, so the reserved API budget discipline is unchanged.
+DEFAULT_MAX_BATCH_SETTLEMENTS = 20_000
+DEFAULT_MAX_PAGES_PER_SERIES = 25
+
+# Sentinel default: build the public settled-markets listing lazily.  The
+# scheduled runner only supplies the per-ticker result fetch, so the batch
+# phase must default to the public listing to be reachable in production.
+# Hermetic tests pass ``fetch_settled_page=None`` (disable) or a callable.
+USE_PUBLIC_SETTLED_LISTING: Any = object()
+
+
+def series_ticker_of(ticker: str) -> str | None:
+    """Series prefix of a Kalshi market ticker (``SERIES-EVENT-MARKET``)."""
+    head, sep, _rest = str(ticker).partition("-")
+    if not sep or not head:
+        return None
+    return head
+
+
+def _default_fetch_settled_page(
+    series_ticker: str,
+    min_close_ts: int,
+    cursor: str | None = None,
+) -> Mapping[str, Any]:
+    """Public settled-markets page; same endpoint as the phantom reconciler."""
+    from autonomy.reconciler import default_fetch_settled_page
+
+    return default_fetch_settled_page(series_ticker, min_close_ts, cursor)
+
+
 class CryptoHorizonEvidenceStore:
     """Separate research database; never opens Dummy's production ledger."""
 
@@ -484,6 +520,9 @@ class CryptoHorizonEvidenceStore:
 
     def close(self) -> None:
         self.conn.close()
+
+    def commit(self) -> None:
+        self.conn.commit()
 
     def start_cycle(
         self, cycle_id: str, started_at: str, as_of_at: str,
@@ -732,6 +771,17 @@ class CryptoHorizonEvidenceStore:
             "wrapped": wrapped,
         }
 
+    def unsettled_ticker_close_map(self, as_of: datetime | str) -> dict[str, str]:
+        """Earliest close time per eligible unsettled ticker (covering query)."""
+        cutoff = _utc(as_of).isoformat()
+        rows = self.conn.execute(
+            "SELECT ticker, MIN(close_time) FROM horizon_forecast_attempts "
+            "WHERE status='EMITTED' AND result_yes IS NULL AND close_time<=? "
+            "GROUP BY ticker",
+            (cutoff,),
+        ).fetchall()
+        return {str(row[0]): str(row[1]) for row in rows}
+
     def unsettled_ticker_count(self, as_of: datetime | str) -> int:
         cutoff = _utc(as_of).isoformat()
         return int(
@@ -748,6 +798,8 @@ class CryptoHorizonEvidenceStore:
         ticker: str,
         result_yes: bool,
         settled_at: datetime | str,
+        *,
+        commit: bool = True,
     ) -> int:
         settled = _utc(settled_at)
         rows = self.conn.execute(
@@ -790,7 +842,8 @@ class CryptoHorizonEvidenceStore:
                 ),
             )
             updated += int(cursor.rowcount > 0)
-        self.conn.commit()
+        if commit:
+            self.conn.commit()
         return updated
 
     def attempts(self, *, cycle_id: str | None = None) -> list[dict[str, Any]]:
@@ -1423,10 +1476,34 @@ class CryptoHorizonEvidenceMatrix:
         self,
         fetch_result: Callable[[str], Mapping[str, Any]],
         *,
+        fetch_settled_page: Any = USE_PUBLIC_SETTLED_LISTING,
         as_of: datetime | str | None = None,
         max_tickers: int = 12,
         time_budget_seconds: float = 45.0,
+        max_batch_settlements: int = DEFAULT_MAX_BATCH_SETTLEMENTS,
+        max_pages_per_series: int = DEFAULT_MAX_PAGES_PER_SERIES,
     ) -> dict[str, Any]:
+        """Two-phase public settlement sweep: batch listings, then fallback.
+
+        Phase 1 lists recently settled markets once per series (cursor-paged,
+        the same endpoint shape as the phantom-settlement sweep in
+        ``autonomy.reconciler``) and matches every eligible unsettled ticker
+        against the listings.  One page covers up to ~200 tickers, so the
+        public request budget stays flat while thousands of tickers can
+        settle per run.  Phase 2 keeps the original fair, cursor-resumable
+        per-ticker GET segment (``max_tickers``) for tickers the listings
+        missed (delisted series, venue-lagging results, odd tickers).
+
+        ``fetch_settled_page`` defaults to the public settled-markets listing
+        because the scheduled runner only supplies the per-ticker fetch; pass
+        ``None`` to disable the batch phase (hermetic tests) or a callable
+        ``(series_ticker, min_close_ts, cursor) -> page`` to inject one.  The
+        cooperative wall-clock budget is checked before every public request
+        in both phases; a fetched page's local settlement writes always
+        complete, so a page is never half-applied.  A failing series or
+        listing endpoint fails closed to the per-ticker fallback and is
+        disclosed in ``errors`` — never silently skipped.
+        """
         cutoff = (
             _utc(as_of)
             if as_of is not None
@@ -1434,17 +1511,156 @@ class CryptoHorizonEvidenceMatrix:
         )
         bounded_tickers = max(0, int(max_tickers))
         bounded_seconds = max(0.0, float(time_budget_seconds))
-        batch = self.store.unsettled_ticker_batch(
-            cutoff,
-            limit=bounded_tickers,
-        )
+        bounded_batch = max(0, int(max_batch_settlements))
+        bounded_pages = max(0, int(max_pages_per_series))
+        close_map = self.store.unsettled_ticker_close_map(cutoff)
+        eligible_at_start = len(close_map)
         started_clock = self.monotonic_fn()
         updates = 0
         settled_tickers = 0
-        errors: list[str] = []
-        attempted: list[str] = []
         deadline_reached = False
-        for ticker in batch["items"]:
+
+        batch_enabled = fetch_settled_page is not None
+        batch_errors: list[str] = []
+        batch_settled = 0
+        batch_updates = 0
+        batch_pages = 0
+        batch_listed = 0
+        batch_matched = 0
+        batch_cap_reached = False
+        series_attempted: list[str] = []
+        series_total = 0
+        if (
+            batch_enabled
+            and eligible_at_start > 0
+            and bounded_batch > 0
+            and bounded_pages > 0
+        ):
+            page_fetch = (
+                _default_fetch_settled_page
+                if fetch_settled_page is USE_PUBLIC_SETTLED_LISTING
+                else fetch_settled_page
+            )
+            by_series: dict[str, dict[str, Any]] = {}
+            for ticker, close_time in close_map.items():
+                series = series_ticker_of(ticker)
+                if series is None:
+                    continue
+                entry = by_series.setdefault(
+                    series, {"tickers": set(), "min_close": None}
+                )
+                entry["tickers"].add(str(ticker))
+                try:
+                    closed_at = _utc(str(close_time))
+                except (PointInTimeViolation, TypeError, ValueError, OverflowError):
+                    continue
+                if entry["min_close"] is None or closed_at < entry["min_close"]:
+                    entry["min_close"] = closed_at
+            series_total = len(by_series)
+            rotation = self.store.fair_work_batch(
+                "settlement_batch_series",
+                sorted(by_series),
+                limit=series_total,
+            )
+            for series in rotation["items"]:
+                if batch_settled >= bounded_batch:
+                    batch_cap_reached = True
+                    break
+                if deadline_reached:
+                    break
+                entry = by_series[str(series)]
+                if entry["min_close"] is None:
+                    # Fail closed: leave the series to the per-ticker fallback.
+                    batch_errors.append(f"series:{series}:INVALID_CLOSE_TIMES")
+                    continue
+                # 60s slack absorbs venue clock skew at the window boundary.
+                min_close_ts = int(entry["min_close"].timestamp()) - 60
+                cursor_token: str | None = None
+                attempted_this_series = False
+                for _page in range(bounded_pages):
+                    if self.monotonic_fn() - started_clock >= bounded_seconds:
+                        deadline_reached = True
+                        break
+                    if not attempted_this_series:
+                        series_attempted.append(str(series))
+                        attempted_this_series = True
+                    try:
+                        payload = page_fetch(
+                            str(series), min_close_ts, cursor_token
+                        )
+                    except Exception as exc:
+                        # One dead series never stalls the sweep.
+                        batch_errors.append(
+                            f"series:{series}:{type(exc).__name__}"
+                        )
+                        break
+                    batch_pages += 1
+                    markets = (
+                        payload.get("markets")
+                        if isinstance(payload, Mapping)
+                        else None
+                    )
+                    for market in markets if isinstance(markets, list) else []:
+                        if not isinstance(market, Mapping):
+                            continue
+                        batch_listed += 1
+                        listed_ticker = str(market.get("ticker") or "")
+                        if listed_ticker not in entry["tickers"]:
+                            continue
+                        result = str(market.get("result") or "").lower()
+                        if result not in {"yes", "no"}:
+                            continue
+                        if batch_settled >= bounded_batch:
+                            batch_cap_reached = True
+                            break
+                        batch_matched += 1
+                        try:
+                            changed = self.store.settle_ticker(
+                                listed_ticker,
+                                result == "yes",
+                                cutoff,
+                                commit=False,
+                            )
+                        except Exception as exc:
+                            batch_errors.append(
+                                f"{listed_ticker}:{type(exc).__name__}"
+                            )
+                            continue
+                        entry["tickers"].discard(listed_ticker)
+                        batch_updates += changed
+                        batch_settled += int(changed > 0)
+                    self.store.commit()  # page-atomic local writes
+                    if batch_cap_reached:
+                        break
+                    cursor_token = (
+                        payload.get("cursor")
+                        if isinstance(payload, Mapping)
+                        else None
+                    ) or None
+                    if not cursor_token:
+                        break
+            if series_attempted:
+                self.store.set_work_cursor(
+                    "settlement_batch_series",
+                    series_attempted[-1],
+                    updated_at=cutoff,
+                    metadata={
+                        "series_attempted": len(series_attempted),
+                        "series_total": series_total,
+                        "settled_tickers": batch_settled,
+                        "authority": dict(AUTHORITY),
+                    },
+                )
+        updates += batch_updates
+        settled_tickers += batch_settled
+
+        fallback_batch = self.store.unsettled_ticker_batch(
+            cutoff,
+            limit=bounded_tickers,
+        )
+        fallback_errors: list[str] = []
+        attempted: list[str] = []
+        for ticker in fallback_batch["items"]:
             if self.monotonic_fn() - started_clock >= bounded_seconds:
                 deadline_reached = True
                 break
@@ -1458,7 +1674,7 @@ class CryptoHorizonEvidenceMatrix:
                     updates += changed
                     settled_tickers += int(changed > 0)
             except Exception as exc:
-                errors.append(f"{ticker}:{type(exc).__name__}")
+                fallback_errors.append(f"{ticker}:{type(exc).__name__}")
             finally:
                 attempted.append(str(ticker))
                 self.store.set_work_cursor(
@@ -1467,16 +1683,19 @@ class CryptoHorizonEvidenceMatrix:
                     updated_at=cutoff,
                     metadata={
                         "attempted_in_current_segment": len(attempted),
-                        "eligible_at_segment_start": int(batch["total"]),
+                        "eligible_at_segment_start": int(
+                            fallback_batch["total"]
+                        ),
                         "authority": dict(AUTHORITY),
                     },
                 )
-        deferred = max(0, int(batch["total"]) - len(attempted))
+        deferred = max(0, eligible_at_start - batch_settled - len(attempted))
         remaining = self.store.unsettled_ticker_count(cutoff)
         cursor_after = (
-            attempted[-1] if attempted else batch.get("cursor_before")
+            attempted[-1] if attempted else fallback_batch.get("cursor_before")
         )
-        if int(batch["total"]) == 0:
+        errors = batch_errors + fallback_errors
+        if eligible_at_start == 0:
             status = "RECONCILIATION_IDLE"
         elif deadline_reached or deferred or errors:
             status = "RECONCILIATION_PARTIAL"
@@ -1487,23 +1706,41 @@ class CryptoHorizonEvidenceMatrix:
             "as_of_at": cutoff.isoformat(),
             "settlements_recorded": updates,
             "settled_tickers": settled_tickers,
-            "eligible_tickers_at_start": int(batch["total"]),
-            "tickers_selected": len(batch["items"]),
+            "eligible_tickers_at_start": eligible_at_start,
+            "tickers_selected": len(fallback_batch["items"]),
             "tickers_attempted": len(attempted),
             "attempted_tickers": attempted,
             "deferred_in_sweep": deferred,
             "unresolved_eligible_tickers": remaining,
             "sweep_complete": deferred == 0,
             "deadline_reached": deadline_reached,
+            "batch_sweep": {
+                "enabled": batch_enabled,
+                "endpoint": "kalshi_public_settled_markets_by_series",
+                "series_total": series_total,
+                "series_attempted": series_attempted,
+                "series_deferred": max(
+                    0, series_total - len(series_attempted)
+                ),
+                "pages_fetched": batch_pages,
+                "markets_listed": batch_listed,
+                "matched_settlements": batch_matched,
+                "settlements_recorded": batch_updates,
+                "settled_tickers": batch_settled,
+                "cap_reached": batch_cap_reached,
+                "errors": batch_errors,
+            },
             "work_cap": {
                 "max_tickers": bounded_tickers,
                 "time_budget_seconds": bounded_seconds,
+                "max_batch_settlements": bounded_batch,
+                "max_pages_per_series": bounded_pages,
                 "deadline_enforcement": "cooperative_between_public_requests",
             },
             "cursor": {
-                "before": batch.get("cursor_before"),
+                "before": fallback_batch.get("cursor_before"),
                 "after": cursor_after,
-                "wrapped": bool(batch.get("wrapped")),
+                "wrapped": bool(fallback_batch.get("wrapped")),
                 "persistent": True,
             },
             "errors": errors,
@@ -1589,12 +1826,15 @@ def write_evidence_report(report: Mapping[str, Any], out_dir: Path | str) -> Pat
 __all__ = [
     "AUTHORITY",
     "CAPITAL_AUTHORITY",
+    "DEFAULT_MAX_BATCH_SETTLEMENTS",
+    "DEFAULT_MAX_PAGES_PER_SERIES",
     "EXECUTION_AUTHORITY",
     "MATRIX_VERSION",
     "PRODUCTION_GATE_WRITE_AUTHORITY",
     "PRODUCTION_RISK_WRITE_AUTHORITY",
     "PRODUCTION_WEIGHT_WRITE_AUTHORITY",
     "SUPPORTED_HORIZONS",
+    "USE_PUBLIC_SETTLED_LISTING",
     "CryptoHorizonEvidenceMatrix",
     "CryptoHorizonEvidenceStore",
     "PointInTimeViolation",
@@ -1603,6 +1843,7 @@ __all__ = [
     "deterministic_provenance_hash",
     "evidence_metrics",
     "expanding_window_calibration",
+    "series_ticker_of",
     "state_provenance_manifest",
     "validate_point_in_time",
     "write_evidence_report",

@@ -23,6 +23,16 @@ second-proof / session live auth) remains operator-gated.
 ``--skip-auto-promotion`` restores the report-only behavior. The existing
 DummyReadinessReport scheduled task keeps working unchanged (re-running the
 install script is optional; nothing about the task definition changed).
+
+2026-07-24 (external audit): the optional report-writer sections (film room,
+self-scout, fusion ablation, recruiting board, development tracker, edge
+concentration, model-authority evidence, LLM value) used to be wrapped in
+silent ``except Exception: pass`` handlers, so a locked ledger produced eight
+missing artifacts while the task stayed green. Writers still run
+independently (one failure never costs the others), but every failure is now
+recorded in ``runtime/autonomy/report_writer_failures.json`` (written even
+when empty so staleness is detectable) and any failure makes this process
+exit ``EXIT_WRITER_FAILED`` so Task Scheduler shows the run red.
 """
 from __future__ import annotations
 
@@ -30,7 +40,8 @@ import argparse
 import json
 import sqlite3
 import sys
-from datetime import datetime
+import traceback
+from datetime import datetime, timezone
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
@@ -50,6 +61,65 @@ from autonomy.strategy_miner import _brier_edge, load_settled_rows  # noqa: E402
 DEFAULT_DB = Path("runtime/autonomy/ledger.db")
 REPORT_PATH = Path("runtime/autonomy/readiness_report.json")
 LOSS_ATTRIBUTION_PATH = Path("runtime/autonomy/loss_attribution.json")
+FAILURES_PATH = Path("runtime/autonomy/report_writer_failures.json")
+
+# Distinct exit code for "the report ran but at least one report writer
+# failed" (1 = missing DB, 2 = stale-backtest refusal). Task Scheduler
+# records the code, so a dead writer is a red run instead of a green one.
+EXIT_WRITER_FAILED = 3
+
+# Cap on recorded traceback lines per failure (the artifact is a diagnostic,
+# not a log dump).
+TRACEBACK_TAIL_LINES = 30
+
+
+def _utc_iso() -> str:
+    return datetime.now(timezone.utc).isoformat()
+
+
+class WriterFailureRail:
+    """Crash isolation for report-writer sections that must stay LOUD.
+
+    Each optional section runs through :meth:`run` so one crashing writer
+    never stops the others (that part of the old behavior was correct -- only
+    the silence was wrong). Every failure is recorded with its traceback tail
+    and surfaces in ``report_writer_failures.json`` + a nonzero exit code.
+    """
+
+    def __init__(self) -> None:
+        self.failures: list[dict] = []
+        self.ok_writers: list[str] = []
+
+    def run(self, name: str, fn, default=None):
+        try:
+            result = fn()
+        except Exception as exc:
+            self.failures.append({
+                "writer": name,
+                "error": repr(exc),
+                "traceback": traceback.format_exc().splitlines()[-TRACEBACK_TAIL_LINES:],
+                "at": _utc_iso(),
+            })
+            return default
+        self.ok_writers.append(name)
+        return result
+
+    def error_for(self, name: str) -> str | None:
+        for entry in reversed(self.failures):
+            if entry["writer"] == name:
+                return str(entry["error"])
+        return None
+
+
+def write_failures_artifact(
+    rail: WriterFailureRail, path: Path = FAILURES_PATH,
+) -> None:
+    """Written EVERY run, even with zero failures, so staleness is detectable."""
+    _write_json(path, {
+        "generated_at": _utc_iso(),
+        "failures": rail.failures,
+        "ok_writers": rail.ok_writers,
+    })
 
 
 def _where_we_bleed(path: Path = LOSS_ATTRIBUTION_PATH) -> str | None:
@@ -215,11 +285,17 @@ def main() -> int:
         clv_by_scope=clv_by_scope,
         challenger_gated_scopes=challenger_gated)
 
+    # Crash-isolation rail (2026-07-24 audit): every optional writer below
+    # runs through it -- failures are recorded, never swallowed.
+    rail = WriterFailureRail()
+
     # Wave-14 (picks-first directive 2026-07-17): outcome-grounded pick
     # accuracy + calibration for the FUSED forecast, leading the report.
     # No market benchmark enters this section -- ground truth is settlements.
-    # Fail-open: a picks failure must never cost the readiness report.
-    try:
+    # A picks failure must never cost the readiness report, but it lands in
+    # the failures artifact and the section is marked UNAVAILABLE instead of
+    # shipping a bare error string inside readiness_report.json.
+    def _picks_section() -> dict:
         from autonomy.picks import (  # noqa: E402
             FUSED_SOURCE,
             llm_voice_sources,
@@ -232,14 +308,16 @@ def main() -> int:
             # evidence alongside the fused headline, so "which model is
             # actually accurate" is a report fact instead of a guess.
             voices = llm_voice_sources(picks_conn)
-            built["report"]["picks"] = pick_accuracy_report(
+            return pick_accuracy_report(
                 picks_conn, sources=(FUSED_SOURCE, *voices),
             )
         finally:
             picks_conn.close()
-    except Exception as exc:
-        built["report"]["picks"] = {
-            "status": "ERROR", "error": f"{type(exc).__name__}: {exc}"[:200]}
+
+    picks = rail.run("picks", _picks_section)
+    built["report"]["picks"] = picks if picks is not None else {
+        "status": "UNAVAILABLE", "reason": rail.error_for("picks"),
+    }
 
     _write_json(REPORT_PATH, built["report"])
     merged_demotions = _merge_demotions(DEFAULT_DEMOTIONS_PATH, built["demotions"], now_iso)
@@ -272,7 +350,7 @@ def main() -> int:
     # moment enough stamped seasons exist for the sealed temporal holdout is
     # observable instead of discovered by a blocked run. Read-only; never
     # claims or consumes the holdout.
-    try:
+    def _holdout_eligibility() -> dict:
         from autonomy.sports.history_store import SportsHistoryStore
         from autonomy.sports_markets import SPORTS_LEAGUES
 
@@ -285,14 +363,16 @@ def main() -> int:
                 "final_candidates": row["final_candidates"],
                 "rejection_reasons": row["rejection_reasons"],
             }
+        return eligibility
+
+    eligibility = rail.run("holdout_eligibility", _holdout_eligibility)
+    if eligibility is not None:
         summary["holdout_eligibility"] = eligibility
-    except Exception:
-        pass
 
     # Wave-74 (age-curve watch, "cut a year early"): promoted scopes whose
     # newer-half contested edge fell materially below their older half go on a
     # proactive watch list BEFORE auto-demotion fires. Disclosure only.
-    try:
+    def _age_curve_watch() -> list[dict]:
         watch: list[dict] = []
         for scope in sorted(promoted):
             entries = sorted(scope_rows.get(scope) or [])
@@ -310,127 +390,133 @@ def main() -> int:
                     "newer_half_edge": round(newer_mean, 5),
                     "decline": round(older_mean - newer_mean, 5),
                 })
-        if watch:
-            summary["age_curve_watch"] = sorted(
-                watch, key=lambda item: -item["decline"],
-            )
-    except Exception:
-        pass
+        return sorted(watch, key=lambda item: -item["decline"])
+
+    watch = rail.run("age_curve_watch", _age_curve_watch)
+    if watch:
+        summary["age_curve_watch"] = watch
 
     # Wave-76 (Dodgers "development never silently stops"): watch the tuner
     # and lake-ingestion machinery itself; a dead development lab becomes a
-    # daily headline. Fail-soft.
-    try:
+    # daily headline.
+    def _development_tracker() -> dict:
         from autonomy.development_tracker import write_development_tracker
         from autonomy.sports.history_store import SportsHistoryStore as _Lake
 
         _dev_store = _Lake()
         try:
-            development = write_development_tracker(_dev_store)
+            return write_development_tracker(_dev_store)
         finally:
             _dev_store.close()
-        if development.get("warnings"):
-            summary["development_warnings"] = development["warnings"]
-    except Exception:
-        pass
+
+    development = rail.run("development_tracker", _development_tracker)
+    if development and development.get("warnings"):
+        summary["development_warnings"] = development["warnings"]
 
     # Wave-74 football-organization reports (self-scout, film room, recruiting
-    # board): all report-only, all fail-soft.
-    try:
+    # board): all report-only, all crash-isolated via the rail.
+    def _self_scout() -> dict:
         from autonomy.self_scout import write_self_scout
 
-        scout = write_self_scout(args.db)
-        if scout.get("warnings"):
-            summary["self_scout_warnings"] = scout["warnings"]
-    except Exception:
-        pass
-    try:
+        return write_self_scout(args.db)
+
+    scout = rail.run("self_scout", _self_scout)
+    if scout and scout.get("warnings"):
+        summary["self_scout_warnings"] = scout["warnings"]
+
+    def _film_room() -> None:
         from autonomy.film_room import write_film_room
 
         write_film_room(args.db)
-    except Exception:
-        pass
-    try:
+
+    rail.run("film_room", _film_room)
+
+    def _recruiting_board() -> dict:
         from autonomy.recruiting_board import write_recruiting_board
 
-        board = write_recruiting_board()
+        return write_recruiting_board()
+
+    board = rail.run("recruiting_board", _recruiting_board)
+    if board is not None:
         summary["recruiting_class"] = board.get("by_stage", {})
-    except Exception:
-        pass
 
     # Wave-77 (ablation science): each source's MARGINAL contribution to the
     # fused ensemble via disclosed leave-one-out approximation; redundancy
-    # candidates surface for roster review. Fail-soft, report-only.
-    try:
+    # candidates surface for roster review. Report-only.
+    def _fusion_ablation() -> dict:
         from autonomy.fusion_ablation import write_fusion_ablation
 
-        ablation = write_fusion_ablation(args.db)
-        if ablation.get("redundancy_candidates"):
-            summary["fusion_redundancy_candidates"] = (
-                ablation["redundancy_candidates"]
-            )
-    except Exception:
-        pass
+        return write_fusion_ablation(args.db)
+
+    ablation = rail.run("fusion_ablation", _fusion_ablation)
+    if ablation and ablation.get("redundancy_candidates"):
+        summary["fusion_redundancy_candidates"] = (
+            ablation["redundancy_candidates"]
+        )
 
     # Wave-69: edge-concentration / selection-bias audit (report-only lens on
-    # which sources' edge is dangerously narrow). Fail-soft.
-    try:
+    # which sources' edge is dangerously narrow).
+    def _edge_concentration() -> dict:
         from autonomy.edge_concentration import write_edge_concentration
 
-        concentration = write_edge_concentration(args.db)
-        if concentration.get("narrow_edge_sources"):
-            summary["narrow_edge_sources"] = concentration["narrow_edge_sources"]
-    except Exception:
-        pass
+        return write_edge_concentration(args.db)
+
+    concentration = rail.run("edge_concentration", _edge_concentration)
+    if concentration and concentration.get("narrow_edge_sources"):
+        summary["narrow_edge_sources"] = concentration["narrow_edge_sources"]
 
     # Wave-65: build the model-authority evidence artifact + eligibility
     # report (measurement only; never authors the dossier, so no authority
-    # can be self-granted). Fail-soft.
-    try:
+    # can be self-granted).
+    def _model_authority_evidence() -> dict:
         from forecasting.model_evidence_builder import build_and_write
 
-        evidence = build_and_write(args.db)
+        return build_and_write(args.db)
+
+    evidence = rail.run("model_authority_evidence", _model_authority_evidence)
+    if evidence is not None:
         summary["model_authority_evidence"] = {
             "scopes_measured": len(evidence["scopes"]),
             "governance_eligible_scopes": evidence["governance_eligible_scopes"],
             "dossier_authored": evidence["dossier_authored"],
         }
-    except Exception:
-        pass
 
     # Wave-61: paired quant-vs-LLM incremental-value evidence (report-only;
     # the model authority registry keeps its own stricter dossier).
-    try:
+    def _llm_value_report() -> dict:
         from autonomy.llm_value_report import write_llm_value_report
 
-        value = write_llm_value_report(args.db)
-        graded = [v for v in value.get("voices", []) if v.get("status") == "OK"]
-        if graded:
-            summary["llm_value"] = {
-                v["voice"]: {
-                    "paired_rows": v["paired_rows"],
-                    "voice_brier": v["voice_brier"],
-                    "fused_brier": v["fused_brier"],
-                    "adds_value_over_fused": v["adds_value_over_fused"],
-                }
-                for v in graded
+        return write_llm_value_report(args.db)
+
+    value = rail.run("llm_value_report", _llm_value_report) or {}
+    graded = [v for v in value.get("voices", []) if v.get("status") == "OK"]
+    if graded:
+        summary["llm_value"] = {
+            v["voice"]: {
+                "paired_rows": v["paired_rows"],
+                "voice_brier": v["voice_brier"],
+                "fused_brier": v["fused_brier"],
+                "adds_value_over_fused": v["adds_value_over_fused"],
             }
-    except Exception:
-        pass
+            for v in graded
+        }
 
     # Wave-14: the one-line picks readout (fused accuracy is the headline
     # number under the picks-first directive; absent until rows accrue).
-    try:
+    def _fused_picks_readout() -> dict | None:
         fused = (built["report"].get("picks") or {}).get("sources", [])
         overall = fused[0]["overall"] if fused else {}
         if overall.get("n"):
-            summary["fused_picks"] = {
+            return {
                 "n": overall["n"],
                 "hit_rate": overall.get("hit_rate"),
                 "brier": overall.get("brier"),
             }
-    except Exception:
-        pass
+        return None
+
+    fused_picks = rail.run("fused_picks_summary", _fused_picks_readout)
+    if fused_picks:
+        summary["fused_picks"] = fused_picks
 
     # Autonomous thresholded promotion pass (owner directive 2026-07-16):
     # runs INSIDE this existing daily task path -- no new schtasks. Crash-
@@ -455,8 +541,20 @@ def main() -> int:
                 "status": "ERROR", "error": f"{type(exc).__name__}: {exc}"[:300],
             }
 
+    # The masking fix (2026-07-24 audit): the failure record is written every
+    # run -- an empty failures list is evidence the writers all ran, and a
+    # stale artifact is itself detectable. Any recorded failure turns the run
+    # red via EXIT_WRITER_FAILED, after every surviving artifact is written.
+    write_failures_artifact(rail)
+    if rail.failures:
+        summary["status"] = "WRITER_FAILURES"
+        summary["writer_failures"] = sorted({
+            entry["writer"] for entry in rail.failures
+        })
+        summary["writer_failures_report"] = str(FAILURES_PATH)
+
     print(json.dumps(summary))
-    return 0
+    return EXIT_WRITER_FAILED if rail.failures else 0
 
 
 if __name__ == "__main__":

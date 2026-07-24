@@ -722,3 +722,138 @@ def test_actionable_decision_opposite_the_tier_value_side_is_unattributed(
         assert attribution_count == 0
     finally:
         ledger.close()
+
+
+def test_scoreless_tier_assessment_survives_the_decide_loop(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    """Regression: tier_assessment.score=None crashed run_cycle with
+    ``TypeError: float() argument ... not 'NoneType'`` at the tier_score
+    attribution. A scoreless assessment must persist tier_score=None."""
+    import asyncio
+
+    from autonomy.brain import PredatorBrain
+    from autonomy.executor import Executor
+    from autonomy.learner import Learner
+    from autonomy.ontology import SessionMode
+    from autonomy.reconciler import Reconciler
+    from autonomy.risk_brain import RiskBrain
+    from autonomy.scanner import MarketScanner
+    from autonomy.signals.base import SourceRegistry
+    from autonomy.signals.crypto_spot import CryptoSpotVolSignal
+    from autonomy.signals.market_prior import MarketPriorSignal
+    from autonomy.switches import Switches
+    from autonomy.tier_policy import TierAssessment
+    from autonomy.allocator import Allocator
+
+    ticker = "KXBTCD-26JUL22-T100000.00"
+    monkeypatch.delenv("DUMMY_MAIN_ENABLED", raising=False)
+    monkeypatch.delenv("DUMMY_CRYPTO_ENABLED", raising=False)
+    monkeypatch.setattr(
+        Switches,
+        "load",
+        classmethod(lambda cls, path=None: cls({"main": True, "crypto": True})),
+    )
+    monkeypatch.setattr(
+        "autonomy.no_edge_map.load_negative_scopes", lambda *args, **kwargs: frozenset()
+    )
+
+    def scoreless_tiers(scored, **_kwargs):
+        return {
+            market.ticker: TierAssessment(
+                ticker=market.ticker,
+                tier="A",
+                base_tier="A",
+                side="yes",
+                entry_price_cents=40,
+                modeled_fee_cents=2,
+                gross_executable_edge=forecast.probability_yes - 0.40,
+                after_fee_edge=None,  # score property -> None (the crash input)
+                uncertainty=forecast.uncertainty,
+                scope="BTC",
+                horizon_phase="hourly",
+                assessed_at=datetime.now(timezone.utc).isoformat(),
+                quote_fetched_at=market.fetched_at,
+                event_key=market.ticker,
+                reason="fixture_scoreless",
+            )
+            for market, forecast in scored
+        }
+
+    def force_yes_side(_self, market, forecast, *_args, **_kwargs):
+        return Decision(
+            decision_id="scoreless-tier",
+            market_ticker=market.ticker,
+            action=DecisionAction.BUY_YES,
+            side="yes",
+            price_cents=40,
+            count=1,
+            ev_cents_per_contract=5.0,
+            kelly_fraction=0.01,
+            notional_cents=40,
+            forecast=forecast,
+            risk_snapshot={},
+            created_at=datetime.now(timezone.utc).isoformat(),
+        )
+
+    monkeypatch.setattr("autonomy.tier_policy.assign_cycle_tiers", scoreless_tiers)
+    monkeypatch.setattr(
+        "autonomy.tier_policy.tier_snapshot_is_valid",
+        lambda *_args, **_kwargs: True,
+    )
+    monkeypatch.setattr(Allocator, "decide", force_yes_side)
+
+    registry = SourceRegistry()
+    registry.register(MarketPriorSignal())
+    registry.register(
+        CryptoSpotVolSignal(fetch_spot_and_vol=lambda _asset: (100_000.0, 0.5))
+    )
+
+    def fetch_series(series):
+        if series != "KXBTCD":
+            return {"markets": []}
+        return {"markets": [{
+            "ticker": ticker,
+            "title": "BTC above $100k",
+            "status": "active",
+            "close_time": (
+                datetime.now(timezone.utc) + timedelta(hours=2)
+            ).isoformat(),
+            "yes_bid": 30,
+            "yes_ask": 40,
+            "no_bid": 60,
+            "no_ask": 70,
+            "volume": 500,
+            "liquidity": 1_000,
+            "strike_type": "greater",
+            "floor_strike": 100_000.0,
+        }]}
+
+    ledger = AutonomyLedger(tmp_path / "scoreless-tier.db")
+    brain = PredatorBrain(
+        mode=SessionMode.SHADOW,
+        ledger=ledger,
+        registry=registry,
+        scanner=MarketScanner(fetch_series=fetch_series, watchlist=["KXBTCD"]),
+        risk_brain=RiskBrain(tmp_path / "risk.json"),
+        executor=Executor(
+            SessionMode.SHADOW,
+            session_path=tmp_path / "session.json",
+            kill_path=tmp_path / "KILL",
+        ),
+        reconciler=Reconciler(ledger, fetch_market_result=lambda _ticker: {}),
+        learner=Learner(ledger),
+        board_path=tmp_path / "bet_board.json",
+    )
+    try:
+        report = asyncio.run(brain.run_cycle())
+        assert report.status == "CYCLE_OK"
+        stored = ledger._conn.execute(
+            "SELECT tier_label,tier_score,tier_reason "
+            "FROM decisions WHERE decision_id='scoreless-tier'"
+        ).fetchone()
+        assert report.decisions_made == 1
+        assert stored == ("A", None, "fixture_scoreless")
+    finally:
+        ledger.close()

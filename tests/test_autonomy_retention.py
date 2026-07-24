@@ -152,20 +152,76 @@ def test_retention_rolls_back_when_archive_id_has_different_evidence(tmp_path: P
         source.close()
 
 
-def test_retention_refuses_wal_source(tmp_path: Path) -> None:
+def test_retention_applies_under_wal_source(tmp_path: Path) -> None:
+    """Wave-83: the two-phase protocol makes apply safe on a WAL main ledger."""
     db = tmp_path / "ledger.db"
     _fixture_ledger(db)
     connection = sqlite3.connect(db)
     try:
-        assert connection.execute("PRAGMA journal_mode=WAL").fetchone()[0] == "wal"
+        # AutonomyLedger already flips the file to WAL; pin the precondition.
+        assert str(connection.execute("PRAGMA journal_mode").fetchone()[0]).lower() == "wal"
     finally:
         connection.close()
 
-    with pytest.raises(RuntimeError, match="main ledger uses WAL"):
-        enforce_retention(db, retention_days=7, apply=True, now=NOW)
+    report = enforce_retention(db, retention_days=7, apply=True, now=NOW)
 
+    assert report.status == "APPLIED"
+    assert report.archived_rows == 2
+    assert report.history_rows_after == 4
     source = sqlite3.connect(db)
     try:
-        assert source.execute("SELECT COUNT(*) FROM signals").fetchone()[0] == 4
+        assert source.execute("SELECT COUNT(*) FROM signals").fetchone()[0] == 2
+        assert source.execute("PRAGMA integrity_check").fetchone()[0] == "ok"
     finally:
         source.close()
+
+
+def test_retention_replays_cleanly_after_crash_between_phases(tmp_path: Path) -> None:
+    """A crash after the archive commit but before the hot delete (the two-phase
+    window) must be repaired by the next run: OR IGNOREs replay as no-ops, the
+    delete completes, and the archive holds no duplicates."""
+    db = tmp_path / "ledger.db"
+    _fixture_ledger(db)
+    archive_path = default_archive_path(db)
+    archive_path.parent.mkdir(parents=True)
+
+    # Simulate phase A having committed: copy the two eligible rows verbatim.
+    connection = sqlite3.connect(db)
+    try:
+        connection.execute("ATTACH DATABASE ? AS pre", (str(archive_path),))
+        connection.execute(
+            "CREATE TABLE pre.signals(id INTEGER PRIMARY KEY,source TEXT NOT NULL,"
+            "market_ticker TEXT NOT NULL,probability_yes REAL NOT NULL,uncertainty REAL NOT NULL,"
+            "rationale TEXT NOT NULL,created_at TEXT NOT NULL,mode TEXT NOT NULL,"
+            "features TEXT NOT NULL,ingested_at TEXT NOT NULL,ingest_version INTEGER NOT NULL)"
+        )
+        connection.execute(
+            "CREATE TABLE pre.archive_batches(batch_id TEXT PRIMARY KEY,"
+            "source_database TEXT NOT NULL,cutoff_settled_at TEXT NOT NULL,"
+            "first_signal_id INTEGER NOT NULL,last_signal_id INTEGER NOT NULL,"
+            "row_count INTEGER NOT NULL,sha256 TEXT NOT NULL,archived_at TEXT NOT NULL)"
+        )
+        connection.execute(
+            "INSERT INTO pre.signals SELECT id,source,market_ticker,probability_yes,"
+            "uncertainty,rationale,created_at,mode,features,ingested_at,ingest_version "
+            "FROM main.signals WHERE market_ticker='OLD'"
+        )
+        connection.commit()
+    finally:
+        connection.close()
+
+    report = enforce_retention(db, retention_days=7, apply=True, now=NOW)
+
+    assert report.status == "APPLIED"
+    assert report.archived_rows == 2  # the replayed batch completes the move
+    source = sqlite3.connect(db)
+    try:
+        assert source.execute("SELECT COUNT(*) FROM signals").fetchone()[0] == 2
+    finally:
+        source.close()
+    archive = sqlite3.connect(archive_path)
+    try:
+        assert archive.execute("SELECT COUNT(*) FROM signals").fetchone()[0] == 2  # no dupes
+        assert archive.execute("PRAGMA integrity_check").fetchone()[0] == "ok"
+    finally:
+        archive.close()

@@ -4,6 +4,8 @@ from __future__ import annotations
 import json
 import sqlite3
 
+import pytest
+
 
 def _db():
     conn = sqlite3.connect(":memory:")
@@ -38,7 +40,7 @@ def test_informative_source_ranks_above_redundant_noise(tmp_path):
 
     conn = _db()
     recal = tmp_path / "recal.json"
-    recal.write_text(json.dumps({"weights": {}}), encoding="utf-8")
+    recal.write_text(json.dumps({"derived_weights": {}}), encoding="utf-8")
     # 40 markets, distinct clusters. "sharp" alone knows the outcome; "noise_a"
     # and "noise_b" always say 0.5 (identical -> mutually redundant).
     for i in range(40):
@@ -64,7 +66,7 @@ def test_markets_below_source_floor_are_excluded(tmp_path):
 
     conn = _db()
     recal = tmp_path / "recal.json"
-    recal.write_text(json.dumps({"weights": {}}), encoding="utf-8")
+    recal.write_text(json.dumps({"derived_weights": {}}), encoding="utf-8")
     # Only 5 markets -> below MIN_MARKETS_PER_SOURCE -> no verdicts.
     for i in range(5):
         ticker = f"KXF-{i:03d}A-T1"
@@ -80,7 +82,7 @@ def test_two_source_markets_skipped(tmp_path):
 
     conn = _db()
     recal = tmp_path / "recal.json"
-    recal.write_text(json.dumps({"weights": {}}), encoding="utf-8")
+    recal.write_text(json.dumps({"derived_weights": {}}), encoding="utf-8")
     for i in range(40):
         ticker = f"KXG-{i:03d}A-T1"
         _emit(conn, "a", ticker, 0.7)
@@ -88,3 +90,33 @@ def test_two_source_markets_skipped(tmp_path):
         _settle(conn, ticker, 1)
     report = build_fusion_ablation(conn, days=None, recal_path=recal)
     assert report["markets_used"] == 0
+
+
+def test_weights_read_the_real_recal_key(tmp_path):
+    """The recal artifact's key is ``derived_weights`` -- the reader must
+    consume it (2026-07-24 audit: it read 'weights' and silently ran
+    uniform)."""
+    from autonomy.fusion_ablation import _weights
+
+    recal = tmp_path / "recal.json"
+    recal.write_text(
+        json.dumps({"derived_weights": {"sharp": 1.5, "broken": "nan-ish"}}),
+        encoding="utf-8",
+    )
+    assert _weights(recal) == {"sharp": 1.5}
+
+
+def test_missing_derived_weights_key_raises_instead_of_uniform(tmp_path):
+    from autonomy.fusion_ablation import _weights
+
+    recal = tmp_path / "recal.json"
+    recal.write_text(json.dumps({"weights": {"sharp": 1.5}}), encoding="utf-8")
+    with pytest.raises(KeyError, match="derived_weights"):
+        _weights(recal)
+
+
+def test_missing_recal_artifact_raises_instead_of_uniform(tmp_path):
+    from autonomy.fusion_ablation import _weights
+
+    with pytest.raises(OSError):
+        _weights(tmp_path / "does_not_exist.json")

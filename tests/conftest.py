@@ -99,6 +99,12 @@ def _isolated_evidence_root(monkeypatch, tmp_path):
     monkeypatch.setenv("DUMMY_DAEMON_ALERTS", "0")
     # Same for the daemon's periodic self-recalibration (real ledger + curve).
     monkeypatch.setenv("DUMMY_DAEMON_RECAL", "0")
+    # The watchdog's scheduler inventory shells out to schtasks; unit tests
+    # must stay hermetic (and deterministic off the canonical workstation).
+    monkeypatch.setenv("DUMMY_WATCHDOG_INVENTORY", "0")
+    # The cycle's watchdog-staleness alert reads the real runtime status file;
+    # unit tests run from the repo root and must not see live fleet state.
+    monkeypatch.setenv("DUMMY_WATCHDOG_STALE_ALERT", "0")
     # Route repo_harvester artifacts (incorporation registry, adapter plans)
     # to tmp so tests never dirty the real artifacts/repo_harvester tree.
     monkeypatch.setenv("DUMMY_HARVESTER_ROOT", str(tmp_path / "harvester"))

@@ -111,7 +111,11 @@ def promote_from_report(
             "toward": float(best),
             "evidence": {
                 "test_delta": proposal.get("test_delta"),
-                "test_delta_ci": proposal.get("test_delta_ci"),
+                # The tuner names its CI field "test_ci95" (see
+                # autonomy/tuner.py::_fit_tunable); reading "test_delta_ci"
+                # here silently nulled the evidence snapshot on every
+                # promotion (2026-07-24 audit, P1 item 9).
+                "test_ci95": proposal.get("test_ci95"),
                 "n_clusters": proposal.get("n_clusters"),
             },
         }

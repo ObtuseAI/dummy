@@ -34,18 +34,29 @@ REDUNDANCY_EPSILON = 0.0005
 
 
 def _weights(recal_path: Path) -> dict[str, float]:
-    try:
-        recal = json.loads(Path(recal_path).read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        return {}
-    merged: dict[str, float] = {}
-    for key in ("weights", "global_weights", "source_weights"):
-        block = recal.get(key)
-        if isinstance(block, dict):
-            for name, value in block.items():
-                if isinstance(value, (int, float)):
-                    merged[str(name)] = float(value)
-    return merged
+    """Global learner weights from the recal artifact's ``derived_weights``.
+
+    The recalibration pass publishes its global per-source weights under
+    ``derived_weights`` (see runtime/autonomy/last_recalibration.json). This
+    reader used to look for ``weights``/``global_weights``/``source_weights``
+    -- keys the artifact has never had -- and silently fell back to uniform
+    1.0 weights (2026-07-24 external audit). It now fails LOUDLY on a
+    missing/unreadable artifact or an absent key: a silently-uniform ablation
+    misranks every marginal contribution while looking authoritative.
+    """
+    recal = json.loads(Path(recal_path).read_text(encoding="utf-8"))
+    block = recal.get("derived_weights") if isinstance(recal, dict) else None
+    if not isinstance(block, dict):
+        keys = sorted(recal) if isinstance(recal, dict) else type(recal).__name__
+        raise KeyError(
+            f"recalibration artifact {recal_path} has no 'derived_weights' "
+            f"dict (found: {keys}); refusing the uniform-weight fallback"
+        )
+    return {
+        str(name): float(value)
+        for name, value in block.items()
+        if isinstance(value, (int, float))
+    }
 
 
 def _emissions(conn: sqlite3.Connection, days: float | None) -> list[tuple]:

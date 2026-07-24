@@ -13,9 +13,12 @@ from autonomy.tuned_params import (
 
 
 def _report(name="wnba_total_sigma", verdict="candidate", current=13.0, best=16.0):
+    # "test_ci95" (a [lower, upper] list) is the key and shape the REAL tuner
+    # writes on every proposal (autonomy/tuner.py::_fit_tunable) -- this
+    # fixture previously used "test_delta_ci", masking a reader-side mismatch.
     return {"proposals": [{
         "name": name, "verdict": verdict, "current": current, "best": best,
-        "test_delta": 0.004, "test_delta_ci": {"lower": 0.001, "upper": 0.007},
+        "test_delta": 0.004, "test_ci95": [0.001, 0.007],
         "n_clusters": 220,
     }]}
 
@@ -42,6 +45,31 @@ def test_promotion_is_step_capped_and_audited(tmp_path):
         _report(), now_iso="2026-07-20T07:00:00+00:00", path=path, log_path=log)
     assert outcome3["applied"] == []
     assert len(log.read_text().strip().splitlines()) == 2
+
+
+def test_ci_key_contract_tuner_writer_to_promotion_reader(tmp_path):
+    # Audit P1 item 9 (2026-07-24): the tuner writes "test_ci95" but the
+    # promotion evidence snapshot read "test_delta_ci", so every override
+    # ever applied logged a null CI. Pin the shared key on BOTH sides.
+    from autonomy.tuner import _SPECS, _fit_tunable
+
+    # Writer side: the real tuner emits "test_ci95" on every proposal, even
+    # the insufficient-data base shape.
+    base = _fit_tunable(_SPECS[0], [])
+    assert "test_ci95" in base
+    assert "test_delta_ci" not in base
+
+    # Reader side: the applied override snapshots that SAME key, non-null.
+    path = tmp_path / "tuned_params.json"
+    outcome = promote_from_report(
+        _report(), now_iso="2026-07-24T00:00:00+00:00", path=path,
+        log_path=tmp_path / "log.jsonl")
+    assert len(outcome["applied"]) == 1
+    evidence = json.loads(path.read_text(encoding="utf-8"))[
+        "overrides"]["wnba_total_sigma"]["evidence"]
+    assert evidence["test_ci95"] == [0.001, 0.007]
+    assert evidence["test_delta"] == 0.004
+    assert evidence["n_clusters"] == 220
 
 
 def test_only_candidate_verdicts_and_consumed_params_move(tmp_path):

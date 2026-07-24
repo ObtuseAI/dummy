@@ -204,8 +204,11 @@ def test_backtest_bootstraps_scoped_weights(tmp_path):
     from autonomy.backtest import run_backtest
 
     ledger = AutonomyLedger(tmp_path / "l.db")
+    # KXMLBGAME (SPORTS) as the second vertical: WEATHER is retired (Wave-82),
+    # so a weather-scoped row would now be purged rather than bootstrapped.
     for i, (ticker, result) in enumerate([("KXBTCD-A", True), ("KXBTCD-B", False),
-                                          ("KXHIGHNY-C", True)]):
+                                          ("KXMLBGAME-C", True),
+                                          ("KXHIGHNY-D", True)]):
         ledger.record_signal(Signal(source="market_prior", market_ticker=ticker,
                                     probability_yes=0.5, uncertainty=0.1, rationale=""))
         ledger.record_signal(Signal(source="alpha", market_ticker=ticker,
@@ -214,7 +217,10 @@ def test_backtest_bootstraps_scoped_weights(tmp_path):
         ledger.record_settlement(ticker, result)
     report = run_backtest(ledger, bootstrap_weights=True)
     assert "alpha@CRYPTO" in report["derived_weights_by_vertical"]
-    assert "alpha@WEATHER" in report["derived_weights_by_vertical"]
+    assert "alpha@SPORTS" in report["derived_weights_by_vertical"]
+    # Retired-vertical evidence earns no live scoped weight (Wave-82 extension).
+    assert "alpha@WEATHER" not in report["derived_weights_by_vertical"]
+    assert ledger.get_weight("alpha@WEATHER", default=0.0) == 0.0
     assert ledger.get_weight("alpha@CRYPTO", default=0.0) > 1.0
     assert any(key.startswith("scope:alpha|") for key in ledger.all_weights())
     ledger.close()

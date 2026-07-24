@@ -82,6 +82,51 @@ def test_run_backtest_purges_retired_sources_from_weights(tmp_path):
         ledger.close()
 
 
+def test_run_backtest_purges_retired_keys_in_every_shape(tmp_path):
+    # Wave-82 extension (2026-07-24): stale source_trust rows survive in
+    # decorated shapes the bare-name purge missed -- source@VERTICAL,
+    # scope:-prefixed, ::cal shadows, and active sources graded on retired
+    # subjects. A weight-writing pass must sweep the TABLE, not just the
+    # currently-derived sources (a long-retired source never reaches derived).
+    ledger = AutonomyLedger(db_path=tmp_path / "l.db")
+    try:
+        retired_keys = [
+            "commodities_spot_vol",                        # bare (stale, no evidence)
+            "weather_openmeteo::cal",                      # calibrated shadow
+            "market_debias@WEATHER",                       # active source, retired vertical
+            "market_prior@COMMODITIES",
+            "ufc_fight_winner@SPORTS",                     # retired source, any vertical
+            "scope:weather_openmeteo|kxhighlax|na|pre",    # retired source scope
+            "scope:market_debias|kxufcfight|na|pre",       # active source, retired subject
+            "scope:market_prior|kxwti|na|pre",
+            "cross_venue_polymarket@ECON",                 # retired econ vertical
+        ]
+        active_keys = [
+            "market_debias@SPORTS",
+            "crypto_spot_vol::cal@CRYPTO",
+            "scope:crypto_ewma_t::cal|btc|ladder|hourly",
+            "scope:mlb_live_winner|mlb|winner|live",
+        ]
+        for key in (*retired_keys, *active_keys):
+            ledger.update_weight(key, 1.5)
+        for ticker, result in [("A", True), ("B", False)]:
+            ledger.record_signal(_signal("market_prior", ticker, 0.5))
+            ledger.record_signal(_signal("mlb_live_winner", ticker, 0.9 if result else 0.1))
+            ledger.record_settlement(ticker, result)
+        run_backtest(ledger, bootstrap_weights=True)
+        weights = ledger.all_weights()
+        for key in retired_keys:
+            assert key not in weights, key
+        for key in active_keys:
+            assert key in weights, key
+        # A non-writing pass must NOT mutate the table.
+        ledger.update_weight("market_debias@WEATHER", 1.5)
+        run_backtest(ledger, bootstrap_weights=False)
+        assert "market_debias@WEATHER" in ledger.all_weights()
+    finally:
+        ledger.close()
+
+
 def test_run_backtest_reports_realized_pnl(tmp_path):
     from autonomy.ontology import OutcomeKind, TradeOutcome
 

@@ -516,10 +516,21 @@ def realized_attribution(
                 "n_trades": 0,
                 "pnl_by_cluster": {},
                 "trade_timestamps": [],
+                # Wave-83 honesty: isolated-challenger-lane rows ('chal-')
+                # carry a MODELED conservative taker fill at the displayed
+                # ask, not a shadow-book-witnessed fill. Any promotion review
+                # of this dossier must see that provenance split.
+                "fill_provenance": {"modeled_taker": 0, "book_witnessed": 0},
             })
             forward["n_trades"] += 1
             forward["pnl_by_cluster"].setdefault(cluster, []).append(pnl_dollars)
             forward["trade_timestamps"].append(str(decided_at))
+            provenance = (
+                "modeled_taker"
+                if str(_decision_id).startswith("chal-")
+                else "book_witnessed"
+            )
+            forward["fill_provenance"][provenance] += 1
     return out
 
 

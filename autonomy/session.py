@@ -646,11 +646,22 @@ def build_brain(
         fetch_shadow_candles=shadow_candle_fetcher,
         fetch_shadow_trades=shadow_trade_fetcher,
     )
-    quote_fn = None
-    if live:
-        from autonomy.live_book import fresh_best_quote
+    # Fresh pre-submit book read for the executor's taker policy (C1). Wired
+    # for BOTH books: fresh_best_quote is backed by the PUBLIC unauthenticated
+    # orderbook GET (kalshi.presubmit.default_fetch_orderbook -- the exact
+    # read-only fetch the shadow queue snapshot above already uses; the Kalshi
+    # public GETs are unmetered, unlike the reserved Odds API budget), so a
+    # SHADOW session may hold it too. Without a shadow quote_fn every shadow
+    # C1 order died "taker_no_fresh_book" and the executor's promise that
+    # paper evidence accrues under the live policy was unattainable.
+    # Fail-closed is preserved: a failed public read yields None and a stale
+    # one misses the freshness window, so the taker policy still blocks with
+    # the existing reasons instead of fabricating a quote. Only the taker
+    # policy consumes quote_fn, so shadow C0/C3 behavior is unchanged, and
+    # LIVE wiring is the same function object as before.
+    from autonomy.live_book import fresh_best_quote
 
-        quote_fn = fresh_best_quote
+    quote_fn = fresh_best_quote
     router = None
     try:
         from model_router.router import ModelRouter

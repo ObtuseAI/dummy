@@ -180,3 +180,36 @@ def test_short_horizon_drift_follows_sqrt_hours_law():
     ratio = shift_long / shift_short
     assert abs(ratio - math.sqrt(24.0 / 0.25)) < 0.2  # ~9.8, the sqrt(hours) law
     assert abs(long.probability_yes - 0.5) > abs(short.probability_yes - 0.5)
+
+
+def test_promotion_eligible_stamped_for_registered_sol_15m_scope_only():
+    # Forward-registered candidate scope: crypto_macro_regime|sol|15m_direction|15m.
+    from autonomy.signals.crypto_macro import PROMOTION_ELIGIBLE_SCOPE
+
+    assert PROMOTION_ELIGIBLE_SCOPE == "crypto_macro_regime|sol|15m_direction|15m"
+    sig = CryptoMacroRegimeSignal(
+        fetch_state=lambda _asset: {"spot": 150.0, "dvol": 60.0},
+        fetch_macro=lambda: {"sp500": 0.03, "dxy": -0.02},
+        hours_to_close=lambda m: 0.25,
+    )
+    sol = sig.generate(
+        _crypto_market(ticker="KXSOL15M-26JUL241200-00", floor=150.0)
+    )
+    assert sol is not None
+    assert sol.features["promotion_eligible"] is True
+
+    # Same source, different subject (btc): no opt-in stamp at all.
+    btc = sig.generate(
+        _crypto_market(ticker="KXBTC15M-26JUL241200-00", floor=150.0)
+    )
+    assert btc is not None
+    assert "promotion_eligible" not in btc.features
+
+    # Same subject, different contract family/horizon: no opt-in stamp.
+    daily = CryptoMacroRegimeSignal(
+        fetch_state=lambda _asset: {"spot": 150.0, "dvol": 60.0},
+        fetch_macro=lambda: {"sp500": 0.03, "dxy": -0.02},
+        hours_to_close=lambda m: 12.0,
+    ).generate(_crypto_market(ticker="KXSOLD-26JUL0917-T150", floor=150.0))
+    assert daily is not None
+    assert "promotion_eligible" not in daily.features

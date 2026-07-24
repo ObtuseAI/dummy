@@ -123,7 +123,10 @@ def test_pass_survives_missing_board_and_ledger(monkeypatch, tmp_path):
 def test_locked_ledger_reads_as_busy(monkeypatch, tmp_path):
     # A concurrent EXCLUSIVE writer makes the read-only settlement read raise
     # OperationalError("database is locked"); the helper classifies it "busy".
+    # Wave-83: the live ledger is WAL (readers never see this), but the busy
+    # classification must survive for rollback-journal DBs, so pin it on one.
     monkeypatch.setattr(runtime, "_LEDGER_BUSY_TIMEOUT_MS", 150)
+    monkeypatch.setenv("DUMMY_LEDGER_WAL", "0")
     db = tmp_path / "ledger.db"
     AutonomyLedger(db)  # create the schema
     holder = sqlite3.connect(db)

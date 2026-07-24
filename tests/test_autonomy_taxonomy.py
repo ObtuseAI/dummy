@@ -9,6 +9,7 @@ from autonomy.taxonomy import (
     CRYPTO_HOURLY_MAX_HOURS,
     grading_scope,
     horizon_bucket,
+    is_retired_trust_key,
     market_type_for,
     prediction_subject,
     specialist_for,
@@ -27,6 +28,11 @@ def test_horizon_bucket_boundaries():
     assert horizon_bucket("KXBTCD-26JUL0917-T71000", 3.0) == "hourly"
     assert horizon_bucket("KXBTCD-26JUL0917-T71000", 3.1) == "daily+"
     assert horizon_bucket("KXBTCD-26JUL0917-T71000", 26.0) == "daily+"
+    # Wave-83: the weekly horizon splits out of daily+ at CRYPTO_WEEKLY_MIN_HOURS
+    # so 1w contracts stop pooling with 1d and become gradeable for promotion.
+    assert horizon_bucket("KXBTCD-26JUL0917-T71000", 48.0) == "daily+"
+    assert horizon_bucket("KXBTCW-26JUL25-T71000", 48.1) == "weekly"
+    assert horizon_bucket("KXBTCW-26JUL25-T71000", 168.0) == "weekly"
     # No horizon evidence -> a single 'unknown' bucket, never a wrong one.
     assert horizon_bucket("KXBTCD-26JUL0917-T71000", None) == "unknown"
     assert horizon_bucket("KXBTCD-26JUL0917-T71000", "garbage") == "unknown"
@@ -57,6 +63,51 @@ def test_specialist_for_resolves_exact_and_prefixed_sources():
         assert specialist_for(source) == label
     assert specialist_for("some_new_unmapped_source") == "other"
     assert specialist_for("") == "other"
+
+
+def test_is_retired_trust_key_covers_every_persisted_shape():
+    # Wave-82 extension (2026-07-24): the purge must recognize retired keys in
+    # EVERY shape source_trust has ever used, not just bare source names.
+    retired = [
+        "weather_openmeteo",                          # bare retired source
+        "commodities_spot_vol",
+        "ufc_fight_winner",
+        "f1_race_winner",
+        "weather_openmeteo::cal",                     # calibrated shadow
+        "ufc_fight_winner@SPORTS",                    # retired source, any vertical
+        "ufc_fight_winner@OTHER",
+        "commodities_spot_vol@COMMODITIES",
+        "market_debias@WEATHER",                      # active source, retired vertical
+        "market_prior@COMMODITIES",
+        "market_prior@ECON",
+        "scope:weather_openmeteo|kxhighlax|na|pre",   # retired source scope
+        "scope:commodities_spot_vol|kxwti|na|pre",
+        "scope:ufc_fight_winner|kxufcfight|winner|pre",
+        "scope:market_debias|kxufcfight|na|pre",      # active source, retired subject
+        "scope:market_prior|kxgoldd|na|pre",
+        "scope:market_prior|kxcpiyoy|na|pre",
+        "scope:market_debias|kxf1race|na|pre",
+        "weather_openmeteo|kxhighny|na|pre",          # raw grading scope (readiness)
+    ]
+    for key in retired:
+        assert is_retired_trust_key(key), key
+    active = [
+        "market_debias",                              # bare active source
+        "market_prior",
+        "mlb_live_winner",
+        "crypto_spot_vol::cal",                       # active calibrated shadow
+        "market_debias@SPORTS",                       # active vertical
+        "crypto_spot_vol::cal@CRYPTO",
+        "fused_forecast::cal@SPORTS",
+        "some_new_unmapped_source",                   # 'other', NOT retired
+        "scope:crypto_ewma_t::cal|btc|ladder|hourly",
+        "scope:mlb_live_winner|mlb|winner|live",
+        "scope:market_debias|kxcustom|na|pre",        # unknown subject stays
+        "mlb_live_winner|mlb|winner|live",
+        "",
+    ]
+    for key in active:
+        assert not is_retired_trust_key(key), key
 
 
 def test_registry_completeness_tripwire(tmp_path):

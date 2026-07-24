@@ -25,7 +25,16 @@ def tune_param(
     store: SportsHistoryStore, league: str, wf_fn: Callable[..., dict[str, Any]],
     param_name: str, grid: list[float], *, min_n: int = 40,
 ) -> dict[str, Any] | None:
-    """Grid-search one analytic's parameter; return the edge-maximizing value."""
+    """Grid-search one analytic's parameter; return the edge-maximizing value.
+
+    Fail-closed on sign: the grid MAXIMUM can still be a refit that is
+    measurably worse than the coin-flip baseline (edge <= 0), and persisting
+    it would apply a proven-negative parameter live (the 2026-07-24 audit
+    caught exactly that for mlb glicko/mov_elo). Such a winner is returned as
+    a value-less skip record ("value": None, "skipped": "edge<=0") so the
+    decision stays auditable in the artifact while ``load_tuned`` -- which
+    requires a non-None "value" -- keeps serving the reviewable prior.
+    """
     best: dict[str, Any] | None = None
     for value in grid:
         report = wf_fn(store, league=league, **{param_name: value})
@@ -37,6 +46,10 @@ def tune_param(
         if best is None or edge > best["edge"]:
             best = {"param": param_name, "value": value, "edge": round(edge, 5),
                     "hit_rate": report.get("hit_rate"), "n": report["n"]}
+    if best is not None and best["edge"] <= 0.0:
+        return {"param": param_name, "value": None, "skipped": "edge<=0",
+                "rejected_value": best["value"], "edge": best["edge"],
+                "hit_rate": best.get("hit_rate"), "n": best["n"]}
     return best
 
 

@@ -237,6 +237,29 @@ def test_readiness_evaluates_prediction_types_independently():
     assert by_scope["mlb_multi_head|mlb|winner|pre"]["eligible"] is False
 
 
+def test_build_readiness_drops_retired_vertical_scopes():
+    # Wave-82 extension (2026-07-24): retired-vertical scopes (ufc/f1/weather/
+    # commodities/econ) can never promote -- the readiness report must not
+    # evaluate them, whether the SOURCE is retired or an active source was
+    # graded on a retired SUBJECT series.
+    eligible_rows = [
+        (NOW_TS - i * 3600, f"E{i}", 0.01) for i in range(MIN_CONTESTED_CLUSTERS + 10)
+    ]
+    scope_rows = {
+        "crypto_a|btc|ladder|daily+": list(eligible_rows),        # active -> kept
+        "weather_openmeteo|kxhighlax|na|pre": list(eligible_rows),  # retired source
+        "ufc_fight_winner|kxufcfight|winner|pre": list(eligible_rows),
+        "market_debias|kxwti|na|pre": list(eligible_rows),        # retired subject
+        "market_prior|kxufcrounds|na|pre": list(eligible_rows),
+    }
+    report = build_readiness(
+        scope_rows, promoted_scopes=set(),
+        now_ts=NOW_TS, now_iso="2026-07-12T00:00:00+00:00")["report"]
+    assert report["scopes_evaluated"] == 1
+    assert [s["scope"] for s in report["scopes"]] == ["crypto_a|btc|ladder|daily+"]
+    assert report["promotion_candidates"] == ["crypto_a|btc|ladder|daily+"]
+
+
 def test_non_challenger_gated_scope_is_not_a_candidate():
     # An eligible scope whose source already fuses (not challenger-gated) must
     # NOT be recommended -- promoting it is a no-op and demotion could not

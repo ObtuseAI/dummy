@@ -1,9 +1,15 @@
-# Always-on crypto and commodities paper twin
+# Always-on crypto paper twin
 
 Dummy's market-horizon paper twin is a permanent, public-read-only digital twin that
 runs independently beside both normal shadow operation and any future
 authorized live session. It has no broker adapter, credentials, production
 ledger writes, execution authority, or capital authority.
+
+Commodities are a retired vertical (2026-07-12 directive): commodity contracts
+are never twin targets (`autonomy/crypto_paper_twin.py` reports
+`commodity_contracts_allowed=false`, role `contextual_data_only`). Commodity
+spot data survives only as an input to the separate crypto macro-regime
+feature pipeline.
 
 ## Live cohorts
 
@@ -13,10 +19,8 @@ public source and Kalshi state:
 - `15m`: native `KXBTC15M`, `KXETH15M`, and `KXSOL15M` direction contracts
   with minute momentum, volume, and microstructure inputs;
 - `1h`: BTC, ETH, and SOL hourly price ladders with hourly-only technical state;
-- `1d` and `1w` crypto: BTC, ETH, and SOL only, using directly compatible
-  terminal-price markets when listed;
-- `1d` and `1w` commodities: WTI, natural gas, and gold only, using the existing
-  public continuous-future spot/volatility proxy.
+- `1d` and `1w`: BTC, ETH, and SOL only, using directly compatible
+  terminal-price markets when listed.
 
 When no directly model-compatible market is listed, the cohort records an
 explicit abstention. It never substitutes max-price, head-to-head, or synthetic
@@ -30,8 +34,6 @@ The allowlist is intentionally closed:
 | Crypto | 1h | BTC, ETH, SOL | Mixed-cadence `KXBTCD`/`KXBTC`, `KXETHD`/`KXETH`, `KXSOLD`/`KXSOLE` events with listing duration at most 6 hours |
 | Crypto | 1d | BTC, ETH, SOL | The same mixed-cadence series with listing duration over 6 and under 120 hours; legacy `BTCD`/`BTC` and `ETHD`/`ETH` aliases remain accepted |
 | Crypto | 1w | BTC, ETH, SOL | The same mixed-cadence series with listing duration of at least 120 hours |
-| Commodities | 1d | WTI, natural gas, gold | `KXWTI`, `KXNATGASD`, `KXGOLDD` |
-| Commodities | 1w | WTI, natural gas, gold | `KXWTIW`, `KXNATGASW`, `KXGOLDW` |
 
 Kalshi can publish hourly and weekly events inside the same crypto series. Dummy
 therefore routes each market from its own `open_time` to `close_time` duration,
@@ -41,7 +43,7 @@ fail closed instead of being guessed into a horizon.
 Series availability is evaluated from the public API every cycle. Other crypto
 assets and horizons are outside policy even if the exchange lists them.
 
-Each vertical and timeframe has three isolated lanes:
+Each timeframe has three isolated lanes:
 
 - `incumbent`: current production forecast and production selection
   thresholds;

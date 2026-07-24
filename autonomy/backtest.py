@@ -693,6 +693,7 @@ def _realized_trade_report(conn) -> dict[str, Any]:
                d.market_ticker
         FROM outcomes o JOIN decisions d USING(decision_id)
         WHERE o.pnl_cents IS NOT NULL AND o.kind IN ('SETTLED_WIN','SETTLED_LOSS')
+          AND d.decision_id NOT LIKE 'chal-%'
           AND EXISTS (
               SELECT 1 FROM outcomes fill
               WHERE fill.decision_id=o.decision_id AND fill.id<o.id
@@ -1339,6 +1340,104 @@ def _score_source_evidence(
     return trackers, scoped_trackers, scope_trackers
 
 
+def _recal_oos_gate(
+    conn,
+    signals_by_ticker: dict[str, list[dict[str, Any]]],
+    settlements: dict[str, int],
+    incumbent_weights: dict[str, float],
+    *,
+    holdout_fraction: float = 0.15,
+    min_holdout: int = 500,
+) -> dict[str, Any]:
+    """Out-of-sample gate for the recalibration weight recipe (Wave-83).
+
+    The 6h recal previously re-derived trust weights in-sample over ALL settled
+    history and overwrote the online-learned weights with no artifact anywhere
+    measuring whether that made forecasts better — "is the system improving?"
+    was unanswerable from disk (2026-07-24 audit). This gate answers it every
+    recal: derive candidate weights from the chronologically earliest
+    ``1 - holdout_fraction`` of settled markets, then score BOTH the candidate
+    recipe and the incumbent ledger weights on the untouched holdout tail with
+    the same trust-weighted ensemble mean. If the freshly derived recipe grades
+    worse than the weights already live, the overwrite is refused.
+
+    Approximation note: the holdout ensemble is a trust-weighted mean of each
+    source's last pre-settlement probability — simpler than live fusion
+    (no inverse-variance, no family de-dup) — but both weight vectors are
+    scored through the IDENTICAL functional form, so the comparison of the
+    vectors is fair even though the absolute Brier differs from production.
+    Clusters may straddle the time split; that leaks both ways equally.
+    """
+    settled_at: dict[str, str] = {
+        str(row[0]): str(row[1])
+        for row in conn.execute("SELECT market_ticker, settled_at FROM settlements")
+    }
+    ordered = sorted(settlements.keys(), key=lambda t: settled_at.get(t, ""))
+    n_holdout = int(len(ordered) * holdout_fraction)
+    if n_holdout < min_holdout:
+        return {
+            "status": "SKIPPED",
+            "reason": f"insufficient_holdout:{n_holdout}<{min_holdout}",
+            "adopted": True,
+        }
+    train_tickers = ordered[:-n_holdout]
+    holdout_tickers = ordered[-n_holdout:]
+
+    train_trackers, _scoped, _scope = _score_source_evidence(
+        signals_by_ticker, {t: settlements[t] for t in train_tickers},
+    )
+    candidate = {s: t.derived_weight() for s, t in train_trackers.items()}
+
+    def _holdout_brier(weights: dict[str, float]) -> tuple[float | None, int]:
+        total = 0.0
+        n = 0
+        for ticker in holdout_tickers:
+            rows = signals_by_ticker.get(ticker, [])
+            if not rows:
+                continue
+            latest = {str(r["source"]): float(r["probability_yes"]) for r in rows}
+            weight_sum = 0.0
+            prob_sum = 0.0
+            for source, prob in latest.items():
+                w = float(weights.get(source, 1.0))
+                weight_sum += w
+                prob_sum += w * prob
+            if weight_sum <= 0.0:
+                continue
+            ensemble = min(0.995, max(0.005, prob_sum / weight_sum))
+            total += _brier(ensemble, settlements[ticker])
+            n += 1
+        return (total / n if n else None), n
+
+    candidate_brier, scored_n = _holdout_brier(candidate)
+    incumbent_brier, _ = _holdout_brier(incumbent_weights)
+    if candidate_brier is None or incumbent_brier is None:
+        return {
+            "status": "SKIPPED",
+            "reason": "no_scorable_holdout_markets",
+            "adopted": True,
+        }
+    import os
+
+    try:
+        tolerance = float(os.environ.get("DUMMY_RECAL_OOS_TOLERANCE_BRIER", "0.0005"))
+    except (TypeError, ValueError):
+        tolerance = 0.0005
+    delta = candidate_brier - incumbent_brier
+    adopted = delta <= tolerance
+    return {
+        "status": "OK",
+        "adopted": adopted,
+        "holdout_markets": scored_n,
+        "holdout_fraction": holdout_fraction,
+        "train_markets": len(train_tickers),
+        "candidate_holdout_brier": round(candidate_brier, 6),
+        "incumbent_holdout_brier": round(incumbent_brier, 6),
+        "oos_brier_delta": round(delta, 6),
+        "tolerance": tolerance,
+    }
+
+
 def _live_capability_signal_inventory(
     conn, settled_signals: dict[str, list[dict[str, Any]]], *, limit: int = 100_000,
 ) -> dict[str, list[dict[str, Any]]]:
@@ -1436,27 +1535,41 @@ def run_backtest(ledger: AutonomyLedger, bootstrap_weights: bool = False,
     derived = {s: round(t.derived_weight(), 3) for s, t in trackers.items()}
     derived_scoped = {s: round(t.derived_weight(), 3) for s, t in scoped_trackers.items()}
 
-    # Wave-82 dead-weight purge: drop retired-vertical sources (ufc/f1/weather/
-    # commodities) from live weight derivation, persistence, and the promotion
-    # dossier. They no longer emit, so grading them is pure dead weight -- they
+    # Wave-82 dead-weight purge (extended 2026-07-24 to every key shape): drop
+    # retired-vertical keys (ufc/f1/weather/commodities/econ) from live weight
+    # derivation, persistence, and the promotion dossier -- bare sources,
+    # ``source@VERTICAL`` rows, ``scope:...`` rows, and ``::cal`` shadows
+    # alike. They no longer emit, so grading them is pure dead weight -- they
     # can never fuse or promote. Historical evidence is untouched; they simply
     # stop consuming recal cycles and cluttering the weight tables + board.
-    from autonomy.taxonomy import specialist_for
+    from autonomy.taxonomy import is_retired_trust_key
 
-    def _retired(key: str) -> bool:
-        return specialist_for(str(key).split("|", 1)[0]) == "retired"
-
-    retired_sources = sorted(s for s in derived if _retired(s))
-    if retired_sources:
-        derived = {s: w for s, w in derived.items() if not _retired(s)}
-        derived_scoped = {k: w for k, w in derived_scoped.items() if not _retired(k)}
-        scope_trackers = {k: t for k, t in scope_trackers.items() if not _retired(k)}
-        if bootstrap_weights:  # only the weight-writing pass mutates the table
-            for _s in retired_sources:
-                try:
-                    conn.execute("DELETE FROM source_trust WHERE source=?", (_s,))
-                except Exception:  # noqa: BLE001 - best-effort cleanup, never fatal
-                    pass
+    derived = {s: w for s, w in derived.items() if not is_retired_trust_key(s)}
+    derived_scoped = {
+        k: w for k, w in derived_scoped.items() if not is_retired_trust_key(k)
+    }
+    scope_trackers = {
+        k: t for k, t in scope_trackers.items() if not is_retired_trust_key(k)
+    }
+    if bootstrap_weights:  # only the weight-writing pass mutates the table
+        # Scan the TABLE, not the derived dict: a retired source that stopped
+        # emitting before the retention window never reaches ``derived``, yet
+        # its stale trust rows (in every key shape) would otherwise persist
+        # forever and keep feeding fusion + the dashboard.
+        try:
+            stale = [
+                row[0]
+                for row in conn.execute("SELECT source FROM source_trust")
+                if is_retired_trust_key(row[0])
+            ]
+            if stale:
+                conn.executemany(
+                    "DELETE FROM source_trust WHERE source=?",
+                    [(s,) for s in stale],
+                )
+                conn.commit()  # short transaction: never left open under WAL
+        except Exception:  # noqa: BLE001 - best-effort cleanup, never fatal
+            pass
 
     retro_source_evidence: dict[str, Any] = {
         "status": "skipped_fast_recalibration", "mode": "retro",
@@ -1490,10 +1603,46 @@ def run_backtest(ledger: AutonomyLedger, bootstrap_weights: bool = False,
     # re-derivation may legitimately jump far from the online weights, so the
     # single-cycle jump bound is the online learner's guard, not this one.
     weights_rejected_reasons: list[str] = []
+    oos_gate: dict[str, Any] | None = None
     if bootstrap_weights:
         from autonomy.learner import screen_weight_vector
 
         weights_rejected_reasons = screen_weight_vector(derived, None)
+
+        # Wave-83 out-of-sample gate: refuse to overwrite live trust with a
+        # freshly derived recipe that grades worse than the incumbent weights
+        # on a chronological holdout. Writes recal_oos_delta.json every
+        # weight-writing pass so "is the recal improving forecasts?" is
+        # answerable from disk. DUMMY_RECAL_OOS_GATE=0 opts out.
+        import os as _os
+
+        if _os.environ.get("DUMMY_RECAL_OOS_GATE", "1") == "1":
+            try:
+                oos_gate = _recal_oos_gate(
+                    conn, signals_by_ticker, settlements, ledger.all_weights(),
+                )
+            except Exception as exc:  # noqa: BLE001 - gate failure must not kill recal
+                oos_gate = {
+                    "status": "ERROR",
+                    "reason": f"{type(exc).__name__}: {exc}"[:300],
+                    "adopted": True,  # fail-open to legacy behavior, disclosed
+                }
+            if not oos_gate.get("adopted", True):
+                weights_rejected_reasons.append(
+                    f"oos_regression:{oos_gate.get('oos_brier_delta'):+.6f}"
+                )
+            try:
+                oos_path = Path("runtime/autonomy/recal_oos_delta.json")
+                oos_path.parent.mkdir(parents=True, exist_ok=True)
+                payload = dict(oos_gate)
+                payload["at"] = datetime.now(timezone.utc).isoformat()
+                tmp = oos_path.with_suffix(".json.tmp")
+                tmp.write_text(
+                    json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8"
+                )
+                tmp.replace(oos_path)
+            except Exception:  # noqa: BLE001 - artifact write is best-effort
+                pass
     weights_actually_written = bool(
         bootstrap_weights and derived and not weights_rejected_reasons
     )
@@ -1608,6 +1757,7 @@ def run_backtest(ledger: AutonomyLedger, bootstrap_weights: bool = False,
         "derived_weights_by_vertical": derived_scoped,
         "weights_written": weights_actually_written,
         "weights_rejected_reasons": weights_rejected_reasons,
+        "recal_oos_gate": oos_gate,
         "realized_decision_pnl_cents": realized_pnl,
         "graded_decisions": graded,
         "unverified_settlement_outcomes": unverified,

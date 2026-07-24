@@ -20,20 +20,20 @@ from typing import Any, Callable
 from autonomy.ontology import Decision, Signal, TradeOutcome
 from autonomy.retention import install_signal_history
 
-# Concurrency hardening. The ledger is deliberately rollback-journal (NOT WAL):
-# retention.enforce_retention needs a non-WAL main DB to guarantee an atomic
-# archive+delete across the attached archive database. That correctness choice
-# means writers take a whole-database lock, so under concurrency (the 6-hourly
-# recalibration backtest holding a long read while a cycle tries to write) the
-# default 5s timeout expires and SQLite raises OperationalError("database is
-# locked") — the observed CYCLE_ERROR:OperationalError. The fix is to let
-# writers WAIT for the lock (busy_timeout) and to retry a bounded number of
-# times on the residual race, rather than switch journalling modes.
-#
-# Wave-37: raised 30 -> 60s (env-tunable) after CYCLE_ERROR:OperationalError
-# recurred live -- a recalibration read can hold the whole-DB lock past 30s, so
-# the writer now waits up to a minute (succeeding slowly beats failing the
-# cycle) before the bounded retry.
+# Concurrency hardening. Wave-83: the ledger runs in WAL mode. The historical
+# reason it was rollback-journal — retention.enforce_retention required a
+# single atomic cross-database archive+delete transaction, which WAL cannot
+# provide — was removed by rewriting retention as a two-phase idempotent
+# protocol (each phase commits exactly one database; see autonomy/retention.py).
+# Rollback-journal mode caused three escalating production failures (Waves
+# 37/80/81/82 fought its symptoms): any long reader held SHARED and starved
+# every writer, and a writer waiting at PENDING then locked out all new
+# readers — observed live 2026-07-24 as a 4.5-hour full-database lockout
+# (CYCLE_ERROR streak, dead report writers, stale heartbeat). Under WAL,
+# readers never block writers and writers never block readers; only
+# writer-vs-writer contention remains, which busy_timeout + bounded retry
+# absorb. DUMMY_LEDGER_WAL=0 opts back out (the mode persists in the file, so
+# opting out also requires a manual "PRAGMA journal_mode=DELETE").
 def _ledger_busy_timeout_s() -> float:
     try:
         value = float(os.environ.get("DUMMY_LEDGER_BUSY_TIMEOUT_S", "60"))
@@ -188,6 +188,7 @@ CREATE TABLE IF NOT EXISTS external_observations (
 );
 CREATE INDEX IF NOT EXISTS idx_outcomes_decision ON outcomes(decision_id);
 CREATE INDEX IF NOT EXISTS idx_signals_market ON signals(market_ticker);
+CREATE INDEX IF NOT EXISTS idx_signals_created ON signals(created_at);
 CREATE INDEX IF NOT EXISTS idx_signals_market_created ON signals(market_ticker, created_at);
 CREATE INDEX IF NOT EXISTS idx_signals_source_created ON signals(source, created_at);
 CREATE INDEX IF NOT EXISTS idx_signal_rejections_created ON signal_rejections(rejected_at);
@@ -315,6 +316,15 @@ class AutonomyLedger:
         # timeout) and suspenders (explicit PRAGMA) — some builds honor one but
         # not the other.
         self._conn.execute(f"PRAGMA busy_timeout={int(LEDGER_BUSY_TIMEOUT_S * 1000)}")
+        # Wave-83: WAL so readers and writers never block each other (see the
+        # module-level concurrency note). The mode persists in the database
+        # header, so this is a one-time flip that every later connection
+        # inherits; best-effort because an old-mode lock holder can defer it.
+        if os.environ.get("DUMMY_LEDGER_WAL", "1") == "1":
+            try:
+                self._conn.execute("PRAGMA journal_mode=WAL")
+            except sqlite3.OperationalError:
+                pass
         self._apply_perf_pragmas()
         self._conn.executescript(_SCHEMA)
         self._migrate()
@@ -332,11 +342,10 @@ class AutonomyLedger:
         The default 2 MB page cache means every per-cycle index update and every
         backtest scan reads cold pages from disk; ``synchronous=FULL`` fsyncs
         each of the ~15k per-cycle commits. A large cache keeps hot pages
-        resident and NORMAL is crash-safe against an app crash on a rollback
-        journal (it can only lose the last transaction on OS/power loss, which is
-        acceptable for a paper shadow ledger and does not affect the atomic
-        archive+delete retention relies on). journal_mode is untouched -- the
-        ledger stays non-WAL. Best-effort: never block ledger construction.
+        resident and NORMAL is crash-safe under WAL (it can only lose the last
+        transaction on OS/power loss, which is acceptable for a paper shadow
+        ledger; retention's two-phase protocol never depends on it). Best-effort:
+        never block ledger construction.
         """
         import os
 
@@ -372,6 +381,28 @@ class AutonomyLedger:
                 self._lock_retries += 1
                 time.sleep(delay)
                 delay *= 2
+
+    def set_statement_deadline(self, deadline_monotonic: float | None) -> None:
+        """Abort any SQL statement still running past a monotonic deadline.
+
+        The 2026-07-24 lockout was a single synchronous multi-hour query: the
+        daemon's cooperative deadline only fires at await boundaries, so a
+        blocking sqlite3 call could overrun it forever. A progress handler runs
+        inside the VM every N opcodes and aborts the statement (SQLite raises
+        OperationalError "interrupted") once the deadline passes — making the
+        cycle deadline enforceable against sync SQL. ``None`` clears it.
+        """
+        if deadline_monotonic is None:
+            self._conn.set_progress_handler(None, 0)
+            return
+        deadline = float(deadline_monotonic)
+
+        def _past_deadline() -> int:
+            return 1 if time.monotonic() > deadline else 0
+
+        # ~500k VM opcodes between checks: sub-millisecond granularity on a
+        # scan-heavy query, unmeasurable overhead on short statements.
+        self._conn.set_progress_handler(_past_deadline, 500_000)
 
     def health(self) -> dict[str, Any]:
         """Cheap operational health snapshot (file size + header pragmas).
@@ -1586,15 +1617,23 @@ class AutonomyLedger:
         This is the phantom-grading feed: calibration evidence comes from every
         forecast the machine makes, not just the handful it traded. Bounded by
         signal age so the set can't grow without limit.
+
+        Reads the hot ``signals`` table, NOT the ``signal_history`` union view:
+        retention only archives rows of markets settled past the retention
+        window, so an unsettled recent market's signals are always hot. The
+        view variant scanned the multi-million-row archive for rows that could
+        never match — the 2026-07-24 4.5-hour wedged query.
         """
         from datetime import timedelta
 
         cutoff = (datetime.now(timezone.utc) - timedelta(days=max_age_days)).isoformat()
         rows = self._conn.execute(
             """
-            SELECT DISTINCT s.market_ticker FROM signal_history s
+            SELECT DISTINCT s.market_ticker FROM signals s
             WHERE s.created_at >= ?
-              AND s.market_ticker NOT IN (SELECT market_ticker FROM settlements)
+              AND NOT EXISTS (
+                SELECT 1 FROM settlements st WHERE st.market_ticker = s.market_ticker
+              )
             """,
             (cutoff,),
         ).fetchall()
@@ -1915,11 +1954,15 @@ class AutonomyLedger:
         }
 
     def performance_summary(self) -> dict[str, Any]:
+        # Isolated-challenger lane rows ('chal-') are promotion evidence, not
+        # headline performance — excluded so the realized slice stays the
+        # ensemble's own record.
         pnl = self._conn.execute(
             """
             SELECT COALESCE(SUM(o.pnl_cents),0), COUNT(*) FROM outcomes o
             WHERE o.pnl_cents IS NOT NULL
               AND o.kind IN ('SETTLED_WIN','SETTLED_LOSS')
+              AND o.decision_id NOT LIKE 'chal-%'
               AND EXISTS (
                   SELECT 1 FROM outcomes fill
                   WHERE fill.decision_id = o.decision_id

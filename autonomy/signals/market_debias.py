@@ -38,6 +38,17 @@ MIN_BUCKET_N = 100  # no opinion from thin history
 # scope's promotion.
 N_VERTICAL_BUCKETS = 10
 MIN_VERTICAL_BUCKET_N = 80
+# Forward-registered promotion-candidate scope (2026-07-22 elite audit;
+# runtime/autonomy/promotion_forward_registrations.json). promotion_eligible
+# flips True for EXACTLY this grading scope's emissions and stays False for
+# every other scope. NOTE: emissions now stamp market_type as
+# "<type>@<horizon>", so their derived grading scope is e.g.
+# "market_debias|mlb|winner@short|pre" -- the registered historical scope
+# below only matches emissions whose taxonomy market_type resolves to the
+# bare "na". The registration FINGERPRINT is never stamped here: the ledger
+# stamps it at record time from the immutable registrations file
+# (AutonomyLedger._stamp_forward_fingerprint).
+PROMOTION_ELIGIBLE_SCOPE = "market_debias|mlb|na|pre"
 HORIZON_BUCKETS = ("near_terminal", "short", "long")
 LIVE_EVIDENCE_MODE = "live_only_receipt_bounded_decision_or_first_seen_v2"
 CURVE_SCHEMA_VERSION = 6
@@ -711,12 +722,22 @@ class MarketDebiasSignal:
             "curve_training_digest": self._curve.get("training_digest_sha256"),
             "curve_created_at": self._curve.get("created_at"),
             "challenger_only": True,
-            # Explicit registry edits may admit a calibrated exact scope. The
-            # autonomous ladder cannot opt this source in from in-sample fit.
+            # The autonomous ladder cannot opt this source in from in-sample
+            # fit: only the forward-registered exact scope (stamped below)
+            # is promotion-eligible; every other scope stays opted out.
             "promotion_eligible": False,
             "forward_calibration_required": True,
             "execution_authority": False,
         }
+        try:
+            from autonomy.taxonomy import grading_scope
+
+            features["promotion_eligible"] = (
+                grading_scope(self.name, market.ticker, features)
+                == PROMOTION_ELIGIBLE_SCOPE
+            )
+        except Exception:  # noqa: BLE001 - fail closed: stays opted out
+            features["promotion_eligible"] = False
         promoted = self._is_explicitly_promoted(market, features)
         features["report_only"] = not promoted
         features["prediction_authority"] = promoted

@@ -15,7 +15,6 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = [
-    "httpx2>=2.5,<3",
     "ruff",
     "mypy",
     "hypothesis>=6.156,<7",
@@ -27,6 +26,8 @@ dev = [
 analytics = ["river>=0.25,<0.26"]
 optimizer = ["ortools>=9.15,<10"]
 research = ["polars>=1.42,<2"]
+# The native tote app (desktop/) imports PySide6; it was previously undeclared.
+desktop = ["PySide6>=6.7,<7"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

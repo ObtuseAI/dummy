@@ -1,6 +1,6 @@
-"""Wave-43: the ledger applies performance PRAGMAs without breaking the non-WAL
-invariant. The 2 MB default cache + synchronous=FULL were the per-cycle write
-tax on a multi-GB ledger."""
+"""Wave-43: the ledger applies performance PRAGMAs. The 2 MB default cache +
+synchronous=FULL were the per-cycle write tax on a multi-GB ledger. Wave-83:
+the ledger is WAL (retention's two-phase protocol made WAL safe)."""
 from __future__ import annotations
 
 from autonomy.ledger import AutonomyLedger
@@ -12,8 +12,8 @@ def test_perf_pragmas_applied(tmp_path):
         c = led._conn
         assert int(c.execute("PRAGMA synchronous").fetchone()[0]) == 1   # NORMAL
         assert int(c.execute("PRAGMA cache_size").fetchone()[0]) < 0     # negative => KiB, big cache
-        # journal_mode is NOT touched -- retention's atomic archive needs non-WAL.
-        assert str(c.execute("PRAGMA journal_mode").fetchone()[0]).lower() != "wal"
+        # Wave-83: readers and writers must never block each other.
+        assert str(c.execute("PRAGMA journal_mode").fetchone()[0]).lower() == "wal"
     finally:
         led.close()
 

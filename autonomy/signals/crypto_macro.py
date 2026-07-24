@@ -64,6 +64,17 @@ _TOTAL_ABS_COEFF = sum(abs(coeff) for _, _, coeff, _ in MACRO_FACTORS)
 MACRO_DAILY_DRIFT = 0.012   # max expected log-return over a day at score = +/-1
 MACRO_MAX_SHIFT_SIGMA = 0.35
 
+# Forward-registered promotion-candidate scope (2026-07-22 elite audit;
+# runtime/autonomy/promotion_forward_registrations.json). promotion_eligible
+# is stamped True for EXACTLY this grading scope's emissions -- the
+# auto-promotion evaluator requires a majority per-scope opt-in before
+# forward evidence can promote anything, and no other scope of this source
+# is registered. The registration FINGERPRINT is never stamped here: the
+# ledger stamps it at record time from the immutable registrations file
+# (AutonomyLedger._stamp_forward_fingerprint), so a later re-implementation
+# of this module cannot silently inherit the old registration.
+PROMOTION_ELIGIBLE_SCOPE = "crypto_macro_regime|sol|15m_direction|15m"
+
 
 def macro_regime_score(changes: dict[str, float]) -> tuple[float, float, dict[str, float]]:
     """Bounded risk-appetite score in [-1, 1] from recent macro % changes.
@@ -256,6 +267,16 @@ class CryptoMacroRegimeSignal:
             "spot": spot,
             "probability_model_uncertainty": uncertainty,
         }
+        try:
+            from autonomy.taxonomy import grading_scope
+
+            if (
+                grading_scope(self.name, market.ticker, features)
+                == PROMOTION_ELIGIBLE_SCOPE
+            ):
+                features["promotion_eligible"] = True
+        except Exception:  # noqa: BLE001 - fail closed: no opt-in stamp
+            pass
         return Signal(
             source=self.name,
             market_ticker=market.ticker,

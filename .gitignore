@@ -36,3 +36,9 @@ full_test_suite.log
 output/
 .playwright-cli/
 *.orig
+
+# Agent scratch / stray local caches (audit 2026-07-24)
+.codex_pycache_final_*/
+Temp/
+.kilo/
+.superpowers/

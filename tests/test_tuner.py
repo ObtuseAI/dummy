@@ -28,6 +28,11 @@ def test_tune_league_and_persist(tmp_path):
     assert "glicko" in tuned and "mov_elo" in tuned
     home_grids = (20.0, 30.0, 40.0, 50.0, 60.0, 0.0, 0.02, 0.04, 0.06, 0.08)
     for name, best in tuned.items():
+        if best.get("skipped"):
+            # Fail-closed sign gate: an edge<=0 grid winner is recorded for
+            # audit but never carries a live value.
+            assert best["skipped"] == "edge<=0" and best["value"] is None
+            continue
         if name.startswith("scoring_sigma"):
             # Wave-62: sigmas tune on out-of-sample likelihood over a
             # multiplier grid around the league prior, not the home grids.
@@ -45,6 +50,62 @@ def test_tune_league_and_persist(tmp_path):
     assert load_tuned("nfl", "nope", "x", 99.0, path=p) == 99.0
     assert load_tuned("mlb", "glicko", "home_advantage", 24.0, path=tmp_path / "absent.json") == 24.0
     st.close()
+
+
+def test_negative_edge_winner_not_persisted_but_audited(tmp_path, monkeypatch):
+    # 2026-07-24 audit: the tuner persisted mlb glicko/mov_elo with NEGATIVE
+    # edge (a refit measurably worse than baseline, applied live). The grid
+    # maximum must be sign-gated: edge<=0 -> value-less skip record in the
+    # artifact, live signals keep the reviewable prior via load_tuned.
+    import autonomy.sports.tuner as tuner
+    import autonomy.sports.walk_forward as wf
+
+    def negative(store, league, home_advantage=35.0):
+        return {"n": 500, "hit_rate": 0.52, "edge_vs_baseline": -0.003}
+
+    def positive(store, league, home_advantage=35.0):
+        return {"n": 500, "hit_rate": 0.56,
+                "edge_vs_baseline": 0.004 + home_advantage / 1e5}
+
+    def absent(store, league, **_kw):
+        return {"n": 0}
+
+    monkeypatch.setattr(wf, "walk_forward_glicko", negative)
+    monkeypatch.setattr(wf, "walk_forward_mov_elo", positive)
+    monkeypatch.setattr(wf, "walk_forward_pythagorean", absent)
+    monkeypatch.setattr(wf, "walk_forward_four_factors", absent)
+    monkeypatch.setattr(wf, "walk_forward_rest", absent)
+    monkeypatch.setattr(tuner, "tune_scoring_sigmas", lambda store, lg: {})
+
+    p = tmp_path / "tuned.json"
+    tuner.tune_all(None, ["mlb"], path=p)
+    import json
+
+    blob = json.loads(p.read_text(encoding="utf-8"))
+    glicko = blob["leagues"]["mlb"]["glicko"]
+    # Negative-edge winner: audited skip, no live value.
+    assert glicko["skipped"] == "edge<=0"
+    assert glicko["value"] is None
+    assert glicko["edge"] == -0.003
+    assert glicko["rejected_value"] == 20.0
+    assert load_tuned("mlb", "glicko", "home_advantage", 24.0, path=p) == 24.0
+    # Positive-edge winner: persisted and consumed exactly as before.
+    mov = blob["leagues"]["mlb"]["mov_elo"]
+    assert "skipped" not in mov and mov["value"] == 60.0 and mov["edge"] > 0.0
+    assert load_tuned("mlb", "mov_elo", "home_advantage", 24.0, path=p) == 60.0
+
+
+def test_zero_edge_winner_rejected():
+    # Boundary: edge == 0 is "no better than baseline" -> also rejected.
+    from autonomy.sports.tuner import tune_param
+
+    def wf_zero(store, league, coefficient=0.0):
+        return {"n": 100, "hit_rate": 0.5, "edge_vs_baseline": 0.0}
+
+    best = tune_param(None, "mlb", wf_zero, "coefficient", [0.0, 0.03])
+    assert best["value"] is None
+    assert best["skipped"] == "edge<=0"
+    assert best["edge"] == 0.0
 
 
 def test_tune_all_persists_incrementally_and_preserves_prior(tmp_path, monkeypatch):

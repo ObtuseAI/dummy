@@ -32,7 +32,7 @@ from pathlib import Path
 from typing import Any, Iterable
 
 from autonomy.stats import mean_ci95
-from autonomy.taxonomy import grading_scope
+from autonomy.taxonomy import grading_scope, is_retired_trust_key
 
 DEFAULT_PROMOTIONS_PATH = Path("runtime/autonomy/promotions.json")
 DEFAULT_DEMOTIONS_PATH = Path("runtime/autonomy/auto_demotions.json")
@@ -335,6 +335,14 @@ def build_readiness(
     convenience). Returns ``{"report": {...}, "demotions": {...}}``.
     """
     clv_by_scope = clv_by_scope or {}
+    # Wave-82 (extended 2026-07-24): retired-vertical scopes (ufc/f1/weather/
+    # commodities/econ) can never promote -- their sources no longer emit, so
+    # evaluating them is dead weight in the readiness report. Dropped up front;
+    # their historical ledger evidence is untouched.
+    scope_rows = {
+        scope: rows for scope, rows in scope_rows.items()
+        if not is_retired_trust_key(scope)
+    }
     readinesses: list[ScopeReadiness] = []
     for scope, rows in scope_rows.items():
         series = cluster_series(rows)

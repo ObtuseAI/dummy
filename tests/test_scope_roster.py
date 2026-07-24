@@ -16,7 +16,7 @@ def _mk_conn() -> sqlite3.Connection:
     conn = sqlite3.connect(":memory:")
     conn.execute(
         """CREATE TABLE decisions(
-            market_ticker TEXT, action TEXT, side TEXT,
+            decision_id TEXT DEFAULT '', market_ticker TEXT, action TEXT, side TEXT,
             probability_yes REAL, market_implied_yes REAL,
             ev_cents REAL, price_cents INTEGER, created_at TEXT)"""
     )
@@ -39,7 +39,7 @@ def _add_settled(conn, ticker, *, prob, result, days_ago, traded=True):
     )
     if traded:
         conn.execute(
-            "INSERT INTO decisions VALUES(?,?,?,?,?,?,?, datetime('now', ?))",
+            "INSERT INTO decisions(market_ticker,action,side,probability_yes,market_implied_yes,ev_cents,price_cents,created_at) VALUES(?,?,?,?,?,?,?, datetime('now', ?))",
             (ticker, "BUY_YES", "YES", prob, 0.5, 3.0, 55, f"-{days_ago + 1} days"),
         )
     conn.execute(
@@ -151,7 +151,7 @@ def test_unknown_season_defaults_in_season():
 def test_open_nfl_pick_without_current_grade_is_upcoming_not_in_season():
     conn = _mk_conn()
     conn.execute(
-        "INSERT INTO decisions VALUES(?,?,?,?,?,?,?, datetime('now'))",
+        "INSERT INTO decisions(market_ticker,action,side,probability_yes,market_implied_yes,ev_cents,price_cents,created_at) VALUES(?,?,?,?,?,?,?, datetime('now'))",
         (
             "KXNFLGAME-26SEP07KCBAL-KC",
             "BUY_YES",

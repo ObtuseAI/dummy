@@ -9,7 +9,9 @@ from __future__ import annotations
 
 import asyncio
 import json
+import sqlite3
 import time
+import traceback
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -166,10 +168,13 @@ def run_one_cycle(now_iso: str, mode: SessionMode = SessionMode.SHADOW) -> dict[
             "at": now_iso,
             "completed_at": completed_at,
         }
+        # Preserve last_success_at across a kill-halt: erasing it made the
+        # promotion rail read a halted-but-healthy system as a sustained outage.
         _write_heartbeat({
             "alive": True,
             "last_cycle_at": completed_at,
             "last_cycle_started_at": now_iso,
+            "last_success_at": _read_heartbeat().get("last_success_at"),
             "last_status": record["status"],
             "mode": mode.value,
         })
@@ -177,7 +182,17 @@ def run_one_cycle(now_iso: str, mode: SessionMode = SessionMode.SHADOW) -> dict[
 
     try:
         brain = build_brain(mode)
-        report = asyncio.run(_run_cycle_with_deadline(brain, _cycle_soft_deadline_s()))
+        deadline_s = _cycle_soft_deadline_s()
+        # Wave-83: arm the ledger's in-statement deadline too. The cooperative
+        # asyncio deadline only fires at await boundaries, so a synchronous
+        # sqlite call could overrun it by hours (observed 2026-07-24: one query
+        # wedged 4.5h and locked out the whole pipeline). The progress handler
+        # aborts any statement still running past the same deadline.
+        try:
+            brain.ledger.set_statement_deadline(time.monotonic() + deadline_s)
+        except Exception:
+            pass  # deadline arming is belt-and-suspenders, never blocks a cycle
+        report = asyncio.run(_run_cycle_with_deadline(brain, deadline_s))
         record = report.to_dict()
         record["at"] = now_iso
     except _CycleDeadlineExceeded as exc:
@@ -185,8 +200,29 @@ def run_one_cycle(now_iso: str, mode: SessionMode = SessionMode.SHADOW) -> dict[
         # heartbeat (below) so last_cycle_at advances and the promotion runner
         # sees a live -- if erroring -- system rather than a frozen one.
         record = {"status": "CYCLE_ERROR:CycleDeadline", "error": str(exc)[:300], "at": now_iso}
+    except sqlite3.OperationalError as exc:
+        # "interrupted" is the ledger's statement-deadline abort — the sync-SQL
+        # twin of _CycleDeadlineExceeded, so classify it the same way.
+        status = (
+            "CYCLE_ERROR:CycleDeadline"
+            if "interrupt" in str(exc).lower()
+            else "CYCLE_ERROR:OperationalError"
+        )
+        record = {
+            "status": status,
+            "error": str(exc)[:300],
+            "traceback": traceback.format_exc()[-4000:],
+            "at": now_iso,
+        }
     except Exception as exc:  # a bad cycle must never wedge the daemon
-        record = {"status": f"CYCLE_ERROR:{type(exc).__name__}", "error": str(exc)[:300], "at": now_iso}
+        # Persist the traceback: CYCLE_ERROR:TypeError with no stack was
+        # unrecoverable forensically (2026-07-24 audit finding).
+        record = {
+            "status": f"CYCLE_ERROR:{type(exc).__name__}",
+            "error": str(exc)[:300],
+            "traceback": traceback.format_exc()[-4000:],
+            "at": now_iso,
+        }
     finally:
         try:
             brain.ledger.close()  # type: ignore[name-defined]

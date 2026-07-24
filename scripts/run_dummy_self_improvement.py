@@ -15,7 +15,11 @@ plan from every artifact on disk:
 Each step runs as its own subprocess, crash-isolated with a bounded
 timeout: one failing loop never costs the rest, and the plan records every
 step's outcome so a silently-dead loop is visible on the dashboard instead
-of just quietly missing.
+of just quietly missing. Step failures PROPAGATE (2026-07-24 audit: on
+Jul 23 all three steps exited 1 while this wrapper exited 0, so Task
+Scheduler showed success): the wrapper exits ``EXIT_STEP_FAILED`` when any
+step exits nonzero, times out, or fails to spawn -- after the plan artifact
+(including per-step status) is written.
 
 Read-only against the ledger throughout; no session, execution, or capital
 authority anywhere in this chain.
@@ -43,6 +47,11 @@ STEPS: list[tuple[str, list[str], float]] = [
     ("tuner", ["scripts/run_dummy_tuner.py", "--auto-promote"], 900.0),
 ]
 
+# Distinct exit code for "the chain ran but at least one step failed", so a
+# Task Scheduler run with dead loops shows red instead of green (a wrapper
+# crash keeps Python's own exit 1 and stays distinguishable).
+EXIT_STEP_FAILED = 3
+
 
 def main() -> int:
     outcomes: dict[str, dict] = {}
@@ -55,13 +64,24 @@ def main() -> int:
             tail = (completed.stdout or "").strip().splitlines()
             outcomes[name] = {
                 "exit": completed.returncode,
+                "status": "OK" if completed.returncode == 0 else "FAILED",
                 "last_line": tail[-1][:400] if tail else "",
             }
+            if completed.returncode != 0:
+                err_tail = (completed.stderr or "").strip().splitlines()
+                outcomes[name]["stderr_last"] = (
+                    err_tail[-1][:400] if err_tail else ""
+                )
         except subprocess.TimeoutExpired:
-            outcomes[name] = {"exit": None, "error": f"timeout after {timeout}s"}
+            outcomes[name] = {"exit": None, "status": "FAILED",
+                              "error": f"timeout after {timeout}s"}
         except Exception as exc:
-            outcomes[name] = {"exit": None,
+            outcomes[name] = {"exit": None, "status": "FAILED",
                               "error": f"{type(exc).__name__}: {exc}"[:200]}
+
+    failed_steps = [
+        name for name, outcome in outcomes.items() if outcome.get("exit") != 0
+    ]
 
     from autonomy.improvement_planner import assemble_plan, write_plan
 
@@ -69,15 +89,18 @@ def main() -> int:
     plan["chain"] = {
         "ran_at": datetime.now(timezone.utc).isoformat(),
         "steps": outcomes,
+        "failed_steps": failed_steps,
+        "ok": not failed_steps,
     }
     path = write_plan(plan)
     print(json.dumps({
-        "status": "OK",
+        "status": "OK" if not failed_steps else "STEP_FAILURES",
         "steps": {name: outcome.get("exit") for name, outcome in outcomes.items()},
+        "failed_steps": failed_steps,
         "plan_items": len(plan.get("items") or []),
         "plan": str(path),
     }))
-    return 0
+    return EXIT_STEP_FAILED if failed_steps else 0
 
 
 if __name__ == "__main__":

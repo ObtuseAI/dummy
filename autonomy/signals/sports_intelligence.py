@@ -1,7 +1,9 @@
 """Settlement-trained sports intelligence challengers (MLB + team leagues)."""
 from __future__ import annotations
 
+import json
 import math
+import os
 import re
 from dataclasses import dataclass, replace
 from datetime import datetime, timedelta, timezone
@@ -2099,6 +2101,36 @@ POWER_RATINGS_BASKETBALL_SIGMA = NBA_MARGIN_SIGMA_BASE
 # Propose-then-promote TUNER CANDIDATE.
 MASSEY_COLLEY_REWARM_TTL_HOURS = 12.0
 
+# Degraded-warm streak telemetry. A league whose season gate is ACTIVE while
+# its trailing settled-game window is EMPTY is a NORMAL state during a
+# preseason wake (the gate wakes on SCHEDULED games up to 21 days ahead --
+# e.g. NFL woke 2026-07-20 for the Hall-of-Fame game while its last settled
+# game was in February, months outside the 120-day Massey/Colley window).
+# Dropping the sources from the ensemble is the correct fail-closed outcome,
+# so a per-cycle WARNING for it was pure noise (~800 lines/day). Instead the
+# per-cycle skip logs at DEBUG and a PERSISTED consecutive-degraded counter
+# (production runs one cycle per process, so in-memory state would reset
+# every cycle) emits one loud line -- POWER_RATINGS_DEGRADED_STREAK -- every
+# N consecutive degraded warms per league. N is env-tunable.
+POWER_RATINGS_DEGRADED_STREAK_DEFAULT_N = 12
+POWER_RATINGS_DEGRADED_STREAK_ENV = "DUMMY_POWER_RATINGS_DEGRADED_STREAK_N"
+POWER_RATINGS_WARM_STATE_FILENAME = "power_ratings_warm_state.json"
+
+
+def _degraded_streak_n() -> int:
+    """Streak length between POWER_RATINGS_DEGRADED_STREAK emissions.
+
+    Read at use-time (not import-time) so tests and operators can retune
+    without a process restart; anything unparseable or non-positive falls
+    back to the default.
+    """
+    raw = os.environ.get(POWER_RATINGS_DEGRADED_STREAK_ENV, "")
+    try:
+        value = int(raw)
+    except ValueError:
+        return POWER_RATINGS_DEGRADED_STREAK_DEFAULT_N
+    return value if value > 0 else POWER_RATINGS_DEGRADED_STREAK_DEFAULT_N
+
 
 class PowerRatingsSignal:
     """Standalone power-ratings challenger: winner+spread ladder + divergence.
@@ -2189,41 +2221,150 @@ class PowerRatingsSignal:
         """Solve Massey/Colley once per league over the trailing settled-game
         window (see `_massey_colley_date_ranges`). Same fail-closed shape as
         every other per-league warm in this module: a dormant league (season
-        gate) or an exception mid-fetch is skipped/swallowed rather than
-        raised, leaving that league's ratings empty (byte-identical to the
-        source being absent) instead of crashing signal construction.
+        gate) or an exception mid-fetch is skipped rather than raised, leaving
+        that league's ratings empty (byte-identical to the source being
+        absent) instead of crashing signal construction.
+
+        Outcome triage per warmed source (the fail-closed DROP is identical
+        in all three; only the telemetry differs):
+          - warmup raised           -> WARNING with the real exception class +
+            message (never a silent swallow).
+          - zero settled games in the window -> DEBUG. This is the NORMAL
+            preseason-wake state (season gate wakes on scheduled games weeks
+            before the first settled result lands inside the trailing
+            window) and it recurs every cycle for weeks, so it must not be a
+            per-cycle WARNING (it was: ~800 lines/day for NFL, 2026-07).
+          - settled games present but the solve yielded nothing
+            (non-convergence / degenerate system) -> WARNING; with real
+            input this should be rare.
+        A persisted per-league consecutive-degraded counter turns any
+        sustained run of drops into one loud POWER_RATINGS_DEGRADED_STREAK
+        line every `_degraded_streak_n()` degraded warms.
         """
         if not (warm_massey or warm_colley):
             return
         date_ranges = _massey_colley_date_ranges()
+        streaks = self._load_warm_streaks()
+        streaks_changed = False
         for league in POWER_RATINGS_SUPPORTED_LEAGUES:
             try:
                 if not self.seasons.active(league):
-                    continue
-            except Exception:
+                    continue  # dormant: streak neither grows nor resets
+            except Exception as exc:
+                logger.debug(
+                    f"season gate check failed for {league}: "
+                    f"{type(exc).__name__}: {exc} (league skipped this warm)",
+                    extra={"component": "sports_intelligence", "league": league},
+                )
                 continue
-            if warm_massey:
+            degraded = False
+            for source, source_name, enabled in (
+                (self.massey_source, "massey", warm_massey),
+                (self.colley_source, "colley", warm_colley),
+            ):
+                if not enabled:
+                    continue
+                extra = {
+                    "component": "sports_intelligence",
+                    "league": league,
+                    "source": source_name,
+                }
                 try:
-                    self.massey_source.warmup(league, date_ranges)
-                except Exception:
-                    pass
+                    source.warmup(league, date_ranges)
+                except Exception as exc:
+                    degraded = True
+                    logger.warning(
+                        f"{source_name} warmup failed for {league}: "
+                        f"{type(exc).__name__}: {exc} (dropped from ensemble)",
+                        extra=extra,
+                    )
+                    continue
+                if getattr(source, "_ratings", {}).get(league):
+                    continue  # warmed clean: ratings present
+                degraded = True
+                if getattr(source, "_games_played", {}).get(league):
+                    # Settled games WERE found, yet the solve produced no
+                    # ratings (non-convergent / degenerate system). Abnormal
+                    # with real input -> stay loud.
+                    logger.warning(
+                        f"{source_name} warmup solved no ratings for {league} "
+                        f"despite settled games (dropped from ensemble)",
+                        extra=extra,
+                    )
                 else:
-                    if not getattr(self.massey_source, "_ratings", {}).get(league):
-                        logger.warning(
-                            "Massey warmup produced no ratings (dropped from ensemble)",
-                            extra={"component": "sports_intelligence", "league": league, "source": "massey"},
-                        )
-            if warm_colley:
-                try:
-                    self.colley_source.warmup(league, date_ranges)
-                except Exception:
-                    pass
+                    # Zero settled games in the trailing window: normal
+                    # preseason-wake / offseason-edge state (or a feed blip
+                    # -- EspnClient.games swallows fetch errors into []).
+                    # Quiet per-cycle; the streak counter below stays the
+                    # loud path for a sustained run.
+                    logger.debug(
+                        f"{source_name} warmup found no settled games for "
+                        f"{league} in window (dropped from ensemble)",
+                        extra=extra,
+                    )
+            prior = streaks.get(league, 0)
+            streak = prior + 1 if degraded else 0
+            if streak != prior:
+                if streak:
+                    streaks[league] = streak
                 else:
-                    if not getattr(self.colley_source, "_ratings", {}).get(league):
-                        logger.warning(
-                            "Colley warmup produced no ratings (dropped from ensemble)",
-                            extra={"component": "sports_intelligence", "league": league, "source": "colley"},
-                        )
+                    streaks.pop(league, None)
+                streaks_changed = True
+            emit_every = _degraded_streak_n()
+            if degraded and streak >= emit_every and streak % emit_every == 0:
+                logger.warning(
+                    f"POWER_RATINGS_DEGRADED_STREAK league={league} n={streak}",
+                    extra={"component": "sports_intelligence", "league": league},
+                )
+        if streaks_changed:
+            self._save_warm_streaks(streaks)
+
+    @property
+    def _warm_state_path(self) -> Path:
+        # Lives beside the team-score/Elo model files this signal already
+        # reads (runtime/autonomy in production, tmp_path in tests via the
+        # injectable model_dir).
+        return self.model_dir / POWER_RATINGS_WARM_STATE_FILENAME
+
+    def _load_warm_streaks(self) -> dict[str, int]:
+        """Per-league consecutive-degraded-warm counters, from disk.
+
+        Persisted (not in-memory) because production runs ONE cycle per
+        process (the scheduler invokes run_dummy_shadow_daemon per cycle and
+        build_brain constructs a fresh signal each time), so instance or
+        module state would reset every cycle and no streak could ever
+        accumulate. Corrupt/missing state fails open to empty -- the streak
+        restarts, nothing else is affected.
+        """
+        try:
+            raw = json.loads(self._warm_state_path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return {}
+        streaks = raw.get("degraded_streaks") if isinstance(raw, dict) else None
+        if not isinstance(streaks, dict):
+            return {}
+        out: dict[str, int] = {}
+        for league, count in streaks.items():
+            try:
+                parsed = int(count)
+            except (TypeError, ValueError):
+                continue
+            if parsed > 0:
+                out[str(league)] = parsed
+        return out
+
+    def _save_warm_streaks(self, streaks: dict[str, int]) -> None:
+        try:
+            path = self._warm_state_path
+            path.parent.mkdir(parents=True, exist_ok=True)
+            temporary = path.with_suffix(".tmp")
+            temporary.write_text(
+                json.dumps({"degraded_streaks": streaks}, indent=2, sort_keys=True),
+                encoding="utf-8",
+            )
+            temporary.replace(path)
+        except OSError:
+            pass  # telemetry convenience; never block the warm on an IO blip
 
     def _sources(self, league: str) -> list[Any]:
         rating_source = (
@@ -2273,8 +2414,16 @@ class PowerRatingsSignal:
         try:
             self._warm_massey_colley(
                 warm_massey=self._owns_massey, warm_colley=self._owns_colley)
-        except Exception:
-            pass  # keep last-good ratings; never wedge the cycle on a warm blip
+        except Exception as exc:
+            # Keep last-good ratings; never wedge the cycle on a warm blip --
+            # but say WHAT failed (per-league/per-source errors are already
+            # handled inside _warm_massey_colley; reaching here means the
+            # warm machinery itself broke, e.g. date-range construction).
+            logger.warning(
+                f"Massey/Colley re-warm failed: {type(exc).__name__}: {exc} "
+                f"(keeping last-good ratings)",
+                extra={"component": "sports_intelligence"},
+            )
         # Advance the timestamp regardless of outcome so a persistently failing
         # feed is retried on the TTL, not hammered every cycle.
         self._last_massey_colley_warm = now

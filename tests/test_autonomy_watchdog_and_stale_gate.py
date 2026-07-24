@@ -423,7 +423,7 @@ def test_watchdog_fresh_artifacts_are_healthy_for_their_tasks(tmp_path):
     status = evaluate_watchdog(rd, now_epoch=_real_now_epoch())
     rows = {r["task_name"]: r for r in status["tasks"]}
     assert rows["DummyShadowPredator"]["stale"] is False
-    assert rows["DummyShadowPredator"]["authoritative"] is False
+    assert rows["DummyShadowPredator"]["authoritative"] is True  # Wave-83: promotion rail
     assert 59.0 <= rows["DummyShadowPredator"]["age_seconds"] <= 120.0
     assert rows["DummyShadowPredator"]["threshold_seconds"] == 1200.0  # 2x 10min
     assert rows["DummyMispricingMonitor"]["stale"] is False
@@ -518,20 +518,23 @@ def test_watchdog_observational_monitor_staleness_never_alerts(tmp_path):
     assert status["observational_stale_tasks"] == ["DummyMispricingMonitor"]
 
 
-def test_retired_shadow_and_crypto_tasks_are_observational(tmp_path):
+def test_shadow_predator_is_authoritative_and_crypto_twin_observational(tmp_path):
+    """Wave-83: the shadow daemon runs the full paper cycle and its heartbeat
+    is a mandatory promotion rail, so its staleness must degrade health (the
+    old 'retired non-authoritative' label contradicted the promotion runner).
+    The crypto paper twin stays observational."""
     tasks = [
         spec for spec in DEFAULT_TASKS
         if spec.name in {"DummyShadowPredator", "DummyCryptoPaperTwin"}
     ]
     status = evaluate_watchdog(tmp_path, now_epoch=NOW_EPOCH, tasks=tasks)
 
-    assert status["healthy"] is True
-    assert status["stale_tasks"] == []
-    assert set(status["observational_stale_tasks"]) == {
-        "DummyShadowPredator",
-        "DummyCryptoPaperTwin",
-    }
-    assert all(row["authoritative"] is False for row in status["tasks"])
+    assert status["healthy"] is False
+    assert status["stale_tasks"] == ["DummyShadowPredator"]
+    assert status["observational_stale_tasks"] == ["DummyCryptoPaperTwin"]
+    by_name = {row["task_name"]: row for row in status["tasks"]}
+    assert by_name["DummyShadowPredator"]["authoritative"] is True
+    assert by_name["DummyCryptoPaperTwin"]["authoritative"] is False
 
 
 def test_sports_research_simulation_is_observational(tmp_path):
@@ -555,11 +558,16 @@ def test_watchdog_covers_every_default_task(tmp_path):
         "DummyCryptoPaperTwin",
         "DummySportsSimulation", "DummySimulationTrainer", "DummyStrategyMiner",
         "DummyReadinessReport",
+        # Wave-83 fleet expansion — artifact-backed tasks all get real specs.
+        "DummyVnextShadow", "DummyDashboardSnapshot", "DummyWeightsRecal",
+        "DummyBacktestReport", "DummySelfImprovement", "DummyHealer",
+        "DummyLivePoller", "DummyCryptoHorizonEvidence", "DummyLedgerRetention",
+        "DummyLedgerPrune", "DummyLogRotation", "DummyLiveAccountSnapshot",
     }
     status = evaluate_watchdog(tmp_path, now_epoch=NOW_EPOCH)
     assert {r["task_name"] for r in status["tasks"]} == names
     specs = {spec.name: spec for spec in DEFAULT_TASKS}
-    assert specs["DummyShadowPredator"].authoritative is False
+    assert specs["DummyShadowPredator"].authoritative is True  # promotion rail input
     assert specs["DummyCryptoPaperTwin"].authoritative is False
     assert specs["DummySportsSimulation"].role == (
         "sports research simulation (non-authoritative)"

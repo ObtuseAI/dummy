@@ -15,8 +15,9 @@ Two paths, artifact-first (matching every other dashboard panel):
   * ``write_board_artifact`` -- the brain calls this at the end of each cycle
     with the in-memory (market, forecast) pairs it just scored, atomically
     writing ``runtime/autonomy/bet_board.json``. No DB involved: the cycle
-    already holds every row, titles included, and the busy ledger (single
-    writer, non-WAL) must never be contended for a display read.
+    already holds every row, titles included, and the busy ledger must never
+    be contended for a display read (artifact-first predates the WAL move and
+    remains the right shape: the dashboard needs no DB connection at all).
   * ``read_board_artifact`` -- the dashboard-safe public reader. It never
     opens the ledger and labels fresh, stale, missing, and invalid artifacts.
   * ``assemble_bet_board`` -- non-request cold-start helper; serve the fresh

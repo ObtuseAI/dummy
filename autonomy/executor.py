@@ -114,8 +114,12 @@ class Executor:
                 "runtime/autonomy/risk_state_live.json",
             )
         )
-        # Optional pre-submit fresh-book read; when supplied, a maker quote that
-        # has crossed since the scan is skipped instead of filled as a taker.
+        # Fresh pre-submit book read consumed by the taker execution policy
+        # (_apply_taker_policy). The session builder wires it for BOTH shadow
+        # and live books from the public read-only orderbook fetch, so paper
+        # evidence can accrue under the same taker policy the live path uses.
+        # When absent, failing, or stale, a taker (C1) order fails closed with
+        # the existing block reasons (taker_no_fresh_book / taker_quote_stale).
         self.quote_fn = quote_fn
         self.shadow_book_fn = shadow_book_fn
         # Stale-data submit gate. Active only when a policy is supplied; when
@@ -123,7 +127,9 @@ class Executor:
         # None by most callers/tests so existing behavior is unchanged.
         self.staleness_policy = staleness_policy
         # Optional venue re-check at the moment of a LIVE submit (halt state can
-        # change between cycle start and submit). Fail-open on fetch error.
+        # change between cycle start and submit). Fails CLOSED: a missing,
+        # failed, or malformed status blocks the submit
+        # (exchange_status_unavailable_at_submit), as does maintenance/halt.
         self.exchange_status_fn = exchange_status_fn
         self._now_fn = now_fn or (lambda: datetime.now(timezone.utc).timestamp())
         # Counter so a refusal is never a silent skip: surfaced on the executor

@@ -1,5 +1,16 @@
 # Autonomous-improvement waves (program summary)
 
+> **SUPERSEDED (2026-07-24).** This document stops at Wave 4. More than 80
+> further waves have shipped since (Wave-83 is current — see `git log`); they
+> are not backfilled here. Two claims below are stale: promotion is no longer
+> human-only — an autonomous promotion engine
+> (`autonomy/auto_promotion_runner.py`, daily, fail-closed, fusion-membership
+> only) evaluates and promotes challenger scopes — and `wave4-integration` is
+> long merged. Live capital remains fail-closed and operator-gated
+> (`configs/live_submit.json` and the live-authority contracts), unchanged by
+> the autonomous ladder. Current truth lives in `docs/AUTONOMY.md` and
+> `docs/AUTO_PROMOTION.md`.
+
 Branch-first, fail-closed feature program on top of the autonomy layer. Every
 wave: branch-only, shared venv, suite + coverage(≥85) + ruff green, an
 integration branch after all features land. **`wave4-integration` is the

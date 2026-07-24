@@ -169,6 +169,7 @@ def _settled_records(conn: sqlite3.Connection, window_days: float) -> list[dict[
             JOIN settlements s ON s.market_ticker = d.market_ticker
             WHERE datetime(d.created_at) <= datetime(s.settled_at)
               AND datetime(s.settled_at) >= datetime('now', ?)
+              AND d.decision_id NOT LIKE 'chal-%'
         )
         SELECT sig.ticker, sig.prob, sig.features, sig.result, sig.settled_at,
                dec.action, NULL AS decision_market, 'fused_forecast' AS record_source
@@ -378,11 +379,13 @@ def _rankings(conn: sqlite3.Connection, limit: int = 12) -> dict[tuple[str, str]
         FROM decisions d
         JOIN (
             SELECT market_ticker, MAX(created_at) AS mx
-            FROM decisions GROUP BY market_ticker
+            FROM decisions WHERE decision_id NOT LIKE 'chal-%'
+            GROUP BY market_ticker
         ) last ON last.market_ticker = d.market_ticker AND last.mx = d.created_at
         LEFT JOIN settlements s ON s.market_ticker = d.market_ticker
         WHERE s.market_ticker IS NULL
           AND d.action IN ('BUY_YES', 'BUY_NO')
+          AND d.decision_id NOT LIKE 'chal-%'
         """
     ).fetchall()
     from autonomy.market_labels import humanize_market, recommend_side

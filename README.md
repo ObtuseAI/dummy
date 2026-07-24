@@ -58,9 +58,11 @@ human is the only path from evidence to a real order.
   power-ratings ensemble and a de-vigged multi-book consensus. Leagues wake and sleep with
   their real season — out of season, a scope shows its last-season basis instead of vanishing.
 - **Sports history superstore** — a point-in-time lake of **162,915 real games**
-  (150,894 of them strictly evaluation-eligible under the provenance gate) across all seven
-  leagues, ingested from open public feeds through a polite cached fetcher — no paywall, no
-  key. **Eleven challenger analytics** price the full game surface off it: Glicko-2,
+  (150,894 of them strictly evaluation-eligible under the provenance gate) across six
+  leagues — NCAAMB (104.8k), NBA (23.1k), NCAAF (13.5k), MLB (9.4k), NFL (7.5k), and
+  WNBA (4.6k); NHL is not yet in the lake (0 games, deferred until its data source comes
+  online in October) — ingested from open public feeds through a polite cached fetcher —
+  no paywall, no key. **Eleven challenger analytics** price the full game surface off it: Glicko-2,
   538-style MOV-Elo, Pythagenpat, Dean-Oliver Four Factors, EPA/play, a spread/total scoring
   model with likelihood-tuned sigmas, a rest/travel mean shift, live win probability, a
   referee/official total adjustment, and a minutes-and-usage player-prop projection. Each is
@@ -172,6 +174,9 @@ front offices and labs:
   settlement-ratcheted mutation pressure, causal replay, and a parameter-jitter fragility
   verdict on every generation's champion.
 
+These report writers failed silently for days before 2026-07-24; failures now surface in
+`runtime/autonomy/report_writer_failures.json` and turn the scheduled run red instead of green.
+
 ## Recursive improvement
 
 - **Contested-truth calibration** — every settlement Brier-scores every source that opined,
@@ -199,10 +204,11 @@ capital authority. The guardrails are structural:
 
 - **Fail-closed everywhere** — missing data means *abstain*, never a degraded guess. A dead
   feed, a malformed book, or a stale fee schedule stops the market cleanly.
-- **Human-gated to capital** — promotion to real execution is a human edit of a promotions
-  file, only after settled out-of-sample calibration, event-cluster robustness, witnessed-fill
-  performance after fees and slippage, drawdown limits, and a canary firewall. Elapsed runtime,
-  backtests, or counterfactual quote P&amp;L cannot promote anything.
+- **Human-gated to capital** — an autonomous, fail-closed promotion engine can admit a
+  challenger scope into paper *fusion* after settled out-of-sample calibration, event-cluster
+  robustness, witnessed-fill performance after fees and slippage, and drawdown limits — but
+  live execution authority remains an operator decision behind separate live-authority
+  contracts. Elapsed runtime, backtests, or counterfactual quote P&amp;L cannot promote anything.
 - **Hardened execution firewall** — LIMIT-only orders, per-order validation, and
   transport-witnessed truth: broker contact is claimed only on HTTP evidence, and settlement
   P&amp;L uses only the broker's witnessed fills.
@@ -221,7 +227,7 @@ capital authority. The guardrails are structural:
 | Play-by-play knowledge lake | 32,298 games, 6 leagues, comeback matrices |
 | Sports challenger analytics | 11, walk-forward graded |
 | LLM panel | 4 exact models, 7-call atomic, double-locked |
-| Improvement waves shipped | 77 |
+| Improvement waves shipped | 83+ |
 | Tests | 7,501 passing |
 | Capital at risk | $0 — paper, human-gated |
 

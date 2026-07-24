@@ -141,6 +141,93 @@ def test_control_policy_path_unchanged_maker():
     assert "maker" in outcome.detail["note"]
 
 
+# ---- shadow taker via the PUBLIC quote path (latent-bug regression) -----------
+# The audit bug: quote_fn was wired only for LIVE sessions, so every shadow C1
+# order died "taker_no_fresh_book" and paper evidence could never accrue under
+# the taker policy. These tests pin (a) the session wiring for BOTH books and
+# (b) the executor evaluating the taker path through the real public read-only
+# quote reader (fresh_best_quote over an injected unauthenticated book fetch),
+# including its fail-closed fetch-failure and staleness behavior.
+
+def _public_book_quote_fn(fetch_orderbook):
+    """The real public quote path with only the raw book fetch injected."""
+    from autonomy.live_book import fresh_best_quote
+
+    return lambda ticker: fresh_best_quote(ticker, fetch_orderbook=fetch_orderbook)
+
+
+def test_shadow_and_live_sessions_both_wire_public_fresh_quote_reader(
+    tmp_path, monkeypatch
+):
+    from autonomy import session as session_mod
+    from autonomy.live_book import fresh_best_quote
+    from core import state as core_state
+
+    # No creds/global-mode side effects: this test asserts wiring only.
+    monkeypatch.setattr(session_mod, "_ensure_creds_loaded", lambda: None)
+    monkeypatch.setattr(core_state.STATE, "set_mode", lambda _mode: None)
+    for mode in (SessionMode.SHADOW, SessionMode.LIVE):
+        brain = session_mod.build_brain(
+            mode,
+            ledger_path=tmp_path / f"wiring-{mode.value}.db",
+            source_health_path=tmp_path / f"health-{mode.value}.json",
+        )
+        try:
+            assert brain.executor.quote_fn is fresh_best_quote, mode
+        finally:
+            brain.ledger.close()
+
+
+def test_taker_evaluates_in_shadow_via_public_quote_path():
+    # Public REST book schema: yes/no bid ladders; YES ask = 100 - best NO bid.
+    quote_fn = _public_book_quote_fn(
+        lambda ticker: {"yes": [[40, 100]], "no": [[55, 50]]}
+    )
+    executor = Executor(
+        SessionMode.SHADOW,
+        quote_fn=quote_fn,
+        execution_policy=ExecutionPolicy.taker_only(taker_min_ev_cents=3.0),
+    )
+    outcome = _run(
+        executor.execute(_decision(price=40, p_yes=0.80), market=_market())
+    )
+    assert outcome.kind is OutcomeKind.SHADOW
+    assert outcome.fill_price_cents == 45          # crossed 100-55, not maker 40
+    assert "taker" in outcome.detail["note"]
+    assert outcome.detail["liquidity_role"] == "taker"
+
+
+def test_taker_blocks_in_shadow_when_public_quote_fetch_fails():
+    def boom(_ticker):
+        raise RuntimeError("public book unreachable")
+
+    executor = Executor(
+        SessionMode.SHADOW,
+        quote_fn=_public_book_quote_fn(boom),
+        execution_policy=ExecutionPolicy.taker_only(),
+    )
+    outcome = _run(executor.execute(_decision(), market=_market()))
+    assert outcome.kind is OutcomeKind.BLOCKED_LOCAL
+    assert outcome.detail["reason"] == "taker_no_fresh_book"
+
+
+def test_taker_blocks_in_shadow_when_public_quote_is_stale():
+    quote_fn = _public_book_quote_fn(
+        lambda ticker: {"yes": [[40, 100]], "no": [[55, 50]]}
+    )
+    executor = Executor(
+        SessionMode.SHADOW,
+        quote_fn=quote_fn,
+        execution_policy=ExecutionPolicy.taker_only(),
+        # The executor's clock sits far past the quote's receipt witness, so
+        # the freshness gate must refuse rather than fabricate a fresh book.
+        now_fn=lambda: datetime.now(timezone.utc).timestamp() + 120.0,
+    )
+    outcome = _run(executor.execute(_decision(), market=_market()))
+    assert outcome.kind is OutcomeKind.BLOCKED_LOCAL
+    assert outcome.detail["reason"] == "taker_quote_stale"
+
+
 # ---- sports reliability bar ---------------------------------------------------
 
 def test_sports_scope_fits_at_lower_cluster_bar():
