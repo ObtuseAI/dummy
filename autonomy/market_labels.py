@@ -42,7 +42,17 @@ _NON_TEAM = {"AL", "NL", "ALL", "ALLSTAR", "EAST", "WEST", "USA", "WORLD",
 # Kalshi abbreviations that differ from the lake's ESPN codes -- added to the
 # split vocabulary so a real game still resolves (displayed as the Kalshi code).
 _EXTRA_TEAMS = {
-    "mlb": {"AZ", "CWS", "SFG", "TBR", "KCR", "SDP", "CHW", "WSH", "ATH"},
+    # The pro-league abbreviation sets are STATIC reference data, so they are
+    # seeded in full here rather than learned from the lake -- the board must
+    # split team+player tokens (BALPALONSO -> BAL) even before the lake warms or
+    # when a test isolates it. Lake-learned teams (esp. NCAA) still merge on top.
+    "mlb": {
+        "ATH", "ATL", "AZ", "BAL", "BOS", "CHC", "CIN", "CLE", "COL", "CWS",
+        "DET", "HOU", "KC", "LAA", "LAD", "MIA", "MIL", "MIN", "NYM", "NYY",
+        "OAK", "PHI", "PIT", "SD", "SEA", "SF", "STL", "TB", "TEX", "TOR", "WSH",
+        # legacy / alternate abbreviations still seen in older tickers
+        "SFG", "TBR", "KCR", "SDP", "CHW",
+    },
     "nfl": {"JAC", "WSH", "LAR", "LV"},
     "nba": {"NOP", "NYK", "GSW", "SAS", "UTA", "WSH", "PHO"},
     "wnba": {"CONN", "PHX", "NYL", "LVA", "GSV"},
@@ -61,23 +71,25 @@ def _team_sets() -> dict[str, frozenset[str]]:
 
     from autonomy.sports.history_store import DEFAULT_PATH
 
+    # The static pro-league sets are the ALWAYS-present base so team+player token
+    # splitting works even when the lake is missing/empty/locked (a fresh deploy,
+    # an isolated test, or a concurrent writer). Lake-learned teams (esp. NCAA,
+    # which is impractical to hardcode) merge on top when the lake is readable.
+    out: dict[str, set[str]] = {lg: set(extra) for lg, extra in _EXTRA_TEAMS.items()}
     try:
         conn = sqlite3.connect(f"file:{DEFAULT_PATH}?mode=ro", uri=True)
         try:
             rows = conn.execute("SELECT DISTINCT league, home, away FROM games").fetchall()
         finally:
             conn.close()
-    except Exception:  # noqa: BLE001 -- no lake yet => humanize falls back to raw
-        return {}
-    out: dict[str, set[str]] = {}
+    except Exception:  # noqa: BLE001 -- no lake => the static base still applies
+        rows = []
     for league, home, away in rows:
         s = out.setdefault(str(league).lower(), set())
         for t in (home, away):
             t = str(t).upper().strip()
             if t and t not in _NON_TEAM:
                 s.add(t)
-    for lg, extra in _EXTRA_TEAMS.items():
-        out.setdefault(lg, set()).update(extra)
     return {lg: frozenset(v) for lg, v in out.items()}
 
 
