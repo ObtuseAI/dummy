@@ -27,6 +27,18 @@ SDV_SOURCES: dict[str, tuple[str, str, str]] = {
     "wnba": ("wehoop-data", "wnba", "wnba"),
     "nba": ("hoopR-data", "nba", "nba"),
     "ncaamb": ("hoopR-data", "mbb", "mbb"),
+    # Wave-85: NHL history, previously the one league with ZERO games in the
+    # lake (challengers could not price it and the tuner reported
+    # not_repriceable). The original plan deferred this to an October ESPN
+    # scrape, but the daily DummyLake_nhl task uses the ESPN scoreboard path,
+    # which ignores --seasons and only ever sees today's slate -- in July that
+    # is the off-season, so it returned rc=0 having ingested nothing, every day.
+    # fastRhockey-data publishes the same schedule-CSV layout as the hoopR /
+    # wehoop repos, so no new parser was needed: 16,578 completed games across
+    # 2011-2024 verified against parse_sdv_schedule before wiring this in.
+    # Coverage ENDS mid-2024 (the 2024 file holds 179 games and 2025+ 404), so
+    # this is the history source and ESPN remains the in-season incremental.
+    "nhl": ("fastRhockey-data", "nhl", "nhl"),
 }
 _URL = ("https://raw.githubusercontent.com/sportsdataverse/{repo}/main/"
         "{path}/schedules/csv/{prefix}_schedule_{season}.csv")
@@ -57,7 +69,16 @@ def parse_sdv_schedule(text: str, league: str, season: int, *, url: str = "") ->
         # ESPN-schema repos carry abbreviations; tolerate name-keyed repos too.
         home = _first(row, "home_abbreviation", "home_team_abbreviation", "home_team_name")
         away = _first(row, "away_abbreviation", "away_team_abbreviation", "away_team_name")
-        date = _first(row, "date", "start_date", "game_date")
+        # Timezone-AWARE keys first. stamp_retro_source_reported() derives
+        # result availability via _parse_aware, which rejects a naive value, so
+        # a bare "game_date" leaves every row provenance_quality=unknown and the
+        # point-in-time walk-forward then excludes it entirely. That is exactly
+        # how 16,578 ingested NHL games graded as "no completed games in the
+        # lake": fastRhockey publishes both game_date ("2023-06-14") and
+        # game_date_time ("2023-06-14T00:00:00Z"), and only the latter stamps.
+        date = _first(
+            row, "date", "start_date", "game_date_time", "game_datetime", "game_date",
+        )
         if not gid or not home or not away or not date:
             continue
         hs, as_ = _int(row.get("home_score")), _int(row.get("away_score"))
