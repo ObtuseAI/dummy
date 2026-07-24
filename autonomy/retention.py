@@ -20,7 +20,12 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Iterable
 
-DEFAULT_RETENTION_DAYS = 7.0
+# Wave-81: 7 -> 5 days. The hot signals table drove the ledger's write-lock
+# contention (a smaller table = faster inserts = shorter lock holds). Safe: the
+# ``signal_history`` view unions hot + archived rows and every consumer reads the
+# view, while the archive DB keeps rows permanently -- trimming the hot window
+# only moves rows to the archive sooner, it never loses history.
+DEFAULT_RETENTION_DAYS = 5.0
 DEFAULT_BATCH_SIZE = 100_000
 ARCHIVE_NAME = "signals_archive.db"
 ARCHIVE_ALIAS = "signal_archive"
