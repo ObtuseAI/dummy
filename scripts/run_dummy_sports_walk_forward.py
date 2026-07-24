@@ -114,7 +114,15 @@ def _harvest_kill_marker() -> dict[str, list[str]]:
     league, model = marker.get("league"), marker.get("model")
     if league and model and model not in overran.get(league, []):
         overran.setdefault(league, []).append(model)
-    if marker:
+    # A league left mid-flight keeps status "RUNNING" forever otherwise, which
+    # reads as "in progress" to an operator long after the process died.
+    stale = [
+        name for name, run in (blob.get("runs") or {}).items()
+        if (run or {}).get("status") == "RUNNING"
+    ]
+    for name in stale:
+        blob["runs"][name]["status"] = "INTERRUPTED"
+    if marker or stale:
         blob.pop("in_flight", None)
         blob["overran"] = overran
         ARTIFACT.parent.mkdir(parents=True, exist_ok=True)

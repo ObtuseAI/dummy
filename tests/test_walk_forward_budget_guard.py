@@ -97,3 +97,21 @@ def test_per_league_status_does_not_speak_for_other_leagues(wf):
     assert blob["runs"]["nhl"]["status"] == "OK"
     # A later success must not clear an earlier league's partial verdict.
     assert blob["status"] == "PARTIAL"
+
+
+def test_stale_running_status_is_marked_interrupted(wf):
+    """A league left mid-flight must not read as "in progress" forever.
+
+    _persist writes RUNNING before each model and the final status after the
+    loop, so a process that dies leaves RUNNING behind until that league's next
+    scheduled run -- which for a per-league daily task is a full day of an
+    operator seeing work that is not happening.
+    """
+    _write(wf, {"runs": {
+        "nhl": {"status": "RUNNING", "skipped": [], "at": "t"},
+        "mlb": {"status": "OK", "skipped": [], "at": "t"},
+    }})
+    wf._harvest_kill_marker()
+    runs = _read(wf)["runs"]
+    assert runs["nhl"]["status"] == "INTERRUPTED"
+    assert runs["mlb"]["status"] == "OK"      # a finished league is untouched
