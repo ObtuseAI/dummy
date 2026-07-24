@@ -49,6 +49,44 @@ def _cluster_bootstrap_ci(
     return round(low, 6), round(high, 6)
 
 
+_BASELINE_TEMP_TABLES: tuple[tuple[str, str], ...] = (
+    ("_lvr_latest_fused", "fused_forecast"),
+    ("_lvr_latest_market", "market_prior"),
+)
+
+
+def _build_baselines(conn: sqlite3.Connection) -> None:
+    """Materialise the latest fused / market row per market, once per report.
+
+    The original shape carried two CORRELATED ``MAX(id)`` subqueries evaluated
+    per candidate row, per voice. Against ``signal_history`` -- a UNION over the
+    hot ledger and the multi-million-row archive -- that ran the writer past its
+    120s budget every time, so the report produced nothing at all and the
+    improvement planner independently flagged it as a dead loop. Eleven
+    correlated scans become two grouped scans plus indexed joins.
+
+    ``probability_yes`` is a bare column beside ``MAX(id)``: SQLite guarantees
+    bare columns come from the row that supplied the min/max, which is exactly
+    the "latest emission wins" tie-break the correlated form had. That guarantee
+    is SQLite-specific, and this ledger is SQLite-only.
+
+    Deliberately NOT filtered by ``days``: the original only windowed the voice
+    side (``v``), so windowing the baselines here would silently drop pairs the
+    old query kept and make the two reports incomparable.
+    """
+    for table, source in _BASELINE_TEMP_TABLES:
+        conn.execute(f"DROP TABLE IF EXISTS temp.{table}")
+        conn.execute(
+            f"CREATE TEMP TABLE {table} AS "
+            "SELECT market_ticker, probability_yes, MAX(id) AS id "
+            "FROM signal_history WHERE source = ? GROUP BY market_ticker",
+            (source,),
+        )
+        conn.execute(
+            f"CREATE INDEX temp.idx_{table} ON {table}(market_ticker)"
+        )
+
+
 def _paired_rows(
     conn: sqlite3.Connection, voice: str, *, days: float | None,
 ) -> list[dict[str, Any]]:
@@ -57,6 +95,9 @@ def _paired_rows(
     if days is not None:
         clause = " AND v.created_at >= datetime('now', ?)"
         params.append(f"-{float(days)} day")
+    # INNER JOIN on fused / LEFT JOIN on market mirrors the original exactly:
+    # a market with no fused forecast is not a pair, a missing market prior
+    # leaves ``market_prob`` NULL.
     rows = conn.execute(
         """
         SELECT v.market_ticker, v.probability_yes AS voice_prob,
@@ -65,16 +106,8 @@ def _paired_rows(
                t.result_yes
         FROM signal_history v
         JOIN settlements t ON t.market_ticker = v.market_ticker
-        JOIN signal_history f ON f.market_ticker = v.market_ticker
-             AND f.source = 'fused_forecast'
-             AND f.id = (SELECT MAX(f2.id) FROM signal_history f2
-                         WHERE f2.market_ticker = v.market_ticker
-                           AND f2.source = 'fused_forecast')
-        LEFT JOIN signal_history m ON m.market_ticker = v.market_ticker
-             AND m.source = 'market_prior'
-             AND m.id = (SELECT MAX(m2.id) FROM signal_history m2
-                         WHERE m2.market_ticker = v.market_ticker
-                           AND m2.source = 'market_prior')
+        JOIN _lvr_latest_fused f ON f.market_ticker = v.market_ticker
+        LEFT JOIN _lvr_latest_market m ON m.market_ticker = v.market_ticker
         WHERE v.source = ?
         """ + clause,
         params,
@@ -97,6 +130,7 @@ def build_llm_value_report(
     from autonomy.picks import llm_voice_sources
 
     voices = llm_voice_sources(conn, days=days)
+    _build_baselines(conn)
     comparisons: list[dict[str, Any]] = []
     for voice in voices:
         paired = _paired_rows(conn, voice, days=days)

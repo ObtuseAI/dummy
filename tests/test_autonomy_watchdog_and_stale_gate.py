@@ -21,6 +21,7 @@ from autonomy.staleness import (
     to_epoch_seconds,
 )
 from autonomy.watchdog import (
+    DEFAULT_DISK_FLOOR_GB,
     DEFAULT_LEDGER_MAX_GB,
     DEFAULT_TASKS,
     TaskSpec,
@@ -590,7 +591,14 @@ def test_watchdog_cycle_error_streak_and_kill_file(tmp_path):
 
 
 def test_watchdog_ledger_and_disk_thresholds(tmp_path):
-    assert DEFAULT_LEDGER_MAX_GB == 16.0
+    # Pinned on purpose: the ceiling is a capacity DECISION, so it should only
+    # ever move with an explicit owner call and a justification in the comment
+    # beside the constant -- never as incidental drift. Wave-85 raised it
+    # 16.0 -> 20.0 alongside the 5d -> 3d retention cut.
+    assert DEFAULT_LEDGER_MAX_GB == 20.0
+    # It must stay well clear of the free-disk floor, or the two tripwires
+    # collapse into one and the ledger alarm stops meaning anything.
+    assert DEFAULT_LEDGER_MAX_GB > DEFAULT_DISK_FLOOR_GB
     rd = _runtime(tmp_path)
     (rd / "ledger.db").write_bytes(b"x" * 2_000_000)  # 0.002 GB
     over = evaluate_watchdog(rd, now_epoch=_real_now_epoch(), ledger_max_gb=0.001)

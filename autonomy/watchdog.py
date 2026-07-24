@@ -25,10 +25,22 @@ RUNTIME_DIR = Path("runtime/autonomy")
 STATUS_PATH = RUNTIME_DIR / "watchdog_status.json"
 WATCHDOG_STATE_PATH = RUNTIME_DIR / "watchdog_state.json"
 
-# Capacity ceiling is set above the measured seven-day hot-ledger steady state
-# (12.24 GB on 2026-07-22) while remaining far below available runtime-disk
-# capacity.  This keeps normal retained evidence healthy without weakening the
-# independent free-disk floor or allowing unbounded ledger growth.
+# Capacity ceiling. Wave-85 (owner decision 2026-07-24): 16.0 -> 20.0 GB,
+# taken together with the retention cut from 5 to 3 days, NOT instead of it.
+#
+# Why 20.0 and not "whatever clears the alarm": the file had plateaued at
+# 16.25 GB with freelist ~0 right after a successful retention pass, so the
+# 16.0 ceiling had become a permanent red that VACUUM could not clear (0.35 GB
+# reclaimed on 2026-07-23). A ceiling that is always breached trains the
+# operator to ignore the watchdog, which defeats the tripwire. 20.0 GB sits
+# ~23% above the current plateau -- roughly four days of measured gross growth
+# (~0.9 GB/day before retention) of headroom -- so it still trips well before
+# the independent 10 GB free-disk floor on a 145 GB volume, and it still trips
+# on genuinely unbounded growth rather than on steady state.
+#
+# The 3-day retention cut is expected to pull the steady state well below this;
+# if the measured plateau settles far under 20.0, lower this to match rather
+# than leaving slack that hides real growth.
 #
 # UNITS: decimal GB (bytes / 1e9), matching ``_ledger_size_gb`` below. The
 # heartbeat's ledger_health reports GiB (bytes / 1024**3) instead, so the two
@@ -36,7 +48,7 @@ WATCHDOG_STATE_PATH = RUNTIME_DIR / "watchdog_state.json"
 # GiB. Both are emitted with explicit names rather than silently reconciled:
 # changing which basis the threshold compares would move the alarm point, and
 # that is a capacity decision, not a units cleanup.
-DEFAULT_LEDGER_MAX_GB = 16.0
+DEFAULT_LEDGER_MAX_GB = 20.0
 DEFAULT_DISK_FLOOR_GB = 10.0
 DEFAULT_ERROR_STREAK_THRESHOLD = 3
 STALE_MULTIPLIER = 2.0

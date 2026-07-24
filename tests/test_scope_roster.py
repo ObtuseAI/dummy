@@ -20,9 +20,16 @@ def _mk_conn() -> sqlite3.Connection:
             probability_yes REAL, market_implied_yes REAL,
             ev_cents REAL, price_cents INTEGER, created_at TEXT)"""
     )
+    # Full signals schema, not a 5-column stand-in: grading reads the
+    # ``signal_history`` UNION view, which selects every archived column and
+    # orders by ``id``. A fixture missing those columns silently diverges from
+    # the real ledger and hides exactly the archive-truncation class of bug.
     conn.execute(
-        """CREATE TABLE signals(source TEXT, market_ticker TEXT,
-            probability_yes REAL, created_at TEXT, features TEXT)"""
+        """CREATE TABLE signals(
+            id INTEGER PRIMARY KEY, source TEXT, market_ticker TEXT,
+            probability_yes REAL, uncertainty REAL, rationale TEXT,
+            created_at TEXT, mode TEXT, features TEXT,
+            ingested_at TEXT, ingest_version TEXT)"""
     )
     conn.execute(
         "CREATE TABLE settlements(market_ticker TEXT, result_yes INTEGER, settled_at TEXT)"
@@ -34,7 +41,8 @@ def _add_settled(conn, ticker, *, prob, result, days_ago, traded=True):
     # Grading reads the fused forecast of record -> a league we price shows up
     # even with no BUY decision (phantom grading).
     conn.execute(
-        "INSERT INTO signals VALUES('fused_forecast', ?, ?, datetime('now', ?), ?)",
+        "INSERT INTO signals(source,market_ticker,probability_yes,created_at,mode,features)"
+        " VALUES('fused_forecast', ?, ?, datetime('now', ?), 'live', ?)",
         (ticker, prob, f"-{days_ago + 1} days", '{"market_implied_yes": 0.5}'),
     )
     if traded:

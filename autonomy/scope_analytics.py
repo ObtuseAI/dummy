@@ -26,6 +26,7 @@ from pathlib import Path
 from typing import Any
 
 from autonomy.ontology import Vertical
+from autonomy.retention import ensure_signal_history
 from autonomy.scanner import classify_vertical
 from autonomy.sports_markets import SPORTS_LEAGUES
 
@@ -135,7 +136,18 @@ def _settled_records(conn: sqlite3.Connection, window_days: float) -> list[dict[
     row always wins when both exist, and post-settlement rows are excluded to
     prevent look-ahead leakage. ``market_implied_yes`` rides in fused features
     JSON and is stored directly on a decision fallback.
+
+    Reads the ``signal_history`` UNION view, not the hot ``signals`` table.
+    Retention archives a market's signal rows once that market settled past the
+    retention window, so reading the hot table quietly deleted graded history
+    on a timer -- 42,083 fused rows were already invisible on the live ledger
+    when this was found, and the Wave-85 5d -> 3d retention cut deepens it. The
+    view costs the same (7.4s vs 7.5s measured live) and recovered 27.5% more
+    graded markets. The view has no ``rowid``, so the recency tiebreaker uses
+    ``id``; ``decisions`` is a real table and is never archived, so its own
+    ``rowid`` tiebreaker below stays as-is.
     """
+    ensure_signal_history(conn)
     rows = conn.execute(
         """
         WITH signal_candidates AS (
@@ -146,9 +158,9 @@ def _settled_records(conn: sqlite3.Connection, window_days: float) -> list[dict[
                    s.settled_at AS settled_at,
                    ROW_NUMBER() OVER (
                        PARTITION BY sig.market_ticker
-                       ORDER BY datetime(sig.created_at) DESC, sig.rowid DESC
+                       ORDER BY datetime(sig.created_at) DESC, sig.id DESC
                    ) AS recency
-            FROM signals sig
+            FROM signal_history sig
             JOIN settlements s ON s.market_ticker = sig.market_ticker
             WHERE sig.source = 'fused_forecast'
               AND datetime(sig.created_at) <= datetime(s.settled_at)
