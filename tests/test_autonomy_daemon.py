@@ -110,6 +110,19 @@ def test_cooperative_deadline_records_clean_error_and_updates_heartbeat(monkeypa
     assert hb["last_status"] == "CYCLE_ERROR:CycleDeadline"
 
 
+def test_recal_deferred_when_ledger_too_large_for_watchdog(monkeypatch, tmp_path):
+    # A full recal cannot finish inside the cycle watchdog on a big ledger, so
+    # _maybe_recalibrate defers (never starts the doomed backtest) and the cycle
+    # records it as deferred, not as a completed recalibration.
+    monkeypatch.setattr(daemon, "RUNTIME_DIR", tmp_path)
+    monkeypatch.setattr(daemon, "RECAL_STAMP_PATH", tmp_path / "recal.json")
+    monkeypatch.setenv("DUMMY_DAEMON_RECAL", "1")
+    monkeypatch.setenv("DUMMY_RECAL_MAX_LEDGER_GIB", "0.0000001")  # any file exceeds
+    (tmp_path / "ledger.db").write_bytes(b"x" * 4096)
+    out = daemon._maybe_recalibrate("2026-07-09T00:00:00+00:00")
+    assert isinstance(out, dict) and out.get("deferred") == "ledger_too_large_for_in_cycle_recal"
+
+
 def test_last_success_at_carried_forward_across_an_errored_cycle(monkeypatch, tmp_path):
     monkeypatch.setattr(daemon, "RUNTIME_DIR", tmp_path)
     monkeypatch.setattr(daemon, "HEARTBEAT_PATH", tmp_path / "hb.json")

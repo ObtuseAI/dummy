@@ -45,6 +45,26 @@ def _ledger_busy_timeout_s() -> float:
 LEDGER_BUSY_TIMEOUT_S = _ledger_busy_timeout_s()
 LEDGER_LOCK_RETRIES = 5
 LEDGER_LOCK_BACKOFF_S = 0.1
+
+
+def _signal_write_chunk() -> int:
+    """Rows per commit when persisting a cycle's signals. A cycle writes ~23k
+    signals; on the non-WAL ledger a single transaction holds the whole-DB write
+    lock for its entire duration (minutes on a multi-million-row table), which
+    starves every other writer (the next cycle, the recal weight-write, the
+    retention/prune) and was a core contention source. Committing in chunks
+    releases + reacquires the lock at each boundary, so concurrent writers
+    interleave instead of blocking for minutes. Env-tunable; 0/negative => one
+    transaction (legacy behavior)."""
+    import os
+
+    try:
+        return int(os.environ.get("DUMMY_SIGNAL_WRITE_CHUNK", "3000"))
+    except (TypeError, ValueError):
+        return 3000
+
+
+LEDGER_SIGNAL_WRITE_CHUNK = _signal_write_chunk()
 # A ledger past this size is flagged for operator maintenance (checkpoint /
 # retention archival / VACUUM). The live ledger crossed 9 GiB before this guard.
 LEDGER_BLOAT_WARN_BYTES = 8 * 1024 ** 3
@@ -575,7 +595,16 @@ class AutonomyLedger:
 
         accepted: list[bool] = []
         fingerprints, registered_sources = self._forward_candidate_fingerprints()
+        # Chunked commits release the whole-DB write lock at each boundary so
+        # concurrent writers interleave (see LEDGER_SIGNAL_WRITE_CHUNK). Disabled
+        # for all_or_none (replay atomicity) and when the chunk size is <= 0.
+        chunk = 0 if all_or_none else LEDGER_SIGNAL_WRITE_CHUNK
+        since_commit = 0
         for signal, error, is_duplicate in zip(signals, errors, duplicate):
+            if chunk > 0 and since_commit >= chunk:
+                self._retry_on_locked(self._conn.commit)
+                since_commit = 0
+            since_commit += 1
             if error is not None or is_duplicate:
                 self._reject_signal(
                     signal, mode, error or "duplicate_signal", ingested_at,

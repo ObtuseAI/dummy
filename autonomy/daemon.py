@@ -86,6 +86,24 @@ def _maybe_recalibrate(now_iso: str) -> dict[str, Any] | None:
 
     if os.environ.get("DUMMY_DAEMON_RECAL", "1") != "1":
         return None
+    # A full backtest bootstrap on a large ledger cannot finish inside the
+    # cycle's watchdog window (pricing alone is ~8 min; the launcher hard-kills
+    # at 13 min), so on a big ledger it only ever gets killed mid-run -- never
+    # refreshing weights and leaving a hot journal. Above the threshold, defer
+    # to the dedicated out-of-band DummyWeightsRecal task (no watchdog); below
+    # it, keep the fast in-cycle recal. Env-tunable; 0 disables the guard.
+    try:
+        max_gib = float(os.environ.get("DUMMY_RECAL_MAX_LEDGER_GIB", "6"))
+    except (TypeError, ValueError):
+        max_gib = 6.0
+    if max_gib > 0:
+        try:
+            size_gib = (RUNTIME_DIR / "ledger.db").stat().st_size / 1024 ** 3
+            if size_gib > max_gib:
+                return {"deferred": "ledger_too_large_for_in_cycle_recal",
+                        "size_gib": round(size_gib, 2)}
+        except OSError:
+            pass
     try:
         if RECAL_STAMP_PATH.exists():
             stamp = json.loads(RECAL_STAMP_PATH.read_text(encoding="utf-8"))
@@ -176,7 +194,9 @@ def run_one_cycle(now_iso: str, mode: SessionMode = SessionMode.SHADOW) -> dict[
             pass
 
     recal = _maybe_recalibrate(now_iso)
-    if recal is not None:
+    if isinstance(recal, dict) and recal.get("deferred"):
+        record["recal_deferred"] = recal.get("deferred")
+    elif recal is not None:
         record["recalibrated"] = True
 
     # Read-only ledger health probe: file size, bloat flag, header pragmas.
