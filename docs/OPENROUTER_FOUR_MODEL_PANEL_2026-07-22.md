@@ -142,3 +142,52 @@ fresh router every cycle, so nothing accumulated and nothing could refuse.
   (`model_router/smoke.py`, `model_router/openrouter_panel_smoke.py`) contact
   providers directly under an explicit `allow_live` argument and are bounded by
   their own one-call-per-model, zero-retry contract instead.
+
+## 2026-07-24 (Wave-85): measured verdict — the panel stays dark
+
+The panel was **not re-armed**, on evidence rather than caution.
+
+### It was already dark, and not by a switch
+
+Config read as fully enabled — `DUMMY_DEBATE_LIVE=1`, and all three `llm`
+switches (`claude`, `codex`, `openrouter`) `true` in `configs/switches.json`.
+The ledger disagreed: **zero** `llm_panel*` / `llm_debate*` signals in the
+trailing 24 hours, with the last emission at **2026-07-22T08:24:49Z** — the
+same day this document was written. The four v3 voices emitted exactly **one**
+signal each on that date and then stopped. So there is no flag to flip; the
+panel stopped on its own and the cause is undiagnosed.
+
+### It was measurably worse than the model it would join
+
+`autonomy/llm_value_report.py` had never produced a report — it was one of the
+two writers dead on `no such table: signal_history`, and once that was fixed it
+timed out against its 120s writer budget on every pass. Wave-85 made it
+complete in 14.8s, so this is the first actual grading:
+
+| voice | paired rows | voice Brier | fused Brier | adds value |
+|---|---|---|---|---|
+| `llm_debate` | 1116 | 0.152025 | **0.104823** | no |
+| `llm_panel_gpt_5_6_terra` | 616 | 0.164660 | **0.113344** | no |
+| `llm_panel_gemini_3_5_flash` | 616 | 0.163383 | **0.113344** | no |
+| `llm_debate_v2_98a71ebaf349` | 358 | 0.186443 | **0.145632** | no |
+| `llm_panel_v2_gpt_5_6_terra` | 358 | 0.190050 | **0.145632** | no |
+| `llm_panel_v2_gemini_3_5_flash` | 358 | 0.185648 | **0.145632** | no |
+
+`adds_value_over_fused` is **false** for all six graded voices. Lower Brier is
+better, so every voice is worse than the ensemble it would be fused into.
+
+**Caveat, stated so this is not over-read:** the verdict rests on v1/v2 history.
+The v3 voices have exactly **one** paired row each and are graded
+`INSUFFICIENT_PAIRED_ROWS` — v3 has not been measured, only v1/v2 have.
+
+### Standing decision
+
+- The panel stays dark. Do not re-arm it on the theory that the cap makes it
+  cheap: cheap and negative is still negative.
+- `DUMMY_LLM_DAILY_USD_CAP` is now set **explicitly to 1.00** (it had been
+  unset, silently riding the 5.00 default, with no spend ledger written yet).
+  Explicit and low, but non-zero so a deliberate operator run still works —
+  `0` would mean `llm_daily_spend_cap_zero` and refuse everything.
+- Revisit only when a voice earns `adds_value_over_fused=true` on **forward**
+  evidence. That is now observable: the report runs nightly inside
+  `DummyReadinessReport` and lands in `runtime/autonomy/llm_value_report.json`.
