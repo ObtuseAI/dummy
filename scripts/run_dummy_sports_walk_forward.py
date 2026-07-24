@@ -201,11 +201,13 @@ def main() -> int:
                     continue
                 # The deadline alone only guards BETWEEN models -- once a model
                 # starts it runs to completion, so a single slow one still
-                # overruns and gets killed. ncaamb proved it: glicko persists in
-                # 2s, then pythagenpat alone outruns a 900s budget and the task
-                # dies anyway. Skip a model whose own last measured duration
-                # will not fit in the time left. First run has no measurement
-                # and is attempted optimistically, which is how it learns.
+                # overruns and gets killed. Measured on ncaamb (104,819 games):
+                # glicko 2.15s, pythagenpat 1.02s, mov_elo 0.99s, then
+                # four_factors alone outruns the whole budget. Skip a model whose
+                # own last measured duration will not fit in the time left. The
+                # first run has no measurement and is attempted optimistically,
+                # which is how it learns; if it is killed there, the in_flight
+                # marker below is what stops it being retried forever.
                 if killed.get("league") == league and killed.get("model") == name:
                     skipped.append({
                         "league": league, "model": name,
