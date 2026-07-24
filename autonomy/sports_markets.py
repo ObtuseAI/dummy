@@ -163,6 +163,15 @@ SERIES_SPEC: dict[str, SeriesSpec] = {
     "KXNFL3QTOTAL": _line("nfl", TOTAL, Q3, discover=True),
     "KXNFL4QSPREAD": _line("nfl", SPREAD, Q4, discover=True),
     "KXNFL4QTOTAL": _line("nfl", TOTAL, Q4, discover=True),
+    # Wave-85: Kalshi lists KXNFL{1..4}QWINNER, which we had never registered.
+    # Registered (so coverage is tracked and the classifier knows them) but NOT
+    # discovered: a quarter winner is three-way and needs a quarter-level
+    # scoring path that does not exist yet. Same posture as KXMLBF3/KXMLBF7 --
+    # a series is fetched exactly when a pricing path exists for it.
+    "KXNFL1QWINNER": _winner("nfl", Q1, discover=False, three_way=True),
+    "KXNFL2QWINNER": _winner("nfl", Q2, discover=False, three_way=True),
+    "KXNFL3QWINNER": _winner("nfl", Q3, discover=False, three_way=True),
+    "KXNFL4QWINNER": _winner("nfl", Q4, discover=False, three_way=True),
 
     # ===================== NBA =====================
     "KXNBAGAME": _winner("nba", discover=True),
@@ -194,6 +203,14 @@ SERIES_SPEC: dict[str, SeriesSpec] = {
     "KXNCAAFSPREAD": _line("ncaaf", SPREAD, discover=True),
     "KXNCAAFTOTAL": _line("ncaaf", TOTAL, discover=True),
     "KXNCAAFTEAMTOTAL": _line("ncaaf", TEAM_TOTAL, discover=True),
+    # NCAAF's segment surface is COMPLETE at 1H winner. The 2026-07-24 audit
+    # read the gap against NFL as ours to close; it is not. Kalshi's own
+    # /series?category=Sports (3,005 series, checked 2026-07-24) lists exactly
+    # one NCAAF segment series -- KXNCAAF1HWINNER. There is no KXNCAAF2HWINNER,
+    # no KXNCAAF1H/2H spread or total, and no NCAAF quarter series at all,
+    # whereas NFL has the full 1H/2H/1Q-4Q set. The asymmetry is the venue's.
+    # Registering the missing names would only spend scan budget on series that
+    # do not exist. Re-check before assuming this is still true.
     "KXNCAAF1HWINNER": _winner("ncaaf", H1, discover=True, three_way=True),
 
     # ===================== NCAAMB =====================
