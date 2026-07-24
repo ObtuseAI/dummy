@@ -89,8 +89,13 @@ SOURCE_TAXONOMY: dict[str, str] = {
     # sports scope's earned champion status is NOT inherited (challenger-only).
     "cross_venue_polymarket_crypto": "cross_venue",
     "cross_venue_polymarket_econ": "cross_venue",
-    "commodities_spot_vol": "commodities",
-    "weather_openmeteo": "weather",
+    # Retired verticals (Wave-82 dead-weight purge): commodities + econ trading
+    # stopped 2026-07-11, weather prediction retired (its Open-Meteo pipeline was
+    # repurposed as an MLB wind/temp feature under a different source). These
+    # sources no longer emit; mapping them to "retired" drops them from live
+    # weight derivation + the board so the recal stops grading dead verticals.
+    "commodities_spot_vol": "retired",
+    "weather_openmeteo": "retired",
     "llm_debate": "llm",      # historical emitted source (present in old rows)
     "llm_analyst": "llm",     # current signal name, should it ever register
     # Registered signal objects whose emitted source strings differ; kept so

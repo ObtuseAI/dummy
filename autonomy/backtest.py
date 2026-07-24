@@ -1436,6 +1436,28 @@ def run_backtest(ledger: AutonomyLedger, bootstrap_weights: bool = False,
     derived = {s: round(t.derived_weight(), 3) for s, t in trackers.items()}
     derived_scoped = {s: round(t.derived_weight(), 3) for s, t in scoped_trackers.items()}
 
+    # Wave-82 dead-weight purge: drop retired-vertical sources (ufc/f1/weather/
+    # commodities) from live weight derivation, persistence, and the promotion
+    # dossier. They no longer emit, so grading them is pure dead weight -- they
+    # can never fuse or promote. Historical evidence is untouched; they simply
+    # stop consuming recal cycles and cluttering the weight tables + board.
+    from autonomy.taxonomy import specialist_for
+
+    def _retired(key: str) -> bool:
+        return specialist_for(str(key).split("|", 1)[0]) == "retired"
+
+    retired_sources = sorted(s for s in derived if _retired(s))
+    if retired_sources:
+        derived = {s: w for s, w in derived.items() if not _retired(s)}
+        derived_scoped = {k: w for k, w in derived_scoped.items() if not _retired(k)}
+        scope_trackers = {k: t for k, t in scope_trackers.items() if not _retired(k)}
+        if bootstrap_weights:  # only the weight-writing pass mutates the table
+            for _s in retired_sources:
+                try:
+                    conn.execute("DELETE FROM source_trust WHERE source=?", (_s,))
+                except Exception:  # noqa: BLE001 - best-effort cleanup, never fatal
+                    pass
+
     retro_source_evidence: dict[str, Any] = {
         "status": "skipped_fast_recalibration", "mode": "retro",
         "authority": "report_only", "counts_toward_live_weights": False,

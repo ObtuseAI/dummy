@@ -59,6 +59,29 @@ def test_run_backtest_scores_sources_and_bootstraps(tmp_path):
         ledger.close()
 
 
+def test_run_backtest_purges_retired_sources_from_weights(tmp_path):
+    # Wave-82: retired-vertical sources (ufc/f1/weather/commodities) are graded
+    # historically but dropped from live weight derivation + persistence -- they
+    # can never fuse or promote, so keeping them is dead weight.
+    ledger = AutonomyLedger(db_path=tmp_path / "l.db")
+    try:
+        for ticker, result in [("A", True), ("B", False)]:
+            ledger.record_signal(_signal("market_prior", ticker, 0.5))
+            ledger.record_signal(_signal("mlb_live_winner", ticker, 0.9 if result else 0.1))
+            ledger.record_signal(_signal("ufc_fight_winner", ticker, 0.9 if result else 0.1))
+            ledger.record_signal(_signal("weather_openmeteo", ticker, 0.8 if result else 0.2))
+            ledger.record_settlement(ticker, result)
+        report = run_backtest(ledger, bootstrap_weights=True)
+        # An active source keeps its weight; retired ones are purged.
+        assert "mlb_live_winner" in report["derived_weights"]
+        assert "ufc_fight_winner" not in report["derived_weights"]
+        assert "weather_openmeteo" not in report["derived_weights"]
+        # And they carry no persisted trust weight (default 1.0 fallback).
+        assert ledger.get_weight("ufc_fight_winner") == 1.0
+    finally:
+        ledger.close()
+
+
 def test_run_backtest_reports_realized_pnl(tmp_path):
     from autonomy.ontology import OutcomeKind, TradeOutcome
 

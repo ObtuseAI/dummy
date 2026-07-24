@@ -39,7 +39,8 @@ def test_specialist_for_resolves_exact_and_prefixed_sources():
         "market_prior": "market", "market_debias": "market",
         "sports_elo": "sports_elo", "sportsbook_consensus": "sportsbook",
         "cross_venue_polymarket": "cross_venue",
-        "commodities_spot_vol": "commodities", "weather_openmeteo": "weather",
+        # Wave-82: retired verticals -> "retired" home (dropped from live weights).
+        "commodities_spot_vol": "retired", "weather_openmeteo": "retired",
     }
     for source, label in exact.items():
         assert specialist_for(source) == label
