@@ -1,6 +1,3 @@
-from pathlib import Path
-
-
 def test_dashboard_v6_report(monkeypatch):
     from archive.report_scripts.generate_v6_reports import generate_dashboard_v6_report
     from archive.routes import v6_routes
@@ -10,11 +7,11 @@ def test_dashboard_v6_report(monkeypatch):
     monkeypatch.setattr(v6_routes, "_credentials_present", lambda: False)
     report = generate_dashboard_v6_report()
     assert report["verdict"] == "PASS"
-    assert report["frontend_built"] is True
+    # Wave-85: the archived v6 verdict no longer depends on a local npm build.
+    # dashboard/frontend is frozen archive source with no build tooling, so
+    # "was the frontend built" is not a property of the archived surface.
+    assert report["frontend_built"] is None
+    assert report["frontend_build_status"] == "not_applicable_frozen_archive_source"
     assert report["archive_surface"] == "offline_archive"
     assert report["operator_guard_verified"] is True
     assert report["endpoints"] == report["expected_statuses"]
-
-
-def test_v6_frontend_dist_exists():
-    assert (Path("C:/src/engine/dummy/dashboard/frontend/dist/index.html")).exists()
