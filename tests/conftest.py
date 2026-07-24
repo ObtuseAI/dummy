@@ -20,8 +20,20 @@ os.environ.setdefault("DUMMY_DASHBOARD_ARCHIVE_SURFACE", "test-only")
 # fresh clone (CI) that evidence cannot exist, so those tests skip with an
 # explicit reason instead of failing. The full suite still runs unreduced on
 # the workstation.
+#
+# This probe used to be ``(artifacts/dummy).exists()``, which made the whole
+# suite ORDER-DEPENDENT (2026-07-24 audit, HIGH): the directory was created as
+# an import side effect of the report generators, so a fresh worktree passed on
+# run 1 (everything skipped) and reported 281 failures on run 2 (everything
+# un-skipped against an empty directory). The import-time creation is fixed at
+# the source, but the probe itself must also be unfalsifiable: it now looks for
+# the historical *milestone* reports (323 of them on the workstation), which no
+# test writes -- a full traced suite run writes 24 distinct files under
+# artifacts/dummy and not one of them matches final_report_v*.json.
+_EVIDENCE_DIR = _PROJECT_ROOT / "artifacts" / "dummy"
 _WORKSTATION_EVIDENCE = (
-    (_PROJECT_ROOT / "artifacts" / "dummy").exists()
+    _EVIDENCE_DIR.is_dir()
+    and any(_EVIDENCE_DIR.glob("final_report_v*.json"))
     and Path("C:/src/engine/obtuse/blunder").exists()
 )
 _WORKSTATION_ONLY = set(
@@ -89,6 +101,50 @@ def model_network_capability():
     )
 
 
+@pytest.fixture
+def isolated_report_artifacts(monkeypatch, tmp_path):
+    """Point every loaded report generator's ``ARTIFACTS`` at a tmp directory.
+
+    Opt-in, deliberately NOT autouse.  The workstation-only governance tests
+    legitimately *read* historical milestone evidence out of the real
+    artifacts/dummy tree (250 reads from these very modules in one subset run),
+    so a blanket redirect would break them.  This fixture exists for the tests
+    that *write*: an orchestrator test would patch only the top module's
+    ``ARTIFACTS`` while the sub-generators it calls kept their own module-level
+    constant and wrote live governance evidence anyway.
+
+    Returns the tmp directory so a test can assert on what was written.
+    """
+    real = _PROJECT_ROOT / "artifacts" / "dummy"
+    target = tmp_path / "artifacts" / "dummy"
+    target.mkdir(parents=True, exist_ok=True)
+    # The V8 orchestrator imports its sub-generators lazily, inside main(), so
+    # they are not necessarily in sys.modules yet when this fixture runs.
+    # Import them up front; they are exactly the modules that used to escape a
+    # test's isolation and write live evidence.
+    import importlib
+
+    for name in (
+        "generate_v8_reports",
+        "generate_v8_firewall_reports",
+        "generate_v8_identity_reports",
+        "generate_v8_kalshi_reports",
+        "generate_v8_model_provider_reports",
+        "generate_v8_rehearsal_reports",
+    ):
+        importlib.import_module(f"archive.report_scripts.{name}")
+    for module in list(sys.modules.values()):
+        if module is None:
+            continue
+        try:
+            artifacts = getattr(module, "ARTIFACTS")
+        except (AttributeError, RuntimeError):
+            continue
+        if isinstance(artifacts, Path) and Path(artifacts) == real:
+            monkeypatch.setattr(module, "ARTIFACTS", type(artifacts)(target))
+    return target
+
+
 @pytest.fixture(autouse=True)
 def _isolated_evidence_root(monkeypatch, tmp_path):
     """Route second-proof evidence dirs to tmp so tests never write into the
@@ -131,6 +187,80 @@ def _isolated_evidence_root(monkeypatch, tmp_path):
 
     monkeypatch.setattr(
         _history_store, "DEFAULT_PATH", tmp_path / "sports_history.db")
+    # core.logger's JsonlHandler appends to the REAL logs/dummy.jsonl -- the
+    # live 16 MB telemetry tape that DummyLogRotation bounds -- for every log
+    # line any test triggers.  The handler resolves LOG_FILE at emit time, so
+    # redirecting the module attribute is enough.
+    from core import logger as _logger
+    from core.evidence_dir import EvidencePath
+
+    monkeypatch.setattr(
+        _logger, "LOG_FILE", EvidencePath(tmp_path / "logs" / "dummy.jsonl"))
+    # The enforced daily LLM spend ledger.  Parts of the suite open the live
+    # model gate against a mocked transport and a reservation is never refunded
+    # when the call "fails", so a plain pytest run charged the operator's real
+    # budget -- and a polluted ledger later refuses real calls (fail-closed).
+    monkeypatch.setenv(
+        "DUMMY_LLM_SPEND_STATE_PATH",
+        str(tmp_path / "runtime" / "autonomy" / "llm_spend_budget.json"),
+    )
+    # SeasonMonitor -- and every sports signal that default-constructs one
+    # instead of injecting a stub -- persists to the RELATIVE path
+    # runtime/autonomy/season_state.json, i.e. the live file, because pytest
+    # runs from the repo root.
+    _season_state = tmp_path / "runtime" / "autonomy" / "season_state.json"
+
+    from autonomy import scope_analytics as _scope_analytics
+    from autonomy.specialists import seasons as _seasons
+
+    monkeypatch.setattr(_seasons, "STATE_PATH", _season_state)
+    monkeypatch.setattr(_scope_analytics, "_SEASON_STATE_PATH", _season_state)
+    # Same story for the remaining relative runtime/autonomy artifacts a test
+    # can rewrite in place (the audit's "artifacts/dummy" leak had siblings).
+    from autonomy import backtest as _backtest
+    from autonomy import exit_advisor as _exit_advisor
+    from autonomy import matchup_lens as _matchup_lens
+    from autonomy import top_threat as _top_threat
+    from autonomy.market_pressure.splits import service as _splits
+
+    _runtime_autonomy = tmp_path / "runtime" / "autonomy"
+    for _module, _attr, _leaf in (
+        (_backtest, "RECAL_OOS_DELTA_PATH", "recal_oos_delta.json"),
+        (_exit_advisor, "EXIT_ARTIFACT_PATH", "exit_advisories.json"),
+        (_matchup_lens, "REPORT_PATH", "matchup_report.json"),
+        (_matchup_lens, "RECAL_PATH", "last_recalibration.json"),
+        (_matchup_lens, "BOARD_PATH", "bet_board.json"),
+        (_top_threat, "REPORT_PATH", "top_threat.json"),
+        (_splits, "CACHE_DIR", "splits_cache"),
+        (_splits, "ARCHIVE_DIR", "splits_archive"),
+    ):
+        monkeypatch.setattr(_module, _attr, _runtime_autonomy / _leaf)
+    # A public-data Fetcher built without an explicit cache_dir filled the LIVE
+    # ingest cache (and created it) straight from unit tests.
+    from autonomy.ingest import fetcher as _fetcher
+
+    monkeypatch.setattr(
+        _fetcher, "DEFAULT_CACHE_DIR", _runtime_autonomy / "ingest_cache")
+    # Sports signals resolve their model/warm-state directory from this module
+    # constant when no model_dir is injected; PowerRatingsSignal persists a
+    # degraded-streak counter there, i.e. into the LIVE runtime/autonomy.
+    from autonomy.signals import sports_intelligence as _sports_intelligence
+
+    monkeypatch.setattr(_sports_intelligence, "MODEL_DIR", _runtime_autonomy)
+    # The operator activation tool writes a REAL operator approval file from a
+    # repo-root-relative path, and three test modules drive that command.
+    # Patched here rather than imported: the tool is heavy and only those
+    # modules load it (they do so at collection, so it is in sys.modules by
+    # the time any test body runs).
+    _ofc = sys.modules.get(
+        "tools.operator_authority_appliance.operator_full_completion")
+    if _ofc is not None:
+        monkeypatch.setattr(
+            _ofc,
+            "SECOND_PROOF_APPROVAL_PATH",
+            tmp_path / "runtime" / "approvals"
+            / "dummy_second_controlled_real_broker_proof_approval.json",
+        )
 
 
 @pytest.fixture(autouse=True)

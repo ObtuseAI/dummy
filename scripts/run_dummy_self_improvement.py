@@ -85,13 +85,18 @@ def main() -> int:
 
     from autonomy.improvement_planner import assemble_plan, write_plan
 
-    plan = assemble_plan()
-    plan["chain"] = {
+    chain = {
         "ran_at": datetime.now(timezone.utc).isoformat(),
         "steps": outcomes,
         "failed_steps": failed_steps,
         "ok": not failed_steps,
     }
+    # Pass THIS run's chain outcome in, rather than only stamping it onto the
+    # finished plan: the planner raises a failed step to a top-severity item,
+    # and reading it back from the previous artifact would report every chain
+    # failure one run late.
+    plan = assemble_plan(chain=chain)
+    plan["chain"] = chain
     path = write_plan(plan)
     print(json.dumps({
         "status": "OK" if not failed_steps else "STEP_FAILURES",

@@ -1,7 +1,6 @@
 import json
 from datetime import datetime, timezone
 from decimal import Decimal
-from pathlib import Path
 
 from calibration.schema import (
     CalibrationMetrics,
@@ -111,8 +110,10 @@ def test_v2_schema_round_trip_json():
     assert restored.no_trade_reason == record.no_trade_reason
 
 
-def test_forecast_metric_schema_report_v2():
-    artifact_dir = Path("artifacts/dummy")
+def test_forecast_metric_schema_report_v2(tmp_path):
+    # Was Path("artifacts/dummy"): a relative path resolved against the repo
+    # root, so this test wrote into the REAL governance evidence tree.
+    artifact_dir = tmp_path / "artifacts" / "dummy"
     artifact_dir.mkdir(parents=True, exist_ok=True)
 
     record = ForecastRecordV2(

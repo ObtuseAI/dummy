@@ -1,3 +1,18 @@
+"""Single-order cap + compliance precheck. NOT the risk brain.
+
+Naming trap (2026-07-24 audit): "governor" reads like the system's risk
+authority, but this module is only the two stateless per-order checks below.
+The real risk engine -- bankroll staging, drawdown ladder, exposure and
+correlated-group limits, position caps, self-stop -- is
+``autonomy/risk_brain.py`` (state in ``autonomy/risk_state.py``, consumed by
+``autonomy/allocator.py``), and the final live-submit authority is
+``live_firewall/firewall.py``. Nothing here sizes a position or grants
+execution authority.
+
+The module keeps its name because ~295 archived ``predator_mesh/vNN``
+milestone snapshots import this exact path and are required to stay
+byte-identical; renaming it would rewrite history rather than fix a bug.
+"""
 from core.ontology import RiskVerdict, TradeProposal, CapConfig
 
 

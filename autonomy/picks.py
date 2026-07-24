@@ -329,7 +329,16 @@ def llm_voice_sources(
     stable per-voice source (``llm_panel_v3_{provider}_{digest}`` plus the
     bounded ``llm_debate`` aggregate); this surfaces which voices exist so
     the nightly picks report can grade each one. Observational only.
+
+    Installs the ``signal_history`` union view itself: it is a per-CONNECTION
+    temp view, and this is an entry point (callers reach it before
+    ``live_picks_for_settled_markets``), so relying on another function to have
+    installed it is what made this path fail with "no such table:
+    signal_history" until the 2026-07-24 failure rail exposed it.
     """
+    from autonomy.retention import ensure_signal_history
+
+    ensure_signal_history(conn)
     clause = ""
     params: list[Any] = []
     if days is not None:

@@ -8,7 +8,11 @@ import pytest
 
 from autonomy.ledger import AutonomyLedger
 from autonomy.ontology import Signal
-from autonomy.retention import default_archive_path, enforce_retention
+from autonomy.retention import (
+    default_archive_path,
+    enforce_retention,
+    ensure_signal_history,
+)
 from autonomy.strategy_miner import load_settled_rows
 
 
@@ -225,3 +229,85 @@ def test_retention_replays_cleanly_after_crash_between_phases(tmp_path: Path) ->
         assert archive.execute("PRAGMA integrity_check").fetchone()[0] == "ok"
     finally:
         archive.close()
+
+
+def test_ensure_signal_history_installs_on_a_fresh_connection(tmp_path: Path) -> None:
+    """A fresh connection has no ``signal_history``: it is a per-CONNECTION temp
+    view. Two report writers queried it without installing and died with "no
+    such table" for days (2026-07-24)."""
+    db = tmp_path / "ledger.db"
+    _fixture_ledger(db)
+    conn = sqlite3.connect(f"file:{db.as_posix()}?mode=ro", uri=True)
+    try:
+        with pytest.raises(sqlite3.OperationalError, match="signal_history"):
+            conn.execute("SELECT 1 FROM signal_history LIMIT 1")
+        assert ensure_signal_history(conn) is True
+        assert conn.execute("SELECT COUNT(*) FROM signal_history").fetchone()[0] == 4
+        # Idempotent: a second call is a no-op, not a re-install.
+        assert ensure_signal_history(conn) is False
+    finally:
+        conn.close()
+
+
+def test_ensure_signal_history_never_clobbers_a_supplied_relation() -> None:
+    """Some callers pass a synthetic connection that already provides its own
+    ``signal_history`` and has no ``main.signals`` to build a view over."""
+    conn = sqlite3.connect(":memory:")
+    try:
+        conn.execute("CREATE TABLE signal_history(source TEXT, market_ticker TEXT)")
+        conn.execute("INSERT INTO signal_history VALUES ('llm_panel_v3_x', 'T1')")
+        assert ensure_signal_history(conn) is False
+        assert conn.execute("SELECT source FROM signal_history").fetchone()[0] == (
+            "llm_panel_v3_x"
+        )
+    finally:
+        conn.close()
+
+
+def test_report_writer_entry_points_work_on_a_fresh_connection(tmp_path: Path) -> None:
+    """The exact regression: these entry points are reached before anything
+    else installs the view, so each must ensure it itself."""
+    from autonomy.picks import llm_voice_sources
+
+    db = tmp_path / "ledger.db"
+    _fixture_ledger(db)
+    conn = sqlite3.connect(f"file:{db.as_posix()}?mode=ro", uri=True)
+    try:
+        assert llm_voice_sources(conn, days=None) == ()
+    finally:
+        conn.close()
+
+
+def test_bounded_statements_interrupts_and_always_clears(tmp_path: Path) -> None:
+    """A report writer must fail fast and recorded, not run the readiness task
+    into its scheduler kill (a killed process writes no failure artifact)."""
+    import time as _time
+
+    from autonomy.retention import bounded_statements
+
+    db = tmp_path / "ledger.db"
+    _fixture_ledger(db)
+    conn = sqlite3.connect(db)
+    try:
+        conn.execute(
+            "WITH RECURSIVE seed(x) AS (SELECT 1 UNION ALL SELECT x+1 FROM seed"
+            " LIMIT 20000) INSERT INTO signals(source,market_ticker,probability_yes,"
+            "uncertainty,rationale,features,created_at,mode,ingested_at,ingest_version)"
+            " SELECT 'perf','T'||x,0.5,0.1,'r','{}','2026-07-01T00:00:00+00:00',"
+            "'live','2026-07-01T00:00:00+00:00',2 FROM seed"
+        )
+        conn.commit()
+        with pytest.raises(sqlite3.OperationalError, match="interrupt"):
+            with bounded_statements(conn, 0.05):
+                _time.sleep(0.06)
+                conn.execute(
+                    "SELECT COUNT(*) FROM signals a, signals b"
+                    " WHERE a.rationale = b.rationale"
+                ).fetchone()
+        # The handler is cleared even though the block raised, so the next
+        # writer on this connection is not silently pre-aborted.
+        assert conn.execute("SELECT COUNT(*) FROM signals").fetchone()[0] == 20004
+        with bounded_statements(conn, 0):   # non-positive disables the bound
+            assert conn.execute("SELECT COUNT(*) FROM signals").fetchone()[0] == 20004
+    finally:
+        conn.close()

@@ -2,11 +2,14 @@ import json
 import logging
 from datetime import datetime, timezone
 from pathlib import Path
+from core.evidence_dir import EvidencePath
 from core.secret_guard import redact
 
 LOG_DIR = Path(__file__).parent.parent / "logs"
-LOG_DIR.mkdir(parents=True, exist_ok=True)
-LOG_FILE = LOG_DIR / "dummy.jsonl"
+# Created on the first emit, NOT at import: importing anything that reaches
+# core.logger (kalshi.client does) otherwise materialised the real logs/ tree
+# during pytest collection.
+LOG_FILE = EvidencePath(LOG_DIR / "dummy.jsonl")
 
 # LogRecord attributes that are plumbing, not caller-supplied context. Anything
 # a caller passes via ``extra=`` lands as an unknown attribute and is emitted.

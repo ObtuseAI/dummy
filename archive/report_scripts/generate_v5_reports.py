@@ -12,11 +12,12 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 ROOT = Path(__file__).parent.parent.parent
-ARTIFACTS = ROOT / "artifacts" / "dummy"
-ARTIFACTS.mkdir(parents=True, exist_ok=True)
-
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
+
+from core.evidence_dir import EvidencePath
+
+ARTIFACTS = EvidencePath(ROOT / "artifacts" / "dummy")
 
 
 def now_iso() -> str:

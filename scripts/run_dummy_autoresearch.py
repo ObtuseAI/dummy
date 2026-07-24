@@ -1,12 +1,39 @@
-"""Run Dummy's bounded real-ledger autoresearch and forward-paper cycle."""
+"""Run Dummy's bounded real-ledger autoresearch and forward-paper cycle.
+
+Unattended-execution contract (2026-07-24 audit, s6 -- the lab had an
+installer but no scheduled task, and its artifacts sat 9 days stale):
+
+* READ-ONLY over the ledger. ``connect_ledger_readonly`` opens ``ledger.db``
+  with ``mode=ro`` + ``PRAGMA query_only=ON``; this process never writes it.
+* NO NETWORK, NO SPEND. Nothing under ``dummy/autoresearch`` performs HTTP or
+  model calls -- the whole cycle is local SQLite reads plus CPU.
+* BOUNDED RUNTIME. ``--max-seconds`` is a cooperative deadline: cohorts not
+  reached are marked deferred rather than dropped or faked. The scheduler's
+  ExecutionTimeLimit remains the hard backstop.
+* BOUNDED DISK. The append-only ignition-trial ledger is tail-capped by
+  ``--max-trial-lines``; any truncation is disclosed in the status artifact.
+* FAIL-SOFT. Every failure (missing ledger, insufficient evidence, unexpected
+  error) writes a status artifact and exits without a traceback; a genuine
+  error exits non-zero so the scheduler's Last Result surfaces it.
+* OBSERVABLE. ``runtime/autonomy/autoresearch_status.json`` carries
+  ``generated_at`` / ``last_success_at`` so the watchdog can see staleness.
+
+It proposes and shadow-evaluates only: no orders, no execution authority, no
+automatic promotion.
+"""
 
 from __future__ import annotations
 
 import argparse
+import os
+import tempfile
+import time
+import traceback
 from datetime import datetime, timezone
 import json
 import sys
 from pathlib import Path
+from typing import Callable
 
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
@@ -42,6 +69,95 @@ def _read_json(path: Path) -> dict[str, object] | None:
     return value if isinstance(value, dict) else None
 
 
+class InsufficientEvidence(RuntimeError):
+    """Not enough settled evidence for a campaign -- a normal, non-error state."""
+
+
+DEFAULT_OUTPUT_DIR = ROOT / "runtime" / "autonomy" / "autoresearch"
+STATUS_FILENAME = "autoresearch_status.json"
+DEFAULT_MAX_SECONDS = 600.0
+DEFAULT_MAX_TRIAL_LINES = 50_000
+
+
+def default_status_path(output_dir: Path) -> Path:
+    """Status artifact sits beside the output dir, never at a fixed location.
+
+    For the production output dir this resolves to
+    ``runtime/autonomy/autoresearch_status.json`` (flat, where the watchdog
+    reads task artifacts). For a test or ad-hoc ``--output-dir`` it stays in
+    that tree, so an offline run can never stamp the live runtime status.
+    """
+    return output_dir.parent / STATUS_FILENAME
+
+
+def _write_status(path: Path, status: dict[str, object]) -> None:
+    """Atomically write the status artifact; never raise into the caller."""
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        fd, tmp = tempfile.mkstemp(dir=str(path.parent), suffix=".tmp")
+        try:
+            with os.fdopen(fd, "w", encoding="utf-8") as stream:
+                json.dump(status, stream, indent=2, sort_keys=True, default=str)
+            os.replace(tmp, path)
+        finally:
+            if os.path.exists(tmp):
+                os.unlink(tmp)
+    except OSError as exc:  # pragma: no cover - disk-level failure
+        print(f"status write failed: {exc}", file=sys.stderr)
+
+
+def _previous_success(path: Path) -> str | None:
+    previous = _read_json(path)
+    if not previous:
+        return None
+    value = previous.get("last_success_at")
+    return str(value) if value else None
+
+
+def cap_trial_ledger(path: Path, max_lines: int) -> dict[str, object]:
+    """Tail-cap the append-only ignition-trial ledger.
+
+    One run appends one line per completed cohort campaign, so an unattended
+    schedule grows this file forever. The newest ``max_lines`` trials are kept
+    (the ignition report reads recent history), the drop count is reported so
+    the truncation is never silent, and a locked or unreadable file is left
+    alone.
+    """
+    result: dict[str, object] = {
+        "path": str(path),
+        "max_lines": max_lines,
+        "truncated": False,
+        "lines_dropped": 0,
+    }
+    if max_lines <= 0 or not path.exists():
+        return result
+    try:
+        lines = path.read_text(encoding="utf-8").splitlines(keepends=True)
+    except OSError:
+        result["error"] = "unreadable"
+        return result
+    if len(lines) <= max_lines:
+        result["lines_retained"] = len(lines)
+        return result
+    keep = lines[-max_lines:]
+    try:
+        fd, tmp = tempfile.mkstemp(dir=str(path.parent), suffix=".tmp")
+        try:
+            with os.fdopen(fd, "w", encoding="utf-8") as stream:
+                stream.writelines(keep)
+            os.replace(tmp, path)
+        finally:
+            if os.path.exists(tmp):
+                os.unlink(tmp)
+    except OSError:
+        result["error"] = "rotation_failed_left_intact"
+        return result
+    result["truncated"] = True
+    result["lines_dropped"] = len(lines) - len(keep)
+    result["lines_retained"] = len(keep)
+    return result
+
+
 def _parse_time(value: str | None) -> datetime:
     if value is None:
         return datetime.now(timezone.utc)
@@ -57,11 +173,13 @@ def run_cycle(
     output_dir: Path,
     ticker_prefix: str,
     issued_at: datetime,
+    deadline: Callable[[], bool] | None = None,
 ) -> dict[str, object]:
     rows = load_ledger_evidence(ledger_path)
     multi = run_multi_cohort_campaigns(
         rows=rows,
         output_dir=output_dir,
+        deadline=deadline,
     )
     campaign_path = output_dir / "campaign_report.json"
     registry_path = output_dir / "forward_registry.json"
@@ -142,7 +260,9 @@ def run_cycle(
             "scope": entry["scope"],
         }
     if primary is None:
-        raise ValueError("no exact cohort has enough evidence for autoresearch")
+        raise InsufficientEvidence(
+            "no exact cohort has enough evidence for autoresearch"
+        )
 
     write_campaign_report(primary["campaign"], campaign_path)
     write_forward_artifact(primary["registry"], registry_path)
@@ -210,6 +330,10 @@ def run_cycle(
             "discovered": multi["discovered_cohorts"],
             "campaigns_completed": multi["campaigns_completed"],
             "forward_cohorts": len(forward_cohorts),
+            "run_deadline_reached": bool(multi.get("run_deadline_reached")),
+            "cohorts_deferred_by_deadline": int(
+                multi.get("cohorts_deferred_by_deadline") or 0
+            ),
         },
         "outputs": {
             "campaign": str(campaign_path),
@@ -232,7 +356,7 @@ def run_cycle(
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser()
+    parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--ledger",
         type=Path,
@@ -241,17 +365,122 @@ def main() -> int:
     parser.add_argument(
         "--output-dir",
         type=Path,
-        default=ROOT / "runtime" / "autonomy" / "autoresearch",
+        default=DEFAULT_OUTPUT_DIR,
     )
     parser.add_argument("--ticker-prefix", default="KXBTC15M")
     parser.add_argument("--issued-at")
-    args = parser.parse_args()
-    summary = run_cycle(
-        ledger_path=args.ledger,
-        output_dir=args.output_dir,
-        ticker_prefix=args.ticker_prefix,
-        issued_at=_parse_time(args.issued_at),
+    parser.add_argument(
+        "--status-path",
+        type=Path,
+        default=None,
+        help=(
+            "status artifact the watchdog reads for staleness "
+            "(default: <output-dir>/../autoresearch_status.json)"
+        ),
     )
+    parser.add_argument(
+        "--max-seconds",
+        type=float,
+        default=DEFAULT_MAX_SECONDS,
+        help="cooperative run deadline; 0 disables (scheduler limit still applies)",
+    )
+    parser.add_argument(
+        "--max-trial-lines",
+        type=int,
+        default=DEFAULT_MAX_TRIAL_LINES,
+        help="tail cap for the append-only ignition trial ledger; 0 disables",
+    )
+    args = parser.parse_args()
+    if args.status_path is None:
+        args.status_path = default_status_path(args.output_dir)
+
+    started = time.monotonic()
+    started_at = datetime.now(timezone.utc)
+    status: dict[str, object] = {
+        "schema_version": 1,
+        "task": "DummyAutoresearch",
+        "started_at": started_at.isoformat(),
+        "generated_at": started_at.isoformat(),
+        "last_success_at": _previous_success(args.status_path),
+        "status": "RUNNING",
+        "ledger_access": "read-only",
+        "network_calls": False,
+        "orders_placed": False,
+        "execution_authority": False,
+        "capital_authority": False,
+        "automatic_promotion": False,
+        "max_seconds": args.max_seconds,
+    }
+    _write_status(args.status_path, status)
+
+    def _deadline() -> bool:
+        if args.max_seconds <= 0:
+            return False
+        return (time.monotonic() - started) >= args.max_seconds
+
+    try:
+        if not args.ledger.exists():
+            raise InsufficientEvidence(f"ledger not found: {args.ledger}")
+        summary = run_cycle(
+            ledger_path=args.ledger,
+            output_dir=args.output_dir,
+            ticker_prefix=args.ticker_prefix,
+            issued_at=_parse_time(args.issued_at),
+            deadline=_deadline,
+        )
+    except InsufficientEvidence as exc:
+        # Normal state, not a failure: nothing to research yet -- or the run
+        # deadline arrived before any cohort started.
+        finished = datetime.now(timezone.utc)
+        status.update({
+            "status": (
+                "DEFERRED_RUN_DEADLINE"
+                if _deadline()
+                else "SKIPPED_INSUFFICIENT_EVIDENCE"
+            ),
+            "generated_at": finished.isoformat(),
+            "duration_seconds": round(time.monotonic() - started, 3),
+            "detail": str(exc),
+        })
+        _write_status(args.status_path, status)
+        print(json.dumps({"status": status["status"], "detail": str(exc)}))
+        # Neither state is an error: exit 0 so the scheduler's Last Result
+        # stays clean and only real failures raise the watchdog.
+        return 0
+    except Exception as exc:  # fail-soft: an unattended run must not hang open
+        finished = datetime.now(timezone.utc)
+        status.update({
+            "status": "ERROR",
+            "generated_at": finished.isoformat(),
+            "duration_seconds": round(time.monotonic() - started, 3),
+            "error_type": type(exc).__name__,
+            "error": str(exc)[:2000],
+            "traceback_tail": "".join(
+                traceback.format_exception(type(exc), exc, exc.__traceback__)
+            )[-2000:],
+        })
+        _write_status(args.status_path, status)
+        print(json.dumps({"status": "ERROR", "error": str(exc)[:500]}), file=sys.stderr)
+        return 1
+
+    rotation = cap_trial_ledger(
+        args.output_dir / "ignition_trials.jsonl", args.max_trial_lines,
+    )
+    finished = datetime.now(timezone.utc)
+    status.update({
+        "status": "OK",
+        "generated_at": finished.isoformat(),
+        "last_success_at": finished.isoformat(),
+        "duration_seconds": round(time.monotonic() - started, 3),
+        "evidence_rows": summary.get("evidence_rows"),
+        "multi_cohort": summary.get("multi_cohort"),
+        "forward_observations_issued": summary.get("forward_observations_issued"),
+        "forward_settlements": summary.get("forward_settlements"),
+        "highest_supported_level": summary.get("highest_supported_level"),
+        "trial_ledger_rotation": rotation,
+        "output_dir": str(args.output_dir),
+    })
+    _write_status(args.status_path, status)
     print(json.dumps(summary, sort_keys=True))
     return 0
 

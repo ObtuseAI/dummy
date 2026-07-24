@@ -11,7 +11,6 @@ from typing import Any
 from calibration.schema import ForecastRecord, ForecastRecordV2, SettlementRecord
 
 DATA_DIR = Path("data/calibration")
-ARTIFACT_DIR = Path("artifacts/dummy/calibration")
 _SETTLEMENT_LOCKS_GUARD = Lock()
 _SETTLEMENT_LOCKS: dict[Path, RLock] = {}
 _FILE_LOCK_TIMEOUT_SECONDS = 10.0
@@ -86,7 +85,12 @@ class CalibrationStorage:
     def __init__(self, data_dir: Path | None = None):
         self.data_dir = data_dir or DATA_DIR
         self.data_dir.mkdir(parents=True, exist_ok=True)
-        ARTIFACT_DIR.mkdir(parents=True, exist_ok=True)
+        # There used to be an unconditional
+        # ``Path("artifacts/dummy/calibration").mkdir(parents=True, ...)`` here.
+        # Nothing in this module -- or anywhere else in the repo -- ever wrote
+        # into that directory, so every CalibrationStorage() construction just
+        # re-created the gitignored evidence tree as a side effect (66 hits in
+        # one suite run), even when data_dir was injected to a tmp path.
 
     def _path(self, name: str) -> Path:
         return self.data_dir / f"{name}.jsonl"

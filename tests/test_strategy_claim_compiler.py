@@ -1,15 +1,20 @@
 """Strategy Claim Compiler: extraction, falsifiability, interpretations, registry."""
 from __future__ import annotations
 
+import json
 from datetime import datetime, timezone
+from pathlib import Path
 
+from autonomy import strategy_claim_compiler
 from autonomy.strategy_claim_compiler import (
+    PIPELINE_STATUS,
     assess_falsifiability,
     compile_claim,
     faithful_interpretations,
     heuristic_extract,
     mark_reproduced,
     record_claim,
+    registry_status,
 )
 
 NOW = datetime(2026, 7, 23, tzinfo=timezone.utc)
@@ -76,6 +81,100 @@ def test_compile_and_record_roundtrip(tmp_path):
     stored = json.loads(path.read_text(encoding="utf-8"))
     assert stored["claims"][cid]["reproducibility"]["status"] == "FAILED_TO_REPRODUCE"
     assert mark_reproduced("nope", reproduced=True, path=path) is False
+
+
+# --- Wave-84: the compiler is unwired and must say so -----------------------
+
+
+def test_compiled_claim_declares_it_is_unwired():
+    compiled = compile_claim(
+        "Long BTC 1h, enter on breakout, take profit +5%.", source="reddit", now=NOW,
+    )
+
+    # Falsifiable, and still not evidence of anything.
+    assert compiled["falsifiability"]["verdict"] == "TESTABLE"
+    assert compiled["pipeline_status"] == "UNWIRED_NO_AUTOMATED_CONSUMER"
+    assert compiled["wired_into_production"] is False
+    assert compiled["wired_into_strategy_miner"] is False
+    assert compiled["reproducibility"]["backtested"] is False
+    assert compiled["reproducibility"]["automated_backtest_consumer"] is None
+    assert compiled["authority"] == "research_spec_only_no_execution"
+
+
+def test_recorded_registry_header_declares_no_consumer(tmp_path):
+    path = tmp_path / "claims.json"
+    compiled = compile_claim(
+        "Short NFL favorites, entry when the line moves.", source="reddit", now=NOW,
+    )
+
+    document = record_claim(compiled, path=path)
+
+    assert document["registry_status"] == PIPELINE_STATUS
+    assert document["wired_into_production"] is False
+    assert document["wired_into_strategy_miner"] is False
+    assert document["automated_backtest_consumer"] is None
+    assert document["claim_count"] == 1
+    assert document["reproduced_claim_count"] == 0
+    assert document["updated_at"]
+    stored = json.loads(path.read_text(encoding="utf-8"))
+    assert stored["registry_status"] == PIPELINE_STATUS
+
+
+def test_manual_reproduction_stamp_is_labelled_as_manual(tmp_path):
+    path = tmp_path / "claims.json"
+    compiled = compile_claim(
+        "Long ETH 1d, enter on breakout, exit on stop loss.", source="x", now=NOW,
+    )
+    record_claim(compiled, path=path)
+    claim_id = compiled["claim"]["claim_id"]
+
+    assert mark_reproduced(claim_id, reproduced=True, path=path) is True
+
+    stored = json.loads(path.read_text(encoding="utf-8"))
+    entry = stored["claims"][claim_id]["reproducibility"]
+    assert entry["status"] == "REPRODUCED"
+    assert entry["recorded_by"] == "manual_operator_entry_not_an_automated_backtest"
+    assert stored["reproduced_claim_count"] == 1
+    # Recording an outcome does not make the pipeline live.
+    assert stored["registry_status"] == PIPELINE_STATUS
+
+
+def test_registry_status_reports_a_missing_registry_honestly(tmp_path):
+    missing = tmp_path / "never_written.json"
+
+    status = registry_status(missing)
+
+    assert status["registry_exists"] is False
+    assert status["registry_readable"] is False
+    assert status["claim_count"] == 0
+    assert status["registry_status"] == PIPELINE_STATUS
+    assert "claims" not in status
+
+
+def test_no_production_module_imports_the_compiler():
+    """The deprecation is only true while nothing wires it in."""
+    root = Path(strategy_claim_compiler.__file__).resolve().parents[1]
+    skip_parts = {
+        ".git", ".venv", "__pycache__", "tests", "archive", "scripts",
+        "node_modules", "runtime", "artifacts",
+    }
+    importers = []
+    for path in root.rglob("*.py"):
+        if skip_parts & set(path.parts):
+            continue
+        if path.resolve() == Path(strategy_claim_compiler.__file__).resolve():
+            continue
+        try:
+            text = path.read_text(encoding="utf-8", errors="ignore")
+        except OSError:
+            continue
+        if "strategy_claim_compiler" in text:
+            importers.append(str(path.relative_to(root)))
+
+    assert importers == [], (
+        "strategy_claim_compiler is documented as unwired; these modules now "
+        f"import it and the docstring/status fields must be corrected: {importers}"
+    )
 
 
 def test_injected_extractor_is_used():

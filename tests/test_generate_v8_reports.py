@@ -7,19 +7,20 @@ from archive.report_scripts.generate_v8_reports import main
 
 
 @pytest.mark.asyncio
-async def test_v8_orchestrator_writes_artifacts(tmp_path, monkeypatch):
+async def test_v8_orchestrator_writes_artifacts(tmp_path, monkeypatch, isolated_report_artifacts):
     """The V8 orchestrator writes the required summary reports.
 
     The real full-suite pytest must never run from inside a unit test.  We
     disable it explicitly and also inject a fake ``run_pytest_summary`` as
     defense in depth.
     """
-    artifacts = tmp_path / "dummy"
-    artifacts.mkdir(parents=True, exist_ok=True)
-
     # Patch artifact directory so the orchestrator writes into a temp location.
+    # isolated_report_artifacts also redirects the sub-generators the
+    # orchestrator imports inside main(); patching only the orchestrator left
+    # them writing into the REAL artifacts/dummy governance tree.
     import archive.report_scripts.generate_v8_reports as orchestrator
 
+    artifacts = isolated_report_artifacts
     monkeypatch.setattr(orchestrator, "ARTIFACTS", artifacts)
     # Unit tests must never reach a live market endpoint merely because the
     # operator shell happens to contain credentials.

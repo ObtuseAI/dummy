@@ -8,7 +8,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/python-3.14-4b8bbe" alt="Python 3.14">
+  <img src="https://img.shields.io/badge/python-3.11%20%7C%203.12%20%7C%203.14-4b8bbe" alt="Python 3.11, 3.12, 3.14">
   <img src="https://img.shields.io/badge/tests-7501%20passing-2ea44f" alt="7501 tests passing">
   <img src="https://img.shields.io/badge/mode-SHADOW%20·%20paper-1f9d55" alt="Shadow paper mode">
   <img src="https://img.shields.io/badge/promotion%20to%20capital-human--gated-e0a100" alt="Human-gated">
@@ -240,6 +240,24 @@ python scripts/run_dummy_autonomous.py stop           # instant, unconditional
 python scripts/run_dummy_sports_history_backfill.py   # refresh the sports history lake
 bash scripts/verify_wave_clean.sh                     # the full CI gate (add --cov)
 ```
+
+### Environment requirements
+
+- **Python 3.11 or newer** — the floor is real: `core/inherited_blunder/` imports
+  `typing.NotRequired`, which lands in 3.11. CI runs 3.11 · 3.12 · 3.14; the live
+  workstation runs 3.14.
+- **Canonical checkout path `C:\src\engine\dummy`** — identity and artifact-path gates assert
+  it, which is why CI mirrors its checkout there before running the suite.
+- **Sibling Blunder checkout at `C:\src\engine\obtuse\blunder`** — a *hard requirement for the
+  governance suite*, not for running Dummy. `core/inherited_blunder/` is a hash-pinned,
+  byte-identical copy of Blunder (pinned by `.blunder_source_manifest.json`, kept verbatim by
+  the `F401` exemption in `pyproject.toml`), and the separation tests re-hash the canonical
+  sibling checkout against that manifest. Without it — or without an
+  `artifacts/dummy/` directory — `tests/conftest.py` skips the 249 tests listed in
+  `tests/workstation_only_tests.txt`, including every Blunder copy-integrity and separation
+  test. The suite still reports green; it simply stops proving the vendored copy is
+  unmodified. No runtime code imports the sibling checkout, so the paper runtime, the
+  dashboard, and the desktop app are unaffected by its absence.
 
 Deeper detail lives in [`docs/`](docs/): [autonomy](docs/AUTONOMY.md),
 [council of specialists](docs/AUTONOMY.md#council-of-specialists),

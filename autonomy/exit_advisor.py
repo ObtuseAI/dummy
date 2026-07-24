@@ -300,8 +300,11 @@ def build_exit_advisories(
 def write_exit_advisory_artifact(
     positions: Iterable[dict[str, Any]],
     scored: Iterable[tuple[MarketView, Forecast]],
-    path: Path = EXIT_ARTIFACT_PATH,
+    path: Path | None = None,
 ) -> list[ExitAdvisory]:
+    # Resolved at CALL time, not bound into __defaults__ at import time, so the
+    # module constant stays redirectable (pytest routes it to tmp).
+    path = EXIT_ARTIFACT_PATH if path is None else path
     advisories = build_exit_advisories(positions, scored)
     payload = {
         "generated_at": datetime.now(timezone.utc).isoformat(),

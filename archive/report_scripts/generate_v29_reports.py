@@ -11,11 +11,12 @@ from pathlib import Path
 from typing import Any
 
 ROOT = Path(__file__).resolve().parent.parent.parent
-ARTIFACTS = ROOT / "artifacts" / "dummy"
-ARTIFACTS.mkdir(parents=True, exist_ok=True)
-
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
+
+from core.evidence_dir import EvidencePath
+
+ARTIFACTS = EvidencePath(ROOT / "artifacts" / "dummy")
 
 from predator_mesh.v29 import MILESTONE
 from predator_mesh.v29.reports import DEFAULT_REQUIRED_REPORT_NAMES, REPORT_NAMES, V29ReportFactory

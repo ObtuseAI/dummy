@@ -156,6 +156,10 @@ async def test_strategies_reads_candidate_report(tmp_path, monkeypatch):
                     # Weather repositories may remain contextual data sources
                     # for a sports target.
                     "source_category": "weather_prediction_market",
+                    # Wave-84: only a row that declares repo-derived provenance
+                    # counts as a candidate. Unlabelled rows are keyword-
+                    # template inventory (see test_repo_harvester_governance).
+                    "repo_derived_logic": True,
                 },
                 {"strategy_name": "KalshiWeatherForecastStrategy", "market_types": ["weather"]},
                 {"strategy_name": "CommoditiesEnergyStrategy", "market_types": ["commodities", "energy"]},

@@ -28,11 +28,12 @@ from pathlib import Path
 from typing import Any
 
 ROOT = Path(__file__).parent.parent.parent
-ARTIFACTS = ROOT / "artifacts" / "dummy"
-ARTIFACTS.mkdir(parents=True, exist_ok=True)
-
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
+
+from core.evidence_dir import EvidencePath
+
+ARTIFACTS = EvidencePath(ROOT / "artifacts" / "dummy")
 
 ORCHESTRATOR_TIMEOUT_SECONDS = 90
 

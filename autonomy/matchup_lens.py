@@ -166,11 +166,15 @@ def build_matchup_report(
 
 
 def write_matchup_report(
-    *, path: Path | str = REPORT_PATH,
-    board_path: Path = BOARD_PATH, recal_path: Path = RECAL_PATH,
+    *, path: Path | str | None = None,
+    board_path: Path | None = None, recal_path: Path | None = None,
 ) -> dict[str, Any]:
-    report = build_matchup_report(board_path=board_path, recal_path=recal_path)
-    target = Path(path)
+    # Resolved at CALL time so the module constants stay redirectable.
+    report = build_matchup_report(
+        board_path=BOARD_PATH if board_path is None else board_path,
+        recal_path=RECAL_PATH if recal_path is None else recal_path,
+    )
+    target = Path(REPORT_PATH if path is None else path)
     target.parent.mkdir(parents=True, exist_ok=True)
     tmp = target.with_suffix(".tmp")
     tmp.write_text(json.dumps(report, indent=2, sort_keys=True), encoding="utf-8")

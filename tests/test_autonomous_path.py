@@ -575,7 +575,7 @@ async def test_limit_orders_only_from_firewall():
     assert client.create_order.await_count == 0
 
 
-def test_firewall_order_path_report_generated():
+def test_firewall_order_path_report_generated(isolated_report_artifacts):
     path = generate_firewall_order_path_report()
     assert path.exists()
     data = json.loads(path.read_text())
@@ -584,7 +584,7 @@ def test_firewall_order_path_report_generated():
     assert "LiveBrokerFirewall.submit" in data["runtime_proof"]["live_order_chokepoint"]
 
 
-def test_autonomous_live_capped_path_report_generated():
+def test_autonomous_live_capped_path_report_generated(isolated_report_artifacts):
     path = generate_autonomous_live_capped_path_report()
     assert path.exists()
     data = json.loads(path.read_text())

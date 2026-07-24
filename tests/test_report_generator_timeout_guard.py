@@ -24,13 +24,15 @@ class _SlowProvider(BaseModelProvider):
 
 
 @pytest.mark.asyncio
-async def test_orchestrator_wraps_generators_in_wait_for(tmp_path, monkeypatch):
+async def test_orchestrator_wraps_generators_in_wait_for(tmp_path, monkeypatch, isolated_report_artifacts):
     """The V8 orchestrator must apply a hard timeout to every report generator."""
     import archive.report_scripts.generate_v8_reports as orchestrator
     import archive.report_scripts.generate_v8_model_provider_reports as model_reports
 
-    artifacts = tmp_path / "dummy"
-    artifacts.mkdir(parents=True, exist_ok=True)
+    # isolated_report_artifacts also redirects the sub-generators the
+    # orchestrator imports inside main(); patching only the orchestrator left
+    # them writing into the REAL artifacts/dummy governance tree.
+    artifacts = isolated_report_artifacts
     monkeypatch.setattr(orchestrator, "ARTIFACTS", artifacts)
     # Use a short timeout so the test proves the path without waiting 90s.
     monkeypatch.setattr(orchestrator, "ORCHESTRATOR_TIMEOUT_SECONDS", 2)

@@ -2,7 +2,6 @@ import json
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 from decimal import Decimal
-from pathlib import Path
 
 import pytest
 
@@ -204,7 +203,9 @@ def test_storage_generates_report(tmp_path):
         )
     )
 
-    artifact_dir = Path("artifacts/dummy")
+    # Was Path("artifacts/dummy"): a relative path resolved against the repo
+    # root, so this test wrote into the REAL governance evidence tree.
+    artifact_dir = tmp_path / "artifacts" / "dummy"
     artifact_dir.mkdir(parents=True, exist_ok=True)
     report_path = artifact_dir / "calibration_storage_report_v1.json"
     report = {

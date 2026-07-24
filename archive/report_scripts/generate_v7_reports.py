@@ -23,10 +23,11 @@ ROOT = Path(__file__).parent.parent.parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from archive.report_scripts.generate_v6_reports import main as v6_main
+from core.evidence_dir import EvidencePath
 
-ARTIFACTS = ROOT / "artifacts" / "dummy"
-ARTIFACTS.mkdir(parents=True, exist_ok=True)
+ARTIFACTS = EvidencePath(ROOT / "artifacts" / "dummy")
+
+from archive.report_scripts.generate_v6_reports import main as v6_main
 
 
 def now_iso() -> str:

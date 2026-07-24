@@ -4,8 +4,10 @@ Registration is a *precondition*, never authority: `auto_promotion` only
 counts witnessed-fill evidence that arrives strictly after an immutable
 registration whose fingerprint matches the one stamped on the candidate's
 own signals (`promotion_candidate_fingerprint`). Until a scope is registered
-its forward clock simply never starts — which is why the three historical
-edge candidates have zero forward evidence today.
+its forward clock simply never starts — which is why the historical edge
+candidates had zero forward evidence. A registration whose scope no longer
+matches what the source EMITS is equally inert: the scope must be the exact
+`autonomy.taxonomy.grading_scope` of a real emission's features.
 
 The fingerprint binds scope + the exact implementation bytes of the source's
 signal module at registration time, so a later re-implementation cannot
@@ -31,15 +33,27 @@ ROOT = Path(__file__).resolve().parent.parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+from autonomy.signals.market_debias import PROMOTION_ELIGIBLE_SCOPES
+
 REGISTRATIONS_PATH = ROOT / "runtime" / "autonomy" / "promotion_forward_registrations.json"
 
-# The three historical edge candidates from the 2026-07-22 elite audit,
-# mapped to the module that implements each source. Research candidates only;
-# promotion still requires every auto_promotion stage-1 gate to pass forward.
+MARKET_DEBIAS_MODULE = "autonomy/signals/market_debias.py"
+
+# The historical edge candidates from the 2026-07-22 elite audit, mapped to the
+# module that implements each source. Research candidates only; promotion still
+# requires every auto_promotion stage-1 gate to pass forward.
+#
+# market_debias scopes are IMPORTED from the signal module rather than repeated
+# here. The original literal ("market_debias|mlb|na|pre") went stale the moment
+# emissions started stamping market_type as "<type>@<horizon>" (8c43272): the
+# registered scope stopped matching any emission's grading_scope, so neither the
+# ledger fingerprint stamp nor the challenger lane could ever start that
+# candidate's forward clock. One source of truth removes that drift class.
 CANDIDATES: tuple[tuple[str, str], ...] = (
     ("crypto_equities_flow|sol|15m_direction|15m", "autonomy/signals/crypto_equities.py"),
     ("crypto_macro_regime|sol|15m_direction|15m", "autonomy/signals/crypto_macro.py"),
-    ("market_debias|mlb|na|pre", "autonomy/signals/market_debias.py"),
+) + tuple(
+    (scope, MARKET_DEBIAS_MODULE) for scope in sorted(PROMOTION_ELIGIBLE_SCOPES)
 )
 
 

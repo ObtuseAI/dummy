@@ -388,3 +388,151 @@ def test_autoresearch_cycle_cli_emits_complete_fail_closed_bundle(tmp_path: Path
     assert (output / "forward_registry.json").exists()
     assert (output / "forward_report.json").exists()
     assert (output / "ignition_report.json").exists()
+
+
+# --- Wave-84: unattended-execution safety for the DummyAutoresearch task ----
+
+RUNNER = Path(__file__).parents[1] / "scripts" / "run_dummy_autoresearch.py"
+
+
+def _run_runner(*args: str) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        [sys.executable, str(RUNNER), *args],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+
+def _status(output: Path) -> dict:
+    path = output.parent / "autoresearch_status.json"
+    assert path.exists(), "runner must always leave a status artifact"
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+def test_runner_status_artifact_is_written_beside_the_output_dir(tmp_path: Path) -> None:
+    ledger = tmp_path / "ledger.db"
+    _ledger(ledger)
+    output = tmp_path / "autoresearch"
+
+    result = _run_runner(
+        "--ledger", str(ledger),
+        "--output-dir", str(output),
+        "--issued-at", (NOW + timedelta(days=20)).isoformat(),
+    )
+
+    assert result.returncode == 0, result.stderr
+    status = _status(output)
+    assert status["status"] == "OK"
+    assert status["task"] == "DummyAutoresearch"
+    # Timestamps the watchdog can use for staleness.
+    assert status["generated_at"] and status["last_success_at"]
+    assert status["duration_seconds"] >= 0
+    assert status["ledger_access"] == "read-only"
+    assert status["network_calls"] is False
+    assert status["orders_placed"] is False
+    assert status["execution_authority"] is False
+    assert status["capital_authority"] is False
+    assert status["automatic_promotion"] is False
+    assert status["trial_ledger_rotation"]["truncated"] is False
+
+
+def test_runner_is_fail_soft_when_the_ledger_is_missing(tmp_path: Path) -> None:
+    output = tmp_path / "autoresearch"
+
+    result = _run_runner(
+        "--ledger", str(tmp_path / "absent.db"),
+        "--output-dir", str(output),
+    )
+
+    # A missing ledger is a skip, not a crash and not a fabricated cycle.
+    assert result.returncode == 0
+    assert "Traceback" not in result.stderr
+    status = _status(output)
+    assert status["status"] == "SKIPPED_INSUFFICIENT_EVIDENCE"
+    assert "absent.db" in status["detail"]
+    assert status["last_success_at"] is None
+
+
+def test_runner_deadline_defers_instead_of_overrunning(tmp_path: Path) -> None:
+    ledger = tmp_path / "ledger.db"
+    _ledger(ledger)
+    output = tmp_path / "autoresearch"
+
+    result = _run_runner(
+        "--ledger", str(ledger),
+        "--output-dir", str(output),
+        "--issued-at", (NOW + timedelta(days=20)).isoformat(),
+        "--max-seconds", "0.001",
+    )
+
+    assert result.returncode == 0
+    status = _status(output)
+    assert status["status"] == "DEFERRED_RUN_DEADLINE"
+    assert status["max_seconds"] == 0.001
+
+
+def test_runner_preserves_last_success_across_a_later_skip(tmp_path: Path) -> None:
+    ledger = tmp_path / "ledger.db"
+    _ledger(ledger)
+    output = tmp_path / "autoresearch"
+    _run_runner(
+        "--ledger", str(ledger),
+        "--output-dir", str(output),
+        "--issued-at", (NOW + timedelta(days=20)).isoformat(),
+    )
+    success_at = _status(output)["last_success_at"]
+    assert success_at
+
+    _run_runner("--ledger", str(tmp_path / "absent.db"), "--output-dir", str(output))
+
+    # A later skip must not erase the evidence of the last real run.
+    assert _status(output)["status"] == "SKIPPED_INSUFFICIENT_EVIDENCE"
+    assert _status(output)["last_success_at"] == success_at
+
+
+def test_trial_ledger_is_tail_capped_and_discloses_the_drop(tmp_path: Path) -> None:
+    from importlib import util as _util
+
+    spec = _util.spec_from_file_location("dummy_autoresearch_runner", RUNNER)
+    module = _util.module_from_spec(spec)
+    assert spec.loader is not None
+    spec.loader.exec_module(module)
+
+    trials = tmp_path / "ignition_trials.jsonl"
+    trials.write_text(
+        "".join(f'{{"trial": {index}}}\n' for index in range(10)), encoding="utf-8",
+    )
+
+    report = module.cap_trial_ledger(trials, 4)
+
+    assert report["truncated"] is True
+    assert report["lines_dropped"] == 6
+    assert report["lines_retained"] == 4
+    kept = trials.read_text(encoding="utf-8").splitlines()
+    # Newest trials are the ones kept.
+    assert json.loads(kept[0])["trial"] == 6
+    assert json.loads(kept[-1])["trial"] == 9
+    # Disabled cap leaves the file alone.
+    assert module.cap_trial_ledger(trials, 0)["truncated"] is False
+
+
+def test_runner_defaults_never_target_the_live_runtime_from_a_test_dir(
+    tmp_path: Path,
+) -> None:
+    from importlib import util as _util
+
+    spec = _util.spec_from_file_location("dummy_autoresearch_runner", RUNNER)
+    module = _util.module_from_spec(spec)
+    assert spec.loader is not None
+    spec.loader.exec_module(module)
+
+    # Production default lands where the watchdog reads task artifacts...
+    assert module.default_status_path(module.DEFAULT_OUTPUT_DIR).name == (
+        "autoresearch_status.json"
+    )
+    assert module.default_status_path(module.DEFAULT_OUTPUT_DIR).parent.name == (
+        "autonomy"
+    )
+    # ...and an ad-hoc output dir keeps its status inside that tree.
+    assert module.default_status_path(tmp_path / "autoresearch").parent == tmp_path

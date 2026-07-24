@@ -1,6 +1,7 @@
 from __future__ import annotations
 from dataclasses import dataclass, field
 from model_router.envelope import ModelResponseEnvelope
+from model_router.spend_governor import SPEND_CAP_REASONS
 
 
 @dataclass
@@ -17,6 +18,7 @@ class CostTracker:
     total_cost_usd: float = 0.0
     uncosted_calls: int = 0
     gate_blocked_calls: int = 0
+    spend_capped_calls: int = 0
     by_provider: dict[str, dict[str, float]] = field(default_factory=dict)
 
     def record(self, envelope: ModelResponseEnvelope):
@@ -37,6 +39,10 @@ class CostTracker:
             row["failures"] = row.get("failures", 0.0) + 1
         elif provider == "mock" and fallback == "live_calls_disabled":
             self.gate_blocked_calls += 1
+        elif fallback in SPEND_CAP_REASONS:
+            # A paid call the enforced daily USD ceiling refused. Counted apart
+            # from provider failures: nothing was contacted and nothing billed.
+            self.spend_capped_calls += 1
         row = self.by_provider.setdefault(
             provider,
             {"calls": 0.0, "latency_ms": 0.0, "cost_usd": 0.0, "uncosted_calls": 0.0},
@@ -59,6 +65,7 @@ class CostTracker:
             "total_cost_usd": round(self.total_cost_usd, 6),
             "uncosted_calls": self.uncosted_calls,
             "gate_blocked_calls": self.gate_blocked_calls,
+            "spend_capped_calls": self.spend_capped_calls,
             "by_provider": {
                 provider: {
                     "calls": int(row["calls"]),

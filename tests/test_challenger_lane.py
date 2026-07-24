@@ -309,18 +309,31 @@ def test_trading_halt_blocks_probes_but_still_settles(tmp_path, monkeypatch):
 
 # -- eligibility stamps --------------------------------------------------------
 
-def test_market_debias_eligibility_is_exact_registered_scope_only():
-    from autonomy.signals.market_debias import PROMOTION_ELIGIBLE_SCOPE
+def test_market_debias_eligibility_is_exact_registered_scopes_only():
+    from autonomy.signals.market_debias import PROMOTION_ELIGIBLE_SCOPES
     from autonomy.taxonomy import grading_scope
 
-    ticker = "KXMLBGAME-26JUL24NYYBOS-NYY"
-    # Historical row shape (no market_type stamp) IS the registered scope.
-    assert grading_scope(
-        "market_debias", ticker, {"vertical": "SPORTS"},
-    ) == PROMOTION_ELIGIBLE_SCOPE == "market_debias|mlb|na|pre"
-    # Current emissions stamp "<type>@<horizon>" market types, which derive a
-    # DIFFERENT scope -- so they must stay opted out (fail-closed exactness).
+    ticker = "KXMLBTB-26JUL241910CLETB-CLEJRAMREZ11-2"
+    # Current emission shape: market_type is stamped "<type>@<horizon>", so the
+    # horizon rides in the grading scope. These are the registered scopes.
     assert grading_scope(
         "market_debias", ticker,
+        {"vertical": "SPORTS", "market_type": "prop@long"},
+    ) == "market_debias|mlb|prop@long|pre"
+    assert PROMOTION_ELIGIBLE_SCOPES == {
+        "market_debias|mlb|prop@long|pre",
+        "market_debias|mlb|prop@short|pre",
+        "market_debias|mlb|spread@long|pre",
+    }
+    # The pre-8c43272 unstamped shape ("...|na|pre") is no longer producible by
+    # any emission and is NOT eligible; an unregistered market type / horizon
+    # stays opted out too (fail-closed exactness).
+    for features in (
+        {"vertical": "SPORTS"},
         {"vertical": "SPORTS", "market_type": "winner@short"},
-    ) != PROMOTION_ELIGIBLE_SCOPE
+        {"vertical": "SPORTS", "market_type": "prop@near_terminal"},
+    ):
+        assert (
+            grading_scope("market_debias", ticker, features)
+            not in PROMOTION_ELIGIBLE_SCOPES
+        )

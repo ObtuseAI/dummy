@@ -246,6 +246,13 @@ class CycleReport:
     # self-reports where its time goes -- the observability that turns "cycles
     # are slow" into "phase X is slow" without a profiler on the box.
     phase_seconds: dict[str, float] = field(default_factory=dict)
+    # Phantom-grading coverage receipt for this cycle (see
+    # autonomy.reconciler.Reconciler._forecast_coverage_receipt): what share of
+    # the markets we priced this sweep was actually asked to grade, and whether
+    # any series' settled listing overflowed its page cap. Lands in
+    # runtime/autonomy/cycles.jsonl so "grades every priced market" is a
+    # measured claim rather than an assertion.
+    phantom_coverage: dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
         return dict(self.__dict__)
@@ -510,11 +517,34 @@ class PredatorBrain:
         This is the calibration firehose: trust weights learn from the whole
         forecast surface, not just the stage-capped handful of positions.
         Never touches risk state (there is no position to P&L).
+
+        The sweep's coverage receipt (how much of the priced surface this pass
+        was actually asked to grade, plus any pagination overflow) is copied
+        onto the cycle report -- including when the sweep raises, so a failed
+        sweep reads as zero coverage instead of silence.
         """
         try:
             phantom = self.reconciler.reconcile_forecast_settlements(list(self.scanner.watchlist))
-        except Exception:
+        except Exception as exc:
+            report.phantom_coverage = {
+                "status": "SWEEP_FAILED",
+                "error": type(exc).__name__,
+                "attempt_coverage_ratio": None,
+                "graded_coverage_ratio": None,
+                "graded_this_pass": 0,
+                "pagination_truncated": False,
+                "complete": False,
+            }
+            report.notes.append(f"phantom_sweep_failed:{type(exc).__name__}")
             return
+        coverage = getattr(self.reconciler, "last_forecast_coverage", None)
+        if isinstance(coverage, dict):
+            report.phantom_coverage = dict(coverage)
+            if coverage.get("pagination_truncated"):
+                report.notes.append(
+                    "phantom_coverage_pagination_truncated:"
+                    + ",".join(coverage.get("series_truncated") or [])
+                )
         # Backlog resilience: after an outage many markets settle at once, and
         # grading them one calibration query at a time (apply_settlement ->
         # calibration_signals_for_market) is another N+1. Above a threshold,

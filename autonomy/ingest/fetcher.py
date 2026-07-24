@@ -28,6 +28,10 @@ DEFAULT_UA = (
     "read-only public sports data for private research)"
 )
 _RETRY_STATUSES = (429, 500, 502, 503, 504)
+# Named rather than an inline literal in __init__: a fetcher built without an
+# explicit cache_dir otherwise created and filled the LIVE ingest cache during
+# the test suite.  Value unchanged (repo-root-relative, as before).
+DEFAULT_CACHE_DIR = Path("runtime/autonomy/ingest_cache")
 
 
 @dataclass
@@ -63,7 +67,7 @@ class PoliteFetcher:
         max_retries: int = 4,
         cache_ttl: float | None = None,
     ) -> None:
-        self.cache_dir = Path(cache_dir) if cache_dir else Path("runtime/autonomy/ingest_cache")
+        self.cache_dir = Path(cache_dir) if cache_dir else Path(DEFAULT_CACHE_DIR)
         self.cache_dir.mkdir(parents=True, exist_ok=True)
         self._transport = transport or _default_transport
         self._clock = clock

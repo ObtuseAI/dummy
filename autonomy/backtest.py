@@ -35,6 +35,10 @@ CONTESTED_DISAGREEMENT = 0.05
 MIN_CONTESTED_N = 20
 BOOTSTRAP_SAMPLES = 1000
 LIVE_SOURCE_EVIDENCE_MODE = "live_only_receipt_bounded_v1"
+# Named (rather than an inline Path literal at the write site) so the test
+# suite can redirect it; every recal pass under pytest was otherwise rewriting
+# the live runtime artifact.
+RECAL_OOS_DELTA_PATH = Path("runtime/autonomy/recal_oos_delta.json")
 
 
 def _percentile(values: list[float], q: float) -> float | None:
@@ -1632,7 +1636,7 @@ def run_backtest(ledger: AutonomyLedger, bootstrap_weights: bool = False,
                     f"oos_regression:{oos_gate.get('oos_brier_delta'):+.6f}"
                 )
             try:
-                oos_path = Path("runtime/autonomy/recal_oos_delta.json")
+                oos_path = Path(RECAL_OOS_DELTA_PATH)
                 oos_path.parent.mkdir(parents=True, exist_ok=True)
                 payload = dict(oos_gate)
                 payload["at"] = datetime.now(timezone.utc).isoformat()

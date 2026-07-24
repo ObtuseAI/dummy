@@ -20,11 +20,14 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import sqlite3
+import time
+from contextlib import contextmanager
 from dataclasses import asdict, dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any, Iterable, Iterator
 
 # Wave-81: 7 -> 5 days. The hot signals table drove the ledger's write-lock
 # contention (a smaller table = faster inserts = shorter lock holds). Safe: the
@@ -114,6 +117,69 @@ def install_signal_history(
     else:
         connection.execute(f"CREATE TEMP VIEW signal_history AS {hot}")
     return has_archive
+
+
+def ensure_signal_history(connection: sqlite3.Connection) -> bool:
+    """Install the union view only when ``signal_history`` isn't already usable.
+
+    ``signal_history`` is a per-CONNECTION temp view, so every entry point that
+    queries it must install it -- a fresh connection that skips the install
+    fails with "no such table: signal_history" (which is exactly how two report
+    writers sat silently dead until the 2026-07-24 failure rail exposed them).
+    Entry points can't simply install unconditionally either: some callers pass
+    a synthetic connection that already provides its own ``signal_history``
+    relation and has no ``main.signals`` to build a view over. Probing first
+    serves both and makes the install idempotent.
+
+    Returns whether this call performed the install.
+    """
+    try:
+        connection.execute("SELECT 1 FROM signal_history LIMIT 1")
+        return False
+    except sqlite3.OperationalError:
+        install_signal_history(connection)
+        return True
+
+
+@contextmanager
+def bounded_statements(
+    connection: sqlite3.Connection, seconds: float,
+) -> Iterator[None]:
+    """Abort statements on this connection that outrun a wall-clock budget.
+
+    Report writers scan ``signal_history`` -- a UNION over the multi-GB hot
+    ledger and the settled-signal archive -- so one unlucky query can run for
+    tens of minutes. That matters because the readiness task is killed at its
+    scheduler time limit, and a killed process writes NO failure artifact: the
+    report would go back to failing silently, just more expensively. A bounded
+    statement instead raises OperationalError("interrupted"), which the
+    writer-failure rail records like any other failure while the remaining
+    writers still run.
+
+    Same mechanism as ``AutonomyLedger.set_statement_deadline``: a progress
+    handler polled inside the VM. Non-positive budgets disable the bound.
+    """
+    if seconds <= 0:
+        yield
+        return
+    deadline = time.monotonic() + float(seconds)
+
+    def _past_deadline() -> int:
+        return 1 if time.monotonic() > deadline else 0
+
+    connection.set_progress_handler(_past_deadline, 500_000)
+    try:
+        yield
+    finally:
+        connection.set_progress_handler(None, 0)
+
+
+def report_writer_budget_s() -> float:
+    """Wall-clock budget for one report writer's queries (0 disables)."""
+    try:
+        return float(os.environ.get("DUMMY_REPORT_WRITER_BUDGET_S", "120"))
+    except (TypeError, ValueError):
+        return 120.0
 
 
 def _digest_rows(rows: Iterable[tuple[Any, ...]]) -> tuple[int, str]:

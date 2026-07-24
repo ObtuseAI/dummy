@@ -125,6 +125,9 @@ DEFAULT_TASKS: list[TaskSpec] = [
     TaskSpec("DummyLedgerPrune", "signal_prune_stdout.log", (), 86400, "ledger signal prune"),
     TaskSpec("DummyLogRotation", "log_rotation_stdout.log", (), 86400, "log rotation"),
     TaskSpec("DummyLiveAccountSnapshot", "live_account_snapshot.json", ("generated_at",), 900, "live account snapshot"),
+    # Registered 2026-07-24 after the audit found the lab unscheduled for 9
+    # days. Read-only over the ledger, no network, no promotion authority.
+    TaskSpec("DummyAutoresearch", "autoresearch_status.json", ("last_success_at",), 3600, "bounded real-ledger autoresearch"),
 ]
 
 # Scheduler results that do not indicate failure: 0 success, 0x41301 running,

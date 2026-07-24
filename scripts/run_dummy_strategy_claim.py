@@ -3,6 +3,12 @@
     echo "Long BTC 4h breakout, enter on RSI<30, take profit +5%" \
         | python scripts/run_dummy_strategy_claim.py --source reddit
 
+MANUAL RESEARCH TOOL -- NOT WIRED INTO PRODUCTION (2026-07-24 audit, s6).
+There is no scheduled task for this script and no automated backtest consumes
+what it writes; a TESTABLE verdict means the claim COULD be tested, never that
+it was tested. See ``autonomy/strategy_claim_compiler`` for why it was left
+unwired rather than connected to the strategy miner.
+
 Research spec only: it extracts, grades falsifiability, enumerates faithful
 interpretations, and records the claim. It never trades.
 """
@@ -17,7 +23,13 @@ ROOT = Path(__file__).resolve().parent.parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from autonomy.strategy_claim_compiler import compile_claim, record_claim  # noqa: E402
+from autonomy.strategy_claim_compiler import (  # noqa: E402
+    PIPELINE_STATUS,
+    PIPELINE_STATUS_DETAIL,
+    compile_claim,
+    record_claim,
+    registry_status,
+)
 
 
 def main() -> int:
@@ -25,7 +37,16 @@ def main() -> int:
     parser.add_argument("--source", default="manual")
     parser.add_argument("--text", default=None, help="claim text (else read stdin)")
     parser.add_argument("--no-record", action="store_true")
+    parser.add_argument(
+        "--status",
+        action="store_true",
+        help="print the claims-registry status and exit (no text needed)",
+    )
     args = parser.parse_args()
+
+    if args.status:
+        print(json.dumps(registry_status(), indent=2, sort_keys=True))
+        return 0
 
     text = args.text if args.text is not None else sys.stdin.read()
     if not text.strip():
@@ -40,6 +61,10 @@ def main() -> int:
         "verdict": compiled["falsifiability"]["verdict"],
         "unspecified_fields": compiled["claim"]["unspecified_fields"],
         "interpretation_count": compiled["interpretation_count"],
+        # A TESTABLE verdict is not a test result: say so on every run.
+        "pipeline_status": PIPELINE_STATUS,
+        "pipeline_status_detail": PIPELINE_STATUS_DETAIL,
+        "backtested": False,
     }, indent=2, sort_keys=True))
     return 0
 

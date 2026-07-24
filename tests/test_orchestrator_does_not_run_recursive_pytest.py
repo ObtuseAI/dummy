@@ -8,12 +8,14 @@ from archive.report_scripts.generate_v8_reports import main as orchestrator_main
 
 
 @pytest.mark.asyncio
-async def test_orchestrator_unit_test_does_not_invoke_subprocess_pytest(tmp_path, monkeypatch):
+async def test_orchestrator_unit_test_does_not_invoke_subprocess_pytest(tmp_path, monkeypatch, isolated_report_artifacts):
     """The orchestrator unit test must never run a recursive pytest subprocess."""
     import archive.report_scripts.generate_v8_reports as orchestrator
 
-    artifacts = tmp_path / "dummy"
-    artifacts.mkdir(parents=True, exist_ok=True)
+    # isolated_report_artifacts also redirects the sub-generators the
+    # orchestrator imports inside main(); patching only the orchestrator left
+    # them writing into the REAL artifacts/dummy governance tree.
+    artifacts = isolated_report_artifacts
     monkeypatch.setattr(orchestrator, "ARTIFACTS", artifacts)
     monkeypatch.setattr(orchestrator, "run_pytest_summary", MagicMock(
         return_value={

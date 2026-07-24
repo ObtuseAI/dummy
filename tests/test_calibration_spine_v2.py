@@ -2,7 +2,6 @@ import json
 from datetime import datetime, timezone
 from decimal import Decimal
 from math import log
-from pathlib import Path
 
 import pytest
 
@@ -11,8 +10,12 @@ from calibration.spine import CalibrationSpine
 
 
 @pytest.fixture
-def artifact_dir():
-    path = Path("artifacts/dummy")
+def artifact_dir(tmp_path):
+    # Was Path("artifacts/dummy"): a relative path resolved against the repo
+    # root, so this test wrote a report into the REAL gitignored governance
+    # evidence tree (and re-created it, which the suite's workstation-evidence
+    # probe keys off).  The report is a test output; it belongs in tmp.
+    path = tmp_path / "artifacts" / "dummy"
     path.mkdir(parents=True, exist_ok=True)
     return path
 

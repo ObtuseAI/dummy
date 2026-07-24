@@ -39,6 +39,19 @@ from autonomy.signals.crypto_spot import parse_crypto_ticker
 
 MATRIX_VERSION = "crypto-horizon-evidence-matrix-v1"
 SUPPORTED_HORIZONS = ("15m", "1h", "1d", "1w")
+
+# Display-honesty gate for headline skill numbers (2026-07-24 external audit
+# §8: "headline skills of 0.90-0.99 sit on 2-11 event clusters, SOL-only --
+# noise displayed as capability").  A Brier skill measured over a handful of
+# independent event clusters is sampling noise, not capability, so the artifact
+# refuses to present it as a number.
+#
+# The threshold reuses the established cluster-robust minimum from
+# ``autonomy.backtest._evidence_disposition`` (``min_clusters=10``) -- the same
+# "does this scope have enough independent clusters to say anything?" question.
+# It is deliberately a local copy, not an import: this module never imports the
+# production backtest/ledger stack (see the module docstring).
+MIN_DISPLAY_EVENT_CLUSTERS = 10
 EXECUTION_AUTHORITY = False
 CAPITAL_AUTHORITY = False
 PRODUCTION_WEIGHT_WRITE_AUTHORITY = False
@@ -1148,6 +1161,55 @@ def expanding_window_calibration(
     }
 
 
+def headline_skill_display(
+    skill: float | None,
+    event_clusters: int,
+    *,
+    min_clusters: int = MIN_DISPLAY_EVENT_CLUSTERS,
+) -> dict[str, Any]:
+    """Decide whether a scope may present a headline Brier-skill number.
+
+    Returns the display block that accompanies every scope in the artifact.
+    ``brier_skill_vs_market`` inside the block is the value a dashboard may
+    render: ``None`` whenever the evidence is too thin to display.  The
+    computed value is never destroyed -- it stays under
+    ``computed_brier_skill_vs_market`` for consumers doing their own
+    cluster-aware analysis -- but it is not offered as a headline.
+    """
+    clusters = max(0, int(event_clusters))
+    minimum = max(0, int(min_clusters))
+    computed = None if skill is None else float(skill)
+    if clusters < minimum:
+        return {
+            "status": "INSUFFICIENT_CLUSTERS",
+            "event_clusters": clusters,
+            "min_clusters": minimum,
+            "brier_skill_vs_market": None,
+            "computed_brier_skill_vs_market": computed,
+            "suppressed": True,
+            "reason": "brier_skill_over_too_few_event_clusters_is_noise",
+        }
+    if computed is None:
+        return {
+            "status": "NO_MARKET_BENCHMARK",
+            "event_clusters": clusters,
+            "min_clusters": minimum,
+            "brier_skill_vs_market": None,
+            "computed_brier_skill_vs_market": None,
+            "suppressed": False,
+            "reason": "no_market_benchmarked_settled_rows_in_scope",
+        }
+    return {
+        "status": "DISPLAYED",
+        "event_clusters": clusters,
+        "min_clusters": minimum,
+        "brier_skill_vs_market": computed,
+        "computed_brier_skill_vs_market": computed,
+        "suppressed": False,
+        "reason": "event_clusters_at_or_above_minimum",
+    }
+
+
 def evidence_metrics(rows: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
     grouped: dict[tuple[str, str, str, str], list[Mapping[str, Any]]] = defaultdict(list)
     for row in rows:
@@ -1169,35 +1231,57 @@ def evidence_metrics(rows: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
         ]
         ece, mce = _calibration_error(scope_rows)
         key = f"{source}:{asset}:{horizon}:{contract_family}"
+        clusters = len({str(row["event_cluster"]) for row in scope_rows})
+        computed_skill = (
+            round(
+                1.0 - statistics.fmean(briers) / statistics.fmean(market_briers),
+                10,
+            )
+            if briers and market_briers and statistics.fmean(market_briers) > 0
+            else None
+        )
+        display = headline_skill_display(computed_skill, clusters)
         scopes[key] = {
             "source": source,
             "asset": asset,
             "horizon": horizon,
             "contract_family": contract_family,
             "settled_forecasts": len(scope_rows),
-            "event_clusters": len({str(row["event_cluster"]) for row in scope_rows}),
+            "event_clusters": clusters,
             "brier": round(statistics.fmean(briers), 10) if briers else None,
             "log_loss": round(statistics.fmean(losses), 10) if losses else None,
             "market_brier": (
                 round(statistics.fmean(market_briers), 10) if market_briers else None
             ),
-            "brier_skill_vs_market": (
-                round(
-                    1.0 - statistics.fmean(briers) / statistics.fmean(market_briers),
-                    10,
-                )
-                if briers and market_briers and statistics.fmean(market_briers) > 0
-                else None
-            ),
+            # Headline field: suppressed (None) below the cluster minimum so a
+            # 2-cluster 0.99 can never be rendered as capability.  The computed
+            # value survives under ``headline_skill``.
+            "brier_skill_vs_market": display["brier_skill_vs_market"],
+            "headline_skill": display,
             "ece_10": ece,
             "mce_10": mce,
             "brier_advantage_ci95": _cluster_bootstrap_advantage(scope_rows),
             "expanding_window_calibration": expanding_window_calibration(scope_rows),
             "execution_authority": False,
         }
+    suppressed = [
+        key for key, scope in scopes.items()
+        if scope["headline_skill"]["suppressed"]
+    ]
     return {
         "settled_forecasts": len(rows),
         "scopes": scopes,
+        "headline_skill_display": {
+            "min_clusters": MIN_DISPLAY_EVENT_CLUSTERS,
+            "scopes_total": len(scopes),
+            "scopes_suppressed": len(suppressed),
+            "scopes_displayed": sum(
+                1 for scope in scopes.values()
+                if scope["headline_skill"]["status"] == "DISPLAYED"
+            ),
+            "suppressed_scopes": sorted(suppressed),
+            "rule": "no_headline_brier_skill_below_min_event_clusters",
+        },
         "execution_authority": False,
     }
 
@@ -1830,6 +1914,7 @@ __all__ = [
     "DEFAULT_MAX_PAGES_PER_SERIES",
     "EXECUTION_AUTHORITY",
     "MATRIX_VERSION",
+    "MIN_DISPLAY_EVENT_CLUSTERS",
     "PRODUCTION_GATE_WRITE_AUTHORITY",
     "PRODUCTION_RISK_WRITE_AUTHORITY",
     "PRODUCTION_WEIGHT_WRITE_AUTHORITY",
@@ -1843,6 +1928,7 @@ __all__ = [
     "deterministic_provenance_hash",
     "evidence_metrics",
     "expanding_window_calibration",
+    "headline_skill_display",
     "series_ticker_of",
     "state_provenance_manifest",
     "validate_point_in_time",

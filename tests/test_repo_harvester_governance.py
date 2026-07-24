@@ -21,7 +21,10 @@ from repo_harvester.retry_policy import (
     PENDING_RETRY,
     run_with_bounded_retry,
 )
-from repo_harvester.strategy_catalog import sanitize_strategy_extraction_report
+from repo_harvester.strategy_catalog import (
+    relabel_legacy_report,
+    sanitize_strategy_extraction_report,
+)
 
 
 async def _no_sleep(_: float) -> None:
@@ -321,13 +324,169 @@ def test_stale_strategy_report_is_sanitized_without_granting_authority() -> None
         ],
     })
 
-    assert report["schema_version"] == 2
-    assert report["candidate_count"] == 1
-    assert report["candidates"][0]["strategy_name"] == "SportsCandidate"
-    assert report["candidates"][0]["prediction_authority"] is False
-    assert report["candidates"][0]["execution_authority"] is False
+    assert report["schema_version"] == 3
+    # Unlabelled legacy rows are keyword-template fan-out, never extractions.
+    assert report["candidate_count"] == 0
+    assert report["candidates"] == []
+    assert report["repo_derived_candidate_count"] == 0
+    assert report["keyword_template_inventory_count"] == 1
+    template = report["keyword_template_inventory"][0]
+    assert template["strategy_name"] == "SportsCandidate"
+    assert template["derivation"] == "keyword_template_not_repo_derived"
+    assert template["repo_derived_logic"] is False
+    assert template["output"] == "ABSTAIN"
+    assert template["prediction_authority"] is False
+    assert template["execution_authority"] is False
     assert report["quarantined_candidate_count"] == 1
     assert report["quarantined_candidates"][0]["output"] == "ABSTAIN"
     assert report["unknown_target_excluded_count"] == 1
     assert report["catalog_grants_prediction_authority"] is False
     assert report["catalog_grants_execution_authority"] is False
+
+
+# --- Wave-84: keyword-template fan-out must not be counted as extraction ----
+
+
+def _template_plans() -> list[dict]:
+    return [
+        {
+            "repo": "sports/source",
+            "category": "sports_prediction_odds",
+            "verdict": RepoVerdict.ADAPTER_TARGET.value,
+            "scan_summary": _complete_scan(sports_hits=["odds.py"]),
+        },
+        {
+            "repo": "crypto/source",
+            "category": "crypto_event_markets",
+            "verdict": RepoVerdict.ADAPTER_TARGET.value,
+            "scan_summary": _complete_scan(
+                crypto_hits=["btc.py"],
+                arbitrage_hits=["arb.py"],
+                websocket_hits=["ws.py"],
+            ),
+        },
+    ]
+
+
+def test_keyword_templates_are_not_counted_as_extracted_candidates() -> None:
+    report = v2_digestion.build_strategy_extraction_report(_template_plans())
+
+    # The headline count is repo-derived extractions only, and there is no
+    # extraction path, so it is 0 while the inventory is non-empty.
+    assert report["candidate_count"] == 0
+    assert report["candidates"] == []
+    assert report["repo_derived_candidate_count"] == 0
+    assert report["keyword_template_inventory_count"] > 0
+    assert report["inventory_only"] is True
+    assert report["repo_derived_extraction_implemented"] is False
+    assert report["extraction_method"] == "manifest_keyword_counter_fan_out"
+    assert report["schema_version"] == 2
+
+
+def test_every_inventory_row_declares_template_provenance() -> None:
+    report = v2_digestion.build_strategy_extraction_report(_template_plans())
+    rows = report["keyword_template_inventory"]
+
+    assert rows
+    for row in rows:
+        assert row["derivation"] == "keyword_template_not_repo_derived"
+        assert row["repo_derived_logic"] is False
+        assert row["description_is_canned_template"] is True
+        assert row["keyword_trigger"]
+        assert row["output"] == "ABSTAIN"
+        assert row["prediction_authority"] is False
+        assert row["trade_proposal_authority"] is False
+        assert row["execution_authority"] is False
+        assert row["calls_live_order_endpoints"] is False
+    # The row still records which repo tripped which counter: inventory kept.
+    assert {row["repo"] for row in rows} == {"sports/source", "crypto/source"}
+    triggers = {row["keyword_trigger"] for row in rows}
+    assert "sports_hits" in triggers
+
+
+def test_fresh_report_survives_the_sanitizer_without_regaining_a_count() -> None:
+    report = v2_digestion.build_strategy_extraction_report(_template_plans())
+    governed = sanitize_strategy_extraction_report(report)
+
+    assert governed["candidate_count"] == 0
+    assert governed["candidates"] == []
+    assert governed["keyword_template_inventory_count"] == report[
+        "keyword_template_inventory_count"
+    ]
+    assert all(
+        row["prediction_authority"] is False
+        for row in governed["keyword_template_inventory"]
+    )
+
+
+def test_labelled_repo_derived_row_is_the_only_thing_that_counts() -> None:
+    governed = sanitize_strategy_extraction_report({
+        "candidate_count": 2,
+        "candidates": [
+            {
+                "strategy_name": "RealExtraction",
+                "market_types": ["sports"],
+                "repo_derived_logic": True,
+            },
+            {"strategy_name": "TemplateRow", "market_types": ["sports"]},
+        ],
+    })
+
+    assert governed["candidate_count"] == 1
+    assert governed["candidates"][0]["strategy_name"] == "RealExtraction"
+    assert governed["candidates"][0]["prediction_authority"] is False
+    assert governed["keyword_template_inventory_count"] == 1
+
+
+def test_legacy_report_relabel_deflates_the_headline_without_dropping_rows() -> None:
+    legacy = {
+        "generated_at": "2026-06-30T19:02:07.981039+00:00",
+        "candidate_count": 3,
+        "candidates": [
+            {"strategy_name": "SportsMomentumStrategy", "market_types": ["sports"]},
+            {"strategy_name": "CryptoEventMarketStrategy", "market_types": ["crypto"]},
+            {
+                "strategy_name": "StockMacroMomentumStrategy",
+                "market_types": ["stocks"],
+            },
+        ],
+    }
+
+    relabelled = relabel_legacy_report(legacy)
+
+    assert relabelled["candidate_count"] == 0
+    assert relabelled["reported_candidate_count_before_relabel"] == 3
+    assert relabelled["keyword_template_inventory_count"] == 2
+    assert relabelled["quarantined_candidate_count"] == 1
+    assert relabelled["relabelled_without_rescan"] is True
+    assert relabelled["generated_at"] == legacy["generated_at"]
+    # No row is lost by the relabel.
+    total = (
+        relabelled["keyword_template_inventory_count"]
+        + relabelled["quarantined_candidate_count"]
+        + relabelled["data_only_input_count"]
+        + relabelled["unknown_target_excluded_count"]
+    )
+    assert total == len(legacy["candidates"])
+
+
+def test_registry_states_incorporation_status_in_plain_words() -> None:
+    save_registry({
+        "incorporated": [],
+        "rejected": [],
+        "pending_tests": [
+            {"adapter_name": "a_adapter"},
+            {"adapter_name": "b_adapter"},
+        ],
+    })
+
+    registry = load_registry()
+
+    assert registry["verified_integration_count"] == 0
+    assert registry["pending_adapter_count"] == 2
+    assert registry["incorporation_summary"].startswith(
+        "0 of 2 planned adapters are incorporated"
+    )
+    assert "pending adapter-specific upstream verification" in (
+        registry["incorporation_summary"]
+    )

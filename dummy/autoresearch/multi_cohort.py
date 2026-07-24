@@ -6,7 +6,7 @@ import json
 from dataclasses import dataclass
 from datetime import timedelta
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any, Callable, Iterable
 
 from dummy.genome import ForecastGenome, Gene, GeneCategory, pilot_genomes
 from dummy.world_model.models import digest_json
@@ -140,8 +140,16 @@ def run_multi_cohort_campaigns(
     output_dir: Path,
     maximum_cohorts: int = 16,
     per_experiment_compute_budget: float = 5_000.0,
+    deadline: Callable[[], bool] | None = None,
 ) -> dict[str, Any]:
-    """Discover, validate, budget, and run each cohort independently."""
+    """Discover, validate, budget, and run each cohort independently.
+
+    ``deadline`` is an optional predicate returning True once the caller's run
+    budget is spent. It is consulted between cohorts, so an unattended run
+    stops scheduling new campaigns instead of overrunning its scheduled slot.
+    Cohorts that were not reached are recorded as deferred -- never as
+    completed, and never as evidence.
+    """
     discovered = discover_exact_cohorts(rows)
     scheduled: list[dict[str, Any]] = []
     campaigns: list[dict[str, Any]] = []
@@ -186,6 +194,7 @@ def run_multi_cohort_campaigns(
     eligible.sort(key=lambda item: (-int(item["row_count"]), str(item["scope"])))
     selected_scopes = {str(item["scope"]) for item in eligible[:maximum_cohorts]}
     cohort_lookup = {item.scope: item for item in discovered}
+    deadline_reached = False
     for item in scheduled:
         scope = str(item["scope"])
         if item["status"] != "ELIGIBLE":
@@ -193,6 +202,11 @@ def run_multi_cohort_campaigns(
         if scope not in selected_scopes:
             item["status"] = "DEFERRED_FIXED_COHORT_BUDGET"
             item["reason"] = "lower deterministic priority under maximum_cohorts"
+            continue
+        if deadline is not None and deadline():
+            deadline_reached = True
+            item["status"] = "DEFERRED_RUN_DEADLINE"
+            item["reason"] = "run deadline reached before this cohort started"
             continue
         cohort = cohort_lookup[scope]
         base = cohort_base_genome(scope)
@@ -232,6 +246,10 @@ def run_multi_cohort_campaigns(
         "discovered_cohorts": len(discovered),
         "viable_cohorts": viable,
         "campaigns_completed": len(campaigns),
+        "run_deadline_reached": deadline_reached,
+        "cohorts_deferred_by_deadline": sum(
+            1 for item in scheduled if item["status"] == "DEFERRED_RUN_DEADLINE"
+        ),
         "scheduler": {
             "autonomous": True,
             "priority": "evidence_volume_then_scope",

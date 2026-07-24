@@ -97,10 +97,11 @@ def build_top_threat(ledger: Any) -> dict[str, Any]:
 
 
 def write_top_threat(
-    ledger: Any, *, path: Path | str = REPORT_PATH,
+    ledger: Any, *, path: Path | str | None = None,
 ) -> dict[str, Any]:
+    # Resolved at CALL time so the module constant stays redirectable.
     report = build_top_threat(ledger)
-    target = Path(path)
+    target = Path(REPORT_PATH if path is None else path)
     target.parent.mkdir(parents=True, exist_ok=True)
     tmp = target.with_suffix(".tmp")
     tmp.write_text(json.dumps(report, indent=2, sort_keys=True), encoding="utf-8")

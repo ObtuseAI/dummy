@@ -7,8 +7,10 @@ import pytest
 
 from autonomy.crypto_horizon_evidence import (
     AUTHORITY,
+    MIN_DISPLAY_EVENT_CLUSTERS,
     CryptoHorizonEvidenceMatrix,
     CryptoHorizonEvidenceStore,
+    evidence_metrics,
 )
 from autonomy.ontology import MarketView, Signal, Vertical
 
@@ -123,5 +125,113 @@ def test_matrix_has_no_execution_or_production_authority(tmp_path) -> None:
         }
         assert not hasattr(matrix, "place_order")
         assert not hasattr(matrix, "cancel_order")
+    finally:
+        matrix.close()
+
+
+# --------------------------------------------------------------------------
+# 2026-07-24 audit §8: "headline skills of 0.90-0.99 sit on 2-11 event
+# clusters, SOL-only -- noise displayed as capability; suppress skill display
+# below min clusters."  The artifact must refuse to present a headline skill
+# number that rests on too few independent event clusters.
+# --------------------------------------------------------------------------
+
+
+def _skill_rows(clusters: int) -> list[dict]:
+    """Settled rows for one scope: near-perfect model, terrible market.
+
+    One forecast per event cluster, so the cluster count IS the sample size --
+    exactly the shape the audit flagged (a 0.99 skill on a handful of events).
+    """
+    rows: list[dict] = []
+    for index in range(clusters):
+        decision = AS_OF + timedelta(hours=index)
+        rows.append(
+            {
+                "forecast_id": f"f{index}",
+                "source": "crypto_technical_foundry",
+                "asset": "sol",
+                "horizon": "15m",
+                "contract_family": "15m_direction",
+                "event_cluster": f"crypto:15m:sol:{index}",
+                "probability_yes": 0.99,
+                "market_probability": 0.40,
+                "result_yes": 1,
+                "brier": 0.0001,
+                "log_loss": 0.01,
+                "market_brier": 0.36,
+                "market_log_loss": 0.92,
+                "as_of_at": decision.isoformat(),
+                "settled_at": (decision + timedelta(minutes=15)).isoformat(),
+            }
+        )
+    return rows
+
+
+def test_headline_skill_suppressed_below_min_event_clusters() -> None:
+    thin = MIN_DISPLAY_EVENT_CLUSTERS - 1
+    metrics = evidence_metrics(_skill_rows(thin))
+    scope = next(iter(metrics["scopes"].values()))
+
+    # The headline number a dashboard would render is GONE.
+    assert scope["brier_skill_vs_market"] is None
+    display = scope["headline_skill"]
+    assert display["status"] == "INSUFFICIENT_CLUSTERS"
+    assert display["suppressed"] is True
+    assert display["event_clusters"] == thin
+    assert display["min_clusters"] == MIN_DISPLAY_EVENT_CLUSTERS
+    assert display["brier_skill_vs_market"] is None
+    # ... but the underlying computed value is preserved, not deleted.
+    assert display["computed_brier_skill_vs_market"] > 0.9
+
+    rollup = metrics["headline_skill_display"]
+    assert rollup["scopes_suppressed"] == 1
+    assert rollup["scopes_displayed"] == 0
+    assert rollup["min_clusters"] == MIN_DISPLAY_EVENT_CLUSTERS
+    assert rollup["suppressed_scopes"] == list(metrics["scopes"])
+
+
+def test_headline_skill_shown_at_and_above_min_event_clusters() -> None:
+    for clusters in (MIN_DISPLAY_EVENT_CLUSTERS, MIN_DISPLAY_EVENT_CLUSTERS + 5):
+        metrics = evidence_metrics(_skill_rows(clusters))
+        scope = next(iter(metrics["scopes"].values()))
+        display = scope["headline_skill"]
+        assert display["status"] == "DISPLAYED", clusters
+        assert display["suppressed"] is False
+        assert display["event_clusters"] == clusters
+        assert scope["brier_skill_vs_market"] == pytest.approx(0.99972, abs=1e-4)
+        assert display["brier_skill_vs_market"] == scope["brier_skill_vs_market"]
+        assert metrics["headline_skill_display"]["scopes_suppressed"] == 0
+
+
+def test_scope_without_market_benchmark_is_not_called_suppressed() -> None:
+    rows = [
+        {**row, "market_brier": None, "market_probability": None}
+        for row in _skill_rows(MIN_DISPLAY_EVENT_CLUSTERS + 2)
+    ]
+    scope = next(iter(evidence_metrics(rows)["scopes"].values()))
+    assert scope["brier_skill_vs_market"] is None
+    assert scope["headline_skill"]["status"] == "NO_MARKET_BENCHMARK"
+    assert scope["headline_skill"]["suppressed"] is False
+
+
+def test_live_report_carries_the_display_gate(tmp_path) -> None:
+    """The gate reaches the artifact the dashboard reads, not just the helper."""
+    store, matrix = _matrix(tmp_path)
+    market = _market(
+        "KXBTC15M-21JUL261215-15", AS_OF + timedelta(minutes=15), AS_OF
+    )
+    try:
+        report = matrix.run_cycle([market], states={"BTC": _state()}, as_of=AS_OF)
+        store.settle_ticker(market.ticker, True, AS_OF + timedelta(minutes=16))
+        rebuilt = matrix.build_report(report["cycle_id"])
+        evidence = rebuilt["settled_evidence"]
+        assert evidence["headline_skill_display"]["min_clusters"] == (
+            MIN_DISPLAY_EVENT_CLUSTERS
+        )
+        # One settled forecast == one cluster: far below the minimum.
+        for scope in evidence["scopes"].values():
+            assert scope["headline_skill"]["status"] == "INSUFFICIENT_CLUSTERS"
+            assert scope["brier_skill_vs_market"] is None
     finally:
         matrix.close()

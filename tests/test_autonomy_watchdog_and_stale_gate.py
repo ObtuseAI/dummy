@@ -563,6 +563,8 @@ def test_watchdog_covers_every_default_task(tmp_path):
         "DummyBacktestReport", "DummySelfImprovement", "DummyHealer",
         "DummyLivePoller", "DummyCryptoHorizonEvidence", "DummyLedgerRetention",
         "DummyLedgerPrune", "DummyLogRotation", "DummyLiveAccountSnapshot",
+        # Registered 2026-07-24; the audit found the lab unscheduled for 9 days.
+        "DummyAutoresearch",
     }
     status = evaluate_watchdog(tmp_path, now_epoch=NOW_EPOCH)
     assert {r["task_name"] for r in status["tasks"]} == names

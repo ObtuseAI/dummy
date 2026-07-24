@@ -159,9 +159,26 @@ def build_llm_value_report(
 def write_llm_value_report(
     db_path: Path | str, *, path: Path | str = REPORT_PATH, days: float | None = 90.0,
 ) -> dict[str, Any]:
+    from autonomy.retention import (
+        bounded_statements,
+        ensure_signal_history,
+        report_writer_budget_s,
+    )
+
     conn = sqlite3.connect(f"file:{Path(db_path)}?mode=ro", uri=True)
     try:
-        report = build_llm_value_report(conn, days=days)
+        # ``signal_history`` is a per-CONNECTION temp view unioning the hot
+        # ledger with the settled-signal archive; a fresh connection that skips
+        # this install fails with "no such table: signal_history". That is why
+        # this report was one of the writers silently absent from runtime before
+        # the 2026-07-24 failure rail exposed it. Safe on a read-only main: the
+        # view lives in the temp database and the archive attaches read-only.
+        ensure_signal_history(conn)
+        # These queries scan the hot+archive union; bound them so a slow pass
+        # surfaces as a recorded writer failure instead of running the whole
+        # readiness task into its scheduler kill (which would write nothing).
+        with bounded_statements(conn, report_writer_budget_s()):
+            report = build_llm_value_report(conn, days=days)
     finally:
         conn.close()
     target = Path(path)

@@ -18,6 +18,23 @@ from autonomy.ontology import MarketView, OutcomeKind, TradeOutcome
 
 STALE_ORDER_MINUTES = 45
 
+# Schema stamp for the phantom-grading coverage receipt (2026-07-24 audit §8:
+# "phantom grading coverage % is not emitted anywhere"). Bump only on a
+# breaking shape change; dashboards read this block off the cycle report.
+PHANTOM_COVERAGE_VERSION = "phantom-coverage-v1"
+
+
+def _series_of(ticker: str) -> str:
+    """Series prefix of a Kalshi market ticker (``SERIES-EVENT-MARKET``)."""
+    return str(ticker).split("-", 1)[0]
+
+
+def _ratio(numerator: int, denominator: int) -> float | None:
+    """Coverage ratio, or None when the denominator is empty (never 0/0=1)."""
+    if denominator <= 0:
+        return None
+    return round(numerator / denominator, 6)
+
 
 def _decimal_or_none(value: Any) -> Decimal | None:
     if value is None or value == "":
@@ -129,6 +146,13 @@ class Reconciler:
         self.fetch_settled_page = fetch_settled_page
         self.fetch_shadow_candles = fetch_shadow_candles
         self.fetch_shadow_trades = fetch_shadow_trades
+        # Coverage receipt for the most recent phantom-grading pass. Rewritten
+        # on every call (never appended to) so a stale receipt can't be reported
+        # as this cycle's coverage. See _forecast_coverage_receipt.
+        self.last_forecast_coverage: dict[str, Any] = {
+            "status": "NOT_RUN",
+            "phantom_coverage_version": PHANTOM_COVERAGE_VERSION,
+        }
 
     # ------------------------------------------------------------------
     # Settlements (public data; drives the whole learning loop)
@@ -161,21 +185,70 @@ class Reconciler:
         watchlist series (cursor-paged), matched against tickers we recently
         signaled on. No per-ticker calls, no positions touched — settlements
         recorded here feed the learner only.
+
+        Every pass writes a coverage receipt to ``self.last_forecast_coverage``
+        (2026-07-24 audit: the "grades every priced market" claim was
+        unverifiable because no coverage number was emitted anywhere). A series
+        whose listing still has a cursor after ``max_pages_per_series`` pages —
+        the 50+ strike ladder overflow — is disclosed as an explicit
+        ``pagination_truncated`` flag instead of silent partial coverage.
         """
-        if self.fetch_settled_page is None or not series_list:
+        requested = [str(series) for series in series_list]
+        if self.fetch_settled_page is None or not requested:
+            self.last_forecast_coverage = self._forecast_coverage_receipt(
+                status=(
+                    "NOT_ATTEMPTED_NO_LISTING_ENDPOINT"
+                    if self.fetch_settled_page is None
+                    else "NOT_ATTEMPTED_NO_SERIES"
+                ),
+                eligible=None,
+                eligible_in_requested_series=0,
+                attempted_eligible=0,
+                graded=0,
+                series_requested=len(requested),
+                series_attempted=0,
+                series_failed=[],
+                series_truncated=[],
+                max_pages_per_series=max_pages_per_series,
+            )
             return []
         unsettled = set(self.ledger.unsettled_forecast_markets())
+        # Snapshot the denominator BEFORE the sweep mutates ``unsettled``.
+        eligible_total = len(unsettled)
+        eligible_by_series: dict[str, int] = {}
+        for ticker in unsettled:
+            key = _series_of(ticker)
+            eligible_by_series[key] = eligible_by_series.get(key, 0) + 1
         if not unsettled:
+            self.last_forecast_coverage = self._forecast_coverage_receipt(
+                status="NOTHING_ELIGIBLE",
+                eligible=0,
+                eligible_in_requested_series=0,
+                attempted_eligible=0,
+                graded=0,
+                series_requested=len(requested),
+                series_attempted=0,
+                series_failed=[],
+                series_truncated=[],
+                max_pages_per_series=max_pages_per_series,
+            )
             return []
         min_close_ts = int(datetime.now(timezone.utc).timestamp() - lookback_hours * 3600)
         settled: list[tuple[str, bool]] = []
-        for series in series_list:
+        attempted_series: list[str] = []
+        failed_series: list[str] = []
+        truncated_series: list[str] = []
+        for series in requested:
             cursor: str | None = None
+            attempted = False
+            failed = False
             for _page in range(max_pages_per_series):
                 try:
                     data = self.fetch_settled_page(series, min_close_ts, cursor)
                 except Exception:
+                    failed = True
                     break  # one dead series never stalls the sweep
+                attempted = True
                 for market in data.get("markets", []):
                     ticker = str(market.get("ticker", ""))
                     if ticker not in unsettled:
@@ -189,7 +262,101 @@ class Reconciler:
                 cursor = data.get("cursor") or None
                 if not cursor:
                     break
+            if attempted:
+                attempted_series.append(series)
+            if failed:
+                failed_series.append(series)
+            elif cursor:
+                # Page cap hit with the listing still unexhausted: the tail of
+                # this series was never looked at this pass.
+                truncated_series.append(series)
+        incomplete = set(failed_series) | set(truncated_series)
+        attempted_eligible = sum(
+            eligible_by_series.get(series, 0)
+            for series in set(attempted_series) - incomplete
+        )
+        self.last_forecast_coverage = self._forecast_coverage_receipt(
+            status="SWEPT",
+            eligible=eligible_total,
+            eligible_in_requested_series=sum(
+                eligible_by_series.get(series, 0) for series in set(requested)
+            ),
+            attempted_eligible=attempted_eligible,
+            graded=len(settled),
+            series_requested=len(requested),
+            series_attempted=len(attempted_series),
+            series_failed=failed_series,
+            series_truncated=truncated_series,
+            max_pages_per_series=max_pages_per_series,
+        )
         return settled
+
+    @staticmethod
+    def _forecast_coverage_receipt(
+        *,
+        status: str,
+        eligible: int | None,
+        eligible_in_requested_series: int,
+        attempted_eligible: int,
+        graded: int,
+        series_requested: int,
+        series_attempted: int,
+        series_failed: list[str],
+        series_truncated: list[str],
+        max_pages_per_series: int,
+    ) -> dict[str, Any]:
+        """Build one phantom-grading coverage receipt.
+
+        Denominator (``eligible_unsettled_forecasts``): every market we priced
+        inside the ledger's forecast window that still carries no settlement —
+        exactly the set the phantom path was asked to cover
+        (``AutonomyLedger.unsettled_forecast_markets``). ``None`` means the
+        sweep never ran, so no denominator was ever established.
+
+        ``attempt_coverage_ratio`` = ``attempted_eligible_forecasts`` /
+        ``eligible_unsettled_forecasts``. An eligible ticker counts as
+        ATTEMPTED only when its series listing was fetched to exhaustion this
+        pass: the cursor ran out, the endpoint did not fail, and the page cap
+        was not hit. Tickers whose series was never requested, whose listing
+        errored, or whose pagination was truncated are excluded on purpose —
+        the ratio exists to make unattempted work visible.
+
+        ``graded_coverage_ratio`` = ``graded_this_pass`` /
+        ``eligible_unsettled_forecasts``: the share of the ungraded backlog
+        this pass actually resolved. It is expected to be small (most eligible
+        markets have not closed yet); it is an honesty measure, not a target.
+        """
+        pages = max(0, int(max_pages_per_series))
+        return {
+            "phantom_coverage_version": PHANTOM_COVERAGE_VERSION,
+            "status": status,
+            "eligible_unsettled_forecasts": eligible,
+            "eligible_in_requested_series": int(eligible_in_requested_series),
+            "eligible_outside_requested_series": (
+                None if eligible is None
+                else max(0, int(eligible) - int(eligible_in_requested_series))
+            ),
+            "attempted_eligible_forecasts": int(attempted_eligible),
+            "graded_this_pass": int(graded),
+            "attempt_coverage_ratio": _ratio(
+                int(attempted_eligible), int(eligible or 0)
+            ),
+            "graded_coverage_ratio": _ratio(int(graded), int(eligible or 0)),
+            "series_requested": int(series_requested),
+            "series_attempted": int(series_attempted),
+            "series_failed": sorted(series_failed),
+            "series_truncated": sorted(series_truncated),
+            "max_pages_per_series": pages,
+            "pagination_truncated": bool(series_truncated),
+            "listing_errors": bool(series_failed),
+            "complete": bool(
+                status == "SWEPT"
+                and not series_failed
+                and not series_truncated
+                and eligible is not None
+                and int(attempted_eligible) >= int(eligible)
+            ),
+        }
 
     # ------------------------------------------------------------------
     # Open orders (authenticated; only in live mode)

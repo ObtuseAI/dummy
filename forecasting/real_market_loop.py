@@ -9,6 +9,7 @@ from typing import Any, Iterable
 
 import httpx
 
+from core.evidence_dir import EvidencePath
 from core.ontology import Contract, Forecast, ForecastOpinion, Market, OrderBook, OrderBookLevel
 from core.logger import logger
 from forecasting.hybrid_engine import HYBRID_REVIEW_CALL_CAP, HybridForecastEngine
@@ -210,8 +211,12 @@ class RealMarketForecastLoopV2:
         self.hybrid_engine = hybrid_engine or HybridForecastEngine()
         self.storage = storage or CalibrationStorage()
         self.recalibrator = ProbabilityRecalibrator(self.storage.data_dir / "recalibrator.json")
-        self.artifact_dir = Path(artifact_dir or "artifacts/dummy")
-        self.artifact_dir.mkdir(parents=True, exist_ok=True)
+        # EvidencePath (not a bare Path + eager mkdir): constructing the loop
+        # must not materialise the gitignored artifacts/dummy tree.  Only the
+        # three report writes at the end of a run create the directory, and in
+        # a fresh checkout that directory's existence is what the test suite's
+        # workstation-evidence probe keys off.
+        self.artifact_dir = EvidencePath(artifact_dir or "artifacts/dummy")
         self.credentials_present = False
         self.model_mode = "UNKNOWN"
         self.model_degradation_reasons: list[str] = []

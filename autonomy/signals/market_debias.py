@@ -38,17 +38,33 @@ MIN_BUCKET_N = 100  # no opinion from thin history
 # scope's promotion.
 N_VERTICAL_BUCKETS = 10
 MIN_VERTICAL_BUCKET_N = 80
-# Forward-registered promotion-candidate scope (2026-07-22 elite audit;
+# Forward-registered promotion-candidate scopes (2026-07-22 elite audit;
 # runtime/autonomy/promotion_forward_registrations.json). promotion_eligible
-# flips True for EXACTLY this grading scope's emissions and stays False for
-# every other scope. NOTE: emissions now stamp market_type as
-# "<type>@<horizon>", so their derived grading scope is e.g.
-# "market_debias|mlb|winner@short|pre" -- the registered historical scope
-# below only matches emissions whose taxonomy market_type resolves to the
-# bare "na". The registration FINGERPRINT is never stamped here: the ledger
-# stamps it at record time from the immutable registrations file
-# (AutonomyLedger._stamp_forward_fingerprint).
-PROMOTION_ELIGIBLE_SCOPE = "market_debias|mlb|na|pre"
+# flips True for EXACTLY these grading scopes' emissions and stays False for
+# every other scope.
+#
+# Since 8c43272 emissions stamp market_type as "<type>@<horizon>", so the
+# derived grading scope carries the horizon: no live emission can produce the
+# original registered shape "market_debias|mlb|na|pre" (which required the
+# taxonomy market_type to fall through to the bare "na"), and forward evidence
+# for the mlb candidate could never accrue. The scopes below are the mlb exact
+# curve scopes that actually carry a dense verified bucket -- i.e. the only
+# scopes the signal emits under at all (measured against both the live curve
+# artifact and the live ledger's last ~54k market_debias rows, 2026-07-24).
+# A scope that densifies later stays opted out until it is deliberately
+# registered: eligibility is an explicit act, never a side effect of history
+# growing. Registrations are append-only, so the dead "na" entry remains in the
+# file immutably; nothing can ever match it again.
+#
+# scripts/register_forward_candidates.py imports this set, so the registration
+# file and this gate cannot drift apart again. The registration FINGERPRINT is
+# never stamped here: the ledger stamps it at record time from the immutable
+# registrations file (AutonomyLedger._stamp_forward_fingerprint).
+PROMOTION_ELIGIBLE_SCOPES: frozenset[str] = frozenset({
+    "market_debias|mlb|prop@long|pre",
+    "market_debias|mlb|prop@short|pre",
+    "market_debias|mlb|spread@long|pre",
+})
 HORIZON_BUCKETS = ("near_terminal", "short", "long")
 LIVE_EVIDENCE_MODE = "live_only_receipt_bounded_decision_or_first_seen_v2"
 CURVE_SCHEMA_VERSION = 6
@@ -723,8 +739,8 @@ class MarketDebiasSignal:
             "curve_created_at": self._curve.get("created_at"),
             "challenger_only": True,
             # The autonomous ladder cannot opt this source in from in-sample
-            # fit: only the forward-registered exact scope (stamped below)
-            # is promotion-eligible; every other scope stays opted out.
+            # fit: only the forward-registered exact scopes (stamped below)
+            # are promotion-eligible; every other scope stays opted out.
             "promotion_eligible": False,
             "forward_calibration_required": True,
             "execution_authority": False,
@@ -734,7 +750,7 @@ class MarketDebiasSignal:
 
             features["promotion_eligible"] = (
                 grading_scope(self.name, market.ticker, features)
-                == PROMOTION_ELIGIBLE_SCOPE
+                in PROMOTION_ELIGIBLE_SCOPES
             )
         except Exception:  # noqa: BLE001 - fail closed: stays opted out
             features["promotion_eligible"] = False

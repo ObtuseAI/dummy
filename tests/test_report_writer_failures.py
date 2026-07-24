@@ -310,16 +310,63 @@ def test_picks_failure_marks_section_unavailable_not_error_string(
 
 def _plan_capture(tmp_path, monkeypatch):
     plan_path = tmp_path / "self_improvement_plan.json"
+
+    # The runner passes this run's chain outcome into the planner (so a failed
+    # step is graded now instead of one run late), and write_plan takes an
+    # optional history path -- the doubles accept both rather than pinning a
+    # stale signature.
+    def _assemble_plan(*args, chain=None, **kwargs):
+        return {"items": []}
+
     monkeypatch.setattr(
-        "autonomy.improvement_planner.assemble_plan", lambda: {"items": []},
+        "autonomy.improvement_planner.assemble_plan", _assemble_plan,
     )
 
-    def _write_plan(plan, path=None):
+    def _write_plan(plan, path=None, **kwargs):
         plan_path.write_text(json.dumps(plan), encoding="utf-8")
         return plan_path
 
     monkeypatch.setattr("autonomy.improvement_planner.write_plan", _write_plan)
     return plan_path
+
+
+def test_self_improvement_passes_this_runs_chain_to_the_planner(
+    tmp_path, monkeypatch, capsys,
+):
+    """The planner grades a failed chain step as a top-severity item. Reading
+    the chain back from the previous artifact would report every failure one
+    run late, so the runner must hand THIS run's outcome in."""
+    module = _load_self_improvement()
+    monkeypatch.setattr(module, "STEPS", [
+        ("bad_step", ["-c", "import sys; sys.exit(1)"], 30.0),
+    ])
+    seen: dict[str, object] = {}
+
+    def _assemble_plan(*args, chain=None, **kwargs):
+        seen["chain"] = chain
+        return {"items": []}
+
+    plan_path = tmp_path / "self_improvement_plan.json"
+    monkeypatch.setattr(
+        "autonomy.improvement_planner.assemble_plan", _assemble_plan,
+    )
+    monkeypatch.setattr(
+        "autonomy.improvement_planner.write_plan",
+        lambda plan, path=None, **kwargs: (
+            plan_path.write_text(json.dumps(plan), encoding="utf-8") or plan_path
+        ),
+    )
+
+    module.main()
+    capsys.readouterr()
+
+    chain = seen["chain"]
+    assert isinstance(chain, dict)
+    assert chain["ok"] is False
+    assert chain["failed_steps"] == ["bad_step"]
+    # The same object is also stamped onto the written plan.
+    written = json.loads(plan_path.read_text(encoding="utf-8"))
+    assert written["chain"]["failed_steps"] == ["bad_step"]
 
 
 def test_self_improvement_step_failure_propagates(tmp_path, monkeypatch, capsys):

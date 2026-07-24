@@ -610,6 +610,47 @@ def _int_or_none(value: Any) -> int | None:
     return int(parsed) if parsed is not None and parsed.is_integer() else None
 
 
+# Every numeric a consumer may do tier arithmetic on.  A snapshot that names a
+# selected side is claiming executable quoted value, so all of them must be
+# present and finite for that claim to be checkable.
+_EXECUTABLE_NUMERIC_FIELDS = (
+    "tier_entry_price_cents",
+    "tier_modeled_fee_cents",
+    "tier_gross_executable_edge",
+    "tier_after_fee_edge",
+    "tier_score",
+    "tier_uncertainty",
+)
+
+
+def tier_snapshot_is_executable(features: dict[str, Any]) -> bool:
+    """Whether a snapshot carries a selected side and complete, finite fee math.
+
+    ``tier_snapshot_is_valid`` admits two lawful shapes.  An *executable*
+    snapshot names a side and every number its tier claim was derived from.  A
+    ``no_executable_depth`` snapshot is an equally truthful record that no
+    two-sided quote existed, and its contract *requires* the executable fields
+    to be ``None`` — the board relies on that shape to display an honest
+    ``UNATTRIBUTED / no_executable_depth`` row rather than a fabricated one.
+
+    Consumers that do price arithmetic must therefore ask which shape they hold
+    before dereferencing.  Skipping that question is what killed live cycles:
+    ``float(snapshot["tier_entry_price_cents"])`` on the second shape raises
+    TypeError, so a display-only classification took the decide/execute stages
+    down with it.
+    """
+    if not isinstance(features, dict):
+        return False
+    if features.get("tier_side") not in {"yes", "no"}:
+        return False
+    if _valid_ask(features.get("tier_entry_price_cents")) is None:
+        return False
+    return all(
+        _valid_number(features.get(key)) is not None
+        for key in _EXECUTABLE_NUMERIC_FIELDS
+    )
+
+
 def tier_snapshot_is_valid(
     features: dict[str, Any],
     *,
@@ -667,6 +708,18 @@ def tier_snapshot_is_valid(
     if (
         str(features.get("tier_market_type") or "") != expected_market_type
         or str(features.get("tier_horizon_phase") or "") != expected_horizon
+    ):
+        return False
+
+    # Shape guard, ahead of the per-field checks below: a snapshot that names a
+    # selected side must supply every number its own tier claim is derived
+    # from.  The individual checks further down already reject each missing
+    # field, but only as a side effect of arithmetic they happen to perform;
+    # stating the invariant by name keeps "claims a side" and "is safe to do
+    # float() arithmetic on" the same predicate for every consumer.
+    if (
+        features.get("tier_side") is not None
+        and not tier_snapshot_is_executable(features)
     ):
         return False
 

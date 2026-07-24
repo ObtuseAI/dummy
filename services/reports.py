@@ -2,8 +2,12 @@ import json
 from datetime import datetime, timezone
 from pathlib import Path
 
-ARTIFACTS = Path("C:/src/engine/dummy/artifacts/dummy")
-ARTIFACTS.mkdir(parents=True, exist_ok=True)
+from core.evidence_dir import EvidencePath
+
+# Resolved from this file (not a hardcoded C:\ literal, which made a checkout
+# anywhere else -- a git worktree, CI -- write into the canonical workstation
+# tree) and created lazily on the first write rather than at import time.
+ARTIFACTS = EvidencePath(Path(__file__).resolve().parent.parent / "artifacts" / "dummy")
 
 
 def _write(name: str, payload: dict):

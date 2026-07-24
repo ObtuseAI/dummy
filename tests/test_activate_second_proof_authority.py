@@ -28,6 +28,14 @@ def prepared_context(tmp_path, monkeypatch):
     monkeypatch.setattr(spl, "SECOND_PROOF_LOCK_DIR", tmp_path / "proof_locks")
     monkeypatch.setattr(ofc, "SECOND_PROOF_AUTHORITY_DIR", tmp_path / "second_proof_authority")
     monkeypatch.setattr(ofc, "LIVE_SUBMIT_PATH", tmp_path / "live_submit.json")
+    # Was an inline literal inside cmd_activate_second_proof_authority, so it
+    # escaped this fixture and wrote a real operator approval file into the
+    # live runtime/approvals directory on every plain pytest run.
+    monkeypatch.setattr(
+        ofc,
+        "SECOND_PROOF_APPROVAL_PATH",
+        tmp_path / "approvals" / "dummy_second_controlled_real_broker_proof_approval.json",
+    )
 
     candidate = {
         "candidate_found": True,

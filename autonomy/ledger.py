@@ -45,6 +45,47 @@ def _ledger_busy_timeout_s() -> float:
 LEDGER_BUSY_TIMEOUT_S = _ledger_busy_timeout_s()
 LEDGER_LOCK_RETRIES = 5
 LEDGER_LOCK_BACKOFF_S = 0.1
+LEDGER_LOCK_BACKOFF_MAX_S = 5.0
+
+
+# Writer-vs-writer is the one lock class WAL does not remove: a competing
+# writer (retention, signal_prune, an out-of-band recal, another Dummy task)
+# holds the single WAL write lock, and a cycle's ~24k-row signal write dies on
+# it. Five retries with 0.1s doubling (~1.6s) is nothing next to a 60s
+# busy_timeout, so the write failed and took the whole cycle — decide, execute,
+# persist — with it. Signals are *observational evidence*; they must never be
+# able to sacrifice the trading path. The write therefore gets a real
+# wall-clock budget to outlast a competitor, and degrades to a partial write
+# when that budget is exhausted. The budget is safe to make this long only
+# because set_statement_deadline + the daemon's 540s cooperative deadline now
+# convert an unwinnable wait into a clean watchdog-safe CycleDeadline abort.
+def _signal_lock_budget_s() -> float:
+    try:
+        value = float(os.environ.get("DUMMY_LEDGER_SIGNAL_LOCK_BUDGET_S", "120"))
+        return value if value > 0 else 120.0
+    except (TypeError, ValueError):
+        return 120.0
+
+
+def _signal_lock_cooldown_s() -> float:
+    """Fast-fail window after a lock-dropped signal write.
+
+    A cycle calls record_signals once per market. Without a cooldown, a
+    minutes-long competitor would make every one of those calls burn the full
+    budget and starve the decide/execute stages of the cycle's remaining time.
+    After a drop, further signal writes are skipped outright for one short
+    window instead — the drop counters stay exact, and the cycle spends its
+    remaining seconds trading rather than queueing behind a lock.
+    """
+    try:
+        value = float(os.environ.get("DUMMY_LEDGER_SIGNAL_LOCK_COOLDOWN_S", "30"))
+        return value if value >= 0 else 30.0
+    except (TypeError, ValueError):
+        return 30.0
+
+
+LEDGER_SIGNAL_LOCK_BUDGET_S = _signal_lock_budget_s()
+LEDGER_SIGNAL_LOCK_COOLDOWN_S = _signal_lock_cooldown_s()
 
 
 def _signal_write_chunk() -> int:
@@ -307,6 +348,13 @@ class AutonomyLedger:
         # Count of write operations that had to be retried after SQLITE_BUSY.
         # A nonzero, growing value is the leading indicator of lock contention.
         self._lock_retries = 0
+        # Signal evidence abandoned because a competing writer outlasted the
+        # lock budget. Surfaced in health() so an infra-dropped episode is
+        # operator-visible instead of a silently short signals table.
+        self._signal_rows_dropped = 0
+        self._signal_drop_episodes = 0
+        self._last_signal_drop: dict[str, Any] = {}
+        self._signal_lock_cooldown_until = 0.0
         self._conn = sqlite3.connect(
             f"file:{resolved.as_posix()}?mode={mode}",
             uri=True,
@@ -363,24 +411,47 @@ class AutonomyLedger:
         except sqlite3.OperationalError:
             pass
 
-    def _retry_on_locked(self, operation: Callable[[], Any]) -> Any:
+    @staticmethod
+    def _is_lock_error(exc: sqlite3.OperationalError) -> bool:
+        """SQLITE_BUSY/LOCKED only. "interrupted" (the statement deadline) and
+        every other OperationalError must stay un-retried and propagate."""
+        return "locked" in str(exc).lower()
+
+    def _retry_on_locked(
+        self,
+        operation: Callable[[], Any],
+        *,
+        deadline: float | None = None,
+    ) -> Any:
         """Run a write, retrying with backoff on SQLITE_BUSY within a bound.
 
         busy_timeout already absorbs most contention; this catches the residual
         race where the lock is grabbed between statements. Non-lock
         OperationalErrors propagate immediately; so does the last lock error —
         bounded retry, fail-closed, never an infinite spin.
+
+        ``deadline`` (a ``time.monotonic`` instant) swaps the attempt count for
+        a wall-clock budget. The signal write uses it because its competitor
+        can hold the WAL write lock for longer than a whole busy_timeout, which
+        the attempt-count bound cannot outlast.
         """
         delay = LEDGER_LOCK_BACKOFF_S
-        for attempt in range(LEDGER_LOCK_RETRIES):
+        attempts = 0
+        while True:
             try:
                 return operation()
             except sqlite3.OperationalError as exc:
-                if "locked" not in str(exc).lower() or attempt == LEDGER_LOCK_RETRIES - 1:
+                attempts += 1
+                exhausted = (
+                    time.monotonic() >= deadline
+                    if deadline is not None
+                    else attempts >= LEDGER_LOCK_RETRIES
+                )
+                if not self._is_lock_error(exc) or exhausted:
                     raise
                 self._lock_retries += 1
                 time.sleep(delay)
-                delay *= 2
+                delay = min(delay * 2, LEDGER_LOCK_BACKOFF_MAX_S)
 
     def set_statement_deadline(self, deadline_monotonic: float | None) -> None:
         """Abort any SQL statement still running past a monotonic deadline.
@@ -420,6 +491,9 @@ class AutonomyLedger:
             "size_bytes": int(size),
             "size_gib": round(size / 1024 ** 3, 3),
             "lock_retries": int(self._lock_retries),
+            "signal_rows_dropped_lock": int(self._signal_rows_dropped),
+            "signal_drop_episodes": int(self._signal_drop_episodes),
+            "last_signal_drop": dict(self._last_signal_drop),
             "bloat_warn": size >= LEDGER_BLOAT_WARN_BYTES,
         }
         for pragma in ("freelist_count", "page_size", "journal_mode", "busy_timeout"):
@@ -593,6 +667,47 @@ class AutonomyLedger:
             ),
         )
 
+    def _abandon_uncommitted_signals(self, pending_epochs: list[str]) -> str | None:
+        """Discard the in-flight chunk, leaving no half-open transaction.
+
+        Rolling back rather than committing: the commit would need the very
+        write lock that just proved unobtainable, so trying would double the
+        stall for rows the chunk boundary design already treats as expendable.
+        Everything committed at an earlier boundary stays durable — that is the
+        "safely committable" part, and it is already on disk. In-memory epoch
+        bookkeeping is undone with the rows it describes, or a rolled-back
+        epoch would be remembered as written and never re-inserted.
+        """
+        self._tier_policy_epochs_seen.difference_update(pending_epochs)
+        try:
+            self._conn.rollback()
+        except sqlite3.Error as exc:
+            # Nothing further this method can do; report it in health() rather
+            # than turning a degraded write back into a cycle-killing raise.
+            return f"{type(exc).__name__}:{exc}"[:200]
+        return None
+
+    def _record_signal_drop(self, dropped: int, reason: str, detail: str | None) -> None:
+        """Make an infra-dropped signal episode visible to the operator.
+
+        Deliberately not written to ``signal_rejections``: those rows are
+        statistical quarantine for malformed evidence, and the write would fail
+        against the same held lock anyway.
+        """
+        self._signal_rows_dropped += int(dropped)
+        self._signal_drop_episodes += 1
+        self._last_signal_drop = {
+            "at": datetime.now(timezone.utc).isoformat(),
+            "rows": int(dropped),
+            "reason": reason,
+        }
+        if detail:
+            self._last_signal_drop["rollback_error"] = detail
+        if LEDGER_SIGNAL_LOCK_COOLDOWN_S > 0:
+            self._signal_lock_cooldown_until = (
+                time.monotonic() + LEDGER_SIGNAL_LOCK_COOLDOWN_S
+            )
+
     def record_signals(
         self, signals: list[Signal], mode: str = "live", *, all_or_none: bool = False,
     ) -> list[bool]:
@@ -601,22 +716,46 @@ class AutonomyLedger:
         Invalid rows are quarantined in ``signal_rejections`` instead of
         crashing an autonomous cycle. ``all_or_none`` is used by historical
         replay so a baseline/model pair cannot be only half-written.
+
+        A competing writer that outlasts the lock budget degrades this call to a
+        PARTIAL write: rows committed at earlier chunk boundaries stand, the
+        rest are reported unwritten (``False``) so the caller's
+        signals_generated/signals_rejected accounting stays honest, and the
+        cycle proceeds to decide/execute. ``all_or_none`` keeps its
+        all-or-nothing contract and re-raises instead.
         """
         if not signals:
             return []
+        if not all_or_none and time.monotonic() < self._signal_lock_cooldown_until:
+            self._record_signal_drop(len(signals), "lock_cooldown", None)
+            return [False] * len(signals)
+        deadline = time.monotonic() + LEDGER_SIGNAL_LOCK_BUDGET_S
         now = datetime.now(timezone.utc)
         ingested_at = now.isoformat()
         errors = [self._signal_validation_error(signal, mode, now) for signal in signals]
-        duplicate = []
-        for signal, error in zip(signals, errors):
-            exists = False
-            if error is None:
-                exists = self._conn.execute(
-                    "SELECT 1 FROM signal_history WHERE source=? AND market_ticker=?"
-                    " AND created_at=? AND mode=? LIMIT 1",
-                    (signal.source, signal.market_ticker, signal.created_at, mode),
-                ).fetchone() is not None
-            duplicate.append(exists)
+        duplicate: list[bool] = []
+        try:
+            for signal, error in zip(signals, errors):
+                exists = False
+                if error is None:
+                    exists = self._retry_on_locked(
+                        lambda s=signal: self._conn.execute(
+                            "SELECT 1 FROM signal_history WHERE source=? AND market_ticker=?"
+                            " AND created_at=? AND mode=? LIMIT 1",
+                            (s.source, s.market_ticker, s.created_at, mode),
+                        ).fetchone(),
+                        deadline=deadline,
+                    ) is not None
+                duplicate.append(exists)
+        except sqlite3.OperationalError as exc:
+            # The duplicate probe is a read, but it can still meet a lock while
+            # the database has not (yet) been flipped to WAL. Nothing has been
+            # written at this point, so the whole batch degrades.
+            if all_or_none or not self._is_lock_error(exc):
+                raise
+            detail = self._abandon_uncommitted_signals([])
+            self._record_signal_drop(len(signals), "lock_duplicate_probe", detail)
+            return [False] * len(signals)
         if all_or_none and (any(errors) or any(duplicate)):
             for signal, error, is_duplicate in zip(signals, errors, duplicate):
                 reason = error or ("duplicate_signal" if is_duplicate else "batch_rejected")
@@ -631,47 +770,68 @@ class AutonomyLedger:
         # for all_or_none (replay atomicity) and when the chunk size is <= 0.
         chunk = 0 if all_or_none else LEDGER_SIGNAL_WRITE_CHUNK
         since_commit = 0
-        for signal, error, is_duplicate in zip(signals, errors, duplicate):
-            if chunk > 0 and since_commit >= chunk:
-                self._retry_on_locked(self._conn.commit)
-                since_commit = 0
-            since_commit += 1
-            if error is not None or is_duplicate:
-                self._reject_signal(
-                    signal, mode, error or "duplicate_signal", ingested_at,
-                )
-                accepted.append(False)
-                continue
-            if registered_sources and signal.source in registered_sources:
-                self._stamp_forward_fingerprint(signal, fingerprints)
-            features = json.dumps(
-                signal.features, sort_keys=True, separators=(",", ":"), allow_nan=False,
-            )
-            cursor = self._conn.execute(
-                "INSERT INTO signals(source, market_ticker, probability_yes, uncertainty,"
-                " rationale, features, created_at, mode, ingested_at, ingest_version)"
-                " VALUES (?,?,?,?,?,?,?,?,?,2)",
-                (
-                    signal.source.strip(), signal.market_ticker.strip(),
-                    float(signal.probability_yes), float(signal.uncertainty),
-                    signal.rationale[:500], features, signal.created_at, mode, ingested_at,
-                ),
-            )
-            policy_version = signal.features.get("tier_policy_version")
-            if (
-                signal.source.strip() == "fused_forecast"
-                and isinstance(policy_version, str)
-                and policy_version
-                and policy_version not in self._tier_policy_epochs_seen
+        # Index up to which this call's work is durable, i.e. survives the
+        # rollback that a lock exhaustion forces on the in-flight chunk.
+        durable = 0
+        pending_epochs: list[str] = []
+        try:
+            for index, (signal, error, is_duplicate) in enumerate(
+                zip(signals, errors, duplicate)
             ):
-                self._conn.execute(
-                    "INSERT OR IGNORE INTO tier_policy_epochs("
-                    "policy_version,first_signal_id,started_at) VALUES (?,?,?)",
-                    (policy_version, int(cursor.lastrowid), ingested_at),
+                if chunk > 0 and since_commit >= chunk:
+                    self._retry_on_locked(self._conn.commit, deadline=deadline)
+                    since_commit = 0
+                    durable = index
+                    pending_epochs.clear()
+                since_commit += 1
+                if error is not None or is_duplicate:
+                    self._reject_signal(
+                        signal, mode, error or "duplicate_signal", ingested_at,
+                    )
+                    accepted.append(False)
+                    continue
+                if registered_sources and signal.source in registered_sources:
+                    self._stamp_forward_fingerprint(signal, fingerprints)
+                features = json.dumps(
+                    signal.features, sort_keys=True, separators=(",", ":"), allow_nan=False,
                 )
-                self._tier_policy_epochs_seen.add(policy_version)
-            accepted.append(True)
-        self._retry_on_locked(self._conn.commit)
+                cursor = self._conn.execute(
+                    "INSERT INTO signals(source, market_ticker, probability_yes, uncertainty,"
+                    " rationale, features, created_at, mode, ingested_at, ingest_version)"
+                    " VALUES (?,?,?,?,?,?,?,?,?,2)",
+                    (
+                        signal.source.strip(), signal.market_ticker.strip(),
+                        float(signal.probability_yes), float(signal.uncertainty),
+                        signal.rationale[:500], features, signal.created_at, mode, ingested_at,
+                    ),
+                )
+                policy_version = signal.features.get("tier_policy_version")
+                if (
+                    signal.source.strip() == "fused_forecast"
+                    and isinstance(policy_version, str)
+                    and policy_version
+                    and policy_version not in self._tier_policy_epochs_seen
+                ):
+                    self._conn.execute(
+                        "INSERT OR IGNORE INTO tier_policy_epochs("
+                        "policy_version,first_signal_id,started_at) VALUES (?,?,?)",
+                        (policy_version, int(cursor.lastrowid), ingested_at),
+                    )
+                    self._tier_policy_epochs_seen.add(policy_version)
+                    pending_epochs.append(policy_version)
+                accepted.append(True)
+            self._retry_on_locked(self._conn.commit, deadline=deadline)
+        except sqlite3.OperationalError as exc:
+            if not self._is_lock_error(exc):
+                raise
+            detail = self._abandon_uncommitted_signals(pending_epochs)
+            if all_or_none:
+                # Replay atomicity: the caller must learn that nothing landed,
+                # not receive a mask it could mistake for a graded rejection.
+                self._record_signal_drop(len(signals), "lock_all_or_none", detail)
+                raise
+            self._record_signal_drop(len(signals) - durable, "lock_signal_write", detail)
+            return accepted[:durable] + [False] * (len(signals) - durable)
         return accepted
 
     _FORWARD_REGISTRATIONS_PATH = (
@@ -741,6 +901,7 @@ class AutonomyLedger:
         if decision.tier_policy_version:
             from autonomy.tier_policy import (
                 TIER_POLICY_VERSION,
+                tier_snapshot_is_executable,
                 tier_snapshot_is_valid,
             )
 
@@ -772,32 +933,50 @@ class AutonomyLedger:
                         "decision tier attribution is not a valid current-policy "
                         f"snapshot for {decision.decision_id}"
                     )
-                snapshot_side = str(snapshot["tier_side"])
-                win_probability = (
-                    float(decision.forecast.probability_yes)
-                    if snapshot_side == "yes"
-                    else 1.0 - float(decision.forecast.probability_yes)
-                )
-                expected_gross = (
-                    win_probability
-                    - float(snapshot["tier_entry_price_cents"]) / 100.0
-                )
-                if (
-                    not math.isclose(
-                        float(snapshot["tier_uncertainty"]),
-                        float(decision.forecast.uncertainty),
-                        abs_tol=1e-6,
+                # A valid snapshot comes in two lawful shapes and only one of
+                # them has fee math to re-derive.  A ``no_executable_depth``
+                # snapshot truthfully records that no two-sided quote existed:
+                # its side and entry price are required to be None, it carries
+                # no letter tier, and there is consequently nothing here to
+                # cross-check and nothing that could be laundered into tier
+                # results.  Running the arithmetic on it anyway raised
+                # TypeError inside this validation and took the entire cycle —
+                # decide, execute, persist — down with it.
+                if tier_snapshot_is_executable(snapshot):
+                    snapshot_side = str(snapshot["tier_side"])
+                    win_probability = (
+                        float(decision.forecast.probability_yes)
+                        if snapshot_side == "yes"
+                        else 1.0 - float(decision.forecast.probability_yes)
                     )
-                    or not math.isclose(
-                        float(snapshot["tier_gross_executable_edge"]),
-                        expected_gross,
-                        abs_tol=1e-6,
+                    expected_gross = (
+                        win_probability
+                        - float(snapshot["tier_entry_price_cents"]) / 100.0
                     )
-                ):
-                    raise ValueError(
-                        "decision forecast does not match its frozen tier snapshot for "
-                        f"{decision.decision_id}"
-                    )
+                    if (
+                        not math.isclose(
+                            float(snapshot["tier_uncertainty"]),
+                            float(decision.forecast.uncertainty),
+                            abs_tol=1e-6,
+                        )
+                        or not math.isclose(
+                            float(snapshot["tier_gross_executable_edge"]),
+                            expected_gross,
+                            abs_tol=1e-6,
+                        )
+                    ):
+                        raise ValueError(
+                            "decision forecast does not match its frozen tier snapshot for "
+                            f"{decision.decision_id}"
+                        )
+                # Any other shape — a snapshot that names a side but cannot
+                # supply every number behind it — is an attribution defect, and
+                # classifying it is tier_snapshot_is_valid's job: the gate above
+                # already rejected it with a ValueError. This branch must not
+                # re-litigate it, because a raise here is just as fatal to the
+                # cycle as the TypeError was (Wave-83's scoreless-assessment
+                # regression encodes exactly that: the cycle stays CYCLE_OK and
+                # persists a null score rather than dying over one snapshot).
                 canonical_tier_score = _canonical_tier_score(snapshot_score)
                 if (
                     decision.tier_label in {"A", "B", "C"}

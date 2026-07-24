@@ -5,7 +5,9 @@ Produces:
 - artifacts/repo_harvester/firewall_bypass_scan_report_v1.json
 - artifacts/repo_harvester/adapter_plan_v3.json
 - artifacts/repo_harvester/rejected_repo_report_v3.json
-- artifacts/repo_harvester/strategy_extraction_report_v1.json
+- artifacts/repo_harvester/strategy_extraction_report_v2.json (keyword-template
+  INVENTORY; it extracts no strategy logic -- see
+  ``build_strategy_extraction_report``)
 """
 
 import asyncio
@@ -22,6 +24,12 @@ from repo_harvester.source_scanner import SCAN_CATEGORIES, categorize_text
 from repo_harvester.adapter_planner import generate_adapter_plan_v3
 from core.ontology import RepoVerdict
 from repo_harvester.adapter_planner import DATA_ONLY_CATEGORIES
+from repo_harvester.strategy_catalog import (
+    KEYWORD_TEMPLATE_DERIVATION,
+    KEYWORD_TEMPLATE_EXTRACTION_METHOD,
+    STRATEGY_CATALOG_FILENAME,
+    STRATEGY_REPORT_SCHEMA_VERSION,
+)
 from repo_harvester.retry_policy import (
     HarvestRetryExhausted,
     PENDING_RETRY,
@@ -408,9 +416,11 @@ async def run_v2_digestion() -> dict[str, Any]:
     }
     (OUT / "rejected_repo_report_v3.json").write_text(json.dumps(rejected_report, indent=2, default=str))
 
-    # Strategy extraction report.
+    # Keyword-template inventory (NOT an extraction report -- see
+    # build_strategy_extraction_report). Written under the v2 filename so the
+    # catalog resolver prefers the labelled report over any stale v1 artifact.
     strategy_report = build_strategy_extraction_report(plans)
-    (OUT / "strategy_extraction_report_v1.json").write_text(json.dumps(strategy_report, indent=2, default=str))
+    (OUT / STRATEGY_CATALOG_FILENAME).write_text(json.dumps(strategy_report, indent=2, default=str))
 
     return {
         "source_scan_summary": source_scan_summary,
@@ -437,23 +447,53 @@ def _secret_hits(plan: dict) -> dict:
 
 
 def build_strategy_extraction_report(plans: list[dict]) -> dict:
-    """Build Dummy-native strategy candidates from repo-derived ADAPTER_TARGET plans.
+    """Build the harvester's keyword-template inventory for ADAPTER_TARGET plans.
 
-    Every candidate emits TradeProposal objects only and never calls live order endpoints.
+    This function extracts NOTHING from a repository. A scan counter trips
+    (``sports_hits``, ``crypto_hits``, ...) and a canned strategy name plus a
+    canned description is emitted; no repo source is parsed, no threshold is
+    read from a repo, and no module is generated. Presenting those emissions
+    as "extracted strategy candidates" inflated a zero-extraction pipeline
+    into a triple-digit headline (2026-07-24 external audit, section 6).
+
+    The inventory is kept -- it truthfully records which repo tripped which
+    keyword counter -- but it is labelled as template fan-out, carries no
+    authority, and is reported separately from ``candidate_count``, which
+    counts only genuinely repo-derived candidates. That count stays 0 until a
+    real extraction-and-verification path is staffed.
     """
-    candidates = []
+    repo_derived_candidates: list[dict] = []
+    keyword_template_inventory = []
     data_only_inputs = []
     quarantined_candidates = []
 
-    def add(repo: str, category: str, strategy_name: str, description: str, market_types: list[str]):
-        candidates.append({
+    def add(
+        repo: str,
+        category: str,
+        strategy_name: str,
+        description: str,
+        market_types: list[str],
+        keyword_trigger: str,
+    ):
+        keyword_template_inventory.append({
             "repo": repo,
             "source_category": category,
             "strategy_name": strategy_name,
             "description": description,
             "market_types": market_types,
-            "output": "TradeProposal",
+            # Inventory only: no module is generated for this row, so it
+            # cannot emit anything.
+            "output": "ABSTAIN",
             "calls_live_order_endpoints": False,
+            "derivation": KEYWORD_TEMPLATE_DERIVATION,
+            "repo_derived_logic": False,
+            "extraction_method": KEYWORD_TEMPLATE_EXTRACTION_METHOD,
+            "keyword_trigger": keyword_trigger,
+            "description_is_canned_template": True,
+            "inventory_role": "keyword_template_inventory",
+            "prediction_authority": False,
+            "trade_proposal_authority": False,
+            "execution_authority": False,
         })
 
     for plan in plans:
@@ -475,12 +515,12 @@ def build_strategy_extraction_report(plans: list[dict]) -> dict:
             continue
         if scan.get("sports_hits"):
             add(repo, category, "SportsMomentumStrategy",
-                "Mine repo odds/forecast logic for momentum and mispricing signals; emit TradeProposal for sports event contracts only.",
-                ["sports"])
+                "Template: a sports keyword counter tripped in this repo. No repo logic was read.",
+                ["sports"], "sports_hits")
         if scan.get("crypto_hits") or "btc" in repo.lower() or "crypto" in repo.lower():
             add(repo, category, "CryptoEventMarketStrategy",
-                "Convert repo BTC/crypto event market signals into Dummy-native TradeProposal objects without touching exchange order endpoints.",
-                ["crypto", "btc", "event"])
+                "Template: a crypto keyword counter (or the repo name) tripped. No repo logic was read.",
+                ["crypto", "btc", "event"], "crypto_hits_or_repo_name")
         if scan.get("stocks_hits"):
             quarantined_candidates.append({
                 "repo": repo,
@@ -492,6 +532,9 @@ def build_strategy_extraction_report(plans: list[dict]) -> dict:
                 ),
                 "market_types": ["stocks", "indices", "macro"],
                 "output": "ABSTAIN",
+                "derivation": KEYWORD_TEMPLATE_DERIVATION,
+                "repo_derived_logic": False,
+                "keyword_trigger": "stocks_hits",
                 "prediction_authority": False,
                 "trade_proposal_authority": False,
                 "execution_authority": False,
@@ -499,30 +542,47 @@ def build_strategy_extraction_report(plans: list[dict]) -> dict:
             })
         if scan.get("arbitrage_hits"):
             add(repo, category, "RepoDerivedCrossMarketArbitrage",
-                "Identify price disagreements across prediction markets using repo arbitrage patterns and emit paired TradeProposal legs.",
-                ["cross_market", "arbitrage"])
+                "Template: an arbitrage keyword counter tripped in this repo. No repo logic was read.",
+                ["cross_market", "arbitrage"], "arbitrage_hits")
         if scan.get("strategy_hits") and scan.get("websocket_hits"):
             add(repo, category, "OrderbookSpreadCaptureStrategy",
-                "Watch orderbook updates via WebSocket logic mined from repos and emit TradeProposal when spread capture meets caps.",
-                ["orderbook", "spread"])
+                "Template: strategy and websocket keyword counters both tripped. No repo logic was read.",
+                ["orderbook", "spread"], "strategy_hits_and_websocket_hits")
         if scan.get("settlement_hits") or scan.get("forecast_hits"):
             add(repo, category, "StaleQuoteDetectionStrategy",
-                "Detect stale quotes near settlement/expiration using repo forecast/settlement patterns and emit TradeProposal only.",
-                ["stale_quote", "settlement"])
+                "Template: a settlement or forecast keyword counter tripped. No repo logic was read.",
+                ["stale_quote", "settlement"], "settlement_hits_or_forecast_hits")
 
     return {
+        "schema_version": STRATEGY_REPORT_SCHEMA_VERSION,
         "generated_at": datetime.now(timezone.utc).isoformat(),
-        "candidate_count": len(candidates),
-        "candidates": candidates,
+        "extraction_method": KEYWORD_TEMPLATE_EXTRACTION_METHOD,
+        "inventory_only": True,
+        "repo_derived_extraction_implemented": False,
+        # Headline: genuinely repo-derived, extracted candidates. There is no
+        # extraction path, so this is 0 by construction, not by filtering.
+        "candidate_count": len(repo_derived_candidates),
+        "candidates": repo_derived_candidates,
+        "repo_derived_candidate_count": len(repo_derived_candidates),
+        "keyword_template_inventory_count": len(keyword_template_inventory),
+        "keyword_template_inventory": keyword_template_inventory,
         "data_only_input_count": len(data_only_inputs),
         "data_only_inputs": data_only_inputs,
         "quarantined_candidate_count": len(quarantined_candidates),
         "quarantined_candidates": quarantined_candidates,
+        "count_semantics": (
+            "candidate_count counts repo-derived extracted strategies only. "
+            "keyword_template_inventory_count counts rows emitted because a "
+            "keyword counter tripped; those are inventory, not extractions, "
+            "and must never be reported as extracted strategy candidates."
+        ),
         "notes": (
-            "All repo-derived strategy candidates emit Dummy-native TradeProposal objects and are "
-            "prohibited from calling live order endpoints. Weather and commodities are data-only "
-            "and never create strategy candidates. Other unsupported market categories remain "
-            "excluded from prediction and execution."
+            "The harvester is INVENTORY-ONLY: it records which repos tripped "
+            "which keyword counters and never derives strategy logic from repo "
+            "source. No inventory row carries prediction, trade-proposal or "
+            "execution authority, and none generates a module. Weather and "
+            "commodities are data-only. Other unsupported market categories "
+            "remain excluded from prediction and execution."
         ),
     }
 

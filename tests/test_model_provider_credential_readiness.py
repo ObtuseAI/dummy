@@ -65,13 +65,68 @@ class TestCredentialReadiness:
     def test_all_statuses_and_ready(self, monkeypatch):
         monkeypatch.delenv("DEEPSEEK_API_KEY", raising=False)
         monkeypatch.delenv("MINIMAX_API_KEY", raising=False)
+        monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
         readiness = CredentialReadiness()
-        assert set(readiness.all_statuses().keys()) == {"deepseek", "minimax"}
+        assert set(readiness.all_statuses().keys()) == {
+            "deepseek", "minimax", "openrouter"}
         assert readiness.ready() is False
 
         monkeypatch.setenv("DEEPSEEK_API_KEY", "sk-ds")
         monkeypatch.setenv("MINIMAX_API_KEY", "sk-mm")
+        monkeypatch.setenv("OPENROUTER_API_KEY", "sk-or")
         assert readiness.ready() is True
+
+
+class TestOpenRouterReadiness:
+    """The panel authenticates with OPENROUTER_API_KEY, so readiness must
+    cover it -- otherwise a missing panel credential only ever surfaces
+    downstream as a router fallback."""
+
+    def test_openrouter_defaults_when_no_env_vars(self, monkeypatch):
+        monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
+        monkeypatch.delenv("OPENROUTER_BASE_URL", raising=False)
+        monkeypatch.delenv("OPENROUTER_MODEL", raising=False)
+
+        status = CredentialReadiness().openrouter_status()
+
+        assert status.present is False
+        assert status.base_url == "https://openrouter.ai/api"
+        assert status.model == "openrouter/auto"
+        assert status.source == "env"
+        assert status.redacted is True
+
+    def test_openrouter_env_overrides(self, monkeypatch):
+        monkeypatch.setenv("OPENROUTER_API_KEY", "sk-or-test")
+        monkeypatch.setenv("OPENROUTER_BASE_URL", "https://custom.openrouter.example")
+        monkeypatch.setenv("OPENROUTER_MODEL", "vendor/custom-model")
+
+        status = CredentialReadiness().openrouter_status()
+
+        assert status.present is True
+        assert status.base_url == "https://custom.openrouter.example"
+        assert status.model == "vendor/custom-model"
+
+    def test_blank_key_is_not_present(self, monkeypatch):
+        monkeypatch.setenv("OPENROUTER_API_KEY", "   ")
+
+        assert CredentialReadiness().openrouter_status().present is False
+
+    def test_missing_openrouter_key_makes_the_surface_not_ready(self, monkeypatch):
+        monkeypatch.setenv("DEEPSEEK_API_KEY", "sk-ds")
+        monkeypatch.setenv("MINIMAX_API_KEY", "sk-mm")
+        monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
+
+        assert CredentialReadiness().ready() is False
+
+    def test_openrouter_status_never_contains_the_key(self, monkeypatch):
+        secret = "sk-or-v1-never-leak-1234567890abcdef"
+        monkeypatch.setenv("OPENROUTER_API_KEY", secret)
+
+        status_dict = CredentialReadiness().openrouter_status().as_dict()
+
+        assert "api_key" not in status_dict
+        assert secret not in str(status_dict)
+        assert status_dict["redacted"] is True
 
 
 class TestModelCredentialStatus:

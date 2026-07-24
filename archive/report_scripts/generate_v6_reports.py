@@ -26,11 +26,12 @@ import httpx
 from cryptography.hazmat.primitives import serialization
 
 ROOT = Path(__file__).parent.parent.parent
-ARTIFACTS = ROOT / "artifacts" / "dummy"
-ARTIFACTS.mkdir(parents=True, exist_ok=True)
-
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
+
+from core.evidence_dir import EvidencePath
+
+ARTIFACTS = EvidencePath(ROOT / "artifacts" / "dummy")
 
 
 def now_iso() -> str:
@@ -233,7 +234,24 @@ def generate_blunder_separation_recheck_v4() -> dict:
 
 def generate_dummy_independence_report_v2() -> dict:
     owned_dirs = ["configs", "logs", "artifacts", "proof", "dashboard"]
-    ownership = {d: (ROOT / d).exists() for d in owned_dirs}
+    # Ownership means "this path is Dummy's, not Blunder's" -- a repository
+    # claim.  Two of these (logs/, artifacts/) are gitignored RUNTIME outputs,
+    # so `.exists()` alone made the verdict depend on whether something had
+    # already written to them.  It passed in a fresh clone only because
+    # core/logger.py used to mkdir logs/ as an import side effect (the
+    # 2026-07-24 audit's hermeticity finding); removing that leak turned this
+    # report FAIL.  A directory Dummy declares as its own in .gitignore is
+    # owned whether or not it has been materialised yet.  Still fail-closed: a
+    # path that is neither present nor declared counts as not owned.
+    gitignore = ROOT / ".gitignore"
+    declared: set[str] = set()
+    if gitignore.is_file():
+        for line in gitignore.read_text(encoding="utf-8").splitlines():
+            entry = line.strip()
+            if not entry or entry.startswith("#"):
+                continue
+            declared.add(entry.rstrip("/").split("/")[0])
+    ownership = {d: ((ROOT / d).exists() or d in declared) for d in owned_dirs}
     blunder_refs: list[str] = []
     excluded = {"archive", ".git", "__pycache__", ".pytest_cache", ".venv", "venv", "node_modules", "dist", "build", "tests", "scripts", "artifacts"}
     for py in ROOT.rglob("*.py"):

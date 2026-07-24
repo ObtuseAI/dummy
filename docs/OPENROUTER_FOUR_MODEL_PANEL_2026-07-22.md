@@ -109,3 +109,36 @@ evidence returns weight `0.0`.
 The current engineering target is therefore honest shadow evidence under the
 new exact lineage. Model quality is a hypothesis; only forward calibration and
 execution-conditioned settlement evidence can promote it.
+
+## Enforced daily USD ceiling
+
+Spend used to be observed but never bounded: `model_router/cost_tracker.py`
+aggregates provider-reported cost inside one process, and the daemon builds a
+fresh router every cycle, so nothing accumulated and nothing could refuse.
+`model_router/spend_governor.py` is the enforcement half.
+
+- The cap is `DUMMY_LLM_DAILY_USD_CAP`, in USD per UTC day, default `5.00`. A
+  missing or malformed value falls back to that default; `0` refuses every paid
+  call.
+- The ledger is `runtime/autonomy/llm_spend_budget.json` (override with
+  `DUMMY_LLM_SPEND_STATE_PATH`) and is rewritten atomically, so the ceiling
+  binds across the process-per-cycle brain instead of resetting with it. The
+  counter rolls at UTC midnight.
+- `ModelRouter.call` RESERVES a call's worst-case price — the route's configured
+  per-million prices applied to the prompt and the full requested `max_tokens` —
+  before the provider is contacted, then reconciles it against the provider's
+  reported cost. A failed or unreported call keeps its reservation: a request
+  that left the process may have been billed either way.
+- A refused call never reaches the network. It returns the mock voice with
+  `fallback_reason=llm_daily_spend_cap_reached` — or `blocked_by`, when mock
+  fallback is off — which every existing consumer already discards, and the cost
+  summary counts it under `spend_capped_calls`.
+- The governor fails closed on its own state: an unreadable or unwritable ledger
+  refuses paid calls rather than silently restarting the count.
+- `mock` and the local-CLI voices (`claude_cli`, `codex_cli`, which bill a
+  personal subscription rather than tokens) never consume the budget, and with
+  `live_model_calls_enabled=false` nothing is ever reserved.
+- Scope: the ceiling governs the router. The two manual smokes
+  (`model_router/smoke.py`, `model_router/openrouter_panel_smoke.py`) contact
+  providers directly under an explicit `allow_live` argument and are bounded by
+  their own one-call-per-model, zero-retry contract instead.

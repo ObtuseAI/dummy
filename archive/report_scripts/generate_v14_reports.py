@@ -13,11 +13,12 @@ from pathlib import Path
 from typing import Any
 
 ROOT = Path(__file__).resolve().parent.parent.parent
-ARTIFACTS = ROOT / "artifacts" / "dummy"
-ARTIFACTS.mkdir(parents=True, exist_ok=True)
-
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
+
+from core.evidence_dir import EvidencePath
+
+ARTIFACTS = EvidencePath(ROOT / "artifacts" / "dummy")
 
 from predator_mesh.v13.credential_bridge import KalshiReadOnlyCredentialBridge
 from predator_mesh.v14.credential_forensics import KalshiCredentialForensics, KalshiCredentialRepairHint

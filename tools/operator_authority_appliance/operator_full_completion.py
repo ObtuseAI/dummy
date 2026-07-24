@@ -126,6 +126,13 @@ def _bootstrap(argv: list[str], env: dict[str, str], runner: Runner, out) -> int
 
 
 LIVE_SUBMIT_PATH = DUMMY_ROOT / "configs" / "live_submit.json"
+# Named rather than an inline literal at the write site: the activation tests
+# patch every other path on this module, so the one hardcoded string was the
+# only thing still writing a real operator approval file into runtime/approvals
+# on a plain pytest run.  Value is unchanged (repo-root-relative, as before).
+SECOND_PROOF_APPROVAL_PATH = Path(
+    "runtime/approvals/dummy_second_controlled_real_broker_proof_approval.json"
+)
 CAPS_PATH = DUMMY_ROOT / "configs" / "caps.json"
 ADAPTER_DESCRIPTOR_PATH = DUMMY_ROOT / "runtime" / "operator_external" / "livebrokerfirewall_adapter_descriptor.json"
 CAPS_AUTHORITY_REGISTRATION_PATH = DEFAULT_CAPS_AUTHORITY_REGISTRATION_PATH
@@ -389,7 +396,7 @@ def cmd_activate_second_proof_authority(args, out) -> int:
         "autonomy_allowed": False,
         "not_self_authorized_by_dummy": True,
     }
-    approval_path = Path("runtime/approvals/dummy_second_controlled_real_broker_proof_approval.json")
+    approval_path = Path(SECOND_PROOF_APPROVAL_PATH)
     approval_path.parent.mkdir(parents=True, exist_ok=True)
     approval_path.write_text(json.dumps(approval, indent=2, sort_keys=True), encoding="utf-8")
 
