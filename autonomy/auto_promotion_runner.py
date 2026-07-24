@@ -531,6 +531,25 @@ def realized_attribution(
                 else "book_witnessed"
             )
             forward["fill_provenance"][provenance] += 1
+    # Wave-86: make the boolean tell the truth. It was hardcoded True above,
+    # so a dossier built entirely from MODELED challenger-lane taker fills
+    # still asserted witnessed_fill_net_pnl -- contradicting its own
+    # fill_provenance counter two keys away. The flag is the one the promotion
+    # gate reads, so the disclosure was decorative. A dossier is witnessed only
+    # if every counted fill was book-witnessed.
+    for entry in out.values():
+        forward = entry.get("forward_evidence")
+        if not isinstance(forward, dict):
+            continue
+        split = forward.get("fill_provenance") or {}
+        modeled = int(split.get("modeled_taker", 0))
+        witnessed = int(split.get("book_witnessed", 0))
+        forward["witnessed_fill_net_pnl"] = modeled == 0 and witnessed > 0
+        forward["fill_provenance_grade"] = (
+            "book_witnessed" if modeled == 0 and witnessed > 0
+            else "modeled_taker" if witnessed == 0
+            else "mixed"
+        )
     return out
 
 

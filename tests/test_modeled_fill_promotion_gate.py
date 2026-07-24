@@ -128,6 +128,33 @@ def test_arming_does_not_admit_a_non_modeled_provenance():
     assert "witnessed_fill_net_pnl" in out["failures"]
 
 
+def test_counter_dict_provenance_is_understood():
+    """Real dossiers carry a COUNTER, not a string.
+
+    auto_promotion_runner builds fill_provenance as
+    {"modeled_taker": n, "book_witnessed": m}. Comparing that dict to strings
+    made the whole concession a silent no-op on live data while every
+    string-based fixture passed -- the exact shape of bug this repo keeps
+    finding. Both forms must work.
+    """
+    counter = _payload(
+        witnessed_fill_net_pnl=False,
+        fill_provenance={"modeled_taker": 70, "book_witnessed": 0},
+    )
+    assert forward_witnessed_fill_evidence(
+        "s|a|b|c", counter, config=STRICT,
+    )["pass"] is False
+    out = forward_witnessed_fill_evidence("s|a|b|c", counter, config=ARMED)
+    assert out["pass"] is True
+    assert out["evidence_grade"] == "modeled"
+
+    # A purely book-witnessed counter is not "modeled" and needs no concession.
+    witnessed = _payload(fill_provenance={"modeled_taker": 0, "book_witnessed": 70})
+    assert forward_witnessed_fill_evidence(
+        "s|a|b|c", witnessed, config=STRICT,
+    )["evidence_grade"] == "witnessed"
+
+
 def test_minimal_bar_removes_the_time_gate_but_not_the_ci_gate():
     """Owner directive: no time gates, minimal volume -- but a real edge.
 

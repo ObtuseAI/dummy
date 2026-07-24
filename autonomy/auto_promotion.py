@@ -619,10 +619,16 @@ def forward_witnessed_fill_evidence(
     # MODELED fill satisfies the fill-provenance flag. Everything else below
     # -- cluster counts, span, bootstrap CI, forward-of-registration -- is
     # unchanged, so relaxing provenance never relaxes independence.
-    modeled_ok = bool(
-        config.allow_modeled_fill_evidence
-        and raw.get("fill_provenance") in ("modeled", "modeled_taker_at_ask")
-    )
+    # ``fill_provenance`` is a COUNTER dict in real dossiers
+    # ({"modeled_taker": n, "book_witnessed": m}); the plain-string form is
+    # accepted too so hand-built payloads and fixtures behave identically.
+    # Getting this wrong made the concession a silent no-op on live data.
+    provenance = raw.get("fill_provenance")
+    if isinstance(provenance, Mapping):
+        is_modeled = int(provenance.get("modeled_taker", 0)) > 0
+    else:
+        is_modeled = provenance in ("modeled", "modeled_taker_at_ask")
+    modeled_ok = bool(config.allow_modeled_fill_evidence and is_modeled)
     required_truth = {
         "receipt_bounded": raw.get("receipt_bounded") is True,
         "witnessed_fill_net_pnl": (
