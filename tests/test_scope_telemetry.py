@@ -60,9 +60,16 @@ def _conn():
     # Graded quality reads the fused forecast of record (phantom grading), so a
     # market we price counts even without a BUY decision. market_implied rides
     # in the fused features JSON.
+    # Full signals schema, not a 5-column stand-in: grading reads the
+    # ``signal_history`` UNION view, which selects every archived column and
+    # orders by ``id``. A fixture missing those columns cannot exercise the
+    # view at all, and silently diverges from the real ledger.
     conn.execute(
-        """CREATE TABLE signals(source TEXT, market_ticker TEXT,
-            probability_yes REAL, created_at TEXT, features TEXT)"""
+        """CREATE TABLE signals(
+            id INTEGER PRIMARY KEY, source TEXT, market_ticker TEXT,
+            probability_yes REAL, uncertainty REAL, rationale TEXT,
+            created_at TEXT, mode TEXT, features TEXT,
+            ingested_at TEXT, ingest_version TEXT)"""
     )
     conn.execute("CREATE TABLE settlements(market_ticker TEXT, result_yes INTEGER, settled_at TEXT)")
     return conn
@@ -70,7 +77,8 @@ def _conn():
 
 def _fused(conn, ticker, prob, days_ago, *, market=0.5):
     conn.execute(
-        "INSERT INTO signals VALUES('fused_forecast', ?, ?, datetime('now', ?), ?)",
+        "INSERT INTO signals(source,market_ticker,probability_yes,created_at,mode,features)"
+        " VALUES('fused_forecast', ?, ?, datetime('now', ?), 'live', ?)",
         (ticker, prob, f"-{days_ago + 1} days", f'{{"market_implied_yes": {market}}}'),
     )
 
@@ -117,7 +125,8 @@ def test_pick_board_and_settled_today():
     conn = _conn()
     # settled within the day: model right, then model wrong (winner bet type)
     for tick, prob, res, hrs in [("KXMLBGAME-A-NYYBOS", 0.72, 1, 5), ("KXMLBGAME-B-LADSF", 0.68, 0, 8)]:
-        conn.execute("INSERT INTO signals VALUES('fused_forecast', ?, ?, datetime('now','-1 days'), ?)",
+        conn.execute("INSERT INTO signals(source,market_ticker,probability_yes,created_at,mode,features)"
+                     " VALUES('fused_forecast', ?, ?, datetime('now','-1 days'), 'live', ?)",
                      (tick, prob, '{"market_implied_yes": 0.5}'))
         conn.execute("INSERT INTO decisions(market_ticker,action,side,probability_yes,market_implied_yes,ev_cents,price_cents,created_at) VALUES(?,?,?,?,?,?,?, datetime('now','-1 days'))",
                      (tick, "BUY_YES", "YES", prob, 0.5, 3.0, 55))

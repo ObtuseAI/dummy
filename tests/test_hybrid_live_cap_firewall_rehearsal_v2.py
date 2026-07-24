@@ -496,6 +496,61 @@ async def test_rehearsal_blocks_compliance_failure():
 
 @pytest.mark.asyncio
 async def test_rehearsal_blocks_poor_liquidity_via_governor():
+    """The liquidity governor must refuse a thin book on a TRADEABLE market.
+
+    This used to rehearse MEME-STALE, whose mock carries
+    ``category="Entertainment"``. Wave-85 narrowed
+    ``target_policy._PREDICTION_TARGET_CATEGORIES`` to crypto + sports (the
+    caps file already blocked Elections/Politics and the scanner never fetched
+    entertainment), so that market is now refused at the AUTHORITY gate and the
+    run never reaches the liquidity check -- status "blocked", not "no_trade".
+
+    Refusing a meme market is the correct new behaviour, but it made this test
+    stop testing liquidity at all. So the thin, stale book is applied to
+    BTC-ABOVE-100K, which IS an authorised prediction target, and the governor's
+    liquidity path is exercised exactly as before.
+    """
+    from decimal import Decimal as _Decimal
+
+    state_module.STATE.set_mode(AccountMode.AUTONOMOUS_LIVE_CAPPED)
+    caps = _caps_with_market("BTC-ABOVE-100K")
+    with patch("live_firewall.firewall.load_caps", return_value=caps), patch(
+        "execution.hybrid_path.load_caps", return_value=caps
+    ):
+        rehearsal = _live_fixture_rehearsal()
+        loop = rehearsal.loop
+        base_mock = loop._mock_market_data
+
+        def thin_book_mock():
+            entries = base_mock()
+            for market, _contract, book in entries:
+                if market.ticker == "BTC-ABOVE-100K":
+                    # Same shape MEME-STALE used to supply: one lot a side and
+                    # a stale book, so the governor refuses on liquidity.
+                    book.bids[0].price = 49
+                    book.bids[0].size = 1
+                    book.asks[0].price = 51
+                    book.asks[0].size = 1
+                    book.freshness_score = _Decimal("0.10")
+            return entries
+
+        loop._mock_market_data = thin_book_mock
+        result = await rehearsal.rehearse("BTC-ABOVE-100K", "BTC-ABOVE-100K-YES")
+
+    assert result["status"] == "no_trade"
+    assert result["strategy_governor_decision"] == "NO_TRADE"
+    assert "liquidity" in result["reason"].lower()
+    assert result["live_submitted"] is False
+
+
+@pytest.mark.asyncio
+async def test_rehearsal_refuses_unauthorised_prediction_target():
+    """Wave-85: an entertainment market has no pricing path -- refuse it.
+
+    Pins the behaviour change above rather than leaving it as an unexplained
+    side effect: MEME-STALE (category "Entertainment") must now be stopped at
+    the authority gate, before any liquidity or governor reasoning happens.
+    """
     state_module.STATE.set_mode(AccountMode.AUTONOMOUS_LIVE_CAPPED)
     caps = _caps_with_market("MEME-STALE")
     with patch("live_firewall.firewall.load_caps", return_value=caps), patch(
@@ -504,9 +559,7 @@ async def test_rehearsal_blocks_poor_liquidity_via_governor():
         rehearsal = _live_fixture_rehearsal()
         result = await rehearsal.rehearse("MEME-STALE", "MEME-STALE-YES")
 
-    assert result["status"] == "no_trade"
-    assert result["strategy_governor_decision"] == "NO_TRADE"
-    assert "liquidity" in result["reason"].lower()
+    assert result["status"] == "blocked"
     assert result["live_submitted"] is False
 
 
