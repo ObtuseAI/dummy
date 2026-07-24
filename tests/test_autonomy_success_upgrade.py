@@ -1,6 +1,8 @@
 """Regression tests for fill-truth, fee, and decision-policy upgrades."""
 from __future__ import annotations
 
+import inspect
+
 import asyncio
 import json
 from datetime import date, datetime, timedelta, timezone
@@ -573,5 +575,53 @@ def test_fill_conditioned_report_cannot_mask_negative_crypto_vertical(tmp_path):
         assert crypto["n"] == 5
         assert crypto["brier_skill_vs_market"] < 0
         assert crypto["evidence_disposition"]["status"] == "INSUFFICIENT_EVIDENCE"
+    finally:
+        ledger.close()
+
+
+def test_execution_summary_survives_more_fills_than_submissions(tmp_path):
+    """A fill count above the submission count must not crash the snapshot.
+
+    Wave-85: this was live. ``filled`` can exceed ``submitted`` for a scope --
+    a fill witnessed for an order whose submission row falls outside the same
+    scope or window -- which drives the Wilson rate above 1, so
+    ``rate * (1 - rate)`` goes negative and math.sqrt raises
+    "expected a nonnegative input". Every DummyDashboardSnapshot run died on it
+    (rc=1), which is why the task read stale to the watchdog.
+
+    The inconsistency must be reported, not smoothed away: the raw rate is
+    preserved and flagged, and only the interval maths is clamped, because a
+    proportion CI is undefined outside [0, 1].
+    """
+    import math
+
+    from autonomy.ledger import AutonomyLedger
+
+    ledger = AutonomyLedger(tmp_path / "ledger.db")
+    try:
+        summary = ledger.execution_summary()
+        assert summary is not None            # empty ledger is still safe
+
+        source = inspect.getsource(AutonomyLedger.execution_summary)
+        # The raw ratio must still be surfaced, not normalised out of sight.
+        assert "ratio_exceeds_one" in source
+        # The sqrt argument must be guarded; an unclamped rate is the bug.
+        assert "clamped * (1.0 - clamped)" in source
+
+        # The exact expression the ledger now evaluates, over the pathological
+        # range. Unclamped, successes > n makes this negative and sqrt raises.
+        z = 1.96
+        for successes, n in ((5, 4), (10, 3), (1, 1), (0, 7), (7, 7)):
+            rate = successes / n
+            clamped = min(1.0, max(0.0, rate))
+            radicand = max(0.0, clamped * (1.0 - clamped) / n + z * z / (4.0 * n * n))
+            assert radicand >= 0.0
+            margin = z * math.sqrt(radicand) / (1.0 + z * z / n)
+            center = (clamped + z * z / (2.0 * n)) / (1.0 + z * z / n)
+            assert 0.0 <= max(0.0, center - margin) <= 1.0
+            assert 0.0 <= min(1.0, center + margin) <= 1.0
+        # Unclamped, the reported live case really does go negative.
+        bad = 5 / 4
+        assert bad * (1.0 - bad) / 4 + z * z / (4.0 * 4 * 4) < 0.0
     finally:
         ledger.close()

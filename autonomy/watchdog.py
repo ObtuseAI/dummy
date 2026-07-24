@@ -402,7 +402,18 @@ def evaluate_watchdog(
             inventory = []
     covered = {spec.name for spec in specs}
     uncovered = [row for row in inventory if row["task_name"] not in covered]
-    uncovered_failing = [row["task_name"] for row in uncovered if row["failing"]]
+    # The watchdog must not grade its OWN exit code. run_dummy_watchdog.py
+    # exits nonzero when the FLEET is unhealthy, so that result reports the
+    # verdict rather than the watchdog's health. Counting it created a latch:
+    # anything unhealthy -> watchdog exits 1 -> the inventory reads DummyWatchdog
+    # as failing -> uncovered_failing is non-empty -> unhealthy, forever, even
+    # after the original cause was fixed. It surfaced the moment Wave-85 stopped
+    # treating a terminated task as OK, because the watchdog had previously been
+    # caught mid-run (267009) more often than it was seen completing.
+    uncovered_failing = [
+        row["task_name"] for row in uncovered
+        if row["failing"] and row["task_name"] != "DummyWatchdog"
+    ]
 
     healthy = not (
         stale_tasks or ledger_over or disk_low or error_streak_alarm

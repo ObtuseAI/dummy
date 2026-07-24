@@ -843,3 +843,38 @@ def test_tuner_and_walk_forward_are_watchdog_covered():
     by_name = {spec.name: spec for spec in DEFAULT_TASKS}
     assert by_name["DummyTune"].artifact == "sports_tuned_params.json"
     assert by_name["DummyWF"].artifact == "sports_walk_forward.json"
+
+
+def test_watchdog_does_not_grade_its_own_exit_code(tmp_path):
+    """Otherwise "unhealthy" latches on and can never clear.
+
+    run_dummy_watchdog.py exits nonzero when the FLEET is unhealthy, so
+    DummyWatchdog's own scheduler result reports the verdict, not the
+    watchdog's health. Counting it made a self-sustaining loop: anything
+    unhealthy -> exit 1 -> inventory reads DummyWatchdog failing ->
+    uncovered_failing non-empty -> unhealthy, forever, even once the original
+    cause was fixed.
+    """
+    rd = _runtime(tmp_path)
+    inventory = [
+        {"task_name": "DummyWatchdog", "failing": True,
+         "scheduler_status": "Ready", "last_run_time": "x", "last_result": 1},
+    ]
+    status = evaluate_watchdog(
+        rd, now_epoch=_real_now_epoch(), tasks=[], inventory=inventory,
+    )
+    assert status["uncovered_failing_tasks"] == []
+    assert status["healthy"] is True
+    # It is still LISTED -- suppressed from the verdict, not hidden.
+    assert "DummyWatchdog" in status["uncovered_tasks"]
+
+    # Any other failing uncovered task still degrades health.
+    inventory.append(
+        {"task_name": "DummySomethingElse", "failing": True,
+         "scheduler_status": "Ready", "last_run_time": "x", "last_result": 267014},
+    )
+    degraded = evaluate_watchdog(
+        rd, now_epoch=_real_now_epoch(), tasks=[], inventory=inventory,
+    )
+    assert degraded["uncovered_failing_tasks"] == ["DummySomethingElse"]
+    assert degraded["healthy"] is False
