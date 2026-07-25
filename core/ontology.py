@@ -316,6 +316,12 @@ class CapConfig(BaseModel):
     auto_cancel_stale_orders: bool = True
     kill_switch_required: bool = True
     allowed_markets: list[str] = []
+    # Positive authorization for a whole Kalshi series, so rotating contracts
+    # (crypto 15m, per-game sports) can be authorized at all. ``allowed_markets``
+    # is exact-match and can only ever authorize a fixed pilot. Widening is
+    # confined to this positive control: quarantine, blocked_categories, caps,
+    # risk and compliance are unaffected.
+    allowed_series: list[str] = []
     blocked_categories: list[str] = []
     max_spread_cents: int = 5
     min_liquidity: int = 10

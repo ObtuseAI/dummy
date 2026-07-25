@@ -40,6 +40,34 @@ def mark_adapter_rejected(adapter_name: str):
     REJECTED_ADAPTERS.add(adapter_name)
 
 
+def market_is_allowlisted(market_ticker: Any, caps: Any) -> bool:
+    """True when *market_ticker* is positively authorized by caps.
+
+    Two independent grants, both deny-by-default:
+
+    * ``allowed_markets`` -- exact ticker. Authorizes a fixed pilot only.
+    * ``allowed_series``  -- the contract's series. Kalshi crypto contracts
+      rotate every fifteen minutes and sports contracts rotate per game, so
+      exact tickers cannot express continuous authorization.
+
+    Series matching is BOUNDARY-AWARE string matching on an opaque identifier,
+    never category inference: ``KXSOL15M`` must not authorize ``KXSOL15MEGA``.
+    The firewall still refuses to read a category from a ticker -- category
+    compliance comes from fetched venue metadata (see
+    ``_verified_live_compliance_verdict``), which additionally re-checks the
+    *verified* series before any transport.
+    """
+    if not isinstance(market_ticker, str) or not market_ticker:
+        return False
+    if market_ticker in (getattr(caps, "allowed_markets", None) or []):
+        return True
+    allowed_series = getattr(caps, "allowed_series", None) or []
+    if not allowed_series:
+        return False
+    series = market_ticker.split("-", 1)[0]
+    return series in allowed_series
+
+
 def _sha256_file(path: Path) -> str | None:
     if not path.exists():
         return None
@@ -496,7 +524,7 @@ class LiveBrokerFirewall:
             return fail("secret_redaction", "Secret redaction check failed")
         if req.forecast_proof_reference != forecast.proof_reference:
             return fail("proof", "Forecast proof reference mismatch")
-        if req.market_ticker not in caps.allowed_markets:
+        if not market_is_allowlisted(req.market_ticker, caps):
             return fail("market_allowlist", "Market not allowlisted")
         # Kalshi tickers are opaque identifiers, never category metadata.
         # Category compliance is intentionally deferred to the independently
@@ -738,10 +766,26 @@ class LiveBrokerFirewall:
                 ),
                 rejected_by="prediction_target_quarantine",
             )
+        # Authoritative allowlist re-check against the VERIFIED series from
+        # venue metadata. evaluate() matched a series parsed from the ticker
+        # string, which is a fast reject, not proof. A contract whose fetched
+        # series disagrees with its ticker prefix must never reach transport on
+        # the strength of the string alone.
+        verified_caps = load_caps()
+        verified_series = getattr(metadata, "series_ticker", None)
+        if (getattr(verified_caps, "allowed_series", None) or []) and verified_series:
+            series_allowed = verified_series in verified_caps.allowed_series
+            exact_allowed = req.market_ticker in (verified_caps.allowed_markets or [])
+            if not (series_allowed or exact_allowed):
+                return FirewallVerdict(
+                    allow=False,
+                    reason="Verified market series not allowlisted",
+                    rejected_by="market_allowlist",
+                )
         compliance = assess_compliance(
             req.market_ticker,
             req.contract_ticker,
-            caps=load_caps(),
+            caps=verified_caps,
             metadata=metadata,
             require_verified_metadata=True,
         )
