@@ -32,7 +32,16 @@ CURRENT_CAPS_AUTHORITY_EPOCH = "caps-v2-kalshi-category-metadata-20260722"
 # can never rewrite the sealed bytes again. No operator registration was
 # active at re-seal time, and registration remains required + invalid until
 # an operator issues one against exactly this hash.
-PROTECTED_CAPS_SHA256 = "62878A5F062D71D2EA3EFC3D998874B887FD8D8E885C7745231208F03D913797"
+# Re-sealed 2026-07-25 (Wave-88) on explicit operator authorization: caps.json
+# gained `allowed_series: ["KXSOL15M"]`. `allowed_markets` is exact-match and
+# therefore cannot authorize rotating contracts, so positive authorization was
+# unexpressible and every live path died at the allowlist. Scope is the only
+# family that has passed promotion (docs/promotions/2026-07-16-sol-15m-crypto.md).
+# Changing these bytes invalidated the previous registration by design; a fresh
+# operator registration was issued against this hash in the same change.
+PROTECTED_CAPS_SHA256 = "83FCE350D6AAF5DAA623F79FBE39455BE7120D4EE2C01EB254D39EB72B91E954"
+#: The 2026-07-22 seal, superseded by the line above.
+SUPERSEDED_CAPS_V2_SHA256 = "62878A5F062D71D2EA3EFC3D998874B887FD8D8E885C7745231208F03D913797"
 LEGACY_CAPS_SHA256 = "F7D91453FECCB3A216B733589D69F1C21B5A8CEF753096360630B0B973CAE5B5"
 UNVERSIONED_MIGRATION_SHA256 = "498256CC426B29905412614DE941F924FF903C166AF2CD99ED092B2B8DB78492"
 REQUIRED_REGISTRATION_SCOPE = "caps_policy_registration_for_controlled_firewall_only"

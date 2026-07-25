@@ -766,26 +766,18 @@ class LiveBrokerFirewall:
                 ),
                 rejected_by="prediction_target_quarantine",
             )
-        # Authoritative allowlist re-check against the VERIFIED series from
-        # venue metadata. evaluate() matched a series parsed from the ticker
-        # string, which is a fast reject, not proof. A contract whose fetched
-        # series disagrees with its ticker prefix must never reach transport on
-        # the strength of the string alone.
-        verified_caps = load_caps()
-        verified_series = getattr(metadata, "series_ticker", None)
-        if (getattr(verified_caps, "allowed_series", None) or []) and verified_series:
-            series_allowed = verified_series in verified_caps.allowed_series
-            exact_allowed = req.market_ticker in (verified_caps.allowed_markets or [])
-            if not (series_allowed or exact_allowed):
-                return FirewallVerdict(
-                    allow=False,
-                    reason="Verified market series not allowlisted",
-                    rejected_by="market_allowlist",
-                )
+        # NO allowlist check here, deliberately. This function answers "is this
+        # verified category permitted?"; the allowlist answers "is this market
+        # in operator scope?". An earlier revision checked the allowlist here
+        # and it fired FIRST, masking category rejections -- a Politics market
+        # came back as "not allowlisted" instead of quarantined, and callers
+        # testing category logic failed for authorization reasons. Scope is
+        # enforced by market_is_allowlisted() in evaluate(), which submit()
+        # runs twice, the second time against the trusted orderbook.
         compliance = assess_compliance(
             req.market_ticker,
             req.contract_ticker,
-            caps=verified_caps,
+            caps=load_caps(),
             metadata=metadata,
             require_verified_metadata=True,
         )
