@@ -31,6 +31,13 @@ coverage run deselects the 13 with `artifacts/dummy` absent.
 
 ## Waves
 
+> **Scope of this document.** It details **Waves 1–4** — the phase that established the
+> promotion engine, the execution-policy tournament, the live poller, and the campaign
+> sweep. It is a snapshot of that phase, not a running log. **87 waves have shipped as of
+> 2026-07-24**; later waves are recorded in the git history (`git log --grep="^Wave-"`),
+> in design specs under [`superpowers/specs/`](superpowers/specs/), and — where a wave
+> corrected something previously recorded as true — in [`corrections/`](corrections/).
+
 **Wave 1** — autonomous 2-stage promotion engine (≥300-cluster/7-day, Brier-CI>0,
 beat≥55%, fee-adjusted P&L CI>0, CLV+, auto-demote, max-2/day, health-gated),
 adverse-selection diagnosis, staleness gates + watchdogs, prune/SQLite guards,
@@ -67,8 +74,12 @@ waves.
 
 ## Remaining (human-gated)
 
-1. **Open the combined PR** `wave4-integration → main` — blocked on `gh` re-auth
-   (`gh auth login`); the merge is a clean fast-forward.
+1. ~~**Open the combined PR** `wave4-integration → main`~~ — **done.** The wave-4 work is
+   long since on `main`, which is current with `origin/main`.
 2. **Run the promotion ladder / readiness report** against the live ledger now
    that sports challengers are hardened — an operator decision (touches capital
    authority), run from the canonical repo.
+3. **Complete the caps registration ceremony** — `configs/caps.json` is byte-sealed and
+   valid, but no operator registration exists, so `caps_strict` is false. The registration
+   must be operator-authored; code is structurally forbidden from writing it. Exact
+   contents in [`corrections/2026-07-24-phantom-broker-rejection.md`](corrections/2026-07-24-phantom-broker-rejection.md).

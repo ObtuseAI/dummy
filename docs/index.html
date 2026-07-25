@@ -125,6 +125,8 @@
     <nav>
       <a href="#arsenal">Arsenal</a>
       <a href="#loop">The loop</a>
+      <a href="#alloc">Allocation</a>
+      <a href="#loops">The 45 loops</a>
       <a href="#board">Board</a>
       <a href="#safety">Safety</a>
       <a href="https://github.com/ObtuseAI/dummy">Repo</a>
@@ -156,10 +158,11 @@
   <div class="wrap">
     <div class="lamps">
       <div class="cell"><div class="n">4,500</div><div class="l">markets priced</div></div>
-      <div class="cell"><div class="n">45</div><div class="l">competing sources</div></div>
+      <div class="cell"><div class="n">46</div><div class="l">competing sources</div></div>
+      <div class="cell"><div class="n">45</div><div class="l">autonomous loops</div></div>
       <div class="cell"><div class="n">162,915</div><div class="l">games in the lake</div></div>
-      <div class="cell"><div class="n">7,501</div><div class="l">tests green</div></div>
-      <div class="cell"><div class="n">77</div><div class="l">improvement waves</div></div>
+      <div class="cell"><div class="n">7,872</div><div class="l">tests green</div></div>
+      <div class="cell"><div class="n">87</div><div class="l">improvement waves</div></div>
       <div class="cell"><div class="n">0</div><div class="l">auto capital</div></div>
     </div>
   </div>
@@ -223,6 +226,88 @@
     <div class="loop">
       <span>Scan</span><b>→</b><span>Signal</span><b>→</b><span>Fuse</span><b>→</b><span>Allocate</span><b>→</b><span>Risk</span><b>→</b><span>Execute</span><b>→</b><span>Reconcile</span><b>→</b><span>Learn</span>
     </div>
+    <p>Candidates are ranked by <strong>capital velocity</strong> — edge per √hour-to-settlement, because a 3¢ edge settling in an hour compounds faster than a 5¢ edge parked for five days. Every stage can only ever <em>reduce</em> what the stage before it proposed: fusion cannot outvote calibration, allocation cannot exceed the pot, risk cannot exceed the allocation, and the firewall cannot exceed the sealed caps. No later stage can grant more than an earlier one allowed.</p>
+  </div>
+</section>
+
+<section id="alloc">
+  <div class="wrap">
+    <div class="eyebrow">One pot, many candidates</div>
+    <h2>Capital allocation</h2>
+    <p>Sizing one order and dividing a budget across many are different problems. The risk brain solved the first — quarter-Kelly under a SHADOW → CANARY → RAMP → CRUISE ladder. Nothing solved the second: the top-ranked candidate took the entire remaining budget its caps allowed, a near-equal rival got nothing, and forty qualifying candidates sized identically to three.</p>
+    <div class="grid">
+      <div class="card">
+        <h3>Three split policies</h3>
+        <span class="tag">operator-selectable, live</span>
+        <ul>
+          <li><strong>kelly_prorata</strong> (default) — each ask scaled by weight; apportioned to fit only when the pot is oversubscribed. Thin nights deliberately deploy less than the cap</li>
+          <li><strong>proportional</strong> — share of the pot by weight, clamped to the ask</li>
+          <li><strong>top_k</strong> — fund the highest-weighted K in full, starve the tail</li>
+        </ul>
+      </div>
+      <div class="card">
+        <h3>Weighted by proof, not promise</h3>
+        <span class="tag">contested Brier advantage</span>
+        <ul>
+          <li>Weight comes from how much better the model's Brier is than the market's own price on the same rows</li>
+          <li>Uses the <strong>lower 95% bound</strong> — the same quantity the promotion gate tests. Twelve lucky rows cannot size up on evidence the sample won't support</li>
+          <li>The weight floor is never zero: a scope that can never be allocated can never settle, never accrue evidence, and never earn its way up</li>
+        </ul>
+      </div>
+      <div class="card">
+        <h3>Two rules learned the hard way</h3>
+        <span class="tag">now property-tested</span>
+        <ul>
+          <li><strong>Weights are a contention tiebreak, not a discount.</strong> An early version scaled every ask by its weight unconditionally — a lone 100¢ ask from an unproven scope became 25¢, below one contract, and trading stopped silently. A change that sizes everything to zero looks conservative and is not safety</li>
+          <li><strong>Divide across holdable slots, not evaluated candidates.</strong> A hundred are evaluated per cycle; a stage may permit five open markets. A hundred-way split puts every grant under one contract</li>
+        </ul>
+      </div>
+      <div class="card">
+        <h3>Invariants</h3>
+        <span class="tag">proven over generated inputs</span>
+        <ul>
+          <li>Σ granted ≤ pot, always</li>
+          <li>granted ≤ ask, always — the allocator can only reduce, and every existing cap still binds behind it</li>
+          <li>Adding a candidate never raises an existing grant</li>
+          <li>The operator throttle can only <em>shrink</em> the pot; enlarging it past the sealed ceiling is a registration ceremony, not a slider</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="loops">
+  <div class="wrap">
+    <div class="eyebrow">Always on</div>
+    <h2>The 45 loops</h2>
+    <p>Dummy is not a program you run. It is 45 independent scheduled loops that survive reboots, pick up merged code on their next fire, and are individually watched. Nothing is a daemon — each runs as the operator, so a crash costs one fire, not the system.</p>
+    <div class="grid">
+      <div class="card">
+        <h3>Cadence — the heartbeat</h3>
+        <span class="tag">8 loops</span>
+        <ul><li>The brain cycle, live poller, sports board refresh, mispricing monitor, crypto paper twin, the vNext shadow organism, the USE sidecar, and account snapshots</li></ul>
+      </div>
+      <div class="card">
+        <h3>Learning &amp; self-improvement</h3>
+        <span class="tag">10 loops</span>
+        <ul><li>Weight recalibration split into a fast weight-only core and heavy diagnostics, so a slow report can never stall a cycle — plus the tuner, strategy miner, autoresearch lab, simulation trainers, and crypto horizon evidence</li></ul>
+      </div>
+      <div class="card">
+        <h3>Sports data &amp; grading</h3>
+        <span class="tag">18 loops · per league</span>
+        <ul><li>History backfill and event-purged walk-forward grading for all seven leagues, box-score ingest for three, and NFL EPA — each league on its own schedule so one outage cannot stall the rest</li></ul>
+      </div>
+      <div class="card">
+        <h3>Health &amp; durability</h3>
+        <span class="tag">5 loops</span>
+        <ul><li>A fleet-wide watchdog that grades the other tasks rather than its own exit code, a five-minute self-heal loop, readiness reporting, and a snapshot writer so the board never holds a ledger lock</li></ul>
+      </div>
+      <div class="card">
+        <h3>Bounded footprint</h3>
+        <span class="tag">4 loops</span>
+        <ul><li>Ledger retention, pruning, a self-skipping vacuum, and log rotation on an explicit allowlist — state, audit and full-history tapes are never blind-truncated</li></ul>
+      </div>
+    </div>
   </div>
 </section>
 
@@ -248,6 +333,8 @@
         <li>Promotion to capital is <strong>human-only</strong>, never autonomous</li>
         <li>Execution is fail-closed and LIMIT-only behind a hardened firewall</li>
         <li>Challengers are evidence-gated on settled, contested outcomes</li>
+        <li>Risk caps are <strong>byte-sealed</strong> — code may register a new baseline but is structurally forbidden from manufacturing the operator approval needed to use it. Self-authorization is unrepresentable, not merely discouraged</li>
+        <li>Broker contact is claimed only on <strong>transport evidence</strong>. Two early proofs recorded as <code>BROKER_REJECTED</code> never reached a broker — no submit call, no endpoint, no payload, submit disabled throughout. Both were local gate blocks wearing a broker's label; the rejection classifier and truth layer exist because of them</li>
         <li>Research may evolve; truth rules, promotion standards &amp; the firewall may not</li>
         <li>Every paper decision is explained and recorded in an auditable ledger</li>
       </ul>

@@ -9,7 +9,8 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/python-3.11%20%7C%203.12%20%7C%203.14-4b8bbe" alt="Python 3.11, 3.12, 3.14">
-  <img src="https://img.shields.io/badge/tests-7501%20passing-2ea44f" alt="7501 tests passing">
+  <img src="https://img.shields.io/badge/tests-7872%20passing-2ea44f" alt="7872 tests passing">
+  <img src="https://img.shields.io/badge/autonomous%20loops-45-3b7dd8" alt="45 autonomous loops">
   <img src="https://img.shields.io/badge/mode-SHADOW%20·%20paper-1f9d55" alt="Shadow paper mode">
   <img src="https://img.shields.io/badge/promotion%20to%20capital-human--gated-e0a100" alt="Human-gated">
   <img src="https://img.shields.io/badge/execution-fail--closed-c0392b" alt="Fail-closed">
@@ -45,6 +46,12 @@ Sources that beat the market earn trust; sources that don't, starve. Nothing rea
 capital automatically — the whole system runs as an always-on **paper** twin, and a
 human is the only path from evidence to a real order.
 
+**Contents** — [What it prices](#what-it-prices) · [Command board](#the-command-board) ·
+[Design](#design) · [The cycle](#the-cycle) · [Capital allocation](#capital-allocation) ·
+[The 45 loops](#the-45-loops) · [The organization](#the-organization-around-the-models) ·
+[Recursive improvement](#recursive-improvement) · [Safety](#safety--governance) ·
+[Numbers](#by-the-numbers) · [Quickstart](#operator-quickstart)
+
 ## What it prices
 
 - **Crypto** — BTC, ETH, and SOL across native 15-minute, hourly, daily, and weekly
@@ -76,9 +83,10 @@ human is the only path from evidence to a real order.
 
 An exact **four-model LLM panel** (Gemini 3.6 Flash, GPT-5.6 Luna, Claude Sonnet 5,
 GLM-5.2) reviews the top pick each cycle in a seven-call atomic contract — statically routed,
-fail-closed on any missing or malformed voice, double-locked behind a paid-call gate, and
-**structurally quarantined from fusion**: every voice is graded against settlements like any
-other source, and model influence requires its own 300-cluster forward-evidence dossier.
+fail-closed on any missing or malformed voice, double-locked behind a paid-call gate with an
+enforced daily USD ceiling, and **structurally quarantined from fusion**: every voice is graded
+against settlements like any other source, and model influence requires its own 300-cluster
+forward-evidence dossier.
 
 Every model is a **challenger**: it accrues Brier and closing-line evidence but never reaches
 capital until an explicit human promotion.
@@ -104,14 +112,14 @@ re-price, a live ticker tape, a radial ROI gauge, and a ⌘K palette that jumps 
   they cannot reach live execution, credentials, risk, or capital.
 
 A companion native desktop board, the **Dummy Tote** (PySide6), renders the same artifacts as a
-true native app with a taskbar tray and bet notifications.
+true native app with a taskbar tray, bet notifications, and the allocation controls below.
 
-## How it works
+## Design
 
-Public evidence flows in one direction — it is deduplicated, priced by competing models,
-fused by earned trust, sized under a risk governor, and only ever reaches the exchange
-through a hardened firewall. The autonomy loop sets the cadence; the read-only dashboard
-observes it. Neither can bypass the firewall or the risk gates.
+Public evidence flows in one direction — deduplicated, priced by competing models, fused by
+earned trust, divided across candidates, sized under a risk governor, and only ever reaching
+the exchange through a hardened firewall. The autonomy loop sets the cadence; the read-only
+dashboard observes it. Neither can bypass the firewall or the risk gates.
 
 ```mermaid
 flowchart TB
@@ -120,16 +128,18 @@ flowchart TB
         OBS[(Deduplicated<br/>observation ledger)]
     end
     subgraph Forecast["Forecasting and calibration"]
-        ENGINE[forecasting engine<br/>+ per-vertical specialists]
-        CAL[calibration<br/>trust · Brier · debias]
+        ENGINE[46 registered sources<br/>+ per-vertical specialists]
+        CAL[calibration<br/>trust · contested Brier · debias]
     end
-    subgraph RiskAlloc["Risk and allocation"]
+    subgraph RiskAlloc["Allocation and risk"]
         FUSE[Trust-weighted fusion]
+        SPLIT[candidate allocation<br/>one pot, N candidates]
         ALLOC[allocator<br/>quarter-Kelly · stage ladder]
         GOV[risk governor<br/>drawdown · clusters · TTL]
     end
     subgraph Exec["Execution firewall"]
         FW[firewall<br/>LIMIT-only · transport-witnessed]
+        CAPS[[sealed caps<br/>byte-pinned · operator-registered]]
     end
     MARKET([Kalshi markets])
     BRAIN[[autonomy brain<br/>predator loop · backtest]]
@@ -137,18 +147,121 @@ flowchart TB
 
     FEEDS --> OBS --> ENGINE --> FUSE
     CAL -. earned trust .-> FUSE
-    FUSE --> ALLOC --> GOV --> FW --> MARKET
+    FUSE --> SPLIT --> ALLOC --> GOV --> FW --> MARKET
+    CAPS -. hard ceiling .-> FW
     MARKET --> CAL
     BRAIN -. orchestrates .-> ENGINE
     OBS -.-> DASH
     GOV -.-> DASH
 ```
 
-Every cycle runs `scan → signal → fuse → allocate → risk → execute → reconcile → learn`:
-the predator sweeps the watchlist, prices each market with every applicable source, fuses
-by earned trust, ranks by capital velocity (edge per √hour-to-settlement), sizes with
-quarter-Kelly under a stage ladder, places maker-first LIMIT orders (shadow by default),
-reconciles settlements, and grades every source against reality.
+Each stage can only ever *reduce* what the stage before it proposed. Fusion cannot outvote
+calibration, allocation cannot exceed the pot, the risk governor cannot exceed the allocation,
+and the firewall cannot exceed the sealed caps. There is no path where a later stage grants
+more than an earlier one allowed.
+
+## The cycle
+
+Every cycle runs the same eight phases:
+
+```
+scan → signal → fuse → allocate → risk → execute → reconcile → learn
+```
+
+The predator sweeps the watchlist, prices each market with every applicable source, fuses
+by earned trust, ranks by **capital velocity** (edge per √hour-to-settlement — a 3¢ edge
+settling in an hour compounds faster than a 5¢ edge parked for five days), divides one
+capped pot across the candidates that can actually be held, sizes each with quarter-Kelly
+under a stage ladder, places maker-first LIMIT orders (shadow by default), reconciles
+settlements, and grades every source against reality.
+
+Phase timings are recorded per cycle, which is how the LLM debate was found to dominate
+per-cycle cost and subsequently parallelized, and how a recalibration's N+1 query storm was
+traced and batched from 40–107 minutes down to 76 seconds.
+
+## Capital allocation
+
+Sizing a single order and dividing a budget across many are different problems, and for a
+long time only the first was solved.
+
+`autonomy/risk_brain.py` derives its own limits from live bankroll, realized calibration and
+drawdown state — quarter-Kelly, a SHADOW → CANARY → RAMP → CRUISE ladder, correlation-group
+caps. It sizes **one** order well. But nothing divided a budget across the candidate *set*:
+the top-ranked candidate took the entire remaining budget its own caps allowed, a near-equal
+rival got nothing, and forty qualifying candidates sized identically to three.
+
+`autonomy/candidate_allocation.py` is the missing half — a pure function that splits one pot
+across everything qualifying at once, weighted by **demonstrated** forecast quality:
+
+| policy | rule | deploys full pot |
+|---|---|---|
+| `kelly_prorata` *(default)* | each ask scaled by weight; if the total overflows, apportioned to fit | no |
+| `proportional` | share of the pot by weight, clamped to the ask | yes |
+| `top_k` | fund the highest-weighted K in full, starve the tail | up to K |
+
+Weight comes from **contested Brier advantage** — how much better the model's Brier is than
+the market's own price on the same rows — using the *lower 95% bound*, the same quantity the
+promotion gate already tests. A scope with twelve lucky rows cannot size up on evidence its
+sample count will not support.
+
+Two rules the implementation learned the hard way, both now property-tested:
+
+- **Weights are a contention tiebreak, not a discount.** If every ask fits the pot, every ask
+  is granted in full. An early version multiplied each ask by its weight unconditionally, so a
+  lone 100¢ ask from an unproven scope became 25¢ against a 200¢ pot — below the price of one
+  contract, and trading stopped silently. A change that sizes everything to zero looks
+  conservative and is not safety.
+- **Divide across holdable slots, not evaluated candidates.** A hundred candidates are
+  evaluated per cycle but a stage may permit five open markets. Splitting a pot a hundred ways
+  puts every grant under one contract.
+
+Invariants, enforced by property tests over generated inputs: `Σ granted ≤ pot` always;
+`granted ≤ ask` always, so the allocator can only ever reduce and every existing cap still
+binds behind it; adding a candidate never raises an existing grant; and the weight floor is
+never zero, because a scope that can never be allocated can never settle, never accrue
+evidence, and never earn its way up.
+
+Policy and a 0–100% throttle are operator-controlled from the Dummy Tote app
+(`configs/allocation.json`). The throttle can only *shrink* the pot — enlarging it past the
+sealed ceiling requires the operator caps ceremony, not a slider.
+
+## The 45 loops
+
+Dummy is not a program you run; it is **45 independent scheduled loops** that survive reboots,
+pick up merged code on their next fire, and are individually watched. Nothing is a daemon —
+each is a Windows scheduled task running as the operator, so a crash costs one fire, not the
+system.
+
+**Cadence — the heartbeat (8)**
+`DummyShadowPredator` (the brain cycle) · `DummyLivePoller` · `DummySportsBoardRefresh` ·
+`DummyMispricingMonitor` · `DummyCryptoPaperTwin` · `DummyVnextShadow` (shadow organism) ·
+`DummyUseSidecar` · `DummyLiveAccountSnapshot`
+
+**Learning and self-improvement (10)**
+`DummyWeightsRecal` (fast weight-only core) · `DummyBacktestReport` (heavy diagnostics, split
+out so a slow report cannot stall a cycle) · `DummyTune` · `DummySelfImprovement` ·
+`DummyStrategyMiner` · `DummyAutoresearch` · `DummySimulationTrainer` ·
+`DummySportsSimulation` · `DummySportsModelSeed` · `DummyCryptoHorizonEvidence`
+
+**Sports data and grading — per league (18)**
+`DummyLake_{mlb,nba,ncaaf,ncaamb,nfl,nhl,wnba}` (history backfill) ·
+`DummyWF_{mlb,nba,ncaaf,ncaamb,nfl,nhl,wnba}` (event-purged walk-forward) ·
+`DummyBox_{nba,ncaamb,wnba}` (box-score ingest) · `DummyEpa_nfl`
+
+**Health and durability (5)**
+`DummyWatchdog` (fleet-wide; grades other tasks, not its own exit code) · `DummyHealer`
+(5-minute self-heal and reconnect) · `DummyReadinessReport` · `DummyDashboard` ·
+`DummyDashboardSnapshot` (so the board never holds a ledger lock)
+
+**Bounded footprint (4)**
+`DummyLedgerRetention` · `DummyLedgerPrune` · `DummyLedgerVacuum` (self-skipping) ·
+`DummyLogRotation` (explicit allowlist — state, audit and full-history tapes are *never*
+blind-truncated)
+
+The footprint is deliberately bounded on disk: a signal-prune that keeps exactly the
+backtester-selected row per (source, market) proved weight-neutral and shrank the hot ledger
+from 10.6M to 5.9M signals, and log rotation caps tail-only tapes by line while leaving
+`promotion_ledger`, `preregistrations`, `paper_entries` and the CLV book tape intact.
 
 ## The organization around the models
 
@@ -209,6 +322,10 @@ capital authority. The guardrails are structural:
   robustness, witnessed-fill performance after fees and slippage, and drawdown limits — but
   live execution authority remains an operator decision behind separate live-authority
   contracts. Elapsed runtime, backtests, or counterfactual quote P&amp;L cannot promote anything.
+- **Byte-sealed risk caps** — `configs/caps.json` is pinned by hash. Changing it invalidates
+  every approval bound to the previous bytes, and code may register a new protected baseline
+  but is structurally forbidden from manufacturing the operator registration needed to *use*
+  it. Self-authorization is not a policy here; it is unrepresentable.
 - **Hardened execution firewall** — LIMIT-only orders, per-order validation, and
   transport-witnessed truth: broker contact is claimed only on HTTP evidence, and settlement
   P&amp;L uses only the broker's witnessed fills.
@@ -216,19 +333,29 @@ capital authority. The guardrails are structural:
   a −10% / −20% / −30% drawdown ladder, correlation clustering, exchange-enforced order TTLs,
   and a kill file that stops everything instantly and unconditionally.
 
+**Why transport-witnessed truth is not a slogan.** Two early proof attempts were recorded as
+`BROKER_REJECTED` with `broker_contacted: true`. Neither reached a broker: no submit call was
+made, no order endpoint was touched, no payload was ever constructed, and live submit was
+disabled throughout. Both were local gate blocks wearing a broker's label, and one of them
+latched a safety interlock that held the system closed for sixteen days on an event where no
+socket was opened. The rejection classifier, the truth layer, and the on-the-record correction
+in [`docs/corrections/`](docs/corrections/) all exist because a narrative artifact and a
+mechanical one disagreed, and only the mechanical one was true.
+
 ## By the numbers
 
 | | |
 |---|--:|
 | Markets priced per cycle | 2,500–4,500 |
 | Verticals | 3 crypto coins · 7 sports leagues |
-| Competing forecast sources | 45 registered |
+| Competing forecast sources | 46 registered |
+| Autonomous scheduled loops | 45 |
 | Sports history lake | 162,915 point-in-time games (150,894 evaluation-eligible) |
 | Play-by-play knowledge lake | 32,298 games, 6 leagues, comeback matrices |
 | Sports challenger analytics | 11, walk-forward graded |
-| LLM panel | 4 exact models, 7-call atomic, double-locked |
-| Improvement waves shipped | 83+ |
-| Tests | 7,501 passing |
+| LLM panel | 4 exact models, 7-call atomic, double-locked, daily USD cap |
+| Improvement waves shipped | 87 |
+| Tests | 7,872 passing |
 | Capital at risk | $0 — paper, human-gated |
 
 ## Operator quickstart
@@ -238,8 +365,13 @@ python scripts/run_dummy_autonomous.py start          # shadow paper session
 python scripts/run_dummy_dashboard.py --port 8787     # read-only command board
 python scripts/run_dummy_autonomous.py stop           # instant, unconditional
 python scripts/run_dummy_sports_history_backfill.py   # refresh the sports history lake
+python scripts/dummy_switches.py --show               # per-vertical paper switches
 bash scripts/verify_wave_clean.sh                     # the full CI gate (add --cov)
 ```
+
+Operator configuration lives in `configs/`: `switches.json` (per-vertical paper on/off),
+`allocation.json` (candidate split policy and throttle), and `caps.json` (the sealed live
+ceiling — changing it requires the registration ceremony, not an edit).
 
 ### Environment requirements
 
@@ -253,7 +385,7 @@ bash scripts/verify_wave_clean.sh                     # the full CI gate (add --
   byte-identical copy of Blunder (pinned by `.blunder_source_manifest.json`, kept verbatim by
   the `F401` exemption in `pyproject.toml`), and the separation tests re-hash the canonical
   sibling checkout against that manifest. Without it — or without an
-  `artifacts/dummy/` directory — `tests/conftest.py` skips the 249 tests listed in
+  `artifacts/dummy/` directory — `tests/conftest.py` skips the tests listed in
   `tests/workstation_only_tests.txt`, including every Blunder copy-integrity and separation
   test. The suite still reports green; it simply stops proving the vendored copy is
   unmodified. No runtime code imports the sibling checkout, so the paper runtime, the
@@ -261,7 +393,8 @@ bash scripts/verify_wave_clean.sh                     # the full CI gate (add --
 
 Deeper detail lives in [`docs/`](docs/): [autonomy](docs/AUTONOMY.md),
 [council of specialists](docs/AUTONOMY.md#council-of-specialists),
-[market-state routing](docs/MARKET_STATE_ROUTING.md), and the
-[crypto paper twin](docs/CRYPTO_PAPER_TWIN.md).
+[market-state routing](docs/MARKET_STATE_ROUTING.md), the
+[crypto paper twin](docs/CRYPTO_PAPER_TWIN.md), and design specs and corrections under
+[`docs/superpowers/specs/`](docs/superpowers/specs/) and [`docs/corrections/`](docs/corrections/).
 
 <p align="center"><sub>Paper-first · evidence-gated · fail-closed · human-gated to capital.</sub></p>
