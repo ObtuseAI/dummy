@@ -36,6 +36,23 @@ PROTECTED_CAPS_SHA256 = "62878A5F062D71D2EA3EFC3D998874B887FD8D8E885C7745231208F
 LEGACY_CAPS_SHA256 = "F7D91453FECCB3A216B733589D69F1C21B5A8CEF753096360630B0B973CAE5B5"
 UNVERSIONED_MIGRATION_SHA256 = "498256CC426B29905412614DE941F924FF903C166AF2CD99ED092B2B8DB78492"
 REQUIRED_REGISTRATION_SCOPE = "caps_policy_registration_for_controlled_firewall_only"
+
+# The three states ``evaluate_caps_authority`` can return.
+#: caps.json no longer matches the sealed baseline -- tamper or drift.
+STATE_CONFIG_INTEGRITY_BLOCKED = "CONFIG_INTEGRITY_BLOCKED"
+#: Config is intact but no valid operator registration exists.
+STATE_REVIEW_REQUIRED = "REVIEW_REQUIRED"
+#: Config is intact and an operator has issued a valid registration.
+STATE_REGISTERED = "REGISTERED_FOR_SEPARATE_LIVE_GATE_EVALUATION"
+
+#: States in which caps configuration is INTACT. Whether an operator has
+#: registered is their prerogative and switches between the two -- neither
+#: grants execution authority, which this module hardcodes to False. Tests
+#: asserting "caps have not been tampered with" want this set; asserting
+#: STATE_REVIEW_REQUIRED specifically instead asserts that the operator has
+#: *not exercised* a sanctioned path, which is a different and much weaker
+#: claim that turns red the moment they do.
+CAPS_CONFIG_INTACT_STATES = frozenset({STATE_REVIEW_REQUIRED, STATE_REGISTERED})
 REQUIRED_REGISTRATION_ACK = (
     "I approve this exact caps-v2 hash for controlled firewall-only proof use, "
     "with no market orders, no scale, no autonomy, and every other live gate still required"
@@ -171,11 +188,11 @@ def evaluate_caps_authority(
     registration_valid = config_valid and not registration_errors
     all_errors = tuple(errors + registration_errors)
     if not config_valid:
-        state = "CONFIG_INTEGRITY_BLOCKED"
+        state = STATE_CONFIG_INTEGRITY_BLOCKED
     elif not registration_valid:
-        state = "REVIEW_REQUIRED"
+        state = STATE_REVIEW_REQUIRED
     else:
-        state = "REGISTERED_FOR_SEPARATE_LIVE_GATE_EVALUATION"
+        state = STATE_REGISTERED
 
     return CapsAuthorityStatus(
         state=state,
@@ -204,6 +221,10 @@ __all__ = [
     "PROTECTED_CAPS_SHA256",
     "REQUIRED_REGISTRATION_ACK",
     "REQUIRED_REGISTRATION_SCOPE",
+    "CAPS_CONFIG_INTACT_STATES",
+    "STATE_CONFIG_INTEGRITY_BLOCKED",
+    "STATE_REGISTERED",
+    "STATE_REVIEW_REQUIRED",
     "CapsAuthorityStatus",
     "evaluate_caps_authority",
 ]

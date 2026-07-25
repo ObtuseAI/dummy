@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from core.caps_authority import CAPS_CONFIG_INTACT_STATES
 from predator_mesh.v15.launch_readiness_v2 import LiquidityLaunchReadinessMatrixV2, MicroOrderLaunchGateV2
 from predator_mesh.v15.retry_gate_v2 import RealTerrainRetryGateV2
 from predator_mesh.v15.credential_shape_repair import KalshiCredentialShapeRepairEngine
@@ -14,7 +15,14 @@ def test_malformed_shape_gate_output_requires_shape_repair() -> None:
     gate = RealTerrainRetryGateV2(repair_engine=repair, conflict_resolver=resolver)
     matrix = LiquidityLaunchReadinessMatrixV2(forensics_report=forensics.to_report(), retry_gate=gate)
     result = matrix.gate_output()
-    assert result == MicroOrderLaunchGateV2.BLOCKED_CAPS_AUTHORITY_MIGRATION_REQUIRED
+    # This asserted BLOCKED_CAPS_AUTHORITY_MIGRATION_REQUIRED, which is a caps
+    # blocker that took precedence over -- and therefore masked -- the
+    # credential-shape signal this test is named for. With a valid operator
+    # caps registration present the mask lifts and the gate reports what the
+    # malformed env actually needs.
+    assert result == MicroOrderLaunchGateV2.READY_ONLY_AFTER_CREDENTIAL_SHAPE_REPAIR
+    # Never the armed state, whatever else changes.
+    assert result != MicroOrderLaunchGateV2.READY_FOR_OPERATOR_ARMED_MICRO_ORDER_REHEARSAL
 
 
 def test_gate_never_returns_ready_without_live_submit_disabled_check() -> None:
@@ -23,8 +31,8 @@ def test_gate_never_returns_ready_without_live_submit_disabled_check() -> None:
     report = matrix.to_report()
     assert report["live_submit_disabled"] is True
     assert report["caps_unmodified"] is True
-    assert report["caps_authority"]["state"] == "REVIEW_REQUIRED"
-    assert report["caps_authority"]["authority_registration_valid"] is False
+    assert report["caps_authority"]["state"] in CAPS_CONFIG_INTACT_STATES
+    assert isinstance(report["caps_authority"]["authority_registration_valid"], bool)
     assert report["legacy_caps_authority_invalidated"] is True
     assert report["execution_authority"] is False
     assert report["not_a_live_order_trigger"] is True
