@@ -30,6 +30,13 @@ REAL_PROOF_REGISTRY_PATH = Path("artifacts/dummy/real_proof_registry.json")
 CAPS_PATH = Path("configs/caps.json")
 CAPS_AUTHORITY_REGISTRATION_PATH = DEFAULT_CAPS_AUTHORITY_REGISTRATION_PATH
 ADAPTER_DESCRIPTOR_PATH = Path("runtime/operator_external/livebrokerfirewall_adapter_descriptor.json")
+
+# How long a validated candidate's market observation stays trustworthy.
+# Every other candidate invariant reads a boolean captured at validation time,
+# so without an age bound a stale packet asserts a market state that may be
+# hours or weeks out of date. One hour suits an operator-driven ceremony: long
+# enough to walk the runbook, short enough that the market has not moved on.
+CANDIDATE_MAX_AGE_SECONDS = 3600
 LIVE_SUBMIT_PATH = Path("configs/live_submit.json")
 RUNTIME_APPROVALS_DIR = Path("runtime/approvals")
 SECOND_PROOF_AUTHORITY_DIR = Path("artifacts/dummy/second_proof_authority")
@@ -139,10 +146,42 @@ def _is_stale(expiry: str) -> bool:
         return True
 
 
-def _candidate_invariants(candidate: dict[str, Any]) -> tuple[bool, str]:
+def _candidate_age_ok(candidate: dict[str, Any], now: datetime) -> bool:
+    """True only when the candidate was validated recently enough to trust.
+
+    Market tradability is a point-in-time observation, and every other
+    invariant below reads a boolean that was written when that observation was
+    made.  Without this check the canonical candidate on the live box --
+    validated 2026-07-08 for a market that now returns 404 -- passed every
+    gate, because ``market_tradable: True`` was true at the time and nothing
+    asked when the time was.
+
+    Fails closed on anything it cannot date: missing, unparseable, timezone
+    naive (guessing a zone here could silently widen the window by hours), or
+    in the future.
+    """
+    raw = candidate.get("created_at")
+    if not isinstance(raw, str) or not raw.strip():
+        return False
+    try:
+        created = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+    except ValueError:
+        return False
+    if created.tzinfo is None:
+        return False
+    age = (now - created.astimezone(timezone.utc)).total_seconds()
+    return 0 <= age <= CANDIDATE_MAX_AGE_SECONDS
+
+
+def _candidate_invariants(
+    candidate: dict[str, Any], now: datetime | None = None
+) -> tuple[bool, str]:
     """Verify the V3 candidate satisfies the safety preconditions for a second proof."""
+    now = (now or datetime.now(timezone.utc)).astimezone(timezone.utc)
     if not candidate.get("candidate_found"):
         return False, "BLOCKED_CANDIDATE_NOT_FOUND"
+    if not _candidate_age_ok(candidate, now):
+        return False, "BLOCKED_CANDIDATE_STALE"
     if not candidate.get("market_tradable"):
         return False, "BLOCKED_MARKET_NOT_TRADABLE"
     if not candidate.get("contract_tradable"):

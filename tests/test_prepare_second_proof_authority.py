@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from datetime import datetime, timezone
+
 import json
 from pathlib import Path
 
@@ -37,6 +39,10 @@ def valid_context(tmp_path, monkeypatch):
         "contract_ticker": "KXMVESPORTSMULTIGAMEEXTENDED-S2026507888D9EE4-E8412AFB1D6",
         "submit_allowed_now": False,
         "requires_new_operator_proof_authority": True,
+        # A candidate's tradability claim expires (see
+        # CANDIDATE_MAX_AGE_SECONDS). "Just validated" is this fixture's
+        # intent, so stamp now rather than freezing a date that would rot.
+        "created_at": datetime.now(timezone.utc).isoformat(),
         "proof_lock_status": "consumed_by_real_broker_attempt",
     }
     (tmp_path / "v3.json").write_text(json.dumps(candidate, sort_keys=True), encoding="utf-8")
