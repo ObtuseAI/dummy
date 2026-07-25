@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import os
 import sys
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -34,9 +35,41 @@ def _load_script_module():
     return module
 
 
+def test_recal_forces_its_own_busy_timeout_over_the_fleet_setting(monkeypatch):
+    """The one job with no watchdog must not inherit the watchdog's timeout.
+
+    ``DUMMY_LEDGER_BUSY_TIMEOUT_S=60`` is set at User scope for the cycles,
+    which are bounded by a 13-minute watchdog and must fail fast. This job is
+    the opposite: no watchdog, so it should wait out a concurrent chunked write.
+    It asked for 600s with ``os.environ.setdefault``, which never overrides an
+    existing value -- so it silently ran with the fleet's 60s, the very timeout
+    it exists to escape, and died on "database is locked" roughly every run.
+    """
+    monkeypatch.setenv("DUMMY_LEDGER_BUSY_TIMEOUT_S", "60")
+
+    _load_script_module()
+
+    assert os.environ["DUMMY_LEDGER_BUSY_TIMEOUT_S"] == "600"
+
+
+def test_recal_busy_timeout_stays_tunable(monkeypatch):
+    """Forcing a value must not remove the operator's ability to change it."""
+    monkeypatch.setenv("DUMMY_LEDGER_BUSY_TIMEOUT_S", "60")
+    monkeypatch.setenv("DUMMY_RECAL_LEDGER_BUSY_TIMEOUT_S", "900")
+
+    _load_script_module()
+
+    assert os.environ["DUMMY_LEDGER_BUSY_TIMEOUT_S"] == "900"
+
+
 @pytest.fixture
 def recal(tmp_path, monkeypatch):
-    """The script with its artifact paths redirected into tmp_path."""
+    """The script with its artifact paths redirected into tmp_path.
+
+    Pin the busy-timeout var through monkeypatch so the module's import-time
+    write to it is reverted after each test rather than leaking session-wide.
+    """
+    monkeypatch.setenv("DUMMY_LEDGER_BUSY_TIMEOUT_S", "60")
     module = _load_script_module()
     runtime = tmp_path / "runtime" / "autonomy"
     runtime.mkdir(parents=True)
