@@ -82,9 +82,22 @@ def canary_readiness(check_balance: bool = False) -> dict[str, Any]:
 
 
 def live_session_readiness() -> dict[str, Any]:
-    """Read the explicit local live-authority contracts without broker I/O."""
+    """Read the explicit local live-authority contracts without broker I/O.
+
+    The credential predicate inside the authority status reads ``os.environ``,
+    but the Kalshi refs live in ``.env``.  Load the whitelisted refs first --
+    idempotently, never overwriting an existing value -- so the gate reports
+    what is actually resolvable instead of a false negative.  ``start_session``
+    consults this *before* ``_live_balance_cents`` and ``build_brain``, both of
+    which already load them, so without this the arming step refused a live
+    session for missing credentials that were present on disk.
+
+    Loading refs does not weaken any gate: live-submit, the env gate, the
+    command seal, caps and the proof lock are all still read as found.
+    """
     from live_firewall.firewall import live_execution_authority_status
 
+    _ensure_creds_loaded()
     return live_execution_authority_status()
 
 

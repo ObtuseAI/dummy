@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 from datetime import datetime, timezone
 
 from autonomy.canary import evaluate_canary_readiness
@@ -302,3 +303,36 @@ def test_cached_canary_preflight_fails_fast_on_incomplete_summary(tmp_path):
         assert "sources" in result.evidence["cached_backtest"]["missing_fields"]
     finally:
         ledger.close()
+
+
+def test_live_session_readiness_loads_credentials_that_live_only_in_dotenv(monkeypatch):
+    """The readiness gate must see credentials stored in .env.
+
+    The Kalshi refs live in .env, not the user environment.
+    ``live_execution_authority_status`` reads ``os.environ`` directly, so a
+    readiness check that did not load .env first reported
+    ``credentials_resolved_locally: false`` while working credentials sat on
+    disk -- and ``start_session`` refused the live session that arms trading.
+    ``_live_balance_cents`` and ``build_brain(LIVE)`` both already load them;
+    the gate that runs *before* those did not.
+    """
+    import autonomy.session as sess
+
+    loads = []
+
+    def fake_load(**kwargs):
+        loads.append(kwargs)
+        monkeypatch.setenv("KALSHI_API_KEY_ID", "resolved-from-dotenv")
+        return {"KALSHI_API_KEY_ID": "resolved-from-dotenv"}
+
+    monkeypatch.delenv("KALSHI_API_KEY_ID", raising=False)
+    monkeypatch.setattr("core.env_loader.load_whitelisted_env", fake_load)
+
+    readiness = sess.live_session_readiness()
+
+    assert len(loads) == 1, "readiness must load whitelisted .env refs exactly once"
+    assert os.environ.get("KALSHI_API_KEY_ID") == "resolved-from-dotenv"
+    # The credential check now reads the loaded value rather than a false
+    # negative.  Every other gate is untouched: live-submit stays disabled.
+    assert readiness["execution_authority"] is False
+    assert readiness["default_disabled"] is True
