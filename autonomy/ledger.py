@@ -46,9 +46,11 @@ LEDGER_BUSY_TIMEOUT_S = _ledger_busy_timeout_s()
 LEDGER_LOCK_RETRIES = 5
 LEDGER_LOCK_BACKOFF_S = 0.1
 LEDGER_LOCK_BACKOFF_MAX_S = 5.0
-# Wall-clock budget for a single trust-weight write to outlast a competing
-# writer. Only the first write in a bootstrap loop contends; it then holds the
-# write lock and the rest complete immediately.
+# Wall-clock budget for the BATCHED trust-weight write (update_weights) to
+# outlast a competing writer. It applies only to the out-of-band recalibration,
+# which has no watchdog and can afford to wait. The per-write update_weight path
+# deliberately keeps the attempt-count bound: the learner calls it inside every
+# cycle, and a two-minute stall there blows the cycle deadline.
 WEIGHT_WRITE_LOCK_BUDGET_S = 120.0
 
 
@@ -1364,6 +1366,56 @@ class AutonomyLedger:
             )
         ]
 
+    def update_weights(self, weights: dict[str, float]) -> None:
+        """Write many trust weights under ONE lock acquisition.
+
+        ``update_weight`` commits per source, so a bootstrap of ~478 weights
+        makes ~478 separate acquisitions of the WAL write lock -- each an
+        independent chance to lose a race, and one loss aborts the entire ~390s
+        recalibration. The competitor is ``run_dummy_live_poller.py``, which
+        holds an open ledger connection for its whole session and writes
+        observations continuously (confirmed via Restart Manager as the sole
+        holder of ledger.db across an 80s sample), so losing at least one of 478
+        races is near certain. Take the lock once with BEGIN IMMEDIATE, write
+        them all, commit once.
+        """
+        if not weights:
+            return
+
+        def _write_all() -> None:
+            conn = self._conn
+            # A previous attempt may have left a transaction open; a retry must
+            # start from a clean slate or BEGIN IMMEDIATE fails on its own.
+            if conn.in_transaction:
+                conn.rollback()
+            conn.execute("BEGIN IMMEDIATE")
+            try:
+                for source, weight in weights.items():
+                    row = conn.execute(
+                        "SELECT brier_sum, brier_count FROM source_trust WHERE source=?",
+                        (source,),
+                    ).fetchone()
+                    brier_sum, brier_count = (
+                        (float(row[0]), int(row[1])) if row else (0.0, 0)
+                    )
+                    conn.execute(
+                        "INSERT OR REPLACE INTO source_trust"
+                        "(source, weight, brier_sum, brier_count, updated_at)"
+                        " VALUES (?,?,?,?,?)",
+                        (source, weight, brier_sum, brier_count, _now()),
+                    )
+                conn.commit()
+            except Exception:
+                try:
+                    conn.rollback()
+                except Exception:
+                    pass
+                raise
+
+        self._retry_on_locked(
+            _write_all, deadline=time.monotonic() + WEIGHT_WRITE_LOCK_BUDGET_S
+        )
+
     def update_weight(self, source: str, weight: float, brier: float | None = None) -> None:
         def _write() -> None:
             # Re-read inside the retry: an attempt that lost the lock wrote
@@ -1389,14 +1441,15 @@ class AutonomyLedger:
         # against a confirmed 600s busy_timeout, and every out-of-band
         # recalibration failed with it.
         #
-        # Bound by wall clock, not attempt count. The attempt bound is five
-        # tries over ~3.1s of backoff; a measured recalibration blocked 3.742s
-        # on its FIRST weight write before succeeding, so the attempt bound
-        # decided that run by a fraction of a second and the job flapped between
-        # passing and dying. Only the first write contends -- it takes the write
-        # lock and the remaining few hundred complete in microseconds -- so a
-        # generous per-write deadline costs nothing in the common case.
-        self._retry_on_locked(_write, deadline=time.monotonic() + WEIGHT_WRITE_LOCK_BUDGET_S)
+        # Attempt-count bound, NOT the batch deadline. This is the per-write
+        # path and autonomy/learner.py calls it several times inside every
+        # cycle, which a 13-minute watchdog bounds -- so it must fail fast and
+        # let the cycle finish. Handing it WEIGHT_WRITE_LOCK_BUDGET_S made a
+        # contended learner write stall for two minutes where it used to give up
+        # in three seconds, and cycles started dying on CYCLE_ERROR:CycleDeadline.
+        # The long wall-clock budget belongs to update_weights, which runs in the
+        # out-of-band recalibration where nothing is waiting on the cycle.
+        self._retry_on_locked(_write)
         self._retry_on_locked(self._conn.commit)
 
     # ------------------------------------------------------------------
