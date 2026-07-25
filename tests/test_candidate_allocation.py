@@ -66,6 +66,21 @@ class TestKellyProrata:
         by_id = {g.candidate_id: g.granted_cents for g in grants}
         assert by_id["a"] == 500 and by_id["b"] == 500
 
+    def test_floor_weight_does_not_shrink_an_uncontended_ask(self):
+        """Regression: weights decide who gets CUT under contention, they are
+        not a discount on a size that already fits.
+
+        The first wiring of this shrank a lone 100c ask to 25c because its
+        scope was merely unproven, dropping the grant below the price of one
+        contract and silently halting trading."""
+        grants = allocate(_asks(("a", "s1", 100)), 200, {"s1": 0.25}, "kelly_prorata")
+        assert grants[0].granted_cents == 100
+
+    def test_uncontended_asks_are_all_granted_in_full(self):
+        grants = allocate(_asks(("a", "s1", 100), ("b", "s2", 100)),
+                          1000, {"s1": 0.25, "s2": 1.0}, "kelly_prorata")
+        assert [g.granted_cents for g in grants] == [100, 100]
+
     def test_weight_shifts_the_split(self):
         grants = allocate(_asks(("a", "s1", 1000), ("b", "s2", 1000)),
                           1000, {"s1": 1.0, "s2": 0.25}, "kelly_prorata")

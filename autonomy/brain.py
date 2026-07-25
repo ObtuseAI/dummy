@@ -347,6 +347,61 @@ class PredatorBrain:
                 count += 1
         return exposure, count
 
+    def _allocation_scope(self, market, forecast) -> str:
+        """The grading scope this candidate's allocation weight is looked up under.
+
+        Falls back to the ticker so an unmappable market still allocates (at
+        the weight floor) rather than crashing the cycle.
+        """
+        try:
+            from autonomy.taxonomy import grading_scope
+
+            return grading_scope(
+                "fused", market.ticker, getattr(forecast, "features", None)
+            )
+        except Exception:
+            try:
+                return str(market.ticker)
+            except Exception:
+                return "unknown"
+
+    def _scope_advantages(self) -> dict[str, float]:
+        """Per-scope contested-Brier advantage (lower 95% bound).
+
+        Reads the latest dashboard snapshot rather than the ledger: this runs
+        every cycle and must never take a ledger lock.  An absent or unreadable
+        snapshot yields an empty map, which resolves every scope to the weight
+        floor -- the honest "no evidence yet" answer.
+        """
+        from pathlib import Path
+
+        try:
+            snapshot = json.loads(
+                Path("runtime/autonomy/latest_dashboard_snapshot.json")
+                .read_text(encoding="utf-8")
+            )
+        except (OSError, ValueError):
+            return {}
+        if not isinstance(snapshot, dict):
+            return {}
+        surface = snapshot.get("trust_surface_by_specialist")
+        if not isinstance(surface, dict):
+            return {}
+        out: dict[str, float] = {}
+        for bucket in surface.values():
+            if not isinstance(bucket, dict):
+                continue
+            scopes = bucket.get("scopes")
+            if not isinstance(scopes, dict):
+                continue
+            for scope, row in scopes.items():
+                if not isinstance(row, dict):
+                    continue
+                value = row.get("contested_brier_advantage_lower95")
+                if isinstance(value, (int, float)) and not isinstance(value, bool):
+                    out[str(scope)] = float(value)
+        return out
+
     def _sync_live_exposure(self, outcomes: list[TradeOutcome]) -> None:
         """Project only broker-witnessed fills into central live exposure."""
         if self.mode is not SessionMode.LIVE or not outcomes:
@@ -997,6 +1052,70 @@ class PredatorBrain:
         cycle_group_cents: dict[str, int] = {}
         cycle_group_count: dict[str, int] = {}
         decision_slice = scored[:MAX_CANDIDATES_EVALUATED] if trading_active else []
+
+        # Cross-candidate allocation: divide ONE pot across the candidates that
+        # can actually be held this cycle, weighted by each scope's
+        # demonstrated contested-Brier advantage.  Without this the loop below
+        # is greedy -- whoever ranks first takes as much as its own caps allow
+        # and everything after it competes for the remainder.
+        from autonomy.allocation_config import AllocationConfig
+        from autonomy.allocation_weights import weights_for_scopes
+        from autonomy.candidate_allocation import Ask, allocate
+        from autonomy.risk_brain import STAGE_LIMITS
+
+        alloc_config = AllocationConfig.load()
+        stage_limits = STAGE_LIMITS[state.stage]
+        # Only as many candidates as the stage can still hold open.  Dividing
+        # the pot across all 100 evaluated markets when the stage permits 5
+        # positions would push every grant below the price of one contract and
+        # silently stop trading altogether.
+        alloc_slots = max(
+            0, int(stage_limits["max_open_markets"]) - int(state.open_markets)
+        )
+        alloc_pool = decision_slice[:alloc_slots]
+        pot_cents = int(
+            max(
+                0,
+                int(state.bankroll_cents * float(stage_limits["total_frac"]))
+                - int(state.open_exposure_cents),
+            )
+            * alloc_config.throttle
+        )
+        alloc_asks = [
+            Ask(
+                candidate_id=market.ticker,
+                scope=self._allocation_scope(market, forecast),
+                ask_cents=int(stage_limits["order_abs_cents"]),
+                price_cents=1,
+            )
+            for market, forecast, _signals in alloc_pool
+        ]
+        alloc_weights = weights_for_scopes(
+            {a.scope for a in alloc_asks},
+            self._scope_advantages(),
+            config=alloc_config,
+        )
+        alloc_grants = {
+            g.candidate_id: g.granted_cents
+            for g in allocate(
+                alloc_asks, pot_cents, alloc_weights,
+                alloc_config.policy, top_k=alloc_config.top_k,
+            )
+        }
+        report.notes.append(
+            "allocation=" + json.dumps(
+                {
+                    "policy": alloc_config.policy,
+                    "throttle": alloc_config.throttle,
+                    "pot_cents": pot_cents,
+                    "slots": alloc_slots,
+                    "candidates": len(alloc_asks),
+                    "granted_cents": sum(alloc_grants.values()),
+                },
+                sort_keys=True,
+            )
+        )
+
         _t = time.perf_counter()
         for market, forecast, _signals in decision_slice:
             if report.orders_placed >= MAX_ORDERS_PER_CYCLE:
@@ -1010,6 +1129,9 @@ class PredatorBrain:
                 self._market_exposure(state, market.ticker),
                 group_exposure_cents=group_cents,
                 group_open_count=group_count,
+                # Default 0, never None: a candidate outside the allocation
+                # pool must be capped OUT, not left uncapped.
+                allocation_cap_cents=alloc_grants.get(market.ticker, 0),
             )
             tier_assessment = cycle_tiers.get(market.ticker)
             if tier_assessment is not None:

@@ -104,23 +104,49 @@ def _kelly_prorata(
     already answered what each edge is worth; inflating those sizes because
     nothing else showed up would size on availability rather than on edge.
     """
-    raw = {a.candidate_id: a.ask_cents * float(weights.get(a.scope, 0.0)) for a in live}
-    total = sum(raw.values())
-    if total <= 0:
-        return [_zero(a, float(weights.get(a.scope, 0.0)), "kelly_prorata",
-                      "zero weighted ask") for a in live]
-
-    scale = min(1.0, pot_cents / total)
     grants: list[Grant] = []
+
+    # A zero weight means "not fundable", and stays that way whether or not the
+    # pot has room.  In production ``weights_for_scopes`` always returns at
+    # least the floor, so this is a defensive branch.
+    eligible = [a for a in live if float(weights.get(a.scope, 0.0)) > 0.0]
+    grants.extend(
+        _zero(a, float(weights.get(a.scope, 0.0)), "kelly_prorata", "zero weight")
+        for a in live if float(weights.get(a.scope, 0.0)) <= 0.0
+    )
+    if not eligible:
+        return grants
+
+    # Weights decide who gets CUT when candidates contend for a scarce pot.
+    # They are not a discount applied to a size that already fits.  If every
+    # ask fits, every ask is granted in full -- Kelly already answered what
+    # each edge is worth, and shrinking it because the scope is merely
+    # unproven would size on ignorance rather than on edge.
+    total_ask = sum(a.ask_cents for a in eligible)
     spent = 0
-    for ask in live:
+    if total_ask <= pot_cents:
+        for ask in eligible:
+            cents = min(ask.ask_cents, max(0, pot_cents - spent))
+            spent += cents
+            grants.append(Grant(ask.candidate_id, cents,
+                                float(weights.get(ask.scope, 0.0)),
+                                "kelly_prorata", "full ask (pot uncontended)"))
+        return grants
+
+    raw = {a.candidate_id: a.ask_cents * float(weights.get(a.scope, 0.0))
+           for a in eligible}
+    total_raw = sum(raw.values())
+    if total_raw <= 0:
+        return grants + [_zero(a, float(weights.get(a.scope, 0.0)), "kelly_prorata",
+                               "zero weighted ask") for a in eligible]
+
+    for ask in eligible:
         weight = float(weights.get(ask.scope, 0.0))
-        cents = int(raw[ask.candidate_id] * scale)
+        cents = int(raw[ask.candidate_id] / total_raw * pot_cents)
         cents = min(cents, ask.ask_cents, max(0, pot_cents - spent))
         spent += cents
-        reason = ("weighted ask" if scale >= 1.0
-                  else f"weighted ask scaled {scale:.3f} (pot oversubscribed)")
-        grants.append(Grant(ask.candidate_id, cents, weight, "kelly_prorata", reason))
+        grants.append(Grant(ask.candidate_id, cents, weight, "kelly_prorata",
+                            "weighted share (pot oversubscribed)"))
     return grants
 
 
