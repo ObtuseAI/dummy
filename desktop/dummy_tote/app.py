@@ -18,6 +18,7 @@ from PySide6 import QtCore, QtGui, QtWidgets
 
 from desktop.dummy_tote import theme
 from desktop.dummy_tote.data import (
+    ALLOCATION_POLICIES,
     KNOWN_LEAGUES,
     LLM_BACKENDS,
     RepoData,
@@ -396,7 +397,79 @@ class SwitchesView(QtWidgets.QWidget):
         box.addSpacing(8)
         for backend in LLM_BACKENDS:
             box.addWidget(self._row(f"llm · {backend}", "llm", backend))
+        box.addSpacing(14)
+        box.addWidget(self._allocation_block())
         box.addStretch(1)
+
+    # -- allocation: how the cycle pot is split across candidates ------------
+
+    def _allocation_block(self) -> QtWidgets.QWidget:
+        w = QtWidgets.QWidget()
+        v = QtWidgets.QVBoxLayout(w)
+        v.setContentsMargins(0, 0, 0, 0)
+        v.setSpacing(8)
+        v.addWidget(_display("CANDIDATE ALLOCATION", 17, theme.CHALK))
+        note = QtWidgets.QLabel(
+            "How one capped pot is split when several candidates qualify at "
+            "once. Writes configs/allocation.json — picked up on the next fire."
+        )
+        note.setObjectName("Muted")
+        note.setWordWrap(True)
+        v.addWidget(note)
+
+        policy_row = QtWidgets.QWidget()
+        ph = QtWidgets.QHBoxLayout(policy_row)
+        ph.setContentsMargins(0, 0, 0, 0)
+        ph.addWidget(_display("policy", 15, theme.CHALK))
+        ph.addStretch(1)
+        self.policy_box = QtWidgets.QComboBox()
+        self.policy_box.addItems(list(ALLOCATION_POLICIES))
+        self.policy_box.activated.connect(self._policy_changed)
+        ph.addWidget(self.policy_box)
+        v.addWidget(policy_row)
+
+        throttle_row = QtWidgets.QWidget()
+        th = QtWidgets.QHBoxLayout(throttle_row)
+        th.setContentsMargins(0, 0, 0, 0)
+        th.addWidget(_display("throttle", 15, theme.CHALK))
+        th.addStretch(1)
+        self.throttle_label = QtWidgets.QLabel("100%")
+        self.throttle_label.setObjectName("Muted")
+        th.addWidget(self.throttle_label)
+        self.throttle = QtWidgets.QSlider(QtCore.Qt.Orientation.Horizontal)
+        self.throttle.setRange(0, 100)
+        self.throttle.setFixedWidth(180)
+        # Live label while dragging; write only on release, so a drag across
+        # the track does not write the file once per pixel.
+        self.throttle.valueChanged.connect(
+            lambda pct: self.throttle_label.setText(f"{pct}%"))
+        self.throttle.sliderReleased.connect(self._throttle_released)
+        th.addWidget(self.throttle)
+        v.addWidget(throttle_row)
+
+        self.alloc_readout = QtWidgets.QLabel("—")
+        self.alloc_readout.setObjectName("Muted")
+        self.alloc_readout.setWordWrap(True)
+        v.addWidget(self.alloc_readout)
+        return w
+
+    def _policy_changed(self, index: int):
+        try:
+            self._data.set_allocation(policy=ALLOCATION_POLICIES[index])
+        except Exception as exc:
+            self.error.setText(f"Allocation write failed: {exc}")
+            self.error.show()
+            return
+        self.error.hide()
+
+    def _throttle_released(self):
+        try:
+            self._data.set_allocation(throttle=self.throttle.value() / 100.0)
+        except Exception as exc:
+            self.error.setText(f"Allocation write failed: {exc}")
+            self.error.show()
+            return
+        self.error.hide()
 
     def _row(self, label: str, domain: str, key: str, main: bool = False) -> QtWidgets.QWidget:
         w = QtWidgets.QWidget()
@@ -444,6 +517,40 @@ class SwitchesView(QtWidgets.QWidget):
             btn.setChecked(on)
             btn.setText("ON" if on else "OFF")
             btn.blockSignals(False)
+
+        alloc = snap.allocation or {}
+        policy = str(alloc.get("policy") or ALLOCATION_POLICIES[0])
+        if policy in ALLOCATION_POLICIES:
+            self.policy_box.blockSignals(True)
+            self.policy_box.setCurrentIndex(ALLOCATION_POLICIES.index(policy))
+            self.policy_box.blockSignals(False)
+        # Never fight the operator's finger: leave the slider alone mid-drag.
+        if not self.throttle.isSliderDown():
+            pct = int(round(float(alloc.get("throttle", 1.0)) * 100))
+            self.throttle.blockSignals(True)
+            self.throttle.setValue(pct)
+            self.throttle.blockSignals(False)
+            self.throttle_label.setText(f"{pct}%")
+
+        # Last cycle's actual split, so a shrunken size is never mysterious.
+        note = ""
+        for entry in (snap.heartbeat or {}).get("notes") or []:
+            if isinstance(entry, str) and entry.startswith("allocation="):
+                note = entry[len("allocation="):]
+        if note:
+            try:
+                import json as _json
+
+                data = _json.loads(note)
+                self.alloc_readout.setText(
+                    f"last cycle · pot {data.get('pot_cents')}c · "
+                    f"{data.get('candidates')} candidates in {data.get('slots')} slots · "
+                    f"granted {data.get('granted_cents')}c"
+                )
+            except ValueError:
+                self.alloc_readout.setText(note)
+        else:
+            self.alloc_readout.setText("no allocation recorded yet")
 
 
 # ---- snapshot -> table extractors ------------------------------------------

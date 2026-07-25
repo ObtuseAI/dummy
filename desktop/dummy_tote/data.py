@@ -22,6 +22,24 @@ DEFAULT_ROOT = Path(r"C:\src\engine\dummy")
 KNOWN_LEAGUES = ("mlb", "nfl", "nba", "nhl", "ncaaf", "ncaamb", "wnba")
 LLM_BACKENDS = ("openrouter", "claude", "codex")
 
+# Cross-candidate allocation (configs/allocation.json).  Mirrored here rather
+# than imported: this module is deliberately free of dummy imports so the app
+# runs from its own venv.  ``tests/test_tote_allocation_surface.py`` asserts
+# these stay identical to ``autonomy.allocation_config``, so drift fails the
+# suite rather than silently showing the operator the wrong defaults.
+ALLOCATION_POLICIES = ("kelly_prorata", "proportional", "top_k")
+ALLOCATION_DEFAULTS: dict[str, Any] = {
+    "policy": "kelly_prorata",
+    "top_k": 5,
+    "min_weight": 0.25,
+    "target_advantage": 0.02,
+    "throttle": 1.0,
+}
+
+
+def _clamp(value: float, low: float, high: float) -> float:
+    return max(low, min(high, value))
+
 
 def league_filter_options(rows: list[dict]) -> tuple[str, ...]:
     """Year-round league filters followed by any newly observed league.
@@ -68,6 +86,7 @@ class Snapshot:
     heartbeat: dict[str, Any] = field(default_factory=dict)
     board: dict[str, Any] = field(default_factory=dict)
     switches: dict[str, Any] = field(default_factory=dict)
+    allocation: dict[str, Any] = field(default_factory=dict)
     heal: dict[str, Any] = field(default_factory=dict)
     watchdog: dict[str, Any] = field(default_factory=dict)
     vnext: dict[str, Any] = field(default_factory=dict)
@@ -124,6 +143,7 @@ class RepoData:
         self.root = Path(root) if root else DEFAULT_ROOT
         self.runtime = resolve_runtime_dir(self.root)
         self.switches_path = self.root / "configs" / "switches.json"
+        self.allocation_path = self.root / "configs" / "allocation.json"
         self._cache: dict[Path, tuple[tuple[int, int], Any]] = {}
         self._switch_lock = threading.RLock()
 
@@ -187,12 +207,68 @@ class RepoData:
 
         return Snapshot(
             at=_now(), heartbeat=heartbeat, board=board, switches=switches,
+            allocation=self.allocation(),
             heal=heal, watchdog=self._rt("watchdog_status.json"), vnext=vnext,
             crypto=crypto, mispricing=mispricing, plan=self._rt("self_improvement_plan.json"),
             session=self._rt("session.json"), risk=self._rt("risk_state.json"),
             budget=self._rt("odds_api_budget.json"), clv=self._rt("clv_report.json"),
             promotion=self._rt("auto_promotion_state.json"),
             readiness=self._rt("readiness_report.json"), ages=self._ages_out)
+
+    # -- allocation control (how the cycle pot is split per candidate) --------
+
+    def allocation(self) -> dict[str, Any]:
+        """Current allocation settings, with every missing key defaulted.
+
+        Never raises and never returns a partial dict: the UI always has all
+        five keys to render.
+        """
+        raw = self._load(self.allocation_path)
+        raw = raw if isinstance(raw, dict) else {}
+        out = dict(ALLOCATION_DEFAULTS)
+        if raw.get("policy") in ALLOCATION_POLICIES:
+            out["policy"] = raw["policy"]
+        for key in ("top_k",):
+            value = raw.get(key)
+            if isinstance(value, int) and not isinstance(value, bool):
+                out[key] = max(0, value)
+        for key in ("min_weight", "target_advantage", "throttle"):
+            value = raw.get(key)
+            if isinstance(value, (int, float)) and not isinstance(value, bool):
+                out[key] = float(value)
+        out["throttle"] = _clamp(float(out["throttle"]), 0.0, 1.0)
+        out["min_weight"] = _clamp(float(out["min_weight"]), 0.01, 1.0)
+        return out
+
+    def set_allocation(self, **changes: Any) -> None:
+        """Update allocation settings in place, preserving untouched keys.
+
+        ``throttle`` is clamped to [0, 1]: the operator can always shrink the
+        pot from here, never enlarge it.  Enlarging is the sealed-caps
+        ceremony, not a slider.
+        """
+        policy = changes.get("policy")
+        if policy is not None and policy not in ALLOCATION_POLICIES:
+            raise ValueError(f"unknown allocation policy {policy!r}")
+
+        with self._switch_lock:
+            data = self.allocation()
+            for key, value in changes.items():
+                if value is None:
+                    continue
+                if key not in ALLOCATION_DEFAULTS:
+                    raise ValueError(f"unknown allocation key {key!r}")
+                data[key] = value
+            data["top_k"] = max(0, int(data["top_k"]))
+            data["throttle"] = _clamp(float(data["throttle"]), 0.0, 1.0)
+            data["min_weight"] = _clamp(float(data["min_weight"]), 0.01, 1.0)
+            data["target_advantage"] = max(1e-6, float(data["target_advantage"]))
+
+            self.allocation_path.parent.mkdir(parents=True, exist_ok=True)
+            tmp = self.allocation_path.with_suffix(".apptmp")
+            tmp.write_text(json.dumps(data, indent=2, sort_keys=True), encoding="utf-8")
+            tmp.replace(self.allocation_path)
+            self._cache.pop(self.allocation_path, None)
 
     # -- switch control (the app writes the same file dummy_switches.py does) --
 

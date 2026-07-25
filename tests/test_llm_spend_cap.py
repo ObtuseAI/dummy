@@ -214,7 +214,15 @@ class TestPersistenceAcrossProcessRestarts:
     ):
         monkeypatch.setenv(STATE_PATH_ENV, str(tmp_path / "llm_spend_budget.json"))
         monkeypatch.setenv(DAILY_CAP_ENV, "0.10")
-        _governor(tmp_path, cap=0.10).reserve(0.10)
+        # ModelRouter builds its own governor on the real clock, so the ledger
+        # seeded here must be written on the real clock too.  Freezing only the
+        # seeding side made this pass exactly while real UTC was DAY_ONE and
+        # fail every run after 2026-07-24: the router read a different day key,
+        # took the rollover branch, and started the day clean.
+        LlmSpendGovernor(
+            daily_usd_cap=0.10,
+            state_path=tmp_path / "llm_spend_budget.json",
+        ).reserve(0.10)
 
         # Every cycle constructs its own router; the cap must still bind.
         for _ in range(3):

@@ -113,7 +113,8 @@ class Allocator:
 
     def decide(self, market: MarketView, forecast: Forecast, state: RiskState,
                market_exposure_cents: int = 0, group_exposure_cents: int = 0,
-               group_open_count: int = 0) -> Decision:
+               group_open_count: int = 0, *,
+               allocation_cap_cents: int | None = None) -> Decision:
         snapshot: dict = {}
         if self.performance_guard is not None:
             reason = self.performance_guard.reason_for(market, forecast)
@@ -220,7 +221,22 @@ class Allocator:
                 budget.risk_snapshot, side=side, price_cents=price,
                 ev_cents=ev, kelly=kelly,
             )
-        count = budget.max_notional_cents // price
+        # The cross-candidate allocator (autonomy/candidate_allocation) may cap
+        # this candidate below what the risk brain alone would allow, so that a
+        # top-ranked market cannot drain the cycle's whole pot.  It can only
+        # ever REDUCE: the risk brain, the caps and the firewall all still bind
+        # afterwards.
+        grantable = budget.max_notional_cents
+        if allocation_cap_cents is not None:
+            grantable = min(grantable, max(0, int(allocation_cap_cents)))
+        if grantable < price:
+            return _abstain(
+                market, forecast,
+                f"allocation: granted {grantable}c below one contract at {price}c",
+                budget.risk_snapshot, side=side, price_cents=price,
+                ev_cents=ev, kelly=kelly,
+            )
+        count = grantable // price
         notional = count * price
         return Decision(
             decision_id=uuid.uuid4().hex[:16],
