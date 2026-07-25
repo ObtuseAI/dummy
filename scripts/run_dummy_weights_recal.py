@@ -32,7 +32,17 @@ from pathlib import Path
 
 # Out-of-band: no watchdog, so wait out concurrent chunked writes rather than
 # fail. Set before importing the ledger module (busy_timeout is read at import).
-os.environ.setdefault("DUMMY_LEDGER_BUSY_TIMEOUT_S", "600")
+#
+# OVERRIDE, never setdefault. DUMMY_LEDGER_BUSY_TIMEOUT_S is set to 60 at User
+# scope for the cycles, which a 13-minute watchdog bounds and which must fail
+# fast. This job is the opposite and wants to wait. setdefault never overrides
+# an existing value, so from the moment that User-scope variable was introduced
+# this job silently ran with the fleet's 60s -- the exact timeout it exists to
+# escape -- and died on "database is locked" against a concurrent cycle instead
+# of waiting it out. Tunable via DUMMY_RECAL_LEDGER_BUSY_TIMEOUT_S.
+os.environ["DUMMY_LEDGER_BUSY_TIMEOUT_S"] = os.environ.get(
+    "DUMMY_RECAL_LEDGER_BUSY_TIMEOUT_S", "600"
+)
 
 RUNTIME = Path("runtime/autonomy")
 STAMP = RUNTIME / "last_recalibration.json"
