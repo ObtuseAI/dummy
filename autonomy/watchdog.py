@@ -181,10 +181,17 @@ def _scheduled_task_inventory(prefix: str = "Dummy") -> list[dict[str, Any]]:
     import io
     import subprocess
 
+    # schtasks is a console application and the watchdog runs under pythonw.exe,
+    # which has no console to inherit -- so Windows allocates a NEW one and a
+    # terminal flashes on every run. CREATE_NO_WINDOW suppresses it (0 on
+    # non-Windows). Same fix Wave-50 applied to the dashboard's scheduler poll;
+    # this caller was missed.
+    no_window = getattr(subprocess, "CREATE_NO_WINDOW", 0)
     try:
         out = subprocess.run(
             ["schtasks", "/Query", "/FO", "CSV", "/V"],
             capture_output=True, text=True, timeout=60, check=True,
+            creationflags=no_window,
         ).stdout
     except Exception:
         return []
