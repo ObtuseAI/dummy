@@ -9,7 +9,7 @@ import os
 import time
 from dataclasses import dataclass, field, replace
 from datetime import datetime, timezone
-from typing import Any
+from typing import Any, Callable
 
 from autonomy.allocator import Allocator
 from autonomy.executor import Executor, kill_switch_active
@@ -194,33 +194,49 @@ def _market_has_prediction_authority(market: MarketView) -> bool:
     )
 
 
-def _authoritative_live_candidate_allowlist() -> frozenset[str] | None:
-    """Load the exact live-candidate set from the protected caps config.
+def _authoritative_live_candidate_allowlist() -> Callable[[str], bool] | None:
+    """Load the live-candidacy test from the protected caps config.
 
     ``None`` means the authority source is unavailable or invalid.  Callers
-    treat both ``None`` and an empty set as zero candidates; this helper never
-    turns a caps/config failure into a broad live scan.
+    treat ``None`` and an all-rejecting predicate alike as zero candidates; this
+    helper never turns a caps/config failure into a broad live scan.
+
+    Candidacy is decided by the firewall's own matcher, so the set the brain
+    proposes and the set the firewall accepts cannot drift apart: exact
+    ``allowed_markets`` plus whole-series ``allowed_series``.  Reading
+    ``allowed_markets`` alone -- as this did before -- left a series grant
+    unreachable.  Kalshi contracts rotate, so the shipped caps authorize a
+    series and hold ``allowed_markets`` empty; against that config a LIVE cycle
+    filtered out every market and an armed session silently placed nothing.
     """
     try:
         from core.caps_authority import evaluate_caps_authority
         from core.config_loader import load_caps
+        from live_firewall.firewall import market_is_allowlisted
 
         authority = evaluate_caps_authority()
         if authority.config_integrity_valid is not True:
             return None
-        raw = load_caps().allowed_markets
+        caps = load_caps()
+        # ``allowed_series`` postdates some caps payloads; absent means "no
+        # series grant", exactly as the firewall's matcher reads it.
+        grants = (
+            caps.allowed_markets,
+            getattr(caps, "allowed_series", None) or [],
+        )
     except Exception:
         return None
-    if not isinstance(raw, list):
-        return None
-    values: list[str] = []
-    for value in raw:
-        if not isinstance(value, str) or not value or value != value.strip():
+    for raw in grants:
+        if not isinstance(raw, list):
             return None
-        values.append(value)
-    if len(values) != len(set(values)):
-        return None
-    return frozenset(values)
+        values: list[str] = []
+        for value in raw:
+            if not isinstance(value, str) or not value or value != value.strip():
+                return None
+            values.append(value)
+        if len(values) != len(set(values)):
+            return None
+    return lambda ticker: market_is_allowlisted(ticker, caps)
 
 
 @dataclass
@@ -862,7 +878,7 @@ class PredatorBrain:
             markets = [
                 market
                 for market in markets
-                if live_allowlist is not None and market.ticker in live_allowlist
+                if live_allowlist is not None and live_allowlist(market.ticker)
             ]
             report.notes.append(
                 "live_allowlist_candidates="

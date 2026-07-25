@@ -217,7 +217,7 @@ def test_live_cycle_signal_generation_is_exactly_allowlisted(tmp_path, monkeypat
     )
     monkeypatch.setattr(
         "autonomy.brain._authoritative_live_candidate_allowlist",
-        lambda: frozenset({allowed.ticker}),
+        lambda: (lambda ticker: ticker == allowed.ticker),
     )
     registry = _CountingRegistry()
     brain, ledger = _brain(
@@ -235,7 +235,7 @@ def test_live_cycle_signal_generation_is_exactly_allowlisted(tmp_path, monkeypat
         ledger.close()
 
 
-@pytest.mark.parametrize("allowlist", [frozenset(), None])
+@pytest.mark.parametrize("allowlist", [lambda ticker: False, None])
 def test_empty_or_unavailable_live_allowlist_generates_no_signals_or_orders(
     tmp_path,
     monkeypatch,
@@ -285,8 +285,118 @@ def test_live_allowlist_loader_rejects_invalid_authority_or_entries(monkeypatch)
     )
     assert _authoritative_live_candidate_allowlist() is None
 
+    # A malformed series grant is refused on exactly the same terms, and a
+    # caps payload predating allowed_series keeps working (exact-match only).
+    monkeypatch.setattr(
+        "core.config_loader.load_caps",
+        lambda: SimpleNamespace(allowed_markets=[], allowed_series=[" KXSOL15M"]),
+    )
+    assert _authoritative_live_candidate_allowlist() is None
+
+    monkeypatch.setattr(
+        "core.config_loader.load_caps",
+        lambda: SimpleNamespace(allowed_markets=[], allowed_series=["KXSOL15M", "KXSOL15M"]),
+    )
+    assert _authoritative_live_candidate_allowlist() is None
+
     monkeypatch.setattr(
         "core.config_loader.load_caps",
         lambda: SimpleNamespace(allowed_markets=["KXBTC-EXACT"]),
     )
-    assert _authoritative_live_candidate_allowlist() == frozenset({"KXBTC-EXACT"})
+    exact = _authoritative_live_candidate_allowlist()
+    assert exact is not None
+    assert exact("KXBTC-EXACT") is True
+    assert exact("KXBTC-OTHER") is False
+
+
+def test_live_candidacy_honors_a_whole_series_grant(monkeypatch):
+    """A series grant must make rotating contracts live candidates.
+
+    Wave-88 added ``allowed_series`` and taught the firewall to honor it, but
+    this loader still read ``allowed_markets`` alone.  Against the shipped caps
+    (``allowed_markets: []``, ``allowed_series: ["KXSOL15M"]``) that combination
+    filtered every market out of a LIVE cycle: the firewall would have accepted
+    a KXSOL15M order the brain could never propose, so an armed session scanned
+    zero markets and silently placed nothing.
+    """
+    monkeypatch.setattr(
+        "core.caps_authority.evaluate_caps_authority",
+        lambda: SimpleNamespace(config_integrity_valid=True),
+    )
+    monkeypatch.setattr(
+        "core.config_loader.load_caps",
+        lambda: SimpleNamespace(allowed_markets=[], allowed_series=["KXSOL15M"]),
+    )
+    is_candidate = _authoritative_live_candidate_allowlist()
+    assert is_candidate is not None
+    assert is_candidate("KXSOL15M-26JUL250345-45") is True
+    # A KXSOL15M grant authorizes neither a neighbouring sol family nor a
+    # longer series that merely starts with the same characters.
+    assert is_candidate("KXSOLD-26JUL2504-T73.7499") is False
+    assert is_candidate("KXSOL15MEGA-26JUL250345-45") is False
+
+
+def test_live_candidacy_matches_the_firewall_it_will_be_checked_against(monkeypatch):
+    """Candidacy and the firewall deny gate must read one authority.
+
+    Two separate allowlist implementations is how the brain came to propose a
+    set the firewall would reject, and to withhold a set the firewall would
+    accept.  Pin the loader to the firewall's own matcher.
+    """
+    from core.ontology import CapConfig
+    from live_firewall.firewall import market_is_allowlisted
+
+    caps = CapConfig(allowed_markets=["KXBTC-EXACT"], allowed_series=["KXSOL15M"])
+    monkeypatch.setattr(
+        "core.caps_authority.evaluate_caps_authority",
+        lambda: SimpleNamespace(config_integrity_valid=True),
+    )
+    monkeypatch.setattr("core.config_loader.load_caps", lambda: caps)
+    is_candidate = _authoritative_live_candidate_allowlist()
+    assert is_candidate is not None
+    for ticker in (
+        "KXSOL15M-26JUL250345-45",
+        "KXBTC-EXACT",
+        "KXSOLD-26JUL2504-T73.7499",
+        "KXSOL15MEGA-26JUL250345-45",
+        "",
+    ):
+        assert is_candidate(ticker) is market_is_allowlisted(ticker, caps)
+
+
+def test_live_cycle_scans_a_series_authorized_rotating_contract(tmp_path, monkeypatch):
+    """End to end: a LIVE cycle proposes the series-authorized contract only."""
+    rotating = _market(
+        "KXSOL15M-26JUL250345-45",
+        vertical=Vertical.CRYPTO,
+        category="Crypto",
+    )
+    outside = _market(
+        "KXSOLD-26JUL2504-T73.7499",
+        vertical=Vertical.CRYPTO,
+        category="Crypto",
+    )
+    monkeypatch.setattr(
+        "core.caps_authority.evaluate_caps_authority",
+        lambda: SimpleNamespace(config_integrity_valid=True),
+    )
+    monkeypatch.setattr(
+        "core.config_loader.load_caps",
+        lambda: SimpleNamespace(allowed_markets=[], allowed_series=["KXSOL15M"]),
+    )
+    registry = _CountingRegistry()
+    brain, ledger = _brain(
+        tmp_path,
+        mode=SessionMode.LIVE,
+        markets=[rotating, outside],
+        registry=registry,
+    )
+    try:
+        report = asyncio.run(brain.run_cycle())
+        assert report.markets_scanned == 1
+        assert registry.calls == [rotating.ticker]
+        # Candidacy is not authority: absent the operator live gates the
+        # firewall still refuses, so no order leaves the box.
+        assert report.orders_placed == 0
+    finally:
+        ledger.close()
