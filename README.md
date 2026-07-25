@@ -9,7 +9,7 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/python-3.11%20%7C%203.12%20%7C%203.14-4b8bbe" alt="Python 3.11, 3.12, 3.14">
-  <img src="https://img.shields.io/badge/tests-7872%20passing-2ea44f" alt="7872 tests passing">
+  <img src="https://img.shields.io/badge/tests-7916%20passing-2ea44f" alt="7916 tests passing">
   <img src="https://img.shields.io/badge/autonomous%20loops-45-3b7dd8" alt="45 autonomous loops">
   <img src="https://img.shields.io/badge/mode-SHADOW%20·%20paper-1f9d55" alt="Shadow paper mode">
   <img src="https://img.shields.io/badge/promotion%20to%20capital-human--gated-e0a100" alt="Human-gated">
@@ -326,6 +326,16 @@ capital authority. The guardrails are structural:
   every approval bound to the previous bytes, and code may register a new protected baseline
   but is structurally forbidden from manufacturing the operator registration needed to *use*
   it. Self-authorization is not a policy here; it is unrepresentable.
+- **Deny-by-default market authorization** — a market must be positively authorized by exact
+  ticker (`allowed_markets`) or by series (`allowed_series`) before an order can form.
+  Series authorization is boundary-aware identifier matching, never category inference:
+  `KXSOL15M` does not authorize `KXSOL15MEGA`. Category compliance continues to come only
+  from fetched venue metadata, and every negative control — quarantine, blocked categories,
+  caps, risk brain — is evaluated independently of it.
+- **A claim must carry its own timestamp** — a validated proof candidate's tradability
+  expires (`CANDIDATE_MAX_AGE_SECONDS`), and a market never observed reports `null`
+  tradability rather than `false`. "Not tradable" and "we never looked" are different facts,
+  and the second one used to be recorded as the first.
 - **Hardened execution firewall** — LIMIT-only orders, per-order validation, and
   transport-witnessed truth: broker contact is claimed only on HTTP evidence, and settlement
   P&amp;L uses only the broker's witnessed fills.
@@ -342,6 +352,16 @@ socket was opened. The rejection classifier, the truth layer, and the on-the-rec
 in [`docs/corrections/`](docs/corrections/) all exist because a narrative artifact and a
 mechanical one disagreed, and only the mechanical one was true.
 
+That reflex — a local condition rendered as a fact about the outside world — turned out to be
+systemic rather than isolated. A discovery run that made **zero** network requests still
+reported `market_tradable: false` and "market is not open for trading". A candidate validated
+weeks earlier still asserted a market was tradable, with nothing in the record to date the
+claim. A caps blocker sat in front of a credential check and reported its own name instead,
+masking the signal the check existed to produce. And the field taxonomy that classifies a caps
+change was also the schema-required set, so naming a new field retroactively invalidated
+evidence explicitly labelled immutable. Each was found by asking the same question — *what did
+this actually observe, and when?* — and each is now a test.
+
 ## By the numbers
 
 | | |
@@ -354,8 +374,8 @@ mechanical one disagreed, and only the mechanical one was true.
 | Play-by-play knowledge lake | 32,298 games, 6 leagues, comeback matrices |
 | Sports challenger analytics | 11, walk-forward graded |
 | LLM panel | 4 exact models, 7-call atomic, double-locked, daily USD cap |
-| Improvement waves shipped | 87 |
-| Tests | 7,872 passing |
+| Improvement waves shipped | 88 |
+| Tests | 7,916 passing |
 | Capital at risk | $0 — paper, human-gated |
 
 ## Operator quickstart

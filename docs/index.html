@@ -161,8 +161,8 @@
       <div class="cell"><div class="n">46</div><div class="l">competing sources</div></div>
       <div class="cell"><div class="n">45</div><div class="l">autonomous loops</div></div>
       <div class="cell"><div class="n">162,915</div><div class="l">games in the lake</div></div>
-      <div class="cell"><div class="n">7,872</div><div class="l">tests green</div></div>
-      <div class="cell"><div class="n">87</div><div class="l">improvement waves</div></div>
+      <div class="cell"><div class="n">7,916</div><div class="l">tests green</div></div>
+      <div class="cell"><div class="n">88</div><div class="l">improvement waves</div></div>
       <div class="cell"><div class="n">0</div><div class="l">auto capital</div></div>
     </div>
   </div>
@@ -334,6 +334,8 @@
         <li>Execution is fail-closed and LIMIT-only behind a hardened firewall</li>
         <li>Challengers are evidence-gated on settled, contested outcomes</li>
         <li>Risk caps are <strong>byte-sealed</strong> — code may register a new baseline but is structurally forbidden from manufacturing the operator approval needed to use it. Self-authorization is unrepresentable, not merely discouraged</li>
+        <li>Markets are <strong>deny-by-default</strong> — an order cannot form unless the market is positively authorized by exact ticker or by series. Series matching is boundary-aware identifier matching, never category inference; category compliance comes only from fetched venue metadata</li>
+        <li>Claims carry timestamps — a validated candidate's tradability <strong>expires</strong>, and a market never observed reports <code>null</code> rather than <code>false</code>. "Not tradable" and "we never looked" are different facts</li>
         <li>Broker contact is claimed only on <strong>transport evidence</strong>. Two early proofs recorded as <code>BROKER_REJECTED</code> never reached a broker — no submit call, no endpoint, no payload, submit disabled throughout. Both were local gate blocks wearing a broker's label; the rejection classifier and truth layer exist because of them</li>
         <li>Research may evolve; truth rules, promotion standards &amp; the firewall may not</li>
         <li>Every paper decision is explained and recorded in an auditable ledger</li>
