@@ -46,6 +46,10 @@ LEDGER_BUSY_TIMEOUT_S = _ledger_busy_timeout_s()
 LEDGER_LOCK_RETRIES = 5
 LEDGER_LOCK_BACKOFF_S = 0.1
 LEDGER_LOCK_BACKOFF_MAX_S = 5.0
+# Wall-clock budget for a single trust-weight write to outlast a competing
+# writer. Only the first write in a bootstrap loop contends; it then holds the
+# write lock and the rest complete immediately.
+WEIGHT_WRITE_LOCK_BUDGET_S = 120.0
 
 
 # Writer-vs-writer is the one lock class WAL does not remove: a competing
@@ -1361,18 +1365,38 @@ class AutonomyLedger:
         ]
 
     def update_weight(self, source: str, weight: float, brier: float | None = None) -> None:
-        row = self._conn.execute(
-            "SELECT brier_sum, brier_count FROM source_trust WHERE source=?", (source,)
-        ).fetchone()
-        brier_sum, brier_count = (float(row[0]), int(row[1])) if row else (0.0, 0)
-        if brier is not None:
-            brier_sum += brier
-            brier_count += 1
-        self._conn.execute(
-            "INSERT OR REPLACE INTO source_trust(source, weight, brier_sum, brier_count, updated_at)"
-            " VALUES (?,?,?,?,?)",
-            (source, weight, brier_sum, brier_count, _now()),
-        )
+        def _write() -> None:
+            # Re-read inside the retry: an attempt that lost the lock wrote
+            # nothing, and a competing writer may have moved the counters.
+            row = self._conn.execute(
+                "SELECT brier_sum, brier_count FROM source_trust WHERE source=?", (source,)
+            ).fetchone()
+            brier_sum, brier_count = (float(row[0]), int(row[1])) if row else (0.0, 0)
+            if brier is not None:
+                brier_sum += brier
+                brier_count += 1
+            self._conn.execute(
+                "INSERT OR REPLACE INTO source_trust(source, weight, brier_sum, brier_count, updated_at)"
+                " VALUES (?,?,?,?,?)",
+                (source, weight, brier_sum, brier_count, _now()),
+            )
+
+        # Retry the STATEMENT, not just the commit. Under WAL the write lock is
+        # acquired by the first DML statement; COMMIT only releases it. Guarding
+        # commit alone protected the one operation that was never going to be
+        # refused, while the INSERT that actually contends had no retry at all --
+        # so run_backtest's weight loop died 185s in on "database is locked"
+        # against a confirmed 600s busy_timeout, and every out-of-band
+        # recalibration failed with it.
+        #
+        # Bound by wall clock, not attempt count. The attempt bound is five
+        # tries over ~3.1s of backoff; a measured recalibration blocked 3.742s
+        # on its FIRST weight write before succeeding, so the attempt bound
+        # decided that run by a fraction of a second and the job flapped between
+        # passing and dying. Only the first write contends -- it takes the write
+        # lock and the remaining few hundred complete in microseconds -- so a
+        # generous per-write deadline costs nothing in the common case.
+        self._retry_on_locked(_write, deadline=time.monotonic() + WEIGHT_WRITE_LOCK_BUDGET_S)
         self._retry_on_locked(self._conn.commit)
 
     # ------------------------------------------------------------------
