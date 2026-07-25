@@ -49,8 +49,14 @@ class ProofCandidate:
     order_write_methods_blocked: bool = True
     market_status: str = "unknown"
     contract_status: str = "unknown"
-    market_tradable: bool = False
-    contract_tradable: bool = False
+    # None means "never observed", which is NOT the same fact as False.
+    # The read-only discovery path synthesises placeholder metadata when it
+    # never reached the market; defaulting these to False made every such
+    # packet assert the market was untradable while market_status said
+    # "unknown". These packets get promoted to the canonical candidate a live
+    # proof reads, so the difference is load-bearing.
+    market_tradable: bool | None = None
+    contract_tradable: bool | None = None
     price_source: str = "unknown"
     price_validated: bool = False
     previous_real_broker_attempt_recorded: bool = True
@@ -290,8 +296,17 @@ def build_validated_proof_candidate_v2(
         order_write_methods_blocked=order_write_methods_blocked,
         market_status=metadata.status,
         contract_status=contract.status if contract else "unknown",
-        market_tradable=metadata.trading_allowed,
-        contract_tradable=contract.tradable if contract else False,
+        # Only report tradability for a status we actually observed. An
+        # "unknown" status means no GET succeeded, so the boolean carries no
+        # information and must stay null rather than reading as "untradable".
+        market_tradable=(
+            metadata.trading_allowed if metadata.status != "unknown" else None
+        ),
+        contract_tradable=(
+            contract.tradable
+            if contract is not None and contract.status != "unknown"
+            else None
+        ),
         price_source=price_source,
         price_validated=price_validated,
         previous_real_broker_attempt_recorded=proof_lock_consumed,

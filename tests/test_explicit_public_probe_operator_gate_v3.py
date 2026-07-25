@@ -20,8 +20,19 @@ def test_public_probe_gate_is_disabled_by_default_and_preserves_config_hashes() 
     assert decision.config_diff_proof.caps_modified is False
     assert decision.config_diff_proof.live_submit_hash == "3875B81E90B636147CC5BCE5F247B71AD25877C165F4773C98D5C2AD61DB515E"
     assert decision.config_diff_proof.caps_hash == PROTECTED_CAPS_SHA256
-    assert decision.config_diff_proof.caps_authority_state == "REVIEW_REQUIRED"
-    assert decision.config_diff_proof.caps_authority_registration_valid is False
+    # Deliberately NOT pinned to "REVIEW_REQUIRED"/False. Whether an operator
+    # has issued a caps registration is mutable live state (see
+    # runtime/operator_external/caps_authority_registration_v2.json), and this
+    # test is about the probe gate being disabled by default -- coupling it to
+    # the operator's registration made a legitimate registration fail an
+    # unrelated unit test. The safety property that matters is asserted below:
+    # a valid registration NEVER grants execution authority
+    # (core/caps_authority.py hardcodes execution_authority=False).
+    assert decision.config_diff_proof.caps_authority_state in {
+        "REVIEW_REQUIRED",
+        "REGISTERED_FOR_SEPARATE_LIVE_GATE_EVALUATION",
+    }
+    assert isinstance(decision.config_diff_proof.caps_authority_registration_valid, bool)
     assert decision.config_diff_proof.legacy_caps_hash == LEGACY_CAPS_SHA256
     assert decision.config_diff_proof.legacy_caps_authority_invalidated is True
     assert decision.config_diff_proof.execution_authority is False

@@ -32,10 +32,36 @@ CURRENT_CAPS_AUTHORITY_EPOCH = "caps-v2-kalshi-category-metadata-20260722"
 # can never rewrite the sealed bytes again. No operator registration was
 # active at re-seal time, and registration remains required + invalid until
 # an operator issues one against exactly this hash.
-PROTECTED_CAPS_SHA256 = "62878A5F062D71D2EA3EFC3D998874B887FD8D8E885C7745231208F03D913797"
+# Re-sealed 2026-07-25 (Wave-88) on explicit operator authorization: caps.json
+# gained `allowed_series: ["KXSOL15M"]`. `allowed_markets` is exact-match and
+# therefore cannot authorize rotating contracts, so positive authorization was
+# unexpressible and every live path died at the allowlist. Scope is the only
+# family that has passed promotion (docs/promotions/2026-07-16-sol-15m-crypto.md).
+# Changing these bytes invalidated the previous registration by design; a fresh
+# operator registration was issued against this hash in the same change.
+PROTECTED_CAPS_SHA256 = "83FCE350D6AAF5DAA623F79FBE39455BE7120D4EE2C01EB254D39EB72B91E954"
+#: The 2026-07-22 seal, superseded by the line above.
+SUPERSEDED_CAPS_V2_SHA256 = "62878A5F062D71D2EA3EFC3D998874B887FD8D8E885C7745231208F03D913797"
 LEGACY_CAPS_SHA256 = "F7D91453FECCB3A216B733589D69F1C21B5A8CEF753096360630B0B973CAE5B5"
 UNVERSIONED_MIGRATION_SHA256 = "498256CC426B29905412614DE941F924FF903C166AF2CD99ED092B2B8DB78492"
 REQUIRED_REGISTRATION_SCOPE = "caps_policy_registration_for_controlled_firewall_only"
+
+# The three states ``evaluate_caps_authority`` can return.
+#: caps.json no longer matches the sealed baseline -- tamper or drift.
+STATE_CONFIG_INTEGRITY_BLOCKED = "CONFIG_INTEGRITY_BLOCKED"
+#: Config is intact but no valid operator registration exists.
+STATE_REVIEW_REQUIRED = "REVIEW_REQUIRED"
+#: Config is intact and an operator has issued a valid registration.
+STATE_REGISTERED = "REGISTERED_FOR_SEPARATE_LIVE_GATE_EVALUATION"
+
+#: States in which caps configuration is INTACT. Whether an operator has
+#: registered is their prerogative and switches between the two -- neither
+#: grants execution authority, which this module hardcodes to False. Tests
+#: asserting "caps have not been tampered with" want this set; asserting
+#: STATE_REVIEW_REQUIRED specifically instead asserts that the operator has
+#: *not exercised* a sanctioned path, which is a different and much weaker
+#: claim that turns red the moment they do.
+CAPS_CONFIG_INTACT_STATES = frozenset({STATE_REVIEW_REQUIRED, STATE_REGISTERED})
 REQUIRED_REGISTRATION_ACK = (
     "I approve this exact caps-v2 hash for controlled firewall-only proof use, "
     "with no market orders, no scale, no autonomy, and every other live gate still required"
@@ -171,11 +197,11 @@ def evaluate_caps_authority(
     registration_valid = config_valid and not registration_errors
     all_errors = tuple(errors + registration_errors)
     if not config_valid:
-        state = "CONFIG_INTEGRITY_BLOCKED"
+        state = STATE_CONFIG_INTEGRITY_BLOCKED
     elif not registration_valid:
-        state = "REVIEW_REQUIRED"
+        state = STATE_REVIEW_REQUIRED
     else:
-        state = "REGISTERED_FOR_SEPARATE_LIVE_GATE_EVALUATION"
+        state = STATE_REGISTERED
 
     return CapsAuthorityStatus(
         state=state,
@@ -204,6 +230,10 @@ __all__ = [
     "PROTECTED_CAPS_SHA256",
     "REQUIRED_REGISTRATION_ACK",
     "REQUIRED_REGISTRATION_SCOPE",
+    "CAPS_CONFIG_INTACT_STATES",
+    "STATE_CONFIG_INTEGRITY_BLOCKED",
+    "STATE_REGISTERED",
+    "STATE_REVIEW_REQUIRED",
     "CapsAuthorityStatus",
     "evaluate_caps_authority",
 ]

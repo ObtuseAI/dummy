@@ -1,6 +1,10 @@
 from __future__ import annotations
 
-from tests.v35_test_helpers import assert_current_test_report, v35_reports
+from tests.v35_test_helpers import (
+    CAPS_INTACT_REPORT_STATUSES,
+    assert_current_test_report,
+    v35_reports,
+)
 
 
 def test_v34_still_passes_or_partial_expected() -> None:
@@ -9,7 +13,7 @@ def test_v34_still_passes_or_partial_expected() -> None:
     assert report["v34_operator_enabled_probe_run_reconciliation_status"] == "PASS_PARTIAL_EXPECTED"
     assert report["v34_qc_confirmation_status"] == "PASS"
     assert report["live_submit_flag_status"] == "PASS_DISABLED"
-    assert report["caps_config_status"] == "REVIEW_REQUIRED"
+    assert report["caps_config_status"] in CAPS_INTACT_REPORT_STATUSES
 
 
 def test_v34_baseline_reports_still_present() -> None:

@@ -56,3 +56,15 @@ def assert_current_test_report(test_file: str) -> dict[str, Any]:
     }
     stem = test_file.rsplit("/", 1)[-1].rsplit("\\", 1)[-1].removesuffix(".py")
     return assert_v35_report_named(candidates[stem])
+
+
+#: Report-level status values meaning "caps configuration is intact".
+#:
+#: The report vocabulary differs from ``core.caps_authority``'s state strings.
+#: An intact-but-unregistered config reports ``REVIEW_REQUIRED``; once an
+#: operator issues a valid registration the same reports say ``PASS_REGISTERED``
+#: or ``PASS``. Tests that pinned ``REVIEW_REQUIRED`` were asserting the
+#: operator had not exercised a sanctioned path, so they turned red the moment
+#: they did. Any FAIL/BLOCKED value is excluded, so tamper detection is
+#: unchanged.
+CAPS_INTACT_REPORT_STATUSES = frozenset({"REVIEW_REQUIRED", "PASS_REGISTERED", "PASS"})

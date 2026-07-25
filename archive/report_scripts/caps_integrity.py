@@ -36,7 +36,22 @@ _SAFE_BOOLEAN_VALUES = {
     "auto_cancel_stale_orders": True,
     "kill_switch_required": True,
 }
-_SEMANTIC_POLICY_FIELDS = {"allowed_markets", "blocked_categories"}
+# Scope-policy fields that EVERY caps object must contain, including the
+# immutable V11-V19 historical baselines. FROZEN.
+#
+# This set was previously fused with _SEMANTIC_POLICY_FIELDS below, which meant
+# classifying a newly added policy field also made it retroactively REQUIRED.
+# Archived caps records written before that field existed then failed shape
+# validation, historical_evidence_valid went false, and every historical phase
+# report flipped config_diff_empty to False -- immutable evidence changing
+# because of a present-day config edit. Requirements are about what history
+# actually contains and must not move; classification is about how a change is
+# reviewed today and may grow.
+_REQUIRED_SEMANTIC_POLICY_FIELDS = {"allowed_markets", "blocked_categories"}
+
+# Fields whose changes route to semantic policy review. May grow. Adding a name
+# here MUST NOT make it required -- see _validate_caps_shape.
+_SEMANTIC_POLICY_FIELDS = {"allowed_markets", "allowed_series", "blocked_categories"}
 _AUTHORITY_MIGRATION_FIELDS = {
     "schema_version",
     "authority_epoch",
@@ -74,7 +89,12 @@ def _load_object(path: Path) -> tuple[dict[str, Any] | None, list[str]]:
 
 def _validate_caps_shape(caps: dict[str, Any]) -> list[str]:
     errors: list[str] = []
-    required = _MAXIMUM_CAP_FIELDS | _MINIMUM_SAFETY_FIELDS | set(_SAFE_BOOLEAN_VALUES) | _SEMANTIC_POLICY_FIELDS
+    required = (
+        _MAXIMUM_CAP_FIELDS
+        | _MINIMUM_SAFETY_FIELDS
+        | set(_SAFE_BOOLEAN_VALUES)
+        | _REQUIRED_SEMANTIC_POLICY_FIELDS
+    )
     missing = sorted(required - set(caps))
     if missing:
         errors.append(f"missing required fields: {', '.join(missing)}")
@@ -89,7 +109,12 @@ def _validate_caps_shape(caps: dict[str, Any]) -> list[str]:
             errors.append(f"{field} must be boolean")
 
     for field in sorted(_SEMANTIC_POLICY_FIELDS):
-        value = caps.get(field)
+        # Absence is the `required` check's job above, and a field newer than
+        # this record legitimately will not be here. Only type-check what is
+        # actually present -- tolerating absence must not tolerate garbage.
+        if field not in caps:
+            continue
+        value = caps[field]
         if not isinstance(value, list) or any(not isinstance(item, str) or not item.strip() for item in value):
             errors.append(f"{field} must be a list of non-empty strings")
 

@@ -13,6 +13,7 @@
   "auto_cancel_stale_orders": true,
   "kill_switch_required": true,
   "allowed_markets": [],
+  "allowed_series": ["KXSOL15M"],
   "blocked_categories": ["Elections", "Politics"],
   "max_spread_cents": 5,
   "min_liquidity": 10,

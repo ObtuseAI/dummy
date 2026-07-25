@@ -169,7 +169,13 @@ Author `runtime/operator_external/caps_authority_registration_v2.json` by hand:
 }
 ```
 
-`caps_sha256` above is the hash of `configs/caps.json` **as it stands now**, with
+> **Superseded 2026-07-25 (Wave-88).** The hash below is the 2026-07-22 seal.
+> `configs/caps.json` has since gained `allowed_series: ["KXSOL15M"]` and was re-sealed to
+> `83FCE350D6AAF5DAA623F79FBE39455BE7120D4EE2C01EB254D39EB72B91E954`, with a fresh
+> registration issued against it. Read `PROTECTED_CAPS_SHA256` from
+> `core/caps_authority.py` rather than copying a hash from this historical record.
+
+`caps_sha256` above is the hash of `configs/caps.json` **as it stood on 2026-07-24**, with
 `allowed_markets` still empty. If you want the promoted SOL 15m family allowlisted, that
 must happen first, and then the seal and the registration must both be reissued against the
 new bytes.
