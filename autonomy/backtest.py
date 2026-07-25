@@ -1669,13 +1669,17 @@ def run_backtest(ledger: AutonomyLedger, bootstrap_weights: bool = False,
             except Exception:
                 pass
     if weights_actually_written:
-        for source, weight in derived.items():
-            ledger.update_weight(source, weight)
-        for scoped_key, weight in derived_scoped.items():
-            ledger.update_weight(scoped_key, weight)
+        # One transaction for the whole bootstrap. Writing these one at a time
+        # committed per source, turning ~478 weights into ~478 separate WAL
+        # write-lock acquisitions against a continuously-writing live poller --
+        # losing any single race aborted the entire ~390s recalibration.
+        batch: dict[str, float] = {}
+        batch.update(derived)
+        batch.update(derived_scoped)
         for scope, tracker in scope_trackers.items():
             # ``scope`` already is the canonical source|market_type|axis key.
-            ledger.update_weight(f"scope:{scope}", round(tracker.derived_weight(), 3))
+            batch[f"scope:{scope}"] = round(tracker.derived_weight(), 3)
+        ledger.update_weights(batch)
 
     sources_by_scope = {s: {k: t.summary()[k] for k in
                             ("n", "mean_brier", "contested_n",
