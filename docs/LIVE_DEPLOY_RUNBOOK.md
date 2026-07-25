@@ -42,15 +42,30 @@ doubt reads as SHADOW.
 
 Both layers must hold. Neither implies the other.
 
-### Not a gate: `STATE.mode` / `AccountMode.AUTONOMOUS_LIVE_CAPPED`
+### Not an operator gate: `STATE.mode` / `AccountMode.AUTONOMOUS_LIVE_CAPPED`
 
 The handoff listed `STATE.mode != AUTONOMOUS_LIVE_CAPPED` as a blocking operator
-gate. That constant appears only under `archive/` — the retired v4–v8 report
-scripts and routes. Nothing on the live path reads it. Setting it does nothing;
-leaving it unset blocks nothing.
+gate. Nothing is required of the operator here: `build_brain(SessionMode.LIVE)`
+sets that mode itself (`autonomy/session.py:620`) as a consequence of building a
+live brain. It is an effect of arming, not a precondition for it.
+
+The surfaces that *do* gate on it — `execution/autonomous_path.py`,
+`execution/hybrid_path.py`, and the retired v4–v8 report scripts and routes
+under `archive/` — are not on this route. `autonomy/` imports neither execution
+module; the brain reaches the broker through `autonomy/executor.py` →
+`LiveBrokerFirewall`.
 
 The gate the handoff was missing is the session in layer 2. Without it the
 executor routes to the shadow book no matter how open layer 1 is.
+
+### Credentials come from `.env`, and the gate loads them
+
+`KALSHI_API_KEY_ID` and `KALSHI_API_PRIVATE_KEY_PEM_PATH` live in `.env`, not the
+user environment. The authority status reads `os.environ`, so
+`live_session_readiness()` loads the whitelisted refs first (Wave-89) —
+idempotently, never overwriting. Before that fix the arming step refused a live
+session for missing credentials that were present on disk. You do not need to
+export them by hand.
 
 ---
 
