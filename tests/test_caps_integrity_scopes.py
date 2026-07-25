@@ -41,6 +41,16 @@ def test_current_runtime_report_discloses_semantic_block_category_change() -> No
     assert report["verdict"] == "REVIEW_REQUIRED"
     assert report["changes"] == [
         {
+            # Wave-88: allowed_markets is exact-match and cannot authorize
+            # rotating contracts, so series-level scope was added. The report
+            # correctly surfaces it as a semantic policy change requiring
+            # review -- it is a widening of which markets may be reached.
+            "field": "allowed_series",
+            "historical_value": None,
+            "current_value": ["KXSOL15M"],
+            "classification": "SEMANTIC_POLICY_CHANGE_REVIEW_REQUIRED",
+        },
+        {
             "field": "authority_epoch",
             "historical_value": None,
             "current_value": "caps-v2-kalshi-category-metadata-20260722",
