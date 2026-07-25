@@ -1,0 +1,7 @@
+{
+  "policy": "kelly_prorata",
+  "top_k": 5,
+  "min_weight": 0.25,
+  "target_advantage": 0.02,
+  "throttle": 1.0
+}
