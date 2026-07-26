@@ -134,6 +134,10 @@ class PromotionRegistry:
     def is_promoted_signal(
         self, source: str, ticker: str, features: dict[str, Any] | None,
     ) -> bool:
+        from autonomy.reliability import calibrated_challenger_gate_valid
+
+        if not calibrated_challenger_gate_valid(source, features):
+            return False
         return self.is_promoted(grading_scope(source, ticker, features or {}))
 
     def stage_for(self, scope_key: str) -> int | None:

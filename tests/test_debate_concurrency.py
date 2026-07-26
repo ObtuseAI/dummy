@@ -37,14 +37,13 @@ def test_debate_bounded_concurrency(monkeypatch, tmp_path):
     ledger = AutonomyLedger(db_path=tmp_path / "l.db")
     try:
         me = types.SimpleNamespace(router=object(), ledger=ledger)
-        forecaster = types.SimpleNamespace(fuse=lambda m, s: None)
         scored = [
             (types.SimpleNamespace(ticker=f"KXBTC-26JUL10-T{i}"),
              types.SimpleNamespace(probability_yes=0.6), [])
             for i in range(6)
         ]
         report = CycleReport(status="", mode="shadow", stage=1, bankroll_cents=0)
-        asyncio.run(PredatorBrain._adjudicate_top_k(me, forecaster, scored, report))
+        asyncio.run(PredatorBrain._adjudicate_top_k(me, scored, report))
     finally:
         ledger.close()
 
@@ -72,11 +71,10 @@ def test_debate_concurrency_one_is_sequential(monkeypatch, tmp_path):
     ledger = AutonomyLedger(db_path=tmp_path / "l.db")
     try:
         me = types.SimpleNamespace(router=object(), ledger=ledger)
-        forecaster = types.SimpleNamespace(fuse=lambda m, s: None)
         scored = [(types.SimpleNamespace(ticker=f"K-{i}"),
                    types.SimpleNamespace(probability_yes=0.5), []) for i in range(4)]
         report = CycleReport(status="", mode="shadow", stage=1, bankroll_cents=0)
-        asyncio.run(PredatorBrain._adjudicate_top_k(me, forecaster, scored, report))
+        asyncio.run(PredatorBrain._adjudicate_top_k(me, scored, report))
     finally:
         ledger.close()
     assert state["calls"] == 2  # hard market cap remains in force

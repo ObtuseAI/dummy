@@ -1,5 +1,12 @@
 # DUMMY Desktop UI/UX Readiness Pass — 2026-07-21
 
+> Superseded on 2026-07-26 for topology: `autonomy/dashboard_ui.py` on
+> `127.0.0.1:8787` is now the only UI. The Android client, tailnet listener,
+> React snapshot tree, PySide renderer, archive viewer, and their launchers
+> were removed. `desktop/launch_dummy.py` is only a thin browser launcher plus
+> a read-only outcome notifier. Historical validation details below describe
+> the earlier visual pass, not a second supported UI.
+
 ## Outcome
 
 The canonical desktop launcher (`desktop/launch_dummy.py`) opens the local
@@ -61,7 +68,7 @@ The board is now outcome-first. It answers these questions in order:
 - Reworked the 1024 px layout so exposure/P&L stays beside bankroll before the
   ROI gauge; added a clean 72 px navigation rail below 920 px.
 - Reduced decorative noise (static brand rim, weaker scanline/ambient field)
-  while preserving the totalizator identity and reduced-motion behavior.
+  while preserving the operator-board identity and reduced-motion behavior.
 - Added an inline SVG favicon, eliminating the prior browser 404.
 - Upgraded the bottom-left color controls into complete saved application
   themes. Emerald, amber, cyan, and violet now change the canvas, sidebar,

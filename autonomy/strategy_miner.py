@@ -462,16 +462,14 @@ def _one_sided_cluster_sign_p_value(edges: list[float]) -> tuple[float, int, int
 
     Returns ``(p_value, positive_clusters, nonzero_clusters)``.
     """
-    nonzero = [float(edge) for edge in edges if abs(float(edge)) > 1e-15]
-    n = len(nonzero)
-    if n == 0:
-        return 1.0, 0, 0
-    positives = sum(edge > 0.0 for edge in nonzero)
-    numerator = sum(math.comb(n, count) for count in range(positives, n + 1))
-    p_value = float(numerator / (1 << n))
-    if p_value == 0.0:
-        p_value = math.ulp(0.0)
-    return min(1.0, p_value), positives, n
+    from autonomy.stats import one_sided_sign_test
+
+    result = one_sided_sign_test(edges, alternative="greater")
+    return (
+        float(result["p_value"]),
+        int(result["successes"]),
+        int(result["nonzero_clusters"]),
+    )
 
 
 def _benjamini_hochberg(

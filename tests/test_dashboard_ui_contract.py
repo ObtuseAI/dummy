@@ -28,6 +28,48 @@ def test_operator_board_is_outcome_first_and_accessible():
     assert 'role="listbox"' in body
 
 
+def test_system_health_and_edge_quality_are_bounded_read_only_evidence():
+    body = DASHBOARD_HTML
+
+    assert "function systemHealthCard()" in body
+    assert "typeof wd.healthy==='boolean'" in body
+    assert "v.stale===true" in body
+    assert "safeEvidenceRows(st.alerts).slice(-5).reverse()" in body
+    assert "safeEvidenceRows(st.recent_cycles).slice(-5).reverse()" in body
+    assert "Alert history is empty or unavailable" in body
+    assert "Recent-cycle evidence is unavailable. No successful or healthy cycle is inferred." in body
+
+    assert "function edgeQualityCard()" in body
+    assert "['markets_scanned','signals_generated','signals_rejected','decisions_made','abstained']" in body
+    assert "Cycle-level reason distribution unavailable" in body
+    assert "['WATCH','UNATTRIBUTED'].includes(tier)" in body
+    assert "gates.reasons.slice(0,5)" in body
+    assert "not cycle causes" in body
+    assert "no reason is inferred" in body
+    assert "systemHealthCard()+edgeQualityCard()" in body
+
+    health_block = body.split("function systemHealthCard()", 1)[1].split(
+        "function currentBoardRows()", 1
+    )[0]
+    edge_block = body.split("function edgeQualityCard()", 1)[1].split(
+        "function overviewView()", 1
+    )[0]
+    assert "fetch(" not in health_block
+    assert "fetch(" not in edge_block
+
+
+def test_canonical_board_replaces_mobile_app_and_dead_ticker_cleanly():
+    body = DASHBOARD_HTML
+
+    assert '<meta name="viewport"' in body
+    assert "@media(max-width:480px)" in body
+    assert ".side{position:fixed;z-index:20;inset:auto 0 0;height:64px" in body
+    assert ".stage{height:calc(100vh - 64px)" in body
+    assert 'class="sub">operator board</div>' in body
+    assert "buildTape" not in body
+    assert 'id="tape"' not in body
+
+
 def test_high_cardinality_market_panels_are_lazy_and_bounded():
     body = DASHBOARD_HTML
 

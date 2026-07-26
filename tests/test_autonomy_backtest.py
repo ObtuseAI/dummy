@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from autonomy.backtest import SourceScoreTracker, run_backtest
+from autonomy.backtest import SourceScoreTracker, run_backtest, summarize_backtest
 from autonomy.ledger import AutonomyLedger
 from autonomy.ontology import Signal
 
@@ -29,6 +29,38 @@ def test_tracker_penalizes_wrong_confident():
     assert t.derived_weight() < 0.5
 
 
+def test_tracker_confidence_counts_dependency_clusters_not_repeated_markets():
+    repeated = SourceScoreTracker("repeated")
+    independent = SourceScoreTracker("independent")
+    for index in range(20):
+        repeated.observe(
+            0.80, 1, market_brier=(0.55 - 1) ** 2, market_p=0.55,
+            cluster_key="one-game",
+        )
+        independent.observe(
+            0.80, 1, market_brier=(0.55 - 1) ** 2, market_p=0.55,
+            cluster_key=f"game-{index}",
+        )
+    repeated_summary = repeated.summary()
+    assert repeated_summary["contested_event_clusters"] == 1
+    assert repeated_summary["contested_edge_sign_test"]["positive_edge"][
+        "nonzero_clusters"
+    ] == 1
+    assert repeated.derived_weight() < independent.derived_weight()
+
+
+def test_large_cluster_sign_test_uses_bounded_asymptotic_tail():
+    tracker = SourceScoreTracker("large")
+    for index in range(1_100):
+        tracker.observe(
+            0.80, 1, market_brier=(0.55 - 1) ** 2, market_p=0.55,
+            cluster_key=f"game-{index}",
+        )
+    result = tracker.summary()["contested_edge_sign_test"]["positive_edge"]
+    assert result["p_value"] < 0.001
+    assert result["method"].startswith("continuity_corrected_normal")
+
+
 def test_run_backtest_empty_ledger(tmp_path):
     ledger = AutonomyLedger(db_path=tmp_path / "l.db")
     try:
@@ -38,7 +70,7 @@ def test_run_backtest_empty_ledger(tmp_path):
         ledger.close()
 
 
-def test_run_backtest_scores_sources_and_bootstraps(tmp_path):
+def test_run_backtest_scores_sources_but_blocks_unproven_bootstrap(tmp_path):
     ledger = AutonomyLedger(db_path=tmp_path / "l.db")
     try:
         # sharp is right, dull is wrong, market_prior is the baseline.
@@ -52,9 +84,13 @@ def test_run_backtest_scores_sources_and_bootstraps(tmp_path):
         assert report["settled_markets"] == 3
         assert report["derived_weights"]["sharp"] > report["derived_weights"]["dull"]
         assert report["sources"]["sharp"]["beat_market_rate"] == 1.0
-        # Bootstrapped weights persisted into the ledger.
-        assert ledger.get_weight("sharp") == report["derived_weights"]["sharp"]
-        assert ledger.get_weight("dull") < 1.0
+        # Three settlements cannot supply the required held-out evidence, so
+        # the challenger weights remain report-only and the ledger is unchanged.
+        assert report["recal_oos_gate"]["status"] == "SKIPPED"
+        assert report["recal_oos_gate"]["adopted"] is False
+        assert report["weights_written"] is False
+        assert ledger.get_weight("sharp") == 1.0
+        assert ledger.get_weight("dull") == 1.0
     finally:
         ledger.close()
 
@@ -144,10 +180,33 @@ def test_run_backtest_reports_realized_pnl(tmp_path):
             order_id="o1", fill_count=1, fill_price_cents=40, pnl_cents=58,
             broker_contacted=True,
         ))
+        # The isolated research lane models a taker fill at the displayed ask.
+        # Its P&L remains visible, but it is not realized operating P&L.
+        ledger.record_outcome(TradeOutcome(
+            decision_id="chal-research", market_ticker="A",
+            kind=OutcomeKind.FILLED, order_id="modeled", fill_count=1,
+            fill_price_cents=10, pnl_cents=None, broker_contacted=False,
+        ))
+        ledger.record_outcome(TradeOutcome(
+            decision_id="chal-research", market_ticker="A",
+            kind=OutcomeKind.SETTLED_WIN, order_id="modeled", fill_count=1,
+            fill_price_cents=10, pnl_cents=90, broker_contacted=False,
+        ))
         report = run_backtest(ledger)
         assert report["realized_decision_pnl_cents"] == 58
         assert report["graded_decisions"] == 1
         assert report["unverified_settlement_outcomes"] == 0
+        assert report["modeled_challenger_lane"] == {
+            "settled_pnl_cents": 90,
+            "graded_decisions": 1,
+            "fill_semantics": "synthetic_displayed_ask_counterfactual",
+            "counts_toward_realized_pnl": False,
+            "counts_toward_fill_conditioned_policy": False,
+            "execution_authority": False,
+        }
+        assert summarize_backtest(report)["modeled_challenger_lane"] == report[
+            "modeled_challenger_lane"
+        ]
     finally:
         ledger.close()
 

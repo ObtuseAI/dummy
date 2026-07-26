@@ -11,6 +11,7 @@ import argparse
 import json
 import sys
 import time
+from datetime import datetime, timezone
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -33,12 +34,24 @@ def main() -> int:
     games = rows = errors = 0
     for i, gid in enumerate(game_ids):
         try:
-            player_rows = parse_player_boxscores(args.league, fetch_summary(args.league, gid))
+            summary = fetch_summary(args.league, gid)
+            observed_at = datetime.now(timezone.utc).isoformat()
+            player_rows = parse_player_boxscores(args.league, summary)
         except Exception:  # noqa: BLE001
             errors += 1
             continue
         if player_rows:
-            rows += store.record_player_boxscores(player_rows)
+            rows += store.record_player_boxscores(
+                [
+                    {
+                        **row,
+                        "source_available_at": observed_at,
+                        "received_at": observed_at,
+                        "source": "espn",
+                    }
+                    for row in player_rows
+                ]
+            )
             games += 1
         if args.min_interval and i < len(game_ids) - 1:
             time.sleep(args.min_interval)

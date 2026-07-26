@@ -5,8 +5,8 @@ from __future__ import annotations
 
 
 from core.live_submit_state import build_caps_authority_binding
-from predator_mesh.v298.reports import full_authority_arm
-from archive.report_scripts.generate_v298_reports import generate_all_v298_reports_for_tests
+from predator_mesh.operator_proof_stages.execute_once import full_authority_arm
+from predator_mesh.operator_proof_workflows import generate_execute_once_reports_for_tests as generate_all_v298_reports_for_tests
 from tests.caps_authority_test_helpers import registered_caps_status
 
 
@@ -39,19 +39,19 @@ def _patch_live_mode(monkeypatch, live_submit_enabled: bool = True, credentials_
         "core.live_submit_state.evaluate_caps_authority",
         lambda: CAPS_AUTHORITY,
     )
-    monkeypatch.setattr("predator_mesh.v298.reports._load_live_submit_config", lambda: cfg)
-    monkeypatch.setattr("predator_mesh.v298.reports._caps_strict", lambda: True)
-    monkeypatch.setattr("predator_mesh.v298.reports._descriptor_staged", lambda: True)
-    monkeypatch.setattr("predator_mesh.v298.reports._command_seal_ready", lambda: True)
-    monkeypatch.setattr("predator_mesh.v298.reports._proof_lock_clear", lambda: True)
-    monkeypatch.setattr("predator_mesh.v298.reports._kalshi_credentials_ready", lambda: credentials_ready)
+    monkeypatch.setattr("predator_mesh.operator_proof_stages.execute_once._load_live_submit_config", lambda: cfg)
+    monkeypatch.setattr("predator_mesh.operator_proof_stages.execute_once._caps_strict", lambda: True)
+    monkeypatch.setattr("predator_mesh.operator_proof_stages.execute_once._descriptor_staged", lambda: True)
+    monkeypatch.setattr("predator_mesh.operator_proof_stages.execute_once._command_seal_ready", lambda: True)
+    monkeypatch.setattr("predator_mesh.operator_proof_stages.execute_once._proof_lock_clear", lambda: True)
+    monkeypatch.setattr("predator_mesh.operator_proof_stages.execute_once._kalshi_credentials_ready", lambda: credentials_ready)
     monkeypatch.setenv("DUMMY_LIVE_PROOF_MODE", "1")
     monkeypatch.setenv("DUMMY_LIVE_PROOF_ACK", "FULL_AUTHORITY_OPERATOR_APPROVED_LIVE_PROOF_ONLY")
 
 
 def test_rehearsal_double_cannot_claim_real_proof(monkeypatch, tmp_path):
     """When env/config are NOT live-ready, the full-authority arm packet is treated as a rehearsal double."""
-    monkeypatch.setattr("predator_mesh.v298.reports._load_live_submit_config", lambda: {"enabled": False})
+    monkeypatch.setattr("predator_mesh.operator_proof_stages.execute_once._load_live_submit_config", lambda: {"enabled": False})
     d = generate_all_v298_reports_for_tests(arm=full_authority_arm())[
         "v298_execute_once_final_proof_runner_v7_controller_report.json"
     ]
@@ -113,7 +113,7 @@ def test_live_mode_legacy_runner_cannot_forge_broker_rejection(monkeypatch, tmp_
 
 def test_live_mode_blocked_before_broker_when_caps_not_strict(monkeypatch, tmp_path):
     _patch_live_mode(monkeypatch)
-    monkeypatch.setattr("predator_mesh.v298.reports._caps_strict", lambda: False)
+    monkeypatch.setattr("predator_mesh.operator_proof_stages.execute_once._caps_strict", lambda: False)
 
     calls = []
 

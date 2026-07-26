@@ -1,6 +1,8 @@
 """WS-15 taxonomy: horizon buckets, scope keys, registry completeness tripwire."""
 from __future__ import annotations
 
+from dataclasses import replace
+from datetime import datetime, timedelta, timezone
 
 from autonomy.backtest import run_backtest
 from autonomy.ledger import AutonomyLedger
@@ -189,7 +191,25 @@ def _crypto_signal(source, ticker, p, hours):
     )
 
 
-def test_backtest_separates_scopes_and_keeps_bare_source_aggregate(tmp_path):
+def test_backtest_separates_scopes_and_keeps_bare_source_aggregate(
+    tmp_path, monkeypatch,
+):
+    import autonomy.backtest as backtest
+
+    real_gate = backtest._recal_oos_gate
+    monkeypatch.setattr(
+        backtest,
+        "_recal_oos_gate",
+        lambda conn, signals, settlements, incumbent: real_gate(
+            conn,
+            signals,
+            settlements,
+            incumbent,
+            holdout_fraction=0.25,
+            min_holdout=1,
+            min_holdout_clusters=1,
+        ),
+    )
     ledger = AutonomyLedger(db_path=tmp_path / "l.db")
     try:
         # Same source + same market_type (ladder), two different horizons.
@@ -199,13 +219,32 @@ def test_backtest_separates_scopes_and_keeps_bare_source_aggregate(tmp_path):
             ("KXETHD-26JUL0917-T3500", True, 26.0),    # daily+
             ("KXETHD-26JUL0918-T3500", False, 26.0),   # daily+
         ]
-        for ticker, result, hours in cases:
-            ledger.record_signal(_crypto_signal("market_prior", ticker, 0.5, hours))
-            ledger.record_signal(
-                _crypto_signal("crypto_spot_vol", ticker, 0.8 if result else 0.2, hours))
-            ledger.record_settlement(ticker, result)
+        observed_base = datetime.now(timezone.utc) - timedelta(days=1)
+        settled_base = datetime.now(timezone.utc) + timedelta(hours=1)
+        for index, (ticker, result, hours) in enumerate(cases):
+            observed_at = (observed_base + timedelta(minutes=index)).isoformat()
+            prior = replace(
+                _crypto_signal("market_prior", ticker, 0.5, hours),
+                created_at=observed_at,
+            )
+            ledger.record_signal(prior)
+            candidate = replace(
+                _crypto_signal(
+                    "crypto_spot_vol", ticker, 0.8 if result else 0.2, hours,
+                ),
+                created_at=observed_at,
+            )
+            ledger.record_signal(candidate)
+            ledger.record_settlement(
+                ticker,
+                result,
+                settled_at=(settled_base + timedelta(hours=index)).isoformat(),
+            )
 
         report = run_backtest(ledger, bootstrap_weights=True)
+        assert (
+            report["recal_oos_gate"]["held_out_improvement_verified"] is True
+        ), report["recal_oos_gate"]
         scopes = report["sources_by_scope"]
         assert "crypto_spot_vol|btc|ladder|hourly" in scopes
         assert "crypto_spot_vol|eth|ladder|daily+" in scopes

@@ -6,6 +6,8 @@ downstream (model cold-start priors, walk-forward backtests) leans on that.
 """
 from __future__ import annotations
 
+import sqlite3
+
 from autonomy.sports.history_store import SportsHistoryStore
 
 
@@ -60,4 +62,57 @@ def test_ingest_checkpoint_roundtrip(tmp_path):
     last = st.last_ingest("nflverse", "nfl")
     assert last["date_range"] == "2025" and last["rows"] == 90
     assert st.last_ingest("nflverse", "mlb") is None
+    st.close()
+
+
+def test_boxscore_arrival_migration_preserves_and_quarantines_legacy_rows(tmp_path):
+    path = tmp_path / "legacy.db"
+    conn = sqlite3.connect(path)
+    conn.execute(
+        """CREATE TABLE boxscores(
+               game_id TEXT NOT NULL, team TEXT NOT NULL, player TEXT,
+               stat TEXT NOT NULL, value REAL, as_of TEXT, source TEXT,
+               PRIMARY KEY (game_id, team, player, stat)
+           )"""
+    )
+    conn.execute(
+        "INSERT INTO boxscores VALUES(?,?,?,?,?,?,?)",
+        ("g", "AAA", "", "off_plays", 60.0, "2025-09-01T03:00:00Z", "legacy"),
+    )
+    conn.commit()
+    conn.close()
+
+    st = SportsHistoryStore(path)
+    columns = {
+        str(row[1]) for row in st.conn.execute("PRAGMA table_info(boxscores)")
+    }
+    assert {"source_available_at", "received_at"} <= columns
+    legacy = st.conn.execute(
+        "SELECT source_available_at, received_at FROM boxscores",
+    ).fetchone()
+    assert tuple(legacy) == (None, None)
+
+    st.upsert_game({
+        "game_id": "g", "league": "nfl", "season": 2025,
+        "start_time": "2025-09-01T00:00:00Z", "home": "AAA", "away": "BBB",
+        "home_score": 21, "away_score": 14, "status": "final",
+    })
+    assert st.team_stat_sums_before(
+        "AAA", "2025-09-10T00:00:00Z", "nfl",
+    ) is None
+
+    # A fresh observation repairs the legacy row; the migration itself never
+    # inferred availability from the old as_of field.
+    st.record_team_boxscores([{
+        "game_id": "g", "team": "AAA", "stats": {"off_plays": 60},
+        "source_available_at": "2025-09-11T00:00:00Z",
+        "received_at": "2025-09-11T00:01:00Z",
+    }])
+    assert st.team_stat_sums_before(
+        "AAA", "2025-09-11T00:01:00Z", "nfl",
+    ) is None
+    repaired = st.team_stat_sums_before(
+        "AAA", "2025-09-11T00:01:01Z", "nfl",
+    )
+    assert repaired == {"sums": {"off_plays": 60.0}, "games": 1}
     st.close()

@@ -34,6 +34,12 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from autonomy.signals.market_debias import PROMOTION_ELIGIBLE_SCOPES
+from autonomy.signals.crypto_equities import (
+    PROMOTION_ELIGIBLE_SCOPE as EQUITIES_PROMOTION_ELIGIBLE_SCOPE,
+)
+from autonomy.signals.crypto_macro import (
+    PROMOTION_ELIGIBLE_SCOPE as MACRO_PROMOTION_ELIGIBLE_SCOPE,
+)
 
 REGISTRATIONS_PATH = ROOT / "runtime" / "autonomy" / "promotion_forward_registrations.json"
 
@@ -50,8 +56,8 @@ MARKET_DEBIAS_MODULE = "autonomy/signals/market_debias.py"
 # ledger fingerprint stamp nor the challenger lane could ever start that
 # candidate's forward clock. One source of truth removes that drift class.
 CANDIDATES: tuple[tuple[str, str], ...] = (
-    ("crypto_equities_flow|sol|15m_direction|15m", "autonomy/signals/crypto_equities.py"),
-    ("crypto_macro_regime|sol|15m_direction|15m", "autonomy/signals/crypto_macro.py"),
+    (EQUITIES_PROMOTION_ELIGIBLE_SCOPE, "autonomy/signals/crypto_equities.py"),
+    (MACRO_PROMOTION_ELIGIBLE_SCOPE, "autonomy/signals/crypto_macro.py"),
 ) + tuple(
     (scope, MARKET_DEBIAS_MODULE) for scope in sorted(PROMOTION_ELIGIBLE_SCOPES)
 )

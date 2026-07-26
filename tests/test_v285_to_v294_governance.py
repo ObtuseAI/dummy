@@ -2,21 +2,24 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from predator_mesh import report_contract_registry
 from predator_mesh import staged_gate_common as sgc
-from predator_mesh.v289.reports import full_authority_arm
-from archive.report_scripts.generate_v285_reports import generate_all_v285_reports_for_tests
-from archive.report_scripts.generate_v286_reports import generate_all_v286_reports_for_tests
-from archive.report_scripts.generate_v287_reports import generate_all_v287_reports_for_tests
-from archive.report_scripts.generate_v288_reports import generate_all_v288_reports_for_tests
-from archive.report_scripts.generate_v289_reports import generate_all_v289_reports_for_tests
-from archive.report_scripts.generate_v290_reports import generate_all_v290_reports_for_tests
-from archive.report_scripts.generate_v291_reports import generate_all_v291_reports_for_tests
-from archive.report_scripts.generate_v292_reports import generate_all_v292_reports_for_tests
-from archive.report_scripts.generate_v293_reports import generate_all_v293_reports_for_tests
-from archive.report_scripts.generate_v294_reports import generate_all_v294_reports_for_tests
+from predator_mesh.report_runtime import generate_all_v285_reports_for_tests
+from predator_mesh.report_runtime import generate_all_v286_reports_for_tests
+from predator_mesh.report_runtime import generate_all_v287_reports_for_tests
+from predator_mesh.report_runtime import generate_all_v288_reports_for_tests
+from predator_mesh.report_runtime import generate_all_v289_reports_for_tests
+from predator_mesh.report_runtime import generate_all_v290_reports_for_tests
+from predator_mesh.report_runtime import generate_all_v291_reports_for_tests
+from predator_mesh.report_runtime import generate_all_v292_reports_for_tests
+from predator_mesh.report_runtime import generate_all_v293_reports_for_tests
+from predator_mesh.report_runtime import generate_all_v294_reports_for_tests
 from tests.staged_gate_test_helpers import assert_staged_safe
 
 ROOT = Path(sgc.ROOT)
+full_authority_arm = report_contract_registry.load_contract(
+    289
+).full_authority_arm
 
 
 def valid_manifest() -> dict:

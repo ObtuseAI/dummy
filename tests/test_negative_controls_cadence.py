@@ -76,7 +76,9 @@ def test_launcher_is_windowless_and_runs_the_controls_runner():
     text = LAUNCHER.read_text(encoding="utf-8")
     assert "scripts\\run_negative_controls.py" in text
     assert "negative_controls_stdout.log" in text
-    assert ", 0, False" in text                   # hidden window, no console
+    assert "exitCode = shell.Run(" in text
+    assert ", 0, True)" in text                    # hidden window; wait for child
+    assert "WScript.Quit exitCode" in text          # preserve the exact status
 
 
 def test_controls_remain_in_the_nightly_chain():

@@ -125,24 +125,105 @@ class CrossExam:
 
 
 def candles_from_state(state: dict[str, Any], stream: str) -> list[Candle]:
-    """OHLCV rows from a hub state stream ('minute'|'hourly'|'daily')."""
-    raw = state.get(f"{stream}_ohlcv") or {}
-    opens = raw.get("open") or []
-    highs = raw.get("high") or []
-    lows = raw.get("low") or []
-    closes = raw.get("close") or []
-    volumes = raw.get("volume") or []
-    n = min(len(opens), len(highs), len(lows), len(closes), len(volumes))
-    out: list[Candle] = []
-    for i in range(n):
-        try:
-            candle = Candle(float(opens[i]), float(highs[i]), float(lows[i]),
-                            float(closes[i]), float(volumes[i]))
-        except (TypeError, ValueError):
+    """Return oldest-first closed candles from one hub stream.
+
+    The production hub emits a list of row dictionaries. Earlier Wave-24
+    tests accidentally supplied a dict of arrays, which made the live chartist
+    raise before silently abstaining. The legacy column shape remains accepted
+    while production rows are now the primary, provenance-aware contract.
+    """
+    raw = state.get(f"{stream}_ohlcv") or []
+    rows: list[dict[str, Any]] = []
+    if isinstance(raw, list):
+        rows = [row for row in raw if isinstance(row, dict)]
+    elif isinstance(raw, dict):
+        opens = raw.get("open") or []
+        highs = raw.get("high") or []
+        lows = raw.get("low") or []
+        closes = raw.get("close") or []
+        volumes = raw.get("volume") or []
+        at_values = raw.get("at_s") or raw.get("open_time_s") or []
+        count = min(len(opens), len(highs), len(lows), len(closes), len(volumes))
+        for index in range(count):
+            row = {
+                "open": opens[index],
+                "high": highs[index],
+                "low": lows[index],
+                "close": closes[index],
+                "volume": volumes[index],
+            }
+            if index < len(at_values):
+                row["open_time_s"] = at_values[index]
+            rows.append(row)
+    else:
+        raise TypeError(f"{stream}_ohlcv must be a list of rows or dict of arrays")
+
+    parsed: list[tuple[int | None, Candle, tuple[float, ...]]] = []
+    for row in rows:
+        if row.get("closed") is False:
             continue
-        if candle.high >= candle.low > 0:
-            out.append(candle)
-    return out
+        close_time = row.get("close_time_s")
+        received_at = row.get("received_at_s", state.get("received_at_s"))
+        if close_time is not None and received_at is not None:
+            try:
+                if float(close_time) > float(received_at):
+                    continue
+            except (TypeError, ValueError):
+                continue
+        try:
+            candle = Candle(
+                float(row["open"]),
+                float(row["high"]),
+                float(row["low"]),
+                float(row["close"]),
+                float(row["volume"]),
+            )
+        except (KeyError, TypeError, ValueError):
+            continue
+        if (
+            not all(
+                math.isfinite(value)
+                for value in (
+                    candle.open,
+                    candle.high,
+                    candle.low,
+                    candle.close,
+                    candle.volume,
+                )
+            )
+            or min(candle.open, candle.high, candle.low, candle.close) <= 0
+            or candle.volume < 0
+            or candle.high < max(candle.open, candle.close, candle.low)
+            or candle.low > min(candle.open, candle.close, candle.high)
+        ):
+            continue
+        open_time_raw = row.get("open_time_s", row.get("at_s"))
+        try:
+            open_time = int(open_time_raw) if open_time_raw is not None else None
+        except (TypeError, ValueError):
+            open_time = None
+        identity = (
+            candle.open,
+            candle.high,
+            candle.low,
+            candle.close,
+            candle.volume,
+        )
+        parsed.append((open_time, candle, identity))
+
+    if parsed and all(item[0] is not None for item in parsed):
+        parsed.sort(key=lambda item: int(item[0] or 0))
+        deduplicated: list[tuple[int | None, Candle, tuple[float, ...]]] = []
+        for item in parsed:
+            if deduplicated and item[0] == deduplicated[-1][0]:
+                if item[2] != deduplicated[-1][2]:
+                    raise ValueError(
+                        f"conflicting duplicate {stream} candle at {item[0]}"
+                    )
+                continue
+            deduplicated.append(item)
+        parsed = deduplicated
+    return [item[1] for item in parsed]
 
 
 def aggregate_candles(candles: list[Candle], factor: int) -> list[Candle]:
@@ -368,14 +449,23 @@ def timeframe_view(timeframe: str, candles: list[Candle]) -> TimeframeView | Non
 
 
 def build_views(state: dict[str, Any]) -> dict[str, TimeframeView]:
+    minute = candles_from_state(state, "minute")
+    five_minute = candles_from_state(state, "five_minute")
     streams = {
-        "minute": candles_from_state(state, "minute"),
+        # A native 5m public stream supplies enough history for a 15m view.
+        # Fall back to 1m for injected/legacy states.
+        "minute": minute,
+        "five_minute": five_minute or aggregate_candles(minute, 5),
         "hourly": candles_from_state(state, "hourly"),
         "daily": candles_from_state(state, "daily"),
     }
     views: dict[str, TimeframeView] = {}
     for name, stream, factor, _weight in TIMEFRAMES:
-        candles = aggregate_candles(streams[stream], factor)
+        source = streams[stream]
+        if stream == "minute" and name in {"5m", "15m"}:
+            source = streams["five_minute"]
+            factor = 1 if name == "5m" else 3
+        candles = aggregate_candles(source, factor)
         view = timeframe_view(name, candles)
         if view is not None:
             views[name] = view

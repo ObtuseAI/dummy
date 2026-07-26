@@ -28,13 +28,14 @@ from pathlib import Path
 from typing import IO, Any
 
 
-class EvidencePath(Path):
+class EvidencePath(type(Path())):
     """A ``Path`` whose parent directory is created at write time.
 
-    Subclassing ``pathlib.Path`` keeps ``isinstance(p, Path)`` true and makes
-    ``/``, ``.parent``, ``.glob()`` and friends return ``EvidencePath`` as well
-    (``PurePath.with_segments`` reuses ``type(self)``), so a single wrapper at
-    the base-directory constant propagates to every derived report path.
+    The runtime-specific concrete path class is required for Python 3.11,
+    where directly subclassing ``pathlib.Path`` leaves ``_flavour`` undefined.
+    This remains a ``Path`` subclass and makes ``/``, ``.parent``, ``.glob()``
+    and friends return ``EvidencePath`` as well, so a single wrapper at the
+    base-directory constant propagates to every derived report path.
     """
 
     __slots__ = ()

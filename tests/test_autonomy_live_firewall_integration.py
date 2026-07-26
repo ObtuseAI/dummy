@@ -93,7 +93,7 @@ def test_executor_source_has_no_direct_adapter_bypass():
 def test_legacy_proof_runners_cannot_exercise_retired_submit_surface():
     for path in (
         Path("core/second_proof_runner.py"),
-        Path("predator_mesh/v298/reports.py"),
+        Path("predator_mesh/operator_proof_stages/execute_once.py"),
     ):
         source = path.read_text(encoding="utf-8")
         assert "submit_limit_order_adapter(" not in source

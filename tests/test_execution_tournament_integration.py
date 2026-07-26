@@ -52,6 +52,17 @@ def test_summary_carries_compact_tournament(tmp_path):
     assert compact["report_name"] == "EXECUTION_POLICY_TOURNAMENT"
     assert len(compact["ranking"]) == 5
     assert compact["policy_switch_authority"]["auto_switch"] is False
+    assert compact["headline"]["evidence_sufficient_for_promotion_review"] is False
+    modeled = {
+        row["cohort"]: row
+        for row in compact["ranking"]
+        if row["cohort"] in {"C1", "C2", "C4"}
+    }
+    assert all(
+        row["evidence_class"] == "modeled_counterfactual"
+        and row["counts_toward_promotion_readiness"] is False
+        for row in modeled.values()
+    )
 
 
 def test_summary_tournament_empty_when_absent():
@@ -59,23 +70,56 @@ def test_summary_tournament_empty_when_absent():
     assert summarize_backtest({"report_name": "X"})["execution_tournament"] == {}
 
 
-def test_tournament_gate_alert_fires_once_on_rising_edge(monkeypatch, tmp_path):
+def test_modeled_or_unwitnessed_tournament_lanes_cannot_fire_promotion_alert(
+    monkeypatch, tmp_path,
+):
     _wire_alert_paths(monkeypatch, tmp_path)
     summary = {
         "ranking": [
-            {"cohort": "C0", "gate_met": True},
-            {"cohort": "C1", "gate_met": True},
-            {"cohort": "C3", "gate_met": False},
+            {
+                "cohort": "C1",
+                "gate_met": True,
+                "evidence_class": "modeled_counterfactual",
+                "promotion_review_eligible": False,
+                "counts_toward_promotion_readiness": False,
+                "counts_toward_policy_switch": False,
+                "witnessed_broker_fill_backing": False,
+            },
+            {
+                "cohort": "C3",
+                "gate_met": True,
+                "evidence_class": "observed_fill_censoring_counterfactual",
+                "promotion_review_eligible": False,
+                "counts_toward_promotion_readiness": False,
+                "counts_toward_policy_switch": False,
+                "witnessed_broker_fill_backing": False,
+            },
         ],
-        "headline": {"leading_cohort": "C1"},
+        "headline": {"leading_cohort": None},
     }
     cycle = {"status": "OK"}
     fired = alerts.evaluate_alerts(cycle, None, False, tournament_summary=summary)
-    kinds = [a["kind"] for a in fired]
-    assert "EXECUTION_TOURNAMENT_GATE" in kinds
+    assert "EXECUTION_TOURNAMENT_GATE" not in [a["kind"] for a in fired]
+
+
+def test_witnessed_explicitly_eligible_lane_alerts_once(monkeypatch, tmp_path):
+    _wire_alert_paths(monkeypatch, tmp_path)
+    summary = {
+        "ranking": [{
+            "cohort": "FUTURE_WITNESSED_LANE",
+            "gate_met": True,
+            "evidence_class": "witnessed_broker_fill_campaign",
+            "promotion_review_eligible": True,
+            "counts_toward_promotion_readiness": True,
+            "counts_toward_policy_switch": False,
+            "witnessed_broker_fill_backing": True,
+        }],
+        "headline": {"leading_cohort": "FUTURE_WITNESSED_LANE"},
+    }
+    cycle = {"status": "OK"}
+    fired = alerts.evaluate_alerts(cycle, None, False, tournament_summary=summary)
     gate = next(a for a in fired if a["kind"] == "EXECUTION_TOURNAMENT_GATE")
-    # The control (C0) is never a "challenger" that triggers the review prompt.
-    assert gate["detail"]["newly_gated_cohorts"] == ["C1"]
+    assert gate["detail"]["newly_gated_cohorts"] == ["FUTURE_WITNESSED_LANE"]
     assert gate["severity"] == "info"
     # Standing eligibility does not re-fire.
     again = alerts.evaluate_alerts(cycle, None, False, tournament_summary=summary)
@@ -106,4 +150,8 @@ def test_dashboard_status_panel_exposes_tournament(tmp_path):
     panel = snapshot["execution_tournament"]
     assert panel["report_name"] == "EXECUTION_POLICY_TOURNAMENT"
     assert len(panel["ranking"]) == 5
+    assert panel["headline"]["evidence_sufficient_for_promotion_review"] is False
+    c1 = next(row for row in panel["ranking"] if row["cohort"] == "C1")
+    assert c1["evidence_class"] == "modeled_counterfactual"
+    assert c1["counts_toward_promotion_readiness"] is False
     assert "execution_tournament" in snapshot["data_ages"]

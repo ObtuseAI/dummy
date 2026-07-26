@@ -10,11 +10,11 @@ ROOT = Path(__file__).resolve().parent.parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from archive.report_scripts.generate_v298_reports import main as generate_main
+from predator_mesh.operator_proof_workflows import run_execute_once_reports
 
 
 def main() -> dict:
-    final = generate_main()
+    final = run_execute_once_reports()
     return {
         "runner": "execute_once_final_proof_v7",
         "verdict": final.get("verdict"),

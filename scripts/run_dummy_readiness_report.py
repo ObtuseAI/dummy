@@ -54,6 +54,7 @@ from autonomy.promotion import (  # noqa: E402
 )
 from autonomy.reliability import (  # noqa: E402
     DEFAULT_MAPS_PATH,
+    build_reliability_artifact,
     fit_maps_from_rows,
 )
 from autonomy.strategy_miner import _brier_edge, load_settled_rows  # noqa: E402
@@ -355,7 +356,10 @@ def main() -> int:
     # for the curated sources and write the reviewable artifact the calibrated
     # challenger wrappers consume.
     maps = fit_maps_from_rows(rows)
-    _write_json(DEFAULT_MAPS_PATH, {"maps": maps, "generated_at": now_iso})
+    _write_json(
+        DEFAULT_MAPS_PATH,
+        build_reliability_artifact(maps, generated_at=now_iso),
+    )
 
     report = built["report"]
     summary = {

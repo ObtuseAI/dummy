@@ -4,8 +4,8 @@ from __future__ import annotations
 
 
 from core.live_submit_state import build_caps_authority_binding
-from predator_mesh.v298.reports import full_authority_arm
-from archive.report_scripts.generate_v298_reports import generate_all_v298_reports_for_tests
+from predator_mesh.operator_proof_stages.execute_once import full_authority_arm
+from predator_mesh.operator_proof_workflows import generate_execute_once_reports_for_tests as generate_all_v298_reports_for_tests
 from tests.caps_authority_test_helpers import registered_caps_status
 
 
@@ -36,12 +36,12 @@ def _patch_live_mode(monkeypatch):
         "core.live_submit_state.evaluate_caps_authority",
         lambda: CAPS_AUTHORITY,
     )
-    monkeypatch.setattr("predator_mesh.v298.reports._load_live_submit_config", lambda: cfg)
-    monkeypatch.setattr("predator_mesh.v298.reports._caps_strict", lambda: True)
-    monkeypatch.setattr("predator_mesh.v298.reports._descriptor_staged", lambda: True)
-    monkeypatch.setattr("predator_mesh.v298.reports._command_seal_ready", lambda: True)
-    monkeypatch.setattr("predator_mesh.v298.reports._proof_lock_clear", lambda: True)
-    monkeypatch.setattr("predator_mesh.v298.reports._kalshi_credentials_ready", lambda: True)
+    monkeypatch.setattr("predator_mesh.operator_proof_stages.execute_once._load_live_submit_config", lambda: cfg)
+    monkeypatch.setattr("predator_mesh.operator_proof_stages.execute_once._caps_strict", lambda: True)
+    monkeypatch.setattr("predator_mesh.operator_proof_stages.execute_once._descriptor_staged", lambda: True)
+    monkeypatch.setattr("predator_mesh.operator_proof_stages.execute_once._command_seal_ready", lambda: True)
+    monkeypatch.setattr("predator_mesh.operator_proof_stages.execute_once._proof_lock_clear", lambda: True)
+    monkeypatch.setattr("predator_mesh.operator_proof_stages.execute_once._kalshi_credentials_ready", lambda: True)
     monkeypatch.setenv("DUMMY_LIVE_PROOF_MODE", "1")
     monkeypatch.setenv("DUMMY_LIVE_PROOF_ACK", "FULL_AUTHORITY_OPERATOR_APPROVED_LIVE_PROOF_ONLY")
 

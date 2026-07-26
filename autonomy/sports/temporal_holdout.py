@@ -19,8 +19,28 @@ from typing import Any, Iterable
 from autonomy.sports.history_store import SportsHistoryStore
 from autonomy.sports.walk_forward import _grade, glicko_prediction_records
 
-HOLDOUT_VERSION = "sports-temporal-holdout-v1"
+HOLDOUT_VERSION = "sports-temporal-holdout-v2"
+MANIFEST_VERSION = "sports-temporal-holdout-manifest-v1"
+HOLDOUT_MODEL = "glicko"
 DEFAULT_HOME_ADVANTAGE_CANDIDATES = (0.0, 20.0, 40.0, 60.0)
+
+_CONTENT_FIELDS = (
+    "game_id",
+    "league",
+    "season",
+    "start_time",
+    "home",
+    "away",
+    "venue",
+    "neutral",
+    "source",
+    "provenance_url",
+    "result_available_at",
+    "received_at",
+    "provenance_quality",
+    "extra",
+)
+_OUTCOME_FIELDS = ("game_id", "status", "home_score", "away_score")
 
 
 class HoldoutIntegrityError(RuntimeError):
@@ -36,8 +56,58 @@ def _game_ids_hash(games: Iterable[dict[str, Any]]) -> str:
     return hashlib.sha256("\n".join(game_ids).encode("utf-8")).hexdigest()
 
 
-def _seal_key(league: str, season: int, holdout_ids_hash: str) -> str:
-    material = f"{HOLDOUT_VERSION}|{league}|glicko|{season}|{holdout_ids_hash}"
+def _sha256_payload(kind: str, payload: Any) -> str:
+    envelope = {
+        "manifest_version": MANIFEST_VERSION,
+        "kind": kind,
+        "payload": payload,
+    }
+    encoded = json.dumps(
+        envelope, sort_keys=True, separators=(",", ":"), ensure_ascii=True,
+    ).encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest()
+
+
+def _manifest_rows(
+    games: Iterable[dict[str, Any]], fields: tuple[str, ...],
+) -> list[dict[str, Any]]:
+    rows = [
+        {field: game.get(field) for field in fields}
+        for game in games
+    ]
+    return sorted(rows, key=lambda row: str(row["game_id"]))
+
+
+def _game_manifest_hashes(games: Iterable[dict[str, Any]]) -> dict[str, Any]:
+    """Bind identity/context separately from outcomes, then bind both together."""
+    materialized = list(games)
+    ids_hash = _game_ids_hash(materialized)
+    content_hash = _sha256_payload(
+        "game_content", _manifest_rows(materialized, _CONTENT_FIELDS),
+    )
+    outcomes_hash = _sha256_payload(
+        "game_outcomes", _manifest_rows(materialized, _OUTCOME_FIELDS),
+    )
+    manifest_payload = {
+        "games": len(materialized),
+        "game_ids_sha256": ids_hash,
+        "content_sha256": content_hash,
+        "outcomes_sha256": outcomes_hash,
+    }
+    return {
+        "manifest_version": MANIFEST_VERSION,
+        **manifest_payload,
+        "manifest_sha256": _sha256_payload("game_manifest", manifest_payload),
+    }
+
+
+def _seal_key(
+    league: str, season: int, model: str, holdout_manifest_hash: str,
+) -> str:
+    material = (
+        f"{HOLDOUT_VERSION}|{MANIFEST_VERSION}|{str(league).strip().lower()}|"
+        f"{str(model).strip().lower()}|{int(season)}|{holdout_manifest_hash}"
+    )
     return hashlib.sha256(material.encode("utf-8")).hexdigest()
 
 
@@ -45,10 +115,9 @@ def _split_summary(games: list[dict[str, Any]], seasons: list[int]) -> dict[str,
     ordered = sorted(games, key=lambda game: (game["start_time"], str(game["game_id"])))
     return {
         "seasons": seasons,
-        "games": len(ordered),
-        "game_ids_sha256": _game_ids_hash(ordered),
         "first_start": ordered[0]["start_time"] if ordered else None,
         "last_start": ordered[-1]["start_time"] if ordered else None,
+        **_game_manifest_hashes(ordered),
     }
 
 
@@ -134,7 +203,7 @@ def _base_report(
         "artifact_type": HOLDOUT_VERSION,
         "generated_at": generated_at,
         "league": league,
-        "model": "glicko",
+        "model": HOLDOUT_MODEL,
         "requested_holdout_season": int(holdout_season),
         "artifact_path": str(artifact_path),
         "research_only": True,
@@ -176,6 +245,19 @@ def run_temporal_holdout_gate(
     if not confirm_completed_season:
         raise HoldoutIntegrityError(
             "holdout season must be explicitly confirmed complete before evaluation"
+        )
+    # Scope is the permanent one-shot identity. Check it before loading or
+    # grading any game rows, so a late-added/corrected manifest cannot trigger
+    # a second inspection merely by producing a different content hash.
+    existing_claims = store.research_holdout_claims_for_scope(
+        league=league,
+        holdout_season=int(holdout_season),
+        model=HOLDOUT_MODEL,
+    )
+    if existing_claims:
+        raise HoldoutAlreadyConsumed(
+            f"sealed holdout scope already consumed for {league} "
+            f"season {holdout_season} model {HOLDOUT_MODEL}"
         )
     output = Path(artifact_path)
     stamp = generated_at or datetime.now(timezone.utc).isoformat()
@@ -260,15 +342,30 @@ def run_temporal_holdout_gate(
             float(item["home_advantage"]),
         ),
     )
-    selection_hash = _game_ids_hash(selection_games)
-    holdout_hash = _game_ids_hash(holdout)
-    seal_key = _seal_key(league, int(holdout_season), holdout_hash)
+    selection_manifest = _game_manifest_hashes(selection_games)
+    holdout_manifest = _game_manifest_hashes(holdout)
+    selection_hash = str(selection_manifest["game_ids_sha256"])
+    holdout_hash = str(holdout_manifest["game_ids_sha256"])
+    seal_key = _seal_key(
+        league,
+        int(holdout_season),
+        HOLDOUT_MODEL,
+        str(holdout_manifest["manifest_sha256"]),
+    )
     # Claim before any holdout prediction/metric is computed. A failed artifact
     # write burns the holdout rather than silently permitting another look.
     claimed = store.claim_research_holdout(
         seal_key=seal_key, league=league, holdout_season=int(holdout_season),
-        model="glicko", holdout_ids_hash=holdout_hash,
-        selection_ids_hash=selection_hash, consumed_at=stamp,
+        model=HOLDOUT_MODEL, holdout_ids_hash=holdout_hash,
+        selection_ids_hash=selection_hash,
+        manifest_version=MANIFEST_VERSION,
+        holdout_manifest_hash=str(holdout_manifest["manifest_sha256"]),
+        holdout_content_hash=str(holdout_manifest["content_sha256"]),
+        holdout_outcomes_hash=str(holdout_manifest["outcomes_sha256"]),
+        selection_manifest_hash=str(selection_manifest["manifest_sha256"]),
+        selection_content_hash=str(selection_manifest["content_sha256"]),
+        selection_outcomes_hash=str(selection_manifest["outcomes_sha256"]),
+        consumed_at=stamp,
     )
     if not claimed:
         raise HoldoutAlreadyConsumed(
@@ -284,6 +381,10 @@ def run_temporal_holdout_gate(
         "split": split,
         "candidate_selection": {
             "input_game_ids_sha256": selection_hash,
+            "manifest_version": MANIFEST_VERSION,
+            "input_manifest_sha256": selection_manifest["manifest_sha256"],
+            "input_content_sha256": selection_manifest["content_sha256"],
+            "input_outcomes_sha256": selection_manifest["outcomes_sha256"],
             "input_seasons": training_seasons + [validation_season],
             "holdout_season_present_in_selection": False,
             "candidates": candidate_reports,
@@ -292,6 +393,10 @@ def run_temporal_holdout_gate(
         "sealed_holdout": {
             "season": int(holdout_season),
             "game_ids_sha256": holdout_hash,
+            "manifest_version": MANIFEST_VERSION,
+            "manifest_sha256": holdout_manifest["manifest_sha256"],
+            "content_sha256": holdout_manifest["content_sha256"],
+            "outcomes_sha256": holdout_manifest["outcomes_sha256"],
             "seal_key": seal_key,
             "consumed": True,
             "one_shot": True,

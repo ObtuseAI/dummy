@@ -8,6 +8,7 @@ learning".
 from __future__ import annotations
 
 import math
+from collections.abc import Mapping
 from typing import Any
 
 from autonomy.ledger import AutonomyLedger
@@ -16,6 +17,12 @@ from autonomy.target_policy import is_prediction_quarantined_target
 
 MARKET_PRIOR_MIN_SHARE = 0.05
 CRYPTO_MARKET_PRIOR_MIN_SHARE = 0.25
+# A very small prior uncertainty used to give the book almost all fused
+# precision even when an independently admitted source disagreed.  The prior
+# remains the required anchor, but it may not mechanically erase the other
+# evidence that already cleared the fusion gate.  A prior-only forecast stays
+# 100% prior; this cap never invents or admits another source.
+MARKET_PRIOR_MAX_SHARE = 0.60
 
 
 def _honest_implied(market: MarketView) -> float | None:
@@ -72,8 +79,14 @@ class EnsembleForecaster:
         ledger: AutonomyLedger,
         promotion: Any = None,
         negative_scopes: frozenset[str] | None = None,
+        weights: Mapping[str, float] | None = None,
     ):
         self.ledger = ledger
+        # A cycle-scoped immutable snapshot avoids three ledger lookups per
+        # signal while ensuring every market in the cycle sees one coherent
+        # trust surface. ``None`` preserves the direct-ledger path for callers
+        # outside the daemon cycle and for lightweight ledger doubles.
+        self._weights = None if weights is None else dict(weights)
         # Promotion registry (WS-14). Default loads the standard governance
         # files; missing files => nobody promoted => this filter is unchanged
         # (byte-identical to a build without promotion). A promoted scope is
@@ -90,12 +103,60 @@ class EnsembleForecaster:
         # source keeps EMITTING (challenger grading continues, so a scope
         # that recovers exits the map on evidence), and market_prior is
         # exempt (the anchor is the benchmark, never a suppressible view).
-        # Fail-open: no/stale artifact -> empty set -> byte-identical fusion.
+        # Missing or untrusted evidence is not an empty exclusion set. In that
+        # state ``fuse`` can surface only a maximum-uncertainty market anchor;
+        # every independent predictive signal is unavailable to execution.
+        loaded_from_artifact = negative_scopes is None
         if negative_scopes is None:
             from autonomy.no_edge_map import load_negative_scopes
 
             negative_scopes = load_negative_scopes()
-        self._negative_scopes = negative_scopes
+        self._negative_scopes = frozenset(negative_scopes)
+        # Plain frozensets remain a trusted explicit/test injection for API
+        # compatibility. The production loader returns a set-compatible
+        # NegativeScopeEvidence carrying an explicit trust disposition.
+        self._negative_scope_evidence_trusted = bool(
+            getattr(negative_scopes, "trusted", True)
+        )
+        self._negative_scope_evidence_status = str(
+            getattr(
+                negative_scopes,
+                "status",
+                "legacy_loader_result" if loaded_from_artifact else "explicit",
+            )
+        )
+
+    def _trust_weight(self, signal: Signal, market: MarketView) -> float:
+        # A few compatibility fixtures construct this pure fuser with
+        # ``__new__``; absence means the original direct-ledger path.
+        weights = getattr(self, "_weights", None)
+        if weights is not None:
+            from autonomy.taxonomy import scope_weight_key
+
+            exact_key = scope_weight_key(
+                signal.source, market.ticker, signal.features or {}
+            )
+            if exact_key in weights:
+                return float(weights[exact_key])
+            scoped_key = f"{signal.source}@{market.vertical.value}"
+            if scoped_key in weights:
+                return float(weights[scoped_key])
+            return float(weights.get(signal.source, 1.0))
+
+        exact = getattr(self.ledger, "get_weight_for_signal", None)
+        scoped = getattr(self.ledger, "get_weight_scoped", None)
+        if callable(exact):
+            return float(
+                exact(
+                    signal.source,
+                    market.vertical.value,
+                    market.ticker,
+                    signal.features or {},
+                )
+            )
+        if callable(scoped):
+            return float(scoped(signal.source, market.vertical.value))
+        return float(self.ledger.get_weight(signal.source, default=1.0))
 
     def _floor_excluded(self, signal: Signal, market: MarketView) -> bool:
         if not self._negative_scopes or signal.source == "market_prior":
@@ -105,6 +166,48 @@ class EnsembleForecaster:
         scope = grading_scope(signal.source, market.ticker, signal.features or {})
         return scope in self._negative_scopes
 
+    def _untrusted_scope_anchor(
+        self,
+        market: MarketView,
+        signals: list[Signal],
+    ) -> Forecast | None:
+        """Return a display-only market anchor that must fail allocation.
+
+        ``uncertainty=0.5`` is above the allocator's hard confidence ceiling,
+        and ``edge_yes=0`` prevents the anchor from claiming predictive edge.
+        If no market prior exists, even the display anchor is unavailable.
+        """
+        prior = next(
+            (
+                signal
+                for signal in signals
+                if signal.source == "market_prior"
+                and not bool((signal.features or {}).get("challenger_only"))
+            ),
+            None,
+        )
+        if prior is None:
+            return None
+        implied = _honest_implied(market)
+        probability = (
+            implied
+            if implied is not None
+            else min(0.995, max(0.005, float(prior.probability_yes)))
+        )
+        status = self._negative_scope_evidence_status
+        return Forecast(
+            market_ticker=market.ticker,
+            probability_yes=probability,
+            uncertainty=0.5,
+            sources_used={"market_prior": 1.0},
+            market_implied_yes=implied,
+            edge_yes=0.0,
+            rationale=(
+                f"NO_EDGE_MAP_UNTRUSTED:{status}; "
+                "independent fusion unavailable; market_prior display anchor only"
+            ),
+        )
+
     def fuse(self, market: MarketView, signals: list[Signal]) -> Forecast | None:
         if is_prediction_quarantined_target(
             market.ticker,
@@ -112,6 +215,9 @@ class EnsembleForecaster:
             vertical=market.vertical,
         ):
             return None
+        if not self._negative_scope_evidence_trusted:
+            return self._untrusted_scope_anchor(market, signals)
+
         def _authorized(signal: Signal) -> bool:
             # Model observations are governed by the dedicated exact-scope
             # authority dossier, not the generic strategy-promotion file.
@@ -203,19 +309,7 @@ class EnsembleForecaster:
         for signal in active_signals:
             # Exact (source, market type, horizon/phase) trust when earned;
             # vertical then global trust remain sparse-scope fallbacks.
-            exact = getattr(self.ledger, "get_weight_for_signal", None)
-            scoped = getattr(self.ledger, "get_weight_scoped", None)
-            if callable(exact):
-                trust = exact(
-                    signal.source,
-                    market.vertical.value,
-                    market.ticker,
-                    signal.features or {},
-                )
-            elif callable(scoped):
-                trust = scoped(signal.source, market.vertical.value)
-            else:
-                trust = self.ledger.get_weight(signal.source, default=1.0)
+            trust = self._trust_weight(signal, market)
             # Stage-aware probation cap (autonomous thresholded promotion): a
             # challenger promoted at STAGE 1 fuses at a fraction of its earned
             # trust until it escalates to STAGE 2 on realized-trade evidence. A
@@ -274,6 +368,21 @@ class EnsembleForecaster:
                         normalized[source] / other_total * (1.0 - prior_floor)
                     )
             normalized["market_prior"] = prior_floor
+        prior_share = normalized.get("market_prior", 0.0)
+        if (
+            prior_share > MARKET_PRIOR_MAX_SHARE
+            and len(normalized) > 1
+        ):
+            other_total = 1.0 - prior_share
+            if other_total > 0.0:
+                for source in normalized:
+                    if source != "market_prior":
+                        normalized[source] = (
+                            normalized[source]
+                            / other_total
+                            * (1.0 - MARKET_PRIOR_MAX_SHARE)
+                        )
+                normalized["market_prior"] = MARKET_PRIOR_MAX_SHARE
         probability = min(0.995, max(0.005, sum(
             normalized[source] * probabilities[source] for source in normalized
         )))

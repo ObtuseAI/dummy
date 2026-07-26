@@ -2,13 +2,15 @@
 
 One ESPN summary fetch per game (keyless), parsed to team-level boxscores via
 the existing :mod:`autonomy.sports.boxscores` pipeline and upserted into the
-lake. Resumable: only games missing boxscores are fetched, so a re-run costs
-nothing. Fail-soft per game (a bad summary is skipped, never fatal). Polite:
-a per-game sleep bounds the request rate.
+lake. Each successful response receives an observed feature-arrival envelope.
+Resumable: only games missing timestamped boxscores are fetched, so a re-run
+costs nothing. Fail-soft per game (a bad summary is skipped, never fatal).
+Polite: a per-game sleep bounds the request rate.
 """
 from __future__ import annotations
 
 import time
+from datetime import datetime, timezone
 from typing import Any, Callable
 
 from autonomy.sports.history_store import SportsHistoryStore
@@ -20,6 +22,7 @@ def ingest_boxscores(
     parse: Callable[[str, dict[str, Any] | None], list[Any]] | None = None,
     limit: int | None = None, min_interval: float = 1.0,
     sleep: Callable[[float], None] = time.sleep,
+    received_at: str | None = None,
 ) -> dict[str, Any]:
     from autonomy.sports.boxscores import fetch_summary as _fetch, parse_team_boxscores as _parse
 
@@ -30,14 +33,29 @@ def ingest_boxscores(
     games_done = rows = errors = 0
     for i, gid in enumerate(game_ids):
         try:
-            boxes = parse(league, fetch_summary(league, gid))
+            summary = fetch_summary(league, gid)
+            observed_at = received_at or datetime.now(timezone.utc).isoformat()
+            boxes = parse(league, summary)
         except Exception:  # noqa: BLE001 -- a down/odd summary just gets skipped
             errors += 1
             continue
         if not boxes:
             continue
         rows += store.record_team_boxscores(
-            [{"game_id": b.game_id, "team": b.team, "stats": b.stats} for b in boxes]
+            [
+                {
+                    "game_id": b.game_id,
+                    "team": b.team,
+                    "stats": b.stats,
+                    # ESPN's summary response has no reliable publication
+                    # timestamp. The actual receipt is a conservative upper
+                    # bound on source availability, never a derived backfill.
+                    "source_available_at": observed_at,
+                    "received_at": observed_at,
+                    "source": "espn",
+                }
+                for b in boxes
+            ]
         )
         games_done += 1
         if min_interval and i < len(game_ids) - 1:

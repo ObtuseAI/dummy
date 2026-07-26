@@ -71,6 +71,7 @@ def run_candidate_lifecycle(
     private_receipt: PrivateEvaluationReceipt | None = None
     external: EvaluationSummary | None = None
     survived = False
+    forward_required = False
     if constitution_allowed:
         public = evaluate_visible_development(
             candidate_id,
@@ -90,6 +91,7 @@ def run_candidate_lifecycle(
                     suite.partition(EvaluationPartition.EXTERNAL_GENERALIZATION),
                     complexity_profile=complexity_profile,
                 )
+                forward_required = external.accepted
     semantic = {
         "schema_version": 1,
         "candidate_id": candidate_id,
@@ -98,7 +100,7 @@ def run_candidate_lifecycle(
         "private_receipt": private_receipt.to_dict() if private_receipt else None,
         "external_evaluation_id": external.evaluation_id if external else None,
         "survived_private_selection": survived,
-        "forward_paper_required": survived,
+        "forward_paper_required": forward_required,
         "human_promotion_required": True,
         "source_edit_applied": False,
         "runtime_application": False,
@@ -113,7 +115,7 @@ def run_candidate_lifecycle(
         private_receipt=private_receipt,
         external_evaluation=external,
         survived_private_selection=survived,
-        forward_paper_required=survived,
+        forward_paper_required=forward_required,
     )
 
 

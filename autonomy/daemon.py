@@ -9,6 +9,8 @@ from __future__ import annotations
 
 import asyncio
 import json
+import math
+import os
 import sqlite3
 import time
 import traceback
@@ -30,18 +32,131 @@ RECAL_INTERVAL_HOURS = 6.0
 # that is terminated mid-write, so it never reaches the heartbeat write below --
 # freezing last_cycle_at at the last un-killed cycle and leaving a permanent
 # CYCLE_ERROR + staleness that aborts the promotion runner forever. To stay
-# watchdog-safe, the cycle honors a COOPERATIVE soft deadline well under 13 min:
+# watchdog-safe, the cycle honors a COOPERATIVE soft deadline below 13 min:
 # it aborts cleanly at the next await boundary, records a real status, and WRITES
 # the heartbeat -- so liveness stays visible and promotion is never held hostage
-# to a silent kill. Budget: 13min watchdog - one max ledger lock-wait - margin.
-def _cycle_soft_deadline_s() -> float:
-    import os
-
+# to a silent kill. Once enough healthy history exists, the budget follows the
+# trailing cycle p95 plus an operating margin. Cold starts retain the proven
+# 540-second fallback; an explicit environment override remains available.
+def _positive_float_env(name: str, default: float) -> float:
     try:
-        value = float(os.environ.get("DUMMY_CYCLE_SOFT_DEADLINE_S", "540"))
-        return value if value > 0 else 540.0
+        value = float(os.environ.get(name, str(default)))
     except (TypeError, ValueError):
-        return 540.0
+        return default
+    return value if math.isfinite(value) and value > 0 else default
+
+
+def _positive_int_env(name: str, default: int) -> int:
+    try:
+        value = int(os.environ.get(name, str(default)))
+    except (TypeError, ValueError):
+        return default
+    return value if value > 0 else default
+
+
+def _recent_cycle_totals(limit: int) -> list[float]:
+    """Read a bounded tail of healthy ``phase_seconds.total`` observations."""
+    try:
+        with CYCLE_LOG_PATH.open("rb") as handle:
+            handle.seek(0, os.SEEK_END)
+            end = handle.tell()
+            # A corrupt or unexpectedly huge JSONL line must not turn deadline
+            # selection into an unbounded cycle-log scan.
+            start = max(0, end - 1024 * 1024)
+            handle.seek(start)
+            payload = handle.read()
+    except OSError:
+        return []
+    if start:
+        separator = payload.find(b"\n")
+        payload = payload[separator + 1 :] if separator >= 0 else b""
+
+    totals: list[float] = []
+    for line in payload.decode("utf-8", errors="replace").splitlines()[-limit:]:
+        try:
+            record = json.loads(line)
+            raw_total = (record.get("phase_seconds") or {}).get("total")
+            total = float(raw_total)
+        except (AttributeError, TypeError, ValueError, json.JSONDecodeError):
+            continue
+        if (
+            _is_healthy_status(record.get("status"))
+            and math.isfinite(total)
+            and total > 0
+        ):
+            totals.append(total)
+    return totals
+
+
+def _percentile_95(values: list[float]) -> float:
+    ordered = sorted(values)
+    rank = 0.95 * (len(ordered) - 1)
+    lower = math.floor(rank)
+    upper = math.ceil(rank)
+    if lower == upper:
+        return ordered[lower]
+    fraction = rank - lower
+    return ordered[lower] + (ordered[upper] - ordered[lower]) * fraction
+
+
+def _cycle_deadline_policy() -> dict[str, Any]:
+    """Return the bounded adaptive deadline and its operator-visible margin."""
+    watchdog_s = _positive_float_env("DUMMY_CYCLE_WATCHDOG_S", 780.0)
+    hard_reserve_s = _positive_float_env(
+        "DUMMY_CYCLE_DEADLINE_HARD_RESERVE_S", 30.0
+    )
+    max_deadline_s = max(1.0, watchdog_s - hard_reserve_s)
+    requested = os.environ.get("DUMMY_CYCLE_SOFT_DEADLINE_S")
+    if requested is not None:
+        try:
+            configured = float(requested)
+        except (TypeError, ValueError):
+            configured = 540.0
+        if not math.isfinite(configured) or configured <= 0:
+            configured = 540.0
+        deadline_s = min(configured, max_deadline_s)
+        source = "operator_override"
+        totals: list[float] = []
+        p95_s: float | None = None
+        additive_margin_s = None
+    else:
+        history_limit = min(
+            _positive_int_env("DUMMY_CYCLE_DEADLINE_HISTORY", 40), 200
+        )
+        min_samples = min(
+            _positive_int_env("DUMMY_CYCLE_DEADLINE_MIN_SAMPLES", 5),
+            history_limit,
+        )
+        totals = _recent_cycle_totals(history_limit)
+        additive_margin_s = _positive_float_env(
+            "DUMMY_CYCLE_DEADLINE_MARGIN_S", 90.0
+        )
+        minimum_s = _positive_float_env("DUMMY_CYCLE_DEADLINE_MIN_S", 180.0)
+        if len(totals) >= min_samples:
+            p95_s = _percentile_95(totals)
+            deadline_s = max(minimum_s, p95_s + additive_margin_s)
+            source = "trailing_p95"
+        else:
+            p95_s = None
+            deadline_s = 540.0
+            source = "cold_start_fallback"
+        deadline_s = min(deadline_s, max_deadline_s)
+
+    watchdog_margin_s = max(0.0, watchdog_s - deadline_s)
+    return {
+        "deadline_seconds": round(deadline_s, 3),
+        "source": source,
+        "history_samples": len(totals),
+        "p95_total_seconds": None if p95_s is None else round(p95_s, 3),
+        "additive_margin_seconds": additive_margin_s,
+        "watchdog_seconds": round(watchdog_s, 3),
+        "watchdog_margin_seconds": round(watchdog_margin_s, 3),
+        "operator_page_required": watchdog_margin_s < 60.0,
+    }
+
+
+def _cycle_soft_deadline_s() -> float:
+    return float(_cycle_deadline_policy()["deadline_seconds"])
 
 
 class _CycleDeadlineExceeded(Exception):
@@ -148,7 +263,17 @@ def _maybe_recalibrate(now_iso: str) -> dict[str, Any] | None:
 
 def _write_heartbeat(payload: dict[str, Any]) -> None:
     RUNTIME_DIR.mkdir(parents=True, exist_ok=True)
-    HEARTBEAT_PATH.write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
+    temporary = HEARTBEAT_PATH.with_name(
+        f".{HEARTBEAT_PATH.name}.{os.getpid()}.tmp"
+    )
+    try:
+        temporary.write_text(
+            json.dumps(payload, indent=2, sort_keys=True),
+            encoding="utf-8",
+        )
+        os.replace(temporary, HEARTBEAT_PATH)
+    finally:
+        temporary.unlink(missing_ok=True)
 
 
 def _append_cycle_log(report: dict[str, Any]) -> None:
@@ -180,9 +305,43 @@ def run_one_cycle(now_iso: str, mode: SessionMode = SessionMode.SHADOW) -> dict[
         })
         return record
 
+    # A cooperative maintenance owner stops *new* cycles before they open the
+    # ledger. Existing writers still finish under SQLite's own transaction
+    # rules; retention/prune/vacuum then acquire the writer lock with a bounded
+    # retry rather than killing processes or disabling scheduled tasks.
+    try:
+        from autonomy.maintenance import maintenance_active
+
+        maintenance = maintenance_active(RUNTIME_DIR / "ledger.db")
+    except Exception:
+        maintenance = None
+    if maintenance is not None:
+        completed_at = _utc_now_iso()
+        prior = _read_heartbeat()
+        record = {
+            "status": "HALTED_MAINTENANCE",
+            "at": now_iso,
+            "completed_at": completed_at,
+            "maintenance": maintenance,
+        }
+        _write_heartbeat({
+            "alive": True,
+            "last_cycle_at": completed_at,
+            "last_cycle_started_at": now_iso,
+            "last_success_at": prior.get("last_success_at"),
+            "last_status": record["status"],
+            "last_orders_placed": prior.get("last_orders_placed"),
+            "last_signals": prior.get("last_signals"),
+            "last_settlements": prior.get("last_settlements"),
+            "mode": mode.value,
+            "maintenance": maintenance,
+        })
+        return record
+
+    deadline_policy = _cycle_deadline_policy()
     try:
         brain = build_brain(mode)
-        deadline_s = _cycle_soft_deadline_s()
+        deadline_s = float(deadline_policy["deadline_seconds"])
         # Wave-83: arm the ledger's in-statement deadline too. The cooperative
         # asyncio deadline only fires at await boundaries, so a synchronous
         # sqlite call could overrun it by hours (observed 2026-07-24: one query
@@ -229,6 +388,11 @@ def run_one_cycle(now_iso: str, mode: SessionMode = SessionMode.SHADOW) -> dict[
         except Exception:
             pass
 
+    # Persist the selected budget even on an error cycle. Alerting/watchdog
+    # consumers can page on ``operator_page_required`` without re-reading or
+    # reinterpreting the cycle history.
+    record["cycle_deadline"] = deadline_policy
+
     recal = _maybe_recalibrate(now_iso)
     if isinstance(recal, dict) and recal.get("deferred"):
         record["recal_deferred"] = recal.get("deferred")
@@ -239,10 +403,13 @@ def run_one_cycle(now_iso: str, mode: SessionMode = SessionMode.SHADOW) -> dict[
     # Surfaced on the heartbeat so a growing/locked ledger is operator-visible
     # long before it becomes a CYCLE_ERROR streak. Never wedges the cycle.
     ledger_health: dict[str, Any] | None = None
+    wal_checkpoint: dict[str, Any] | None = None
     try:
-        from autonomy.ledger import ledger_health_probe
+        from autonomy.ledger import checkpoint_ledger_wal, ledger_health_probe
 
+        wal_checkpoint = checkpoint_ledger_wal(RUNTIME_DIR / "ledger.db")
         ledger_health = ledger_health_probe(RUNTIME_DIR / "ledger.db")
+        ledger_health["wal_checkpoint"] = wal_checkpoint
     except Exception:
         ledger_health = None
 
@@ -269,11 +436,24 @@ def run_one_cycle(now_iso: str, mode: SessionMode = SessionMode.SHADOW) -> dict[
         "last_cycle_started_at": now_iso,
         "last_success_at": last_success_at,
         "last_status": record.get("status"),
-        "last_orders_placed": record.get("orders_placed"),
-        "last_signals": record.get("signals_generated"),
-        "last_settlements": record.get("settlements"),
+        "last_orders_placed": (
+            record.get("orders_placed")
+            if record.get("orders_placed") is not None
+            else prior.get("last_orders_placed")
+        ),
+        "last_signals": (
+            record.get("signals_generated")
+            if record.get("signals_generated") is not None
+            else prior.get("last_signals")
+        ),
+        "last_settlements": (
+            record.get("settlements")
+            if record.get("settlements") is not None
+            else prior.get("last_settlements")
+        ),
         "mode": mode.value,
         "ledger_health": ledger_health,
+        "cycle_deadline": deadline_policy,
     })
 
     # Operator alerts (self-stop / drawdown / gate-green / error streak).

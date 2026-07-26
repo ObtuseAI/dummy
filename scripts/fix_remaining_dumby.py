@@ -5,9 +5,9 @@ import re
 ROOT = Path(__file__).parent.parent
 
 TARGET_DIRS = [
-    "core", "adapters", "dashboard/backend", "dashboard/frontend",
+    "core", "adapters", "autonomy",
     "execution", "forecasting", "kalshi", "live_firewall", "repo_harvester",
-    "services", "strategies", "tests", "scripts/validate.py",
+    "services", "strategies", "tests",
 ]
 
 SKIP_DIRS = {".git", "__pycache__", "node_modules", "artifacts", "logs"}

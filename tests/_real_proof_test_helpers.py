@@ -105,11 +105,16 @@ def patch_artifact_paths(monkeypatch, tmp_root: Path) -> None:
     """Point all registry/artifact lookups at tmp_root without touching repo files."""
     import predator_mesh.staged_gate_common as sgc
     import core.proof_lock as pl
-    import predator_mesh.v304.reports as v304
+    from predator_mesh import report_runtime
 
     artifacts = tmp_root / "artifacts" / "dummy"
     monkeypatch.setattr(sgc, "ROOT", tmp_root)
     monkeypatch.setattr(sgc, "ARTIFACTS", artifacts)
     monkeypatch.setattr(pl, "REAL_PROOF_REGISTRY_PATH", artifacts / "real_proof_registry.json")
     monkeypatch.setattr(pl, "_v298_final_report_path", lambda: artifacts / "final_report_v298.json")
-    monkeypatch.setattr(v304, "REGISTRY_PATH", artifacts / "real_proof_registry.json")
+    completion_stage = report_runtime._stage(304)
+    monkeypatch.setattr(
+        completion_stage,
+        "REGISTRY_PATH",
+        artifacts / "real_proof_registry.json",
+    )

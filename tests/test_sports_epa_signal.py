@@ -32,7 +32,10 @@ def _market(ticker):
 
 def _box(gid, team, off_per, def_per):
     return {"game_id": gid, "team": team,
-            "stats": {"off_epa": off_per * 65, "off_plays": 65, "def_epa": def_per * 63, "def_plays": 63}}
+            "stats": {"off_epa": off_per * 65, "off_plays": 65,
+                      "def_epa": def_per * 63, "def_plays": 63},
+            "source_available_at": "2025-09-07T00:00:00Z",
+            "received_at": "2025-09-07T00:00:00Z"}
 
 
 def _store(tmp_path):

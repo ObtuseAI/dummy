@@ -17,7 +17,9 @@ against its parent; it reaches execution only if WS-14 promotes it.
 """
 from __future__ import annotations
 
+import hashlib
 import json
+import math
 from pathlib import Path
 from typing import Any, Callable, Iterable
 
@@ -33,6 +35,8 @@ CALIBRATION_BINS = 10
 SPORTS_MIN_CALIBRATION_CLUSTERS = 60
 SPORTS_CALIBRATION_BINS = 6
 CALIBRATION_MAP_VERSION = 1
+RELIABILITY_ARTIFACT_SCHEMA = "dummy-reliability-maps-v2"
+CALIBRATION_GATE_VERSION = "calibrated-challenger-gate-v1"
 
 # Curated rollout (emitted source strings), not auto-everything.
 #
@@ -278,19 +282,64 @@ class ReliabilityMaps:
     def __init__(self, path: Path | None = None) -> None:
         self.path = Path(path or DEFAULT_MAPS_PATH)
         self._maps: dict[str, list[Knot]] = {}
+        self.artifact_sha256: str | None = None
         self.reload()
 
     def reload(self) -> None:
         self._maps = {}
+        self.artifact_sha256 = None
         try:
             raw = json.loads(self.path.read_text(encoding="utf-8"))
         except (OSError, json.JSONDecodeError, ValueError):
             return
+        if (
+            raw.get("schema") != RELIABILITY_ARTIFACT_SCHEMA
+            or raw.get("map_version") != CALIBRATION_MAP_VERSION
+            or raw.get("validation_policy")
+            != {
+                "cluster_isolated_holdout": True,
+                "strict_brier_improvement": True,
+            }
+        ):
+            return
+        maps_payload = raw.get("maps")
+        if not isinstance(maps_payload, dict):
+            return
+        try:
+            expected_digest = hashlib.sha256(
+                json.dumps(
+                    maps_payload,
+                    sort_keys=True,
+                    separators=(",", ":"),
+                    allow_nan=False,
+                ).encode("utf-8")
+            ).hexdigest()
+        except (TypeError, ValueError):
+            return
+        if raw.get("maps_sha256") != expected_digest:
+            return
         for scope, knots in (raw.get("maps") or {}).items():
             try:
-                self._maps[str(scope)] = [(float(p), float(c)) for p, c in knots]
+                parsed = [(float(p), float(c)) for p, c in knots]
             except (TypeError, ValueError):
                 continue
+            if (
+                len(parsed) < 2
+                or any(
+                    not math.isfinite(predicted)
+                    or not math.isfinite(calibrated)
+                    or not 0.0 <= predicted <= 1.0
+                    or not 0.0 <= calibrated <= 1.0
+                    for predicted, calibrated in parsed
+                )
+                or any(
+                    right[0] <= left[0] or right[1] < left[1]
+                    for left, right in zip(parsed, parsed[1:])
+                )
+            ):
+                continue
+            self._maps[str(scope)] = parsed
+        self.artifact_sha256 = expected_digest
 
     def correct(self, scope: str, probability: float) -> float | None:
         """Corrected probability for a scope, or None when no map exists."""
@@ -301,6 +350,61 @@ class ReliabilityMaps:
 
     def scopes(self) -> list[str]:
         return sorted(self._maps)
+
+    def knots_for(self, scope: str) -> list[Knot] | None:
+        """Return a defensive copy of one validated map's knots."""
+
+        knots = self._maps.get(scope)
+        return None if knots is None else list(knots)
+
+
+def build_reliability_artifact(
+    maps: dict[str, list[Knot]],
+    *,
+    generated_at: str,
+) -> dict[str, Any]:
+    """Build the only artifact shape calibrated challengers will consume."""
+    maps_sha256 = hashlib.sha256(
+        json.dumps(
+            maps,
+            sort_keys=True,
+            separators=(",", ":"),
+            allow_nan=False,
+        ).encode("utf-8")
+    ).hexdigest()
+    return {
+        "schema": RELIABILITY_ARTIFACT_SCHEMA,
+        "map_version": CALIBRATION_MAP_VERSION,
+        "generated_at": generated_at,
+        "validation_policy": {
+            "cluster_isolated_holdout": True,
+            "strict_brier_improvement": True,
+        },
+        "maps_sha256": maps_sha256,
+        "maps": maps,
+    }
+
+
+def calibrated_challenger_gate_valid(
+    source: str,
+    features: dict[str, Any] | None,
+) -> bool:
+    """Require a held-out, content-bound calibration receipt before fusion."""
+    if not str(source).endswith("::cal"):
+        return True
+    values = features or {}
+    gate = values.get("calibration_gate")
+    if not isinstance(gate, dict):
+        return False
+    digest = str(gate.get("maps_sha256") or "")
+    return (
+        gate.get("version") == CALIBRATION_GATE_VERSION
+        and gate.get("cluster_isolated_holdout") is True
+        and gate.get("strict_brier_improvement") is True
+        and gate.get("scope") == values.get("calibrated_scope")
+        and len(digest) == 64
+        and all(character in "0123456789abcdef" for character in digest)
+    )
 
 
 class CalibratedSignal:
@@ -351,14 +455,22 @@ class CalibratedSignal:
             return None
         scope = grading_scope(signal.source, market.ticker, signal.features or {})
         corrected = self.maps.correct(scope, signal.probability_yes)
-        if corrected is None:
+        if corrected is None or self.maps.artifact_sha256 is None:
             return None  # no map for this scope -> abstain (parent stands)
         features = {
             **(signal.features or {}),
             "challenger_only": True,
             "calibration_map_version": CALIBRATION_MAP_VERSION,
             "calibrated_from": signal.source,
+            "calibrated_scope": scope,
             "raw_probability_yes": signal.probability_yes,
+            "calibration_gate": {
+                "version": CALIBRATION_GATE_VERSION,
+                "scope": scope,
+                "maps_sha256": self.maps.artifact_sha256,
+                "cluster_isolated_holdout": True,
+                "strict_brier_improvement": True,
+            },
         }
         return Signal(
             source=f"{signal.source}::cal",

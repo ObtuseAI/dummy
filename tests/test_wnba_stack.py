@@ -97,18 +97,25 @@ def test_wnba_signal_fail_closed_without_matchup(tmp_path):
         "KXWNBAGAME-26JUL17LVANYL-LVA", "Aces vs Liberty Winner?")) is None
 
 
-def test_wnba_started_game_stays_challenger_with_widened_uncertainty(tmp_path):
-    # The generic team path (all leagues) keeps pricing an in-progress game
-    # off the pre-game model with widened uncertainty -- it is a model, not a
-    # book line that can go stale. Pin that WNBA inherits exactly that.
+def test_wnba_started_game_abstains_without_live_model(tmp_path):
+    # WNBA has no score/period/clock-conditioned live branch.  Reusing its
+    # pregame model after tipoff would emit stale in-play evidence, so every
+    # currently supported WNBA surface must fail closed.
     started = _signal(tmp_path, _game(status="in"))
-    out = started.generate(_market(
-        "KXWNBAGAME-26JUL17LVANYL-LVA", "Aces vs Liberty Winner?"))
-    assert out is not None
-    assert out.source == "wnba_structural_winner"
-    assert out.features["challenger_only"] is True
-    assert out.features["live"] is False
-    assert out.uncertainty >= 0.30
+    markets = (
+        _market("KXWNBAGAME-26JUL17LVANYL-LVA", "Aces vs Liberty Winner?"),
+        _market(
+            "KXWNBATOTAL-26JUL17LVANYL-T164",
+            "Las Vegas Aces vs New York Liberty Total?",
+            floor_strike=164.5,
+        ),
+        _market(
+            "KXWNBASPREAD-26JUL17LVANYL-LVA5",
+            "Las Vegas Aces vs New York Liberty Spread?",
+            floor_strike=4.5,
+        ),
+    )
+    assert all(started.generate(market) is None for market in markets)
 
 
 def test_wnba_enrolled_in_specialists_reliability_and_taxonomy():

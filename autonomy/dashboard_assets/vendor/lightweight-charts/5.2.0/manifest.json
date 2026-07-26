@@ -1,0 +1,19 @@
+{
+  "name": "lightweight-charts",
+  "version": "5.2.0",
+  "author": "TradingView, Inc.",
+  "license": "Apache-2.0",
+  "repository": "https://github.com/tradingview/lightweight-charts",
+  "source_tarball": "https://registry.npmjs.org/lightweight-charts/-/lightweight-charts-5.2.0.tgz",
+  "npm_integrity": "sha512-ey3Vas8UhV06ni+LT9TA1nEe4y8So4Mi6CL/oarNHFMyTktz/xy8e8+oh04Q//eO3t6etvFXgayz2fClyFQb5w==",
+  "npm_shasum": "ef3f681794e9dad0ac131913259439ad596bcf92",
+  "tarball_sha256": "19d33f9158c1af0146602c92b32d661834a96de691aff8ba13c3c07e376dad3c",
+  "files": {
+    "lightweight-charts.standalone.production.js": "c0992580867c4912cc9385b3c2728315bcc1a76c7f1087dca908430fccdf31d7",
+    "LICENSE": "70c9d5382506dd184465425c08a99ad9bd6d9ac1313c252968ba0b585e5ef823",
+    "NOTICE": "f76c6afab94884448f0426e30d6e9d555ca7247894cd3484e477d2f87513036e"
+  },
+  "browser_sri_sha384": "sha384-q1KYLSKHgBnW5tWYGGR8+6YV4/iPy31dILoF2I1OD7XiVUvHEp/TaxIQVmB0j3R2",
+  "dashboard_use": "Rendering only. This package supplies no market data and no TradingView data service is accessed.",
+  "verified_at": "2026-07-26"
+}

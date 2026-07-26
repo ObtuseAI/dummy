@@ -75,14 +75,32 @@ def test_blocks_without_bootstrapped_weights(tmp_path):
         ledger.close()
 
 
-def test_ready_when_all_conditions_met(tmp_path):
+def test_ready_when_all_conditions_met(tmp_path, monkeypatch):
+    import autonomy.backtest as backtest
     from autonomy.backtest import run_backtest
 
+    real_gate = backtest._recal_oos_gate
+    monkeypatch.setattr(
+        backtest,
+        "_recal_oos_gate",
+        lambda conn, signals, settlements, incumbent: real_gate(
+            conn,
+            signals,
+            settlements,
+            incumbent,
+            holdout_fraction=0.25,
+            min_holdout=1,
+            min_holdout_clusters=1,
+        ),
+    )
     ledger = AutonomyLedger(db_path=tmp_path / "l.db")
     try:
         _seed_beating_history(ledger, 25)
         _seed_shadow_fills(ledger)
-        run_backtest(ledger, bootstrap_weights=True)  # writes weights
+        backtest_report = run_backtest(ledger, bootstrap_weights=True)
+        assert backtest_report["recal_oos_gate"][
+            "held_out_improvement_verified"
+        ] is True
         # This fixture isolates the source/fill/balance gates; decision-policy
         # evidence has its own dedicated coverage.
         r = evaluate_canary_readiness(

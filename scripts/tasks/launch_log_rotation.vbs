@@ -7,4 +7,5 @@
 ' also bounds, skipping the currently-open file).
 Set shell = CreateObject("WScript.Shell")
 shell.CurrentDirectory = "C:\src\engine\dummy"
-shell.Run "cmd /c C:\Python314\python.exe scripts\run_dummy_log_rotation.py >> runtime\autonomy\log_rotation_stdout.log 2>&1", 0, False
+exitCode = shell.Run("cmd /c C:\Python314\python.exe scripts\run_dummy_log_rotation.py >> runtime\autonomy\log_rotation_stdout.log 2>&1", 0, True)
+WScript.Quit exitCode

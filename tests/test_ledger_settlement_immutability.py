@@ -114,6 +114,64 @@ def test_legacy_two_argument_replay_preserves_original_timestamp(tmp_path) -> No
         ledger.close()
 
 
+def test_settlement_claim_is_owned_by_exactly_one_connection(tmp_path) -> None:
+    db_path = tmp_path / "ledger.db"
+    first = AutonomyLedger(db_path)
+    second = AutonomyLedger(db_path)
+    try:
+        assert first.record_settlement_if_new(TICKER, True) is True
+        assert second.record_settlement_if_new(TICKER, True) is False
+        assert first.settlement_result(TICKER) is True
+        assert second.settlement_result(TICKER) is True
+    finally:
+        second.close()
+        first.close()
+
+
+def test_settlement_claim_composes_with_caller_transaction_without_committing(
+    tmp_path,
+) -> None:
+    db_path = tmp_path / "ledger.db"
+    ledger = AutonomyLedger(db_path)
+    observer = sqlite3.connect(db_path)
+    try:
+        # Simulate a fixture/batch caller that owns an open write transaction.
+        ledger._conn.execute(
+            "INSERT INTO lessons(scope,lesson,created_at) VALUES (?,?,?)",
+            ("caller", "must remain caller-owned", SETTLED_AT),
+        )
+        assert ledger._conn.in_transaction is True
+
+        assert ledger.record_settlement_if_new(
+            TICKER,
+            True,
+            settled_at=SETTLED_AT,
+            source=SOURCE,
+            evidence=EVIDENCE,
+        ) is True
+
+        # The nested claim did not commit either itself or the caller's write.
+        assert ledger._conn.in_transaction is True
+        assert observer.execute("SELECT COUNT(*) FROM lessons").fetchone()[0] == 0
+        assert observer.execute("SELECT COUNT(*) FROM settlements").fetchone()[0] == 0
+
+        ledger._conn.rollback()
+        assert ledger._conn.in_transaction is False
+        assert observer.execute("SELECT COUNT(*) FROM lessons").fetchone()[0] == 0
+        assert observer.execute("SELECT COUNT(*) FROM settlements").fetchone()[0] == 0
+    finally:
+        observer.close()
+        ledger.close()
+
+    # After the caller rolls back, another connection can atomically own the
+    # claim; no phantom durable ownership escaped the savepoint.
+    retry = AutonomyLedger(db_path)
+    try:
+        assert retry.record_settlement_if_new(TICKER, True) is True
+    finally:
+        retry.close()
+
+
 def test_settlement_provenance_migration_is_additive_and_preserves_rows(tmp_path) -> None:
     db_path = tmp_path / "legacy.db"
     connection = sqlite3.connect(db_path)

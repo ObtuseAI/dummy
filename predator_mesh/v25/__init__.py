@@ -1,5 +1,0 @@
-"""DUMMY V25 market-class generalization package."""
-
-from __future__ import annotations
-
-MILESTONE = "DUMMY_V25_MARKET_CLASS_GENERALIZATION_FORECAST_CADENCE_OBSERVER_LOOP_AND_SOURCE_TRUTH_COMPOUNDING_V1"

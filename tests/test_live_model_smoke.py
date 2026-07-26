@@ -8,7 +8,7 @@ from unittest.mock import patch
 import pytest
 
 from model_router.config import ProviderConfig
-from model_router.providers import BaseModelProvider, MockProvider
+from model_router.providers import BaseModelProvider
 from model_router.smoke import LiveModelSmoke, generate_live_model_smoke_report_v1
 from model_router.tasks import ModelTask
 
@@ -17,6 +17,7 @@ from model_router.tasks import ModelTask
 def clean_env(monkeypatch):
     monkeypatch.delenv("DEEPSEEK_API_KEY", raising=False)
     monkeypatch.delenv("MINIMAX_API_KEY", raising=False)
+    monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
 
 
 @pytest.fixture
@@ -64,59 +65,60 @@ async def test_smoke_run_records_call_results_without_credentials(
 
 
 @pytest.mark.asyncio
-async def test_smoke_run_with_credentials_attempts_live_success(
+async def test_smoke_run_with_credentials_exercises_mocked_live_provider_success(
     monkeypatch, smoke_runner
 ):
     monkeypatch.setenv("DEEPSEEK_API_KEY", "sk-deepseek-test")
     monkeypatch.setenv("MINIMAX_API_KEY", "sk-minimax-test")
+    monkeypatch.setenv("OPENROUTER_API_KEY", "sk-openrouter-test")
 
-    async def _fake_complete(self, prompt, task, **kwargs):
-        if task is ModelTask.MARKET_THESIS:
-            return (
-                json.dumps({"thesis": "neutral", "confidence": "0.5"}),
-                {
-                    "provider": "deepseek_v4_flash",
-                    "model": "deepseek/deepseek-v3",
-                    "latency_ms": 123.0,
-                    "attempts": 1,
-                    "prompt_digest": "deadbeef",
-                    "error_class": None,
-                    "cost_usd": 0.0,
-                },
+    class _SuccessfulProvider(BaseModelProvider):
+        """Local provider double that exercises the authorized provider path."""
+
+        name = "successful_provider"
+
+        @property
+        def available(self) -> bool:
+            return True
+
+        async def _call_api(self, prompt, task, max_tokens, temperature):
+            if task is ModelTask.MARKET_THESIS:
+                return json.dumps({"thesis": "neutral", "confidence": "0.5"})
+            return json.dumps(
+                {"risk_level": "low", "reasoning": "calm markets"}
             )
-        return (
-            json.dumps({"risk_level": "low", "reasoning": "calm markets"}),
-            {
-                "provider": "minimax_m3",
-                "model": "minimax/minimax-01",
-                "latency_ms": 456.0,
-                "attempts": 1,
-                "prompt_digest": "cafebabe",
-                "error_class": None,
-                "cost_usd": 0.0,
-            },
+
+    successful = _SuccessfulProvider(
+        ProviderConfig(
+            api_base="https://example.invalid",
+            api_key_env="",
+            model_name="test-model",
         )
+    )
 
     live_runner = LiveModelSmoke(
         artifacts_dir=smoke_runner.artifacts_dir,
         allow_live=True,
     )
-    with patch.object(
-        live_runner, "_build_provider", return_value=MockProvider()
-    ), patch.object(MockProvider, "complete", new=_fake_complete):
+    with patch.object(live_runner, "_build_provider", return_value=successful):
         report = await live_runner.run()
 
     assert report["live_model_status"] == "LIVE"
     assert report["model_mode"] == "LIVE"
     assert report["verdict"] == "PASS"
+    assert {result["provider"] for result in report["call_results"]} == {
+        "successful_provider"
+    }
+    assert all(result["status"] == "ok" for result in report["call_results"])
 
 
 @pytest.mark.asyncio
-async def test_smoke_run_with_credentials_live_failure_falls_back_to_mock(
+async def test_smoke_run_with_credentials_mocked_live_failure_falls_back_to_mock(
     monkeypatch, smoke_runner
 ):
     monkeypatch.setenv("DEEPSEEK_API_KEY", "sk-deepseek-test")
     monkeypatch.setenv("MINIMAX_API_KEY", "sk-minimax-test")
+    monkeypatch.setenv("OPENROUTER_API_KEY", "sk-openrouter-test")
 
     class _FailingProvider(BaseModelProvider):
         name = "failing_provider"

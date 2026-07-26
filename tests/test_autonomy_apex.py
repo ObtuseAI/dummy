@@ -200,22 +200,88 @@ def test_forecaster_uses_scoped_weight(tmp_path):
     ledger.close()
 
 
-def test_backtest_bootstraps_scoped_weights(tmp_path):
-    from autonomy.backtest import run_backtest
+def test_forecaster_prefetched_weights_avoid_per_signal_ledger_reads(tmp_path):
+    from autonomy.forecaster import EnsembleForecaster
+    from autonomy.taxonomy import scope_weight_key
 
     ledger = AutonomyLedger(tmp_path / "l.db")
+    market = _market("KXBTCD-26JUL0917-T60000", vertical=Vertical.CRYPTO)
+    signals = [
+        Signal(
+            source="a",
+            market_ticker=market.ticker,
+            probability_yes=0.9,
+            uncertainty=0.1,
+            rationale="",
+        ),
+        Signal(
+            source="b",
+            market_ticker=market.ticker,
+            probability_yes=0.1,
+            uncertainty=0.1,
+            rationale="",
+        ),
+    ]
+    weights = {
+        "a": 1.0,
+        "a@CRYPTO": 2.0,
+        scope_weight_key("a", market.ticker, {}): 8.0,
+        "b": 1.0,
+    }
+
+    def unexpected_read(*_args, **_kwargs):
+        raise AssertionError("prefetched fusion must not query trust rows")
+
+    ledger.get_weight_for_signal = unexpected_read
+    ledger.get_weight_scoped = unexpected_read
+    ledger.get_weight = unexpected_read
+    fused = EnsembleForecaster(ledger, weights=weights).fuse(market, signals)
+
+    assert fused is not None and fused.probability_yes > 0.7
+    ledger.close()
+
+
+def test_backtest_bootstraps_scoped_weights(tmp_path, monkeypatch):
+    import autonomy.backtest as backtest
+    from autonomy.backtest import run_backtest
+
+    real_gate = backtest._recal_oos_gate
+    monkeypatch.setattr(
+        backtest,
+        "_recal_oos_gate",
+        lambda conn, signals, settlements, incumbent: real_gate(
+            conn,
+            signals,
+            settlements,
+            incumbent,
+            holdout_fraction=0.25,
+            min_holdout=1,
+            min_holdout_clusters=1,
+        ),
+    )
+    ledger = AutonomyLedger(tmp_path / "l.db")
+    observed_base = datetime.now(timezone.utc) - timedelta(days=1)
+    settled_base = datetime.now(timezone.utc) + timedelta(hours=1)
     # KXMLBGAME (SPORTS) as the second vertical: WEATHER is retired (Wave-82),
     # so a weather-scoped row would now be purged rather than bootstrapped.
     for i, (ticker, result) in enumerate([("KXBTCD-A", True), ("KXBTCD-B", False),
                                           ("KXMLBGAME-C", True),
                                           ("KXHIGHNY-D", True)]):
+        observed_at = (observed_base + timedelta(minutes=i)).isoformat()
         ledger.record_signal(Signal(source="market_prior", market_ticker=ticker,
-                                    probability_yes=0.5, uncertainty=0.1, rationale=""))
+                                    probability_yes=0.5, uncertainty=0.1, rationale="",
+                                    created_at=observed_at))
         ledger.record_signal(Signal(source="alpha", market_ticker=ticker,
                                     probability_yes=0.9 if result else 0.1,
-                                    uncertainty=0.1, rationale=""))
-        ledger.record_settlement(ticker, result)
+                                    uncertainty=0.1, rationale="",
+                                    created_at=observed_at))
+        ledger.record_settlement(
+            ticker,
+            result,
+            settled_at=(settled_base + timedelta(hours=i)).isoformat(),
+        )
     report = run_backtest(ledger, bootstrap_weights=True)
+    assert report["recal_oos_gate"]["held_out_improvement_verified"] is True
     assert "alpha@CRYPTO" in report["derived_weights_by_vertical"]
     assert "alpha@SPORTS" in report["derived_weights_by_vertical"]
     # Retired-vertical evidence earns no live scoped weight (Wave-82 extension).
@@ -340,7 +406,7 @@ def test_registry_circuit_breaker_trips_and_recovers(tmp_path):
 # ---------------------------------------------------------------- maintenance
 
 
-def _minimal_brain(tmp_path, exchange_status_fn):
+def _minimal_brain(tmp_path, exchange_status_fn, *, market_count=1):
     """Full brain with hermetic fakes: one juicy market, no network."""
     import asyncio  # noqa: F401
 
@@ -367,11 +433,22 @@ def _minimal_brain(tmp_path, exchange_status_fn):
 
     registry = SourceRegistry()
     registry.register(_Src())
-    raw_market = {"ticker": "KXBTCD-26JUL0917-T60000", "title": "t", "status": "active",
-                  "close_time": (NOW + timedelta(hours=2)).isoformat(),
-                  "yes_bid": 40, "yes_ask": 45, "no_bid": 55, "no_ask": 60,
-                  "volume": 500, "liquidity": 500}
-    scanner = MarketScanner(fetch_series=lambda s: {"markets": [raw_market]},
+    raw_markets = [
+        {
+            "ticker": f"KXBTCD-26JUL0917-T{60000 + index * 1000}",
+            "title": "t",
+            "status": "active",
+            "close_time": (NOW + timedelta(hours=2)).isoformat(),
+            "yes_bid": 40,
+            "yes_ask": 45,
+            "no_bid": 55,
+            "no_ask": 60,
+            "volume": 500,
+            "liquidity": 500,
+        }
+        for index in range(market_count)
+    ]
+    scanner = MarketScanner(fetch_series=lambda s: {"markets": raw_markets},
                             watchlist=["KXBTCD"])
     brain = PredatorBrain(
         mode=SessionMode.SHADOW, ledger=ledger, registry=registry, scanner=scanner,
@@ -412,8 +489,46 @@ def test_cycle_learns_but_never_orders_while_trading_halted(tmp_path):
     ledger.close()
 
 
-def test_cycle_proceeds_when_status_probe_fails(tmp_path):
+def test_cycle_batches_signal_and_pick_phase_writes(tmp_path):
     import asyncio
+
+    brain, ledger = _minimal_brain(
+        tmp_path,
+        lambda: {"exchange_active": True, "trading_active": False},
+        market_count=2,
+    )
+    original = ledger.record_signals
+    batches = []
+
+    def capture(signals, *args, **kwargs):
+        batches.append([signal.source for signal in signals])
+        return original(signals, *args, **kwargs)
+
+    ledger.record_signals = capture
+    report = asyncio.run(brain.run_cycle())
+
+    assert report.status == "CYCLE_OK"
+    alpha_batches = [batch for batch in batches if "alpha" in batch]
+    assert alpha_batches == [["alpha", "alpha"]]
+    fused_batches = [batch for batch in batches if "fused_forecast" in batch]
+    assert fused_batches == [["fused_forecast", "fused_forecast"]]
+    ledger.close()
+
+
+def test_cycle_proceeds_when_status_probe_fails(tmp_path, monkeypatch):
+    import asyncio
+    from autonomy.adverse_selection import MakerAdverseSelectionEvidence
+
+    monkeypatch.setattr(
+        "autonomy.adverse_selection.load_maker_adverse_selection_evidence",
+        lambda: MakerAdverseSelectionEvidence(
+            haircut_cents=0.0,
+            generated_at=datetime.now(timezone.utc).isoformat(),
+            source_report_sha256="a" * 64,
+            filled_clusters=1,
+            unfilled_clusters=1,
+        ),
+    )
 
     def boom():
         raise RuntimeError("status endpoint down")

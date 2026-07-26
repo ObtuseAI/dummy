@@ -34,9 +34,12 @@ def _seed(tmp_path):
     for wk in range(10):
         gid = f"g{wk}"
         st.upsert_game(_game(gid, f"2025-06-{day:02d}T00:00:00Z", "AAA", "BBB", 88, 74))
+        available_at = f"2025-06-{day:02d}T03:05:00Z"
         st.record_team_boxscores([
-            {"game_id": gid, "team": "AAA", "stats": _GOOD},
-            {"game_id": gid, "team": "BBB", "stats": _POOR},
+            {"game_id": gid, "team": "AAA", "stats": _GOOD,
+             "source_available_at": available_at, "received_at": available_at},
+            {"game_id": gid, "team": "BBB", "stats": _POOR,
+             "source_available_at": available_at, "received_at": available_at},
         ])
         day += 1
     return st
@@ -59,4 +62,27 @@ def test_walk_forward_four_factors(tmp_path):
     st = _seed(tmp_path)
     r = walk_forward_four_factors(st, league="wnba", min_games=2)
     assert r["n"] > 4 and r["hit_rate"] >= 0.9      # AAA always wins + always favored
+    st.close()
+
+
+def test_four_factors_excludes_game_until_both_feature_sides_arrive(tmp_path):
+    st = SportsHistoryStore(tmp_path / "h.db")
+    st.upsert_game(_game("g", "2025-06-01T00:00:00Z", "AAA", "BBB", 88, 74))
+    st.record_team_boxscores([
+        {"game_id": "g", "team": "AAA", "stats": _GOOD,
+         "source_available_at": "2025-06-01T03:00:00Z",
+         "received_at": "2025-06-01T03:01:00Z"},
+        {"game_id": "g", "team": "BBB", "stats": _POOR,
+         "source_available_at": "2025-06-10T00:00:00Z",
+         "received_at": "2025-06-10T00:01:00Z"},
+    ])
+    assert st.four_factor_sums_before(
+        "AAA", "2025-06-05T00:00:00Z", "wnba",
+    ) is None
+    later = st.four_factor_sums_before(
+        "AAA", "2025-06-11T00:00:00Z", "wnba",
+    )
+    assert later is not None and later["games"] == 1
+    assert later["off"]["fieldGoalsMade"] == 45.0
+    assert later["def"]["fieldGoalsMade"] == 33.0
     st.close()

@@ -222,12 +222,48 @@ def measure_genome_complexity(
     )
 
 
-def _same_direction(row: LedgerEvidenceRow, candidate: float | None) -> bool:
+def _replayed_order_terms(
+    row: LedgerEvidenceRow,
+    candidate: float | None,
+) -> tuple[str, str, int] | None:
+    """Return the candidate order that can be compared with recorded execution.
+
+    Candidate replay does not mutate sizing, so an actionable replay preserves
+    the recorded positive contract count.  Direction alone is not execution
+    identity: the recorded fill can be inherited only when the action, side,
+    entry price, and count all match.
+    """
     if candidate is None:
-        return False
+        return None
+    if row.count <= 0:
+        return None
     edge = candidate - row.market_prior_probability
     candidate_action = "BUY_YES" if edge > 0.0 else "BUY_NO"
-    return row.action == candidate_action
+    candidate_side = "yes" if edge > 0.0 else "no"
+    candidate_price = round(
+        100.0
+        * (
+            row.market_prior_probability
+            if edge > 0.0
+            else 1.0 - row.market_prior_probability
+        )
+    )
+    return candidate_action, candidate_side, candidate_price
+
+
+def _exact_recorded_decision(
+    row: LedgerEvidenceRow,
+    candidate: float | None,
+) -> bool:
+    replayed = _replayed_order_terms(row, candidate)
+    if replayed is None:
+        return False
+    candidate_action, candidate_side, candidate_price = replayed
+    return (
+        row.action == candidate_action
+        and row.side.lower() == candidate_side
+        and row.price_cents == candidate_price
+    )
 
 
 def replay_task(
@@ -238,9 +274,13 @@ def replay_task(
 ) -> ResearchTask:
     candidate, abstain_reason = policy.decision(row)
     candidate_abstained = candidate is None
-    exact_recorded_decision = _same_direction(row, candidate)
+    exact_recorded_decision = _exact_recorded_decision(row, candidate)
     witnessed_settled_fill = row.fill_count > 0 and row.settled_pnl_cents is not None
-    candidate_fill_verified = exact_recorded_decision and witnessed_settled_fill
+    candidate_fill_verified = (
+        exact_recorded_decision
+        and witnessed_settled_fill
+        and 0 < row.fill_count <= row.count
+    )
     incumbent_fill_verified = witnessed_settled_fill
     outcome = float(row.result_yes)
     abstention_was_correct = (row.incumbent_probability - outcome) ** 2 > (

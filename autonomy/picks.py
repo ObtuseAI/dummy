@@ -5,7 +5,8 @@ Everything upstream optimizes edge-vs-market. This module measures the thing
 the operator actually asked for: is the FUSED probability RIGHT about
 outcomes? Two pieces:
 
-1. ``build_fused_signal`` -- the brain records its FINAL post-debate fused
+1. ``build_fused_signal`` -- the brain records its final quantitative fused
+   probability after debate observations are recorded
    probability for every scored market as a first-class ledger row
    (source=``fused_forecast``). Until now the fused number lived only inside
    traded decisions, so the machine's actual opinion was unmeasurable on the
@@ -22,14 +23,21 @@ outcomes? Two pieces:
    this measurement immune by construction to the fabricated-benchmark
    class of bug (Wave-5): the ground truth is the settlement, full stop.
 
-Read-only against the ledger except for the brain's one record call.
+3. ``apply_promoted_fused_calibration`` -- the only post-fusion correction
+   path. A content-validated map still emits a shadow; the traded probability
+   changes only when the exact ``fused_forecast::cal`` scope independently
+   clears the existing promotion registry.
+
+This module never writes promotion state or creates execution authority.
 """
 from __future__ import annotations
 
 import sqlite3
+from dataclasses import dataclass, replace
+from pathlib import Path
 from typing import Any
 
-from autonomy.ontology import Signal
+from autonomy.ontology import Forecast, Signal
 from autonomy.sports_markets import spec_for
 
 FUSED_SOURCE = "fused_forecast"
@@ -40,6 +48,27 @@ FUSED_SOURCE = "fused_forecast"
 NO_PICK_BAND = 0.02
 
 CALIBRATION_BINS = 10
+
+
+@dataclass(frozen=True)
+class FusedCalibrationEvidence:
+    """Validated reliability maps that may produce fused calibration shadows."""
+
+    maps: dict[str, list[tuple[float, float]]]
+    maps_sha256: str
+
+    def __post_init__(self) -> None:
+        digest = str(self.maps_sha256)
+        if (
+            not self.maps
+            or len(digest) != 64
+            or any(character not in "0123456789abcdef" for character in digest)
+            or any(
+                not str(scope).startswith(f"{FUSED_SOURCE}|") or not knots
+                for scope, knots in self.maps.items()
+            )
+        ):
+            raise ValueError("invalid fused calibration evidence")
 
 
 def build_fused_signal(
@@ -86,19 +115,36 @@ def load_fused_maps() -> dict[str, Any]:
 
     Fail-closed: a missing/malformed artifact means no maps, which means no
     calibrated shadow rows -- never an error in the cycle path."""
-    import json
+    evidence = load_fused_calibration_evidence()
+    return {} if evidence is None else dict(evidence.maps)
 
-    from autonomy.reliability import DEFAULT_MAPS_PATH
 
+def load_fused_calibration_evidence(
+    path: Path | None = None,
+) -> FusedCalibrationEvidence | None:
+    """Load only content-validated fused maps, fail-closed on any defect."""
+
+    from autonomy.reliability import ReliabilityMaps
+
+    loaded = ReliabilityMaps(path)
+    if loaded.artifact_sha256 is None:
+        return None
+    maps: dict[str, list[tuple[float, float]]] = {}
+    for scope in loaded.scopes():
+        if not scope.startswith(f"{FUSED_SOURCE}|"):
+            continue
+        knots = loaded.knots_for(scope)
+        if knots:
+            maps[scope] = knots
+    if not maps:
+        return None
     try:
-        payload = json.loads(DEFAULT_MAPS_PATH.read_text(encoding="utf-8"))
-        maps = payload.get("maps") or {}
-    except (OSError, ValueError, TypeError):
-        return {}
-    return {
-        scope: knots for scope, knots in maps.items()
-        if str(scope).startswith(f"{FUSED_SOURCE}|") and knots
-    }
+        return FusedCalibrationEvidence(
+            maps=maps,
+            maps_sha256=loaded.artifact_sha256,
+        )
+    except ValueError:
+        return None
 
 
 def build_calibrated_fused_signal(
@@ -106,6 +152,8 @@ def build_calibrated_fused_signal(
     forecast: Any,
     maps: dict[str, Any],
     tier_assessment: Any | None = None,
+    *,
+    maps_sha256: str | None = None,
 ) -> Signal | None:
     """The SHADOW calibrated fused row (``fused_forecast::cal``), or None
     when no reliability map covers this market's fused scope yet.
@@ -116,7 +164,11 @@ def build_calibrated_fused_signal(
     discipline as the WS-18 per-source ::cal challengers)."""
     if not maps:
         return None
-    from autonomy.reliability import apply_reliability
+    from autonomy.reliability import (
+        CALIBRATION_GATE_VERSION,
+        CALIBRATION_MAP_VERSION,
+        apply_reliability,
+    )
     from autonomy.taxonomy import grading_scope
 
     raw = build_fused_signal(market_ticker, forecast, tier_assessment)
@@ -126,17 +178,90 @@ def build_calibrated_fused_signal(
         return None
     corrected = apply_reliability(
         [tuple(k) for k in knots], raw.probability_yes)
+    features = {
+        **raw.features,
+        "challenger_only": True,
+        "calibration_map_version": CALIBRATION_MAP_VERSION,
+        "calibration_scope": scope,
+        "calibrated_scope": scope,
+        "calibrated_from": FUSED_SOURCE,
+        "raw_probability": raw.probability_yes,
+        "raw_probability_yes": raw.probability_yes,
+    }
+    if maps_sha256 is not None:
+        features["calibration_gate"] = {
+            "version": CALIBRATION_GATE_VERSION,
+            "scope": scope,
+            "maps_sha256": maps_sha256,
+            "cluster_isolated_holdout": True,
+            "strict_brier_improvement": True,
+        }
     return Signal(
         source=f"{FUSED_SOURCE}::cal",
         market_ticker=market_ticker,
         probability_yes=corrected,
         uncertainty=raw.uncertainty,
         rationale=f"calibrated {raw.probability_yes:.3f}->{corrected:.3f} ({scope})",
-        features={
-            **raw.features,
-            "calibration_scope": scope,
-            "raw_probability": raw.probability_yes,
-        },
+        features=features,
+    )
+
+
+def apply_promoted_fused_calibration(
+    market_ticker: str,
+    forecast: Forecast,
+    evidence: FusedCalibrationEvidence | None,
+    promotion: Any,
+    tier_assessment: Any | None = None,
+) -> Forecast:
+    """Return a calibrated traded forecast only after the exact evidence gate.
+
+    A validated map merely creates a shadow challenger.  The raw forecast is
+    returned unless that exact ``fused_forecast::cal`` scope is independently
+    active in the promotion registry; this function never writes promotion
+    state and never treats map fitting as promotion evidence.
+    """
+
+    if evidence is None:
+        return forecast
+    calibrated = build_calibrated_fused_signal(
+        market_ticker,
+        forecast,
+        evidence.maps,
+        tier_assessment,
+        maps_sha256=evidence.maps_sha256,
+    )
+    if calibrated is None:
+        return forecast
+    is_promoted = getattr(promotion, "is_promoted_signal", None)
+    if not callable(is_promoted) or not is_promoted(
+        calibrated.source,
+        market_ticker,
+        calibrated.features,
+    ):
+        return forecast
+    implied = getattr(forecast, "market_implied_yes", None)
+    edge = (
+        calibrated.probability_yes - float(implied)
+        if implied is not None
+        else 0.0
+    )
+    return replace(
+        forecast,
+        probability_yes=calibrated.probability_yes,
+        edge_yes=edge,
+        # Attribute the traded transform itself. The raw fused row (recorded
+        # immediately before this gate) preserves its complete underlying
+        # source weights, while this single-source attribution lets settled
+        # decisions grade and demote the promoted calibration honestly.
+        sources_used={calibrated.source: 1.0},
+        rationale=(
+            f"{forecast.rationale}; promoted {calibrated.source} "
+            f"{forecast.probability_yes:.3f}->{calibrated.probability_yes:.3f}"
+        )[:600],
+        calibration_source=calibrated.source,
+        uncalibrated_probability_yes=float(forecast.probability_yes),
+        calibration_scope=str(calibrated.features["calibrated_scope"]),
+        calibration_evidence_sha256=evidence.maps_sha256,
     )
 
 

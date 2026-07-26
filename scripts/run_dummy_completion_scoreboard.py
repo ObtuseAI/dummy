@@ -11,15 +11,15 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from predator_mesh import staged_gate_common as sgc
-from predator_mesh.v213.reports import build_scoreboard
+from predator_mesh.operator_status import build_completion_scoreboard
 
 
 def main() -> dict:
-    scoreboard = build_scoreboard()
+    scoreboard = build_completion_scoreboard()
     scoreboard["generated_at"] = sgc.now_iso()
     scoreboard["live_orders"] = 0
     scoreboard["real_broker_contacted"] = False
-    sgc.write_report("completion_scoreboard_v213.json", scoreboard)
+    sgc.write_report("completion_scoreboard.json", scoreboard)
     return scoreboard
 
 

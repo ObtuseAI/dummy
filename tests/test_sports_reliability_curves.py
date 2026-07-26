@@ -15,6 +15,7 @@ from autonomy.reliability import (
     ReliabilityMaps,
     apply_reliability,
     fit_maps_from_rows,
+    build_reliability_artifact,
 )
 from autonomy.taxonomy import grading_scope
 
@@ -129,7 +130,15 @@ class _Parent:
 
 def _maps_file(tmp_path, mapping):
     path = tmp_path / "reliability_maps.json"
-    path.write_text(json.dumps({"maps": mapping}), encoding="utf-8")
+    path.write_text(
+        json.dumps(
+            build_reliability_artifact(
+                mapping,
+                generated_at="2026-07-26T00:00:00+00:00",
+            )
+        ),
+        encoding="utf-8",
+    )
     return ReliabilityMaps(path)
 
 

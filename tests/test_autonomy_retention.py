@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import sqlite3
+import threading
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -166,6 +168,60 @@ def test_retention_applies_under_wal_source(tmp_path: Path) -> None:
         assert str(connection.execute("PRAGMA journal_mode").fetchone()[0]).lower() == "wal"
     finally:
         connection.close()
+
+
+def test_retention_retries_begin_immediate_under_writer_contention(tmp_path: Path) -> None:
+    """The production failure was at BEGIN IMMEDIATE, not commit."""
+    db = tmp_path / "ledger.db"
+    _fixture_ledger(db)
+    locked = threading.Event()
+
+    def hold_writer() -> None:
+        connection = sqlite3.connect(db, timeout=1)
+        try:
+            connection.execute("BEGIN IMMEDIATE")
+            locked.set()
+            time.sleep(0.2)
+            connection.commit()
+        finally:
+            connection.close()
+
+    holder = threading.Thread(target=hold_writer)
+    holder.start()
+    assert locked.wait(1)
+    report = enforce_retention(
+        db,
+        retention_days=7,
+        apply=True,
+        now=NOW,
+        sqlite_timeout_s=0.01,
+        sqlite_lock_budget_s=2,
+    )
+    holder.join(timeout=2)
+    assert not holder.is_alive()
+    assert report.status == "APPLIED"
+    assert report.lock_retries > 0
+    assert report.archived_rows == 2
+
+
+def test_retention_lock_budget_exhaustion_is_truthful(tmp_path: Path) -> None:
+    db = tmp_path / "ledger.db"
+    _fixture_ledger(db)
+    holder = sqlite3.connect(db, timeout=1)
+    try:
+        holder.execute("BEGIN IMMEDIATE")
+        with pytest.raises(sqlite3.OperationalError, match="locked"):
+            enforce_retention(
+                db,
+                retention_days=7,
+                apply=True,
+                now=NOW,
+                sqlite_timeout_s=0.01,
+                sqlite_lock_budget_s=0.05,
+            )
+    finally:
+        holder.rollback()
+        holder.close()
 
     report = enforce_retention(db, retention_days=7, apply=True, now=NOW)
 

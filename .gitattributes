@@ -1,1 +1,2 @@
 configs/*.json -text
+autonomy/dashboard_assets/vendor/lightweight-charts/5.2.0/* -text

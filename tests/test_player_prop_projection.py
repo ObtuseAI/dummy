@@ -79,13 +79,38 @@ def test_player_game_log_pivots_stats_point_in_time(tmp_path):
          "status": "final", "home": "LAC", "away": "NYK", "home_score": 105, "away_score": 99},
     ])
     store.record_player_boxscores([
-        {"game_id": "g1", "team": "LAC", "player": "Kawhi Leonard", "stat": "minutes", "value": 34},
-        {"game_id": "g1", "team": "LAC", "player": "Kawhi Leonard", "stat": "points", "value": 28},
-        {"game_id": "g2", "team": "LAC", "player": "Kawhi Leonard", "stat": "minutes", "value": 36},
-        {"game_id": "g2", "team": "LAC", "player": "Kawhi Leonard", "stat": "points", "value": 31},
+        {"game_id": "g1", "team": "LAC", "player": "Kawhi Leonard",
+         "stat": "minutes", "value": 34, "source_available_at": "2026-01-05T03:00:00Z",
+         "received_at": "2026-01-05T03:01:00Z"},
+        {"game_id": "g1", "team": "LAC", "player": "Kawhi Leonard",
+         "stat": "points", "value": 28, "source_available_at": "2026-01-05T03:00:00Z",
+         "received_at": "2026-01-05T03:01:00Z"},
+        {"game_id": "g2", "team": "LAC", "player": "Kawhi Leonard",
+         "stat": "minutes", "value": 36, "source_available_at": "2026-01-08T03:00:00Z",
+         "received_at": "2026-01-08T03:01:00Z"},
+        {"game_id": "g2", "team": "LAC", "player": "Kawhi Leonard",
+         "stat": "points", "value": 31, "source_available_at": "2026-01-08T03:00:00Z",
+         "received_at": "2026-01-08T03:01:00Z"},
     ])
     log = store.player_game_log("Kawhi Leonard", "2026-01-10T00:00:00Z", league="nba")
     assert [e["game_id"] for e in log] == ["g2", "g1"]
     assert log[0]["points"] == 31.0 and log[0]["minutes"] == 36.0
     log2 = store.player_game_log("Kawhi Leonard", "2026-01-06T00:00:00Z", league="nba")
     assert [e["game_id"] for e in log2] == ["g1"]
+
+    # A late correction gets a new envelope and cannot leak into an earlier
+    # decision, even though the underlying game itself was already finished.
+    store.record_player_boxscores([{
+        "game_id": "g1", "team": "LAC", "player": "Kawhi Leonard",
+        "stat": "points", "value": 29,
+        "source_available_at": "2026-01-12T00:00:00Z",
+        "received_at": "2026-01-12T00:01:00Z",
+    }])
+    before_correction = store.player_game_log(
+        "Kawhi Leonard", "2026-01-10T00:00:00Z", league="nba",
+    )
+    assert "points" not in next(e for e in before_correction if e["game_id"] == "g1")
+    after_correction = store.player_game_log(
+        "Kawhi Leonard", "2026-01-13T00:00:00Z", league="nba",
+    )
+    assert next(e for e in after_correction if e["game_id"] == "g1")["points"] == 29.0

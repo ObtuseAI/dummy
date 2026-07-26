@@ -407,8 +407,6 @@ def test_model_weight_requires_matching_fresh_scope_weight_and_evidence() -> Non
 def test_production_request_constructors_emit_explicit_attestation() -> None:
     root = Path(__file__).resolve().parent.parent
     constructors = {
-        "execution/autonomous_path.py": 2,
-        "execution/hybrid_path.py": 1,
         "autonomy/executor.py": 1,
         "predator_mesh/lanes/firewall_rehearsal.py": 1,
     }
@@ -416,10 +414,6 @@ def test_production_request_constructors_emit_explicit_attestation() -> None:
         source = (root / relative).read_text(encoding="utf-8")
         assert source.count("LiveOrderRequest(") == expected_calls
         assert source.count("model_influence_attestation=") >= expected_calls
-    generator = (root / "repo_harvester/adapter_test_generator.py").read_text(
-        encoding="utf-8"
-    )
-    assert "model_influence_attestation=build_model_influence_attestation(" in generator
 
 
 def test_attestation_type_forbids_unknown_fields() -> None:

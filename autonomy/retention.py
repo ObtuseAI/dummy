@@ -29,6 +29,13 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Iterable, Iterator
 
+from autonomy.maintenance import (
+    MaintenanceLease,
+    acquire_maintenance,
+    release_maintenance,
+    retry_sqlite_locked,
+)
+
 # Wave-81: 7 -> 5 days. The hot signals table drove the ledger's write-lock
 # contention (a smaller table = faster inserts = shorter lock holds). Safe: the
 # ``signal_history`` view unions hot + archived rows and every consumer reads the
@@ -79,6 +86,9 @@ class RetentionReport:
     source_bytes_after: int
     archive_bytes_after: int
     vacuumed: bool
+    lock_retries: int = 0
+    maintenance_wait_seconds: float = 0.0
+    wal_checkpoint: str = "NOT_RUN"
     execution_authority: bool = False
     tables_mutated: tuple[str, ...] = ("signals",)
 
@@ -218,12 +228,21 @@ def _candidate_digest(connection: sqlite3.Connection, database: str) -> tuple[in
 
 def _eligible_summary(connection: sqlite3.Connection, cutoff: str) -> tuple[int, int]:
     row = connection.execute(
-        "SELECT COUNT(*),COUNT(DISTINCT s.market_ticker) FROM main.signals s "
-        "JOIN main.settlements st ON st.market_ticker=s.market_ticker "
+        "SELECT COUNT(*),COUNT(DISTINCT s.market_ticker) "
+        "FROM main.settlements st JOIN main.signals s "
+        "ON s.market_ticker=st.market_ticker "
         "WHERE julianday(st.settled_at)<=julianday(?)",
         (cutoff,),
     ).fetchone()
     return int(row[0] or 0), int(row[1] or 0)
+
+
+def _env_seconds(name: str, default: float) -> float:
+    try:
+        value = float(os.environ.get(name, str(default)))
+    except (TypeError, ValueError):
+        return default
+    return value if value > 0 else default
 
 
 def _existing_archive_rows(archive: Path) -> int:
@@ -274,6 +293,9 @@ def enforce_retention(
     batch_size: int = DEFAULT_BATCH_SIZE,
     vacuum: bool = False,
     now: datetime | None = None,
+    maintenance_wait_s: float | None = None,
+    sqlite_lock_budget_s: float | None = None,
+    sqlite_timeout_s: float | None = None,
 ) -> RetentionReport:
     """Archive eligible rows, or report what would be archived.
 
@@ -292,16 +314,71 @@ def enforce_retention(
         raise ValueError("retention_days must be at least 1")
     if batch_size < 1:
         raise ValueError("batch_size must be positive")
+    if vacuum:
+        raise ValueError(
+            "inline retention VACUUM is retired; use the verified, separately "
+            "supervised ledger-vacuum job"
+        )
     clock = (now or datetime.now(timezone.utc)).astimezone(timezone.utc)
     cutoff = (clock - timedelta(days=retention_days)).isoformat()
     source_bytes_before = source.stat().st_size
-
-    connection = sqlite3.connect(
-        f"file:{source.as_posix()}?mode=rw", uri=True, timeout=60.0,
+    sqlite_timeout = (
+        _env_seconds("DUMMY_RETENTION_SQLITE_TIMEOUT_S", 5.0)
+        if sqlite_timeout_s is None else max(0.1, float(sqlite_timeout_s))
     )
+    lock_budget = (
+        _env_seconds("DUMMY_RETENTION_LOCK_BUDGET_S", 300.0)
+        if sqlite_lock_budget_s is None else max(0.01, float(sqlite_lock_budget_s))
+    )
+    lease: MaintenanceLease | None = None
+    if apply:
+        lease = acquire_maintenance(
+            source, "ledger_retention", wait_seconds=maintenance_wait_s,
+        )
+    connection: sqlite3.Connection | None = None
+    lock_retries = 0
+    wal_checkpoint = "NOT_RUN"
+
+    def _count_retry(_attempt: int, _exc: sqlite3.OperationalError) -> None:
+        nonlocal lock_retries
+        lock_retries += 1
+
     try:
+        connection = sqlite3.connect(
+            f"file:{source.as_posix()}?mode={'rw' if apply else 'ro'}",
+            uri=True,
+            timeout=sqlite_timeout,
+        )
+        connection.execute(f"PRAGMA busy_timeout={int(sqlite_timeout * 1000)}")
+        if apply:
+            def _install_retention_indexes() -> None:
+                if connection.in_transaction:
+                    connection.rollback()
+                try:
+                    connection.execute("BEGIN IMMEDIATE")
+                    connection.execute(
+                        "CREATE INDEX IF NOT EXISTS main.idx_settlements_settled_at "
+                        "ON settlements(settled_at)"
+                    )
+                    connection.execute(
+                        "CREATE INDEX IF NOT EXISTS main.idx_settlements_settled_jd "
+                        "ON settlements(julianday(settled_at))"
+                    )
+                    connection.commit()
+                except Exception:
+                    connection.rollback()
+                    raise
+
+            retry_sqlite_locked(
+                _install_retention_indexes,
+                deadline_monotonic=time.monotonic() + lock_budget,
+                on_retry=_count_retry,
+            )
         source_rows_before = int(connection.execute("SELECT COUNT(*) FROM main.signals").fetchone()[0])
-        eligible_rows, eligible_markets = _eligible_summary(connection, cutoff)
+        with bounded_statements(
+            connection, _env_seconds("DUMMY_RETENTION_SCAN_BUDGET_S", 300.0),
+        ):
+            eligible_rows, eligible_markets = _eligible_summary(connection, cutoff)
         if not apply:
             archive_rows = _existing_archive_rows(archive)
             return RetentionReport(
@@ -315,13 +392,30 @@ def enforce_retention(
                 source_bytes_after=source_bytes_before,
                 archive_bytes_after=archive.stat().st_size if archive.exists() else 0,
                 vacuumed=False,
+                lock_retries=0,
+                maintenance_wait_seconds=0.0,
             )
 
         archive.parent.mkdir(parents=True, exist_ok=True)
         uri = f"file:{archive.as_posix()}?mode=rwc"
         connection.execute(f"ATTACH DATABASE ? AS {ARCHIVE_ALIAS}", (uri,))
-        _ensure_archive_schema(connection)
-        connection.commit()
+
+        def _prepare_archive() -> None:
+            if connection.in_transaction:
+                connection.rollback()
+            try:
+                connection.execute("BEGIN IMMEDIATE")
+                _ensure_archive_schema(connection)
+                connection.commit()
+            except Exception:
+                connection.rollback()
+                raise
+
+        retry_sqlite_locked(
+            _prepare_archive,
+            deadline_monotonic=time.monotonic() + lock_budget,
+            on_retry=_count_retry,
+        )
         connection.execute("CREATE TEMP TABLE archive_candidates(id INTEGER PRIMARY KEY)")
 
         archived_rows = 0
@@ -332,7 +426,11 @@ def enforce_retention(
             # so the commit is atomic on its own regardless of the main
             # ledger's journal mode. INSERT OR IGNORE plus the deterministic
             # batch id make the whole phase safe to replay after a crash.
-            connection.execute("BEGIN IMMEDIATE")
+            retry_sqlite_locked(
+                lambda: connection.execute("BEGIN IMMEDIATE"),
+                deadline_monotonic=time.monotonic() + lock_budget,
+                on_retry=_count_retry,
+            )
             try:
                 connection.execute("DELETE FROM temp.archive_candidates")
                 connection.execute(
@@ -383,7 +481,11 @@ def enforce_retention(
             # the main database is modified here, so this commit is atomic
             # too. A crash between the phases leaves the rows in both
             # databases — safe, and repaired by the next run's replay.
-            connection.execute("BEGIN IMMEDIATE")
+            retry_sqlite_locked(
+                lambda: connection.execute("BEGIN IMMEDIATE"),
+                deadline_monotonic=time.monotonic() + lock_budget,
+                on_retry=_count_retry,
+            )
             try:
                 archive_count, archive_digest = _candidate_digest(connection, ARCHIVE_ALIAS)
                 if archive_count != candidate_count or archive_digest != source_digest:
@@ -434,19 +536,24 @@ def enforce_retention(
         journal_mode = str(connection.execute("PRAGMA main.journal_mode").fetchone()[0]).lower()
         if journal_mode == "wal":
             try:
-                connection.execute("PRAGMA main.wal_checkpoint(TRUNCATE)")
-            except sqlite3.OperationalError:
-                pass  # busy readers hold the WAL; a later checkpoint reclaims it
+                busy, log_pages, checkpointed = connection.execute(
+                    "PRAGMA main.wal_checkpoint(PASSIVE)"
+                ).fetchone()
+                wal_checkpoint = (
+                    f"BUSY:{int(checkpointed)}/{int(log_pages)}"
+                    if int(busy) else f"OK:{int(checkpointed)}/{int(log_pages)}"
+                )
+            except sqlite3.OperationalError as exc:
+                wal_checkpoint = f"ERROR:{type(exc).__name__}:{str(exc)[:120]}"
         archive_rows = int(
             connection.execute(f"SELECT COUNT(*) FROM {ARCHIVE_ALIAS}.signals").fetchone()[0]
         )
         source_rows_after = int(connection.execute("SELECT COUNT(*) FROM main.signals").fetchone()[0])
-        if vacuum and archived_rows:
-            connection.execute(f"DETACH DATABASE {ARCHIVE_ALIAS}")
-            connection.execute("VACUUM main")
         history_rows_after = source_rows_after + archive_rows
     finally:
-        connection.close()
+        if connection is not None:
+            connection.close()
+        release_maintenance(lease)
 
     return RetentionReport(
         status="APPLIED", apply=True, source_database=str(source), archive_database=str(archive),
@@ -456,5 +563,8 @@ def enforce_retention(
         source_rows_before=source_rows_before, source_rows_after=source_rows_after,
         history_rows_after=history_rows_after, source_bytes_before=source_bytes_before,
         source_bytes_after=source.stat().st_size,
-        archive_bytes_after=archive.stat().st_size, vacuumed=bool(vacuum and archived_rows),
+        archive_bytes_after=archive.stat().st_size, vacuumed=False,
+        lock_retries=lock_retries,
+        maintenance_wait_seconds=round(lease.wait_seconds if lease else 0.0, 3),
+        wal_checkpoint=wal_checkpoint,
     )

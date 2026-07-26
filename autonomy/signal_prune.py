@@ -20,9 +20,17 @@ reviewed step.
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
+import os
+import time
 from typing import Any
 
 from autonomy.ledger import AutonomyLedger
+from autonomy.maintenance import (
+    MaintenanceLease,
+    acquire_maintenance,
+    release_maintenance,
+    retry_sqlite_locked,
+)
 
 
 def plan_prune(ledger: AutonomyLedger, settled_before_days: float = 7.0) -> dict[str, Any]:
@@ -111,7 +119,14 @@ def plan_prune(ledger: AutonomyLedger, settled_before_days: float = 7.0) -> dict
     }
 
 
-def apply_prune(ledger: AutonomyLedger, prunable_ids: list[int], batch: int = 100_000) -> int:
+def apply_prune(
+    ledger: AutonomyLedger,
+    prunable_ids: list[int],
+    batch: int = 100_000,
+    *,
+    maintenance_wait_s: float | None = None,
+    sqlite_lock_budget_s: float | None = None,
+) -> int:
     """Delete the given signal ids. Returns rows deleted.
 
     Stages the ids into a temp table (temp_store=MEMORY) and issues ONE
@@ -123,15 +138,56 @@ def apply_prune(ledger: AutonomyLedger, prunable_ids: list[int], batch: int = 10
     conn = ledger._conn
     if not prunable_ids:
         return 0
-    conn.execute("CREATE TEMP TABLE IF NOT EXISTS _prune_ids(id INTEGER PRIMARY KEY)")
-    conn.execute("DELETE FROM _prune_ids")
-    for i in range(0, len(prunable_ids), batch):
-        conn.executemany(
-            "INSERT OR IGNORE INTO _prune_ids(id) VALUES (?)",
-            [(x,) for x in prunable_ids[i:i + batch]],
+    try:
+        default_budget = float(os.environ.get("DUMMY_PRUNE_LOCK_BUDGET_S", "300"))
+    except (TypeError, ValueError):
+        default_budget = 300.0
+    lock_budget = (
+        max(0.01, default_budget)
+        if sqlite_lock_budget_s is None
+        else max(0.01, float(sqlite_lock_budget_s))
+    )
+    lease: MaintenanceLease | None = acquire_maintenance(
+        ledger.db_path,
+        "signal_prune",
+        wait_seconds=maintenance_wait_s,
+    )
+    try:
+        conn.execute("CREATE TEMP TABLE IF NOT EXISTS _prune_ids(id INTEGER PRIMARY KEY)")
+        conn.execute("DELETE FROM _prune_ids")
+        for i in range(0, len(prunable_ids), batch):
+            conn.executemany(
+                "INSERT OR IGNORE INTO _prune_ids(id) VALUES (?)",
+                [(x,) for x in prunable_ids[i:i + batch]],
+            )
+        # End the temp-table staging transaction before explicitly acquiring
+        # SQLite's one WAL writer lock.
+        conn.commit()
+
+        deleted = 0
+
+        def _delete_transaction() -> None:
+            nonlocal deleted
+            if conn.in_transaction:
+                conn.rollback()
+            try:
+                conn.execute("BEGIN IMMEDIATE")
+                cur = conn.execute(
+                    "DELETE FROM signals WHERE id IN (SELECT id FROM _prune_ids)"
+                )
+                deleted = int(cur.rowcount)
+                conn.commit()
+            except Exception:
+                conn.rollback()
+                raise
+
+        retry_sqlite_locked(
+            _delete_transaction,
+            deadline_monotonic=time.monotonic() + lock_budget,
         )
-    cur = conn.execute("DELETE FROM signals WHERE id IN (SELECT id FROM _prune_ids)")
-    deleted = int(cur.rowcount)
-    ledger._retry_on_locked(conn.commit)  # noqa: SLF001 - trusted ledger consumer
-    conn.execute("DROP TABLE IF EXISTS _prune_ids")
-    return deleted
+        return deleted
+    finally:
+        try:
+            conn.execute("DROP TABLE IF EXISTS _prune_ids")
+        finally:
+            release_maintenance(lease)

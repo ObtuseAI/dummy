@@ -1,0 +1,75 @@
+name: supply-chain
+
+on:
+  pull_request:
+    paths:
+      - pyproject.toml
+      - uv.lock
+      - scripts/check_dependency_licenses.py
+      - .github/workflows/supply-chain.yml
+  push:
+    branches: [main]
+    paths:
+      - pyproject.toml
+      - uv.lock
+      - scripts/check_dependency_licenses.py
+      - .github/workflows/supply-chain.yml
+  schedule:
+    - cron: "31 8 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: supply-chain-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  dependency-audit:
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - uses: astral-sh/setup-uv@v6
+        with:
+          version: "0.11.12"
+          enable-cache: true
+      - name: Install frozen audited environment
+        run: uv sync --frozen --all-extras --python 3.12
+      - name: Verify dependency consistency
+        run: uv pip check --python .venv\Scripts\python.exe
+      - name: Audit known vulnerabilities
+        run: >-
+          uv run --frozen python -m pip_audit
+          --strict
+          --desc on
+          --format json
+          --output dependency-audit.json
+      - name: Inventory installed licenses
+        if: always()
+        run: >-
+          uv run --frozen pip-licenses
+          --format=json
+          --with-urls
+          --output-file=dependency-licenses.json
+      - name: Enforce direct dependency license policy
+        if: always()
+        run: >-
+          uv run --frozen python scripts/check_dependency_licenses.py
+          --extra dev
+          --extra analytics
+          --extra optimizer
+          --extra research
+      - name: Upload audit evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: dependency-audit
+          if-no-files-found: warn
+          path: |
+            dependency-audit.json
+            dependency-licenses.json

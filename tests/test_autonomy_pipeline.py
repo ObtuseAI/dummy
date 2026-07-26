@@ -749,6 +749,18 @@ def test_full_shadow_cycle_places_shadow_orders(tmp_path, monkeypatch):
     # tested on its own; here the strong crypto signal must drive an order
     # regardless of whatever scopes live evidence has floored.
     monkeypatch.setattr("autonomy.no_edge_map.load_negative_scopes", lambda *a, **k: frozenset())
+    from autonomy.adverse_selection import MakerAdverseSelectionEvidence
+
+    monkeypatch.setattr(
+        "autonomy.adverse_selection.load_maker_adverse_selection_evidence",
+        lambda: MakerAdverseSelectionEvidence(
+            haircut_cents=0.0,
+            generated_at=datetime.now(timezone.utc).isoformat(),
+            source_report_sha256="a" * 64,
+            filled_clusters=1,
+            unfilled_clusters=1,
+        ),
+    )
     from autonomy.brain import PredatorBrain
     from autonomy.signals.crypto_spot import CryptoSpotVolSignal
 

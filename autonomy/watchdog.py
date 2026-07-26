@@ -52,6 +52,10 @@ DEFAULT_LEDGER_MAX_GB = 20.0
 DEFAULT_DISK_FLOOR_GB = 10.0
 DEFAULT_ERROR_STREAK_THRESHOLD = 3
 STALE_MULTIPLIER = 2.0
+LOG_TAIL_MAX_BYTES = 1_048_576
+CONTENT_TIMESTAMP_FIELDS = ("generated_at", "completed_at", "at", "started_at")
+RESEARCH_STALL_SECONDS = 48 * 60 * 60
+MAX_FUTURE_CLOCK_SKEW_SECONDS = 300.0
 
 
 @dataclass(frozen=True)
@@ -66,6 +70,8 @@ class TaskSpec:
     stale_multiplier: float = STALE_MULTIPLIER
     authoritative: bool = True
     requires_seed_binding: bool = False
+    content_success_statuses: tuple[str, ...] = ()
+    content_failure_statuses: tuple[str, ...] = ()
 
     @property
     def threshold_seconds(self) -> float:
@@ -140,7 +146,15 @@ DEFAULT_TASKS: list[TaskSpec] = [
     TaskSpec("DummyHealer", "healer_stdout.log", (), 300, "self-heal loop"),
     TaskSpec("DummyLivePoller", "live_poller_status.json", ("at",), 300, "live game poller"),
     TaskSpec("DummyCryptoHorizonEvidence", "crypto_horizon_evidence_stdout.log", (), 7200, "crypto horizon evidence"),
-    TaskSpec("DummyLedgerRetention", "ledger_retention_stdout.log", (), 86400, "ledger retention archive"),
+    TaskSpec(
+        "DummyLedgerRetention",
+        "ledger_retention_stdout.log",
+        (),
+        86400,
+        "ledger retention archive",
+        content_success_statuses=("APPLIED",),
+        content_failure_statuses=("REFUSED", "FAILED", "ERROR"),
+    ),
     TaskSpec("DummyLedgerPrune", "signal_prune_stdout.log", (), 86400, "ledger signal prune"),
     TaskSpec("DummyLogRotation", "log_rotation_stdout.log", (), 86400, "log rotation"),
     TaskSpec("DummyLiveAccountSnapshot", "live_account_snapshot.json", ("generated_at",), 900, "live account snapshot"),
@@ -255,6 +269,150 @@ def _load_json(path: Path) -> Any:
         return None
 
 
+def _read_text_tail(path: Path, max_bytes: int = LOG_TAIL_MAX_BYTES) -> str | None:
+    """Read a bounded UTF-8 tail so a runaway stdout log cannot wedge checks."""
+    try:
+        with path.open("rb") as handle:
+            size = handle.seek(0, 2)
+            handle.seek(max(0, size - max_bytes))
+            return handle.read(max_bytes).decode("utf-8", errors="replace")
+    except OSError:
+        return None
+
+
+def _structured_log_records(path: Path) -> list[dict[str, Any]]:
+    """Extract concatenated JSON objects from a bounded mixed-text log tail."""
+    text = _read_text_tail(path)
+    if text is None:
+        return []
+    try:
+        tail_was_truncated = path.stat().st_size > LOG_TAIL_MAX_BYTES
+    except OSError:
+        return []
+    if tail_was_truncated:
+        _, separator, text = text.partition("\n")
+        if not separator:
+            return []
+    decoder = json.JSONDecoder()
+    records: list[dict[str, Any]] = []
+    position = 0
+    while position < len(text):
+        start = text.find("{", position)
+        if start < 0:
+            break
+        # Producers write each top-level receipt at column zero. Reject braces
+        # embedded in tracebacks, exception strings, or nested JSON so text
+        # content cannot masquerade as an APPLIED terminal record.
+        line_start = text.rfind("\n", 0, start) + 1
+        if start != line_start:
+            position = start + 1
+            continue
+        try:
+            value, end = decoder.raw_decode(text, start)
+        except ValueError:
+            position = start + 1
+            continue
+        if isinstance(value, dict):
+            records.append(value)
+        position = end
+    return records
+
+
+def _record_timestamp(record: dict[str, Any]) -> tuple[float | None, str | None]:
+    for field_name in CONTENT_TIMESTAMP_FIELDS:
+        epoch = _to_epoch(record.get(field_name))
+        if epoch is not None:
+            return epoch, field_name
+    return None, None
+
+
+def _content_contract(
+    path: Path,
+    *,
+    success_statuses: tuple[str, ...],
+    failure_statuses: tuple[str, ...],
+    now_epoch: float,
+) -> dict[str, Any]:
+    """Evaluate terminal job records without trusting a freshly touched log."""
+    successes = {item.upper() for item in success_statuses}
+    failures = {item.upper() for item in failure_statuses}
+    records = [
+        record
+        for record in _structured_log_records(path)
+        if str(record.get("status") or "").strip()
+    ]
+    if not records:
+        return {
+            "last_status": None,
+            "last_status_at": None,
+            "last_success_at": None,
+            "last_success_age_seconds": None,
+            "last_success_epoch": None,
+            "timestamp_source": "content:no_structured_status",
+            "content_failure": False,
+            "content_error": "no_structured_status",
+            "status_records_seen": 0,
+        }
+
+    latest = records[-1]
+    latest_status = str(latest["status"]).strip().upper()
+    latest_epoch, latest_field = _record_timestamp(latest)
+    last_success_epoch: float | None = None
+    last_success_field: str | None = None
+    for record in reversed(records):
+        if str(record.get("status") or "").strip().upper() not in successes:
+            continue
+        last_success_epoch, last_success_field = _record_timestamp(record)
+        if last_success_epoch is not None:
+            break
+
+    last_success_age = (
+        None
+        if last_success_epoch is None
+        else round(now_epoch - last_success_epoch, 1)
+    )
+    content_failure = latest_status in failures
+    content_error: str | None = None
+    if content_failure:
+        content_error = f"terminal_status:{latest_status}"
+    elif latest_status not in successes:
+        content_error = f"unexpected_terminal_status:{latest_status}"
+    elif latest_epoch is None:
+        content_error = "latest_success_missing_timestamp"
+    elif last_success_age is not None and (
+        last_success_age < -MAX_FUTURE_CLOCK_SKEW_SECONDS
+    ):
+        content_error = "latest_success_timestamp_in_future"
+
+    return {
+        "last_status": latest_status,
+        "last_status_at": (
+            None
+            if latest_epoch is None
+            else datetime.fromtimestamp(latest_epoch, tz=timezone.utc).isoformat()
+        ),
+        "last_success_at": (
+            None
+            if last_success_epoch is None
+            else datetime.fromtimestamp(
+                last_success_epoch,
+                tz=timezone.utc,
+            ).isoformat()
+        ),
+        "last_success_age_seconds": last_success_age,
+        "last_success_epoch": last_success_epoch,
+        "timestamp_source": (
+            f"content:last_success.{last_success_field}"
+            if last_success_field
+            else "content:no_timestamped_success"
+        ),
+        "last_status_timestamp_source": latest_field,
+        "content_failure": content_failure,
+        "content_error": content_error,
+        "status_records_seen": len(records),
+    }
+
+
 def _artifact_timestamp(path: Path, ts_fields: tuple[str, ...]) -> tuple[float | None, str]:
     """Best available timestamp for one artifact: a named field, else mtime."""
     data = _load_json(path)
@@ -274,10 +432,26 @@ def _artifact_timestamp(path: Path, ts_fields: tuple[str, ...]) -> tuple[float |
 def evaluate_task(spec: TaskSpec, runtime_dir: Path, now_epoch: float) -> dict[str, Any]:
     path = runtime_dir / spec.artifact
     present = path.exists()
-    epoch, source = _artifact_timestamp(path, spec.ts_fields)
+    content: dict[str, Any] | None = None
+    if spec.content_success_statuses:
+        content = _content_contract(
+            path,
+            success_statuses=spec.content_success_statuses,
+            failure_statuses=spec.content_failure_statuses,
+            now_epoch=now_epoch,
+        )
+        epoch = content["last_success_epoch"]
+        source = str(content["timestamp_source"])
+    else:
+        epoch, source = _artifact_timestamp(path, spec.ts_fields)
     age = None if epoch is None else round(now_epoch - epoch, 1)
     # Fail-closed: a missing artifact or an unreadable timestamp is stale.
-    stale = (age is None) or (age > spec.threshold_seconds)
+    stale = (
+        (age is None)
+        or (age > spec.threshold_seconds)
+        or bool(content and content["content_failure"])
+        or bool(content and content["content_error"])
+    )
     integrity_status = "NOT_REQUIRED"
     integrity_error: str | None = None
     binding: dict[str, Any] | None = None
@@ -299,8 +473,16 @@ def evaluate_task(spec: TaskSpec, runtime_dir: Path, now_epoch: float) -> dict[s
             stale = True
             integrity_status = "INVALID"
             integrity_error = f"{type(exc).__name__}: {exc}"
-    data = _load_json(path) if present else None
-    last_status = data.get("status") or data.get("last_status") if isinstance(data, dict) else None
+    data = _load_json(path) if present and content is None else None
+    last_status = (
+        content["last_status"]
+        if content is not None
+        else (
+            data.get("status") or data.get("last_status")
+            if isinstance(data, dict)
+            else None
+        )
+    )
     return {
         "task_name": spec.name,
         "role": spec.role,
@@ -313,6 +495,15 @@ def evaluate_task(spec: TaskSpec, runtime_dir: Path, now_epoch: float) -> dict[s
         "threshold_seconds": spec.threshold_seconds,
         "stale": bool(stale),
         "last_status": last_status,
+        "last_status_at": content.get("last_status_at") if content else None,
+        "last_success_at": content.get("last_success_at") if content else None,
+        "last_success_age_seconds": (
+            content.get("last_success_age_seconds") if content else None
+        ),
+        "content_contract": bool(spec.content_success_statuses),
+        "content_failure": bool(content and content["content_failure"]),
+        "content_error": content.get("content_error") if content else None,
+        "status_records_seen": content.get("status_records_seen") if content else None,
         "integrity_status": integrity_status,
         "integrity_error": integrity_error,
         "binding": binding,
@@ -359,6 +550,139 @@ def _disk_free_gb(runtime_dir: Path) -> float | None:
         return None
 
 
+def _last_forward_issuance(
+    observation_path: Path,
+    registry_id: str,
+) -> tuple[float | None, int]:
+    """Return the latest issuance for the current candidate registry."""
+    text = _read_text_tail(observation_path)
+    if text is None:
+        return None, 0
+    try:
+        if observation_path.stat().st_size > LOG_TAIL_MAX_BYTES:
+            _, separator, text = text.partition("\n")
+            if not separator:
+                return None, 0
+    except OSError:
+        return None, 0
+    latest: float | None = None
+    matching_records = 0
+    for line in text.splitlines():
+        try:
+            record = json.loads(line)
+        except (TypeError, ValueError):
+            continue
+        if not isinstance(record, dict):
+            continue
+        payload = record.get("payload")
+        if not isinstance(payload, dict):
+            continue
+        if str(payload.get("registry_id") or "") != registry_id:
+            continue
+        issued_epoch = _to_epoch(payload.get("issued_at"))
+        if issued_epoch is None:
+            continue
+        matching_records += 1
+        latest = issued_epoch if latest is None else max(latest, issued_epoch)
+    return latest, matching_records
+
+
+def _research_progress(runtime_dir: Path, now_epoch: float) -> dict[str, Any]:
+    """Detect active forward candidates that have made no progress for 48h."""
+    cohort_root = runtime_dir / "autoresearch" / "cohorts"
+    candidates: list[dict[str, Any]] = []
+    invalid_registries: list[str] = []
+    for registry_path in sorted(cohort_root.glob("*/forward_registry.json")):
+        cohort = registry_path.parent.name
+        registry = _load_json(registry_path)
+        if not isinstance(registry, dict):
+            invalid_registries.append(cohort)
+            continue
+        active = registry.get("active_candidate")
+        if not active:
+            continue
+        if not isinstance(active, dict):
+            candidates.append({
+                "cohort": cohort,
+                "registry_id": None,
+                "candidate_epoch_started_at": None,
+                "last_forward_issuance_at": None,
+                "progress_age_seconds": None,
+                "threshold_seconds": RESEARCH_STALL_SECONDS,
+                "matching_observations_in_tail": 0,
+                "zero_forward_issuance": True,
+                "stalled": True,
+                "reason": "invalid_active_candidate",
+            })
+            continue
+
+        registry_id = str(registry.get("registry_id") or "")
+        candidate_epoch = _to_epoch(active.get("epoch_started_at"))
+        issued_epoch, matching_records = _last_forward_issuance(
+            registry_path.parent / "forward_observations.jsonl",
+            registry_id,
+        )
+        reference_epoch = (
+            issued_epoch if issued_epoch is not None else candidate_epoch
+        )
+        age = (
+            None
+            if reference_epoch is None
+            else round(now_epoch - reference_epoch, 1)
+        )
+        reason: str | None = None
+        stalled = False
+        if not registry_id:
+            stalled = True
+            reason = "missing_registry_id"
+        elif reference_epoch is None:
+            stalled = True
+            reason = "missing_progress_timestamp"
+        elif age is not None and age < -MAX_FUTURE_CLOCK_SKEW_SECONDS:
+            stalled = True
+            reason = "progress_timestamp_in_future"
+        elif age is not None and age > RESEARCH_STALL_SECONDS:
+            stalled = True
+            reason = "no_forward_issuance_within_threshold"
+
+        candidates.append({
+            "cohort": cohort,
+            "registry_id": registry_id or None,
+            "candidate_epoch_started_at": (
+                None
+                if candidate_epoch is None
+                else datetime.fromtimestamp(
+                    candidate_epoch,
+                    tz=timezone.utc,
+                ).isoformat()
+            ),
+            "last_forward_issuance_at": (
+                None
+                if issued_epoch is None
+                else datetime.fromtimestamp(
+                    issued_epoch,
+                    tz=timezone.utc,
+                ).isoformat()
+            ),
+            "progress_age_seconds": age,
+            "threshold_seconds": RESEARCH_STALL_SECONDS,
+            "matching_observations_in_tail": matching_records,
+            "zero_forward_issuance": issued_epoch is None,
+            "stalled": stalled,
+            "reason": reason,
+        })
+
+    stalled_candidates = [row for row in candidates if row["stalled"]]
+    return {
+        "threshold_seconds": RESEARCH_STALL_SECONDS,
+        "active_candidate_count": len(candidates),
+        "stalled_candidate_count": len(stalled_candidates),
+        "candidates": candidates,
+        "stalled_candidates": stalled_candidates,
+        "invalid_registries": invalid_registries,
+    }
+
+
 def evaluate_watchdog(
     runtime_dir: Path | None = None,
     *,
@@ -381,6 +705,11 @@ def evaluate_watchdog(
     disk_gb = _disk_free_gb(rd)
     kill = kill_path or (rd / "KILL")
     kill_present = kill.exists()
+    research_progress = _research_progress(rd, now)
+    research_stalls = [
+        row["cohort"]
+        for row in research_progress["stalled_candidates"]
+    ]
 
     stale_tasks = [
         row["task_name"]
@@ -424,7 +753,7 @@ def evaluate_watchdog(
 
     healthy = not (
         stale_tasks or ledger_over or disk_low or error_streak_alarm
-        or kill_present or uncovered_failing
+        or kill_present or uncovered_failing or research_stalls
     )
     return {
         "generated_at": datetime.fromtimestamp(now, tz=timezone.utc).isoformat(),
@@ -435,6 +764,8 @@ def evaluate_watchdog(
         "scheduler_inventory": inventory,
         "uncovered_tasks": [row["task_name"] for row in uncovered],
         "uncovered_failing_tasks": uncovered_failing,
+        "research_progress": research_progress,
+        "research_stalls": research_stalls,
         "cycle_error_streak": streak,
         "cycle_error_streak_threshold": error_streak_threshold,
         "latest_cycle_status": latest_status,
@@ -483,11 +814,45 @@ def fire_watchdog_alerts(
     stale_now = set(status.get("stale_tasks") or [])
     for name in sorted(stale_now - prior_stale):
         row = next((r for r in status["tasks"] if r["task_name"] == name), {})
+        if row.get("content_failure"):
+            fired.append(emit_alert(
+                "WATCHDOG_JOB_REFUSED",
+                f"scheduled task {name} ended {row.get('last_status')}; "
+                f"last successful APPLIED={row.get('last_success_at')}",
+                {"task": row},
+                now_iso,
+            ))
+            continue
+        reason = (
+            f"content_error={row.get('content_error')}"
+            if row.get("content_error")
+            else (
+                f"{row.get('age_seconds')}s > "
+                f"{row.get('threshold_seconds')}s"
+            )
+        )
         fired.append(emit_alert(
             "WATCHDOG_TASK_STALE",
-            f"scheduled task {name} artifact is stale "
-            f"({row.get('age_seconds')}s > {row.get('threshold_seconds')}s)",
+            f"scheduled task {name} artifact is stale ({reason})",
             {"task": row}, now_iso,
+        ))
+
+    prior_research_stalls = set(state.get("research_stalls") or [])
+    research_stalls = set(status.get("research_stalls") or [])
+    research_rows = (
+        status.get("research_progress", {}).get("stalled_candidates", [])
+    )
+    for cohort in sorted(research_stalls - prior_research_stalls):
+        row = next(
+            (item for item in research_rows if item.get("cohort") == cohort),
+            {"cohort": cohort},
+        )
+        fired.append(emit_alert(
+            "RESEARCH_STALL",
+            f"active autoresearch cohort {cohort} has no forward issuance "
+            f"within {row.get('threshold_seconds')}s",
+            {"research_candidate": row},
+            now_iso,
         ))
 
     def _edge(key: str, active: bool, kind: str, message: str, detail: dict[str, Any]) -> None:
@@ -522,6 +887,7 @@ def fire_watchdog_alerts(
     )
 
     state["stale_tasks"] = sorted(stale_now)
+    state["research_stalls"] = sorted(research_stalls)
     _save_state(sp, state)
     return fired
 

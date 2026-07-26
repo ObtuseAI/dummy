@@ -6,8 +6,6 @@ to a premium, *living* finish (Wave-55):
   * an ambient phosphor field on a <canvas> backdrop -- slow drifting embers and
     a soft glow that parallaxes toward the pointer (one static frame under
     prefers-reduced-motion, paused when the tab is hidden);
-  * an always-on pari-mutuel ticker tape that streams the live picks and
-    mispricing across every scope, right-to-left, pausing under the pointer;
   * an outcome-first hero band for the cached live Kalshi account and controls;
   * split-flap flip counters that roll only when new data actually lands;
   * cards that tilt in 3D and catch a specular highlight under the cursor;
@@ -50,7 +48,7 @@ DASHBOARD_HTML = r"""<!doctype html>
   --line-rgb:18,53,40; --secondary-rgb:111,224,255; --surface-rgb:8,28,19;
   --card-top-rgb:8,28,19; --card-bottom-rgb:7,24,17;
   --side-top-rgb:7,24,17; --side-bottom-rgb:4,16,10;
-  --tape-top-rgb:6,20,14; --tape-bottom-rgb:6,20,14; --overlay-rgb:2,8,5;
+  --overlay-rgb:2,8,5;
   --mark-ink:#04140d;
   --mono:"Cascadia Mono","Consolas",ui-monospace,monospace;
   --disp:"Bahnschrift","DIN Alternate Bold","Segoe UI Semibold","Segoe UI",sans-serif;
@@ -65,7 +63,7 @@ html[data-theme=amber]{
   --acc:#ffc24d;--acc-2:#7a4e12;--acc-glow:rgba(255,194,77,.22);--acc-rgb:255,194,77;
   --line-rgb:74,48,20;--secondary-rgb:255,151,77;--surface-rgb:32,20,8;
   --card-top-rgb:32,20,8;--card-bottom-rgb:24,15,5;--side-top-rgb:26,17,6;--side-bottom-rgb:18,11,3;
-  --tape-top-rgb:30,18,6;--tape-bottom-rgb:23,14,5;--overlay-rgb:12,7,2;--mark-ink:#211304;
+  --overlay-rgb:12,7,2;--mark-ink:#211304;
 }
 html[data-theme=cyan]{
   --bg:#020e14;--bg-1:#061922;--panel:#071d27;--panel-2:#0a2733;--panel-3:#0d3342;
@@ -74,7 +72,7 @@ html[data-theme=cyan]{
   --acc:#6fe0ff;--acc-2:#12667a;--acc-glow:rgba(111,224,255,.22);--acc-rgb:111,224,255;
   --line-rgb:18,57,73;--secondary-rgb:47,227,143;--surface-rgb:7,29,39;
   --card-top-rgb:7,29,39;--card-bottom-rgb:5,23,31;--side-top-rgb:6,25,34;--side-bottom-rgb:2,14,20;
-  --tape-top-rgb:5,25,34;--tape-bottom-rgb:4,20,27;--overlay-rgb:1,8,12;--mark-ink:#03151d;
+  --overlay-rgb:1,8,12;--mark-ink:#03151d;
 }
 html[data-theme=violet]{
   --bg:#0b0714;--bg-1:#151025;--panel:#18112a;--panel-2:#211638;--panel-3:#2b1c47;
@@ -83,7 +81,7 @@ html[data-theme=violet]{
   --acc:#b79cff;--acc-2:#4a3a8a;--acc-glow:rgba(183,156,255,.24);--acc-rgb:183,156,255;
   --line-rgb:53,39,81;--secondary-rgb:111,224,255;--surface-rgb:24,17,42;
   --card-top-rgb:24,17,42;--card-bottom-rgb:18,12,33;--side-top-rgb:21,16,37;--side-bottom-rgb:11,7,20;
-  --tape-top-rgb:22,15,38;--tape-bottom-rgb:16,11,29;--overlay-rgb:7,4,13;--mark-ink:#160d27;
+  --overlay-rgb:7,4,13;--mark-ink:#160d27;
 }
 *{box-sizing:border-box}
 html,body{margin:0;height:100%}
@@ -168,31 +166,6 @@ a{color:inherit;text-decoration:none}
 .modechip.shadow{color:var(--amber);border-color:var(--amber-deep);background:rgba(255,194,77,.06)}
 .modechip.live-auth{color:var(--red);border-color:rgba(255,107,122,.55);background:rgba(255,107,122,.08)}
 
-/* pari-mutuel ticker tape */
-.tape{position:sticky;top:0;z-index:8;margin:0 calc(-1*var(--s4)) var(--s3);
-  background:linear-gradient(180deg,rgba(var(--tape-top-rgb),.94),rgba(var(--tape-bottom-rgb),.82));
-  backdrop-filter:blur(8px);border-bottom:1px solid var(--line);overflow:hidden;height:44px;display:flex;align-items:stretch}
-.tape::before{content:"LIVE TAPE";position:absolute;left:0;top:0;bottom:0;z-index:2;display:flex;align-items:center;
-  padding:0 13px;font-family:var(--disp);font-size:10px;letter-spacing:.22em;color:var(--acc);
-  background:linear-gradient(90deg,var(--bg-1) 74%,transparent);text-shadow:0 0 10px var(--acc-glow)}
-.tape::after{content:"";position:absolute;right:0;top:0;bottom:0;width:48px;z-index:2;
-  background:linear-gradient(270deg,var(--bg-1),transparent);pointer-events:none}
-/* NB: class is "ttrack" not "track" -- the progress-bar .track rule (height:8px;
-   overflow:hidden) was clipping the ticker to an unreadable sliver. */
-.tape .ttrack{display:flex;align-items:center;height:100%;gap:0;white-space:nowrap;padding-left:104px;
-  will-change:transform;animation:marq var(--dur,60s) linear infinite}
-.tape:hover .ttrack{animation-play-state:paused}
-@keyframes marq{to{transform:translateX(-50%)}}
-.tape .ti{display:inline-flex;align-items:center;gap:9px;padding:0 20px;font-family:var(--mono);font-size:13.5px;
-  color:var(--muted);border-right:1px solid var(--line)}
-.tape .ti .sc{color:var(--faint);font-size:11px;letter-spacing:.12em;text-transform:uppercase}
-.tape .ti .mk{color:var(--txt)}
-.tape .ti .bt2{color:var(--acc);font-size:12px}
-.tape .ti b{color:var(--phos)}
-.tape .ti .up{color:var(--green)} .tape .ti .dn{color:var(--red)}
-.tape.off{display:none}
-.tape.off::before,.tape.off::after{content:none;display:none}
-
 #view{animation:swap .32s var(--ease);padding-top:var(--s3);max-width:1680px;margin:0 auto}
 @keyframes swap{from{opacity:0;transform:translateY(8px)}}
 .topbar{display:flex;align-items:center;gap:14px;margin-bottom:var(--s3);min-height:38px}
@@ -263,6 +236,18 @@ a{color:inherit;text-decoration:none}
 @media(max-width:680px){.stage{padding:0 12px 18px}.topbar{align-items:flex-start;flex-wrap:wrap}.topbar .crumb{order:3;width:100%}
   .stamp{margin-left:auto}.top-actions .ghostbtn:first-child{display:none}.opsbar{grid-template-columns:auto 1fr;padding:11px}.opsbar>.ghostbtn{display:none}
   .opsdetail{font-size:11px}.card{padding:13px}.kpis{grid-template-columns:1fr 1fr}}
+@media(max-width:480px){
+  #app{display:block;height:100vh}
+  .stage{height:calc(100vh - 64px);padding:0 10px 18px}
+  .side{position:fixed;z-index:20;inset:auto 0 0;height:64px;min-height:64px;border:0;border-top:1px solid var(--line)}
+  .side::after,.side .brand,.side .grp,.side .foot,.nav .glide{display:none}
+  .nav{display:flex;align-items:center;gap:4px;overflow-x:auto;overflow-y:hidden;padding:7px 8px}
+  .item,.item.child{flex:0 0 48px;height:48px;margin:0;padding:0;justify-content:center}
+  .item span,.item .tag{display:none}
+  .item:hover{transform:none}
+  .topbar h2{font-size:22px}
+  .kpis{grid-template-columns:1fr}
+}
 
 .card{position:relative;background:linear-gradient(180deg,rgba(var(--card-top-rgb),.80),rgba(var(--card-bottom-rgb),.90));
   backdrop-filter:blur(6px) saturate(1.08);
@@ -367,6 +352,68 @@ tbody tr:hover{background:var(--panel-2);box-shadow:inset 2px 0 0 var(--acc)}
   padding:4px 9px;border-radius:8px;background:var(--panel-2);border:1px solid var(--line);margin:3px;transition:.15s}
 .chip:hover{border-color:var(--line-2);color:var(--txt)}
 .chip b{color:var(--phos);font-weight:600}
+
+/* bounded, persisted system-health and edge-quality evidence */
+.ops-intel-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:var(--s3);
+  margin-bottom:var(--s3);align-items:start}
+.ops-evidence-card{min-width:0}
+.evidence-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:11px}
+.evidence-head h3{margin:0}.evidence-state{flex:none;padding:4px 8px;border:1px solid var(--line-2);
+  border-radius:999px;background:var(--panel-2);color:var(--faint);font:700 9px var(--mono);
+  letter-spacing:.08em;text-transform:uppercase}
+.evidence-state.ok{color:var(--green);border-color:rgba(47,227,143,.4);background:rgba(47,227,143,.07)}
+.evidence-state.warn{color:var(--amber);border-color:rgba(255,194,77,.4);background:rgba(255,194,77,.07)}
+.evidence-state.bad{color:var(--red);border-color:rgba(255,107,122,.4);background:rgba(255,107,122,.07)}
+.evidence-kpis{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:7px;margin-bottom:12px}
+.evidence-kpi{min-width:0;padding:9px;border:1px solid var(--line);border-radius:9px;background:var(--panel-2)}
+.evidence-kpi span{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+  color:var(--faint);font:8.5px var(--mono);letter-spacing:.1em;text-transform:uppercase}
+.evidence-kpi b{display:block;margin-top:4px;overflow-wrap:anywhere;color:var(--txt);font:650 13px var(--mono)}
+.evidence-kpi b.ok{color:var(--green)}.evidence-kpi b.warn{color:var(--amber)}.evidence-kpi b.bad{color:var(--red)}
+.evidence-section{margin-top:12px;padding-top:11px;border-top:1px solid var(--line)}
+.evidence-section-head{display:flex;align-items:baseline;justify-content:space-between;gap:10px;margin-bottom:6px}
+.evidence-section-head b{color:var(--muted);font:700 10px var(--disp);letter-spacing:.12em;text-transform:uppercase}
+.evidence-section-head span{color:var(--faint);font:9.5px var(--mono)}
+.evidence-list{display:flex;flex-direction:column;gap:6px}
+.evidence-item{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:3px 10px;padding:8px 9px;
+  border:1px solid var(--line);border-radius:8px;background:rgba(var(--surface-rgb),.55)}
+.evidence-main{min-width:0;color:var(--txt);font:600 11px var(--mono);overflow-wrap:anywhere}
+.evidence-time{color:var(--faint);font:9.5px var(--mono);white-space:nowrap}
+.evidence-meta{grid-column:1/-1;color:var(--muted);font-size:10.5px;line-height:1.45;overflow-wrap:anywhere}
+.severity{display:inline-block;margin-right:6px;padding:1px 5px;border:1px solid var(--line-2);
+  border-radius:5px;color:var(--faint);font:700 8px var(--mono);letter-spacing:.06em;text-transform:uppercase}
+.severity.critical{color:var(--red);border-color:rgba(255,107,122,.45)}
+.severity.warning{color:var(--amber);border-color:rgba(255,194,77,.45)}
+.severity.info{color:var(--cyan);border-color:rgba(111,224,255,.4)}
+.severity.bad{color:var(--red);border-color:rgba(255,107,122,.45)}
+.severity.warn{color:var(--amber);border-color:rgba(255,194,77,.45)}
+.severity.ok{color:var(--green);border-color:rgba(47,227,143,.4)}
+.reason-count{color:var(--acc);font:700 11px var(--mono)}
+.evidence-empty{padding:12px;border:1px dashed var(--line-2);border-radius:8px;color:var(--faint);
+  background:rgba(var(--surface-rgb),.35);font:10.5px var(--mono);line-height:1.55}
+.evidence-context{display:flex;flex-wrap:wrap;gap:5px 12px;margin:-3px 0 10px;padding:7px 9px;
+  border:1px solid var(--line);border-radius:8px;background:rgba(var(--surface-rgb),.35);
+  color:var(--faint);font:9.5px var(--mono);line-height:1.45}
+.evidence-context b{color:var(--muted);font-weight:650}
+.evidence-context .stale{color:var(--amber)}.evidence-context .current{color:var(--green)}
+.evidence-panes{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:7px}
+.evidence-pane{min-width:0;padding:9px;border:1px solid var(--line);border-radius:9px;
+  background:rgba(var(--surface-rgb),.55)}
+.evidence-pane .pane-label{display:block;color:var(--faint);font:8.5px var(--mono);
+  letter-spacing:.1em;text-transform:uppercase}
+.evidence-pane b{display:block;margin-top:5px;color:var(--txt);font:650 11.5px var(--mono);
+  overflow-wrap:anywhere}
+.evidence-pane p{margin:5px 0 0;color:var(--muted);font-size:10.5px;line-height:1.45}
+.evidence-pane.ok b{color:var(--green)}.evidence-pane.warn b{color:var(--amber)}
+.evidence-pane.bad b{color:var(--red)}
+.edge-bins{display:grid;grid-template-columns:repeat(auto-fit,minmax(88px,1fr));gap:6px}
+.edge-bin{padding:8px;border:1px solid var(--line);border-radius:8px;background:rgba(var(--surface-rgb),.45)}
+.edge-bin span{display:block;color:var(--faint);font:9px var(--mono);overflow-wrap:anywhere}
+.edge-bin b{display:block;margin-top:4px;color:var(--txt);font:650 12px var(--mono)}
+@media(max-width:1180px){.ops-intel-grid{grid-template-columns:1fr}}
+@media(max-width:620px){.evidence-kpis{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .evidence-item{grid-template-columns:1fr}.evidence-time{white-space:normal}.evidence-meta{grid-column:1}
+  .evidence-panes{grid-template-columns:1fr}}
 
 /* accuracy & improvement telemetry */
 .acc-hero{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:var(--s3);margin-bottom:var(--s3)}
@@ -546,6 +593,33 @@ td.hc .td{font-size:11px;margin-left:3px}
 .cmdk .foot2{display:flex;gap:14px;padding:9px 14px;border-top:1px solid var(--line);
   font-size:10px;color:var(--faint);font-family:var(--mono)}
 
+/* immutable market-observer charts */
+.chart-controls{display:flex;flex-wrap:wrap;gap:7px;align-items:center;margin-bottom:var(--s3)}
+.chart-controls .label{font:10px var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--faint);margin-right:2px}
+.chart-choice{appearance:none;border:1px solid var(--line-2);background:var(--panel);color:var(--muted);
+  border-radius:8px;padding:7px 10px;font:11px var(--mono);cursor:pointer}
+.chart-choice:hover,.chart-choice.on{border-color:var(--acc);color:var(--txt);background:rgba(var(--acc-rgb),.10)}
+.market-chart-frame{position:relative;min-height:430px;border:1px solid var(--line);
+  border-radius:var(--r);overflow:hidden;background:rgba(2,8,14,.72)}
+#marketChart{height:430px;width:100%}.market-chart-overlay{position:absolute;top:9px;left:9px;z-index:3;
+  display:flex;flex-wrap:wrap;gap:5px;max-width:75%;pointer-events:none}
+.indicator-chip{padding:4px 7px;border:1px solid rgba(var(--acc-rgb),.28);border-radius:6px;
+  background:rgba(2,8,14,.84);color:var(--muted);font:10px var(--mono);backdrop-filter:blur(8px)}
+.indicator-chip b{color:var(--txt);font-weight:650}.observer-meta{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:9px}
+.observer-meta .cell{min-width:0;padding:10px 11px;border:1px solid var(--line);border-radius:9px;background:var(--panel)}
+.observer-meta .cell span{display:block;font:9px var(--mono);letter-spacing:.13em;text-transform:uppercase;color:var(--faint)}
+.observer-meta .cell b{display:block;margin-top:5px;font:11px var(--mono);color:var(--muted);overflow-wrap:anywhere}
+.observer-banner{display:flex;align-items:flex-start;gap:10px;padding:11px 13px;border:1px solid var(--amber-deep);
+  border-radius:9px;background:rgba(255,184,77,.05);color:var(--muted);font-size:11px;line-height:1.55}
+.observer-banner b{color:var(--amber)}.observer-attribution{margin-top:9px;color:var(--faint);font:10px var(--mono)}
+.observer-attribution a{color:var(--muted)}.observer-patterns{display:flex;flex-wrap:wrap;gap:6px}
+@media(max-width:760px){.observer-meta{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .market-chart-frame{display:flex;flex-direction:column;min-height:376px;height:auto}
+  #marketChart{order:2;flex:0 0 330px;min-height:330px;height:330px}
+  .market-chart-overlay{position:static;order:1;flex-wrap:nowrap;max-width:none;overflow-x:auto;
+    padding:8px;pointer-events:auto;scrollbar-width:thin}
+  .indicator-chip{flex:0 0 auto}}
+
 /* snapshot shockwave — one-shot phosphor ripple when new data lands */
 #shock{position:fixed;inset:0;z-index:7;pointer-events:none;opacity:0}
 #shock.go{animation:shock 1.1s var(--ease)}
@@ -554,7 +628,7 @@ td.hc .td{font-size:11px;margin-left:3px}
 
 @media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}
   .chart .draw{stroke-dashoffset:0}.fill{width:var(--w,60%)!important}
-  .gauge .val-arc{stroke-dashoffset:var(--off)!important}.tape .ttrack{transform:none}}
+  .gauge .val-arc{stroke-dashoffset:var(--off)!important}}
 </style>
 </head><body>
 <a class="skip" href="#main">Skip to dashboard</a>
@@ -564,7 +638,7 @@ td.hc .td{font-size:11px;margin-left:3px}
   <aside class="side" aria-label="Primary navigation">
     <a class="brand" href="#/overview" aria-label="DUMMY overview">
       <div class="mark" aria-hidden="true">D</div>
-      <div><h1>DUMMY</h1><div class="sub">totalizator</div></div>
+      <div><h1>DUMMY</h1><div class="sub">operator board</div></div>
     </a>
     <nav class="nav" id="nav" aria-label="Markets"><div class="glide" id="glide"></div></nav>
     <div class="foot" role="status" aria-live="polite">
@@ -575,10 +649,7 @@ td.hc .td{font-size:11px;margin-left:3px}
       <span class="tubes" id="tubes" role="group" aria-label="Application theme"></span>
     </div>
   </aside>
-  <main class="stage" id="main" tabindex="-1">
-    <div class="tape off" id="tape" aria-hidden="true"><div class="ttrack" id="tapetrack"></div></div>
-    <div id="view"></div>
-  </main>
+  <main class="stage" id="main" tabindex="-1"><div id="view"></div></main>
 </div>
 <div class="cmdk" id="cmdk" role="dialog" aria-modal="true" aria-label="Jump to a market scope" aria-hidden="true">
   <div class="box">
@@ -587,11 +658,14 @@ td.hc .td{font-size:11px;margin-left:3px}
     <div class="foot2"><span>↑↓ navigate</span><span>⏎ open</span><span>esc close</span><span>t · cycle theme</span></div>
   </div>
 </div>
+<script src="/assets/vendor/lightweight-charts/5.2.0/lightweight-charts.standalone.production.js"
+  integrity="sha384-q1KYLSKHgBnW5tWYGGR8+6YV4/iPy31dILoF2I1OD7XiVUvHEp/TaxIQVmB0j3R2"></script>
 <script>
 const ICON={
  overview:'<path d="M3 3h7v7H3zM14 3h7v4h-7zM14 10h7v11h-7zM3 14h7v7H3z"/>',
  arsenal:'<rect x="3" y="5" width="18" height="14" rx="3"/><path d="M8 9h2v2H8zM14 9h2v2h-2zM8 15h8M12 2v3M12 19v3M1 12h2M21 12h2"/>',
  glossary:'<path d="M4 5.5A3.5 3.5 0 0 1 7.5 2H11v17H7.5A3.5 3.5 0 0 0 4 22zM20 5.5A3.5 3.5 0 0 0 16.5 2H13v17h3.5A3.5 3.5 0 0 1 20 22z"/>',
+ chart:'<path d="M4 4v16h16"/><path d="M7 14l3-4 3 2 4-6"/><path d="M7 7v10M17 4v13"/>',
  coin:'<circle cx="12" cy="12" r="8.5"/><path d="M12 7.5v9M9.5 9.5h4a1.8 1.8 0 0 1 0 3.6h-4"/>',
  ball:'<circle cx="12" cy="12" r="8.5"/><path d="M4 12h16M12 4v16"/>',
  market:'<path d="M4 19V9M10 19V5M16 19v-7M22 19H2"/>',
@@ -609,10 +683,13 @@ const esc=(s)=>String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;
 const flip=(text)=>'<span class="flip" aria-label="'+esc(String(text))+'">'+String(text).split('').map((c,i)=>'<span class="flap" aria-hidden="true" style="animation-delay:'+(i*32)+'ms">'+(c===' '?'&nbsp;':esc(c))+'</span>').join('')+'</span>';
 const REDUCE=matchMedia('(prefers-reduced-motion:reduce)').matches;
 
-let STATE={overview:null,scopes:null,status:null,walk:null,board:null,boardMeta:null,arsenal:null,tierPerformance:null,tierPerformanceFetchOk:false,connection:{pending:true,error:null}};
+let STATE={overview:null,scopes:null,status:null,walk:null,board:null,boardMeta:null,boardFetchOk:false,arsenal:null,tierPerformance:null,tierPerformanceFetchOk:false,
+  marketChart:{asset:'BTC',timeframe:'1h',data:null,error:null,pending:false,loadedKey:''},
+  connection:{pending:true,error:null}};
 let ROUTE=location.hash||'#/overview';
 let lastSig='';
 let POLLING=false;
+let ACTIVE_MARKET_CHART=null;
 let LAZY_GUIDE={};
 let GUIDE_FILTERS={};
 // Year-round capability fallback, not a claim that a league has games today.
@@ -718,6 +795,7 @@ function buildNav(){
   const nav=document.getElementById('nav');
   [...nav.querySelectorAll('.item,.grp')].forEach(n=>n.remove());
   nav.appendChild(navItem('overview','Overview','#/overview',null));
+  nav.appendChild(navItem('chart','Crypto Charts','#/charts',null));
   nav.appendChild(navItem('arsenal','Model Arsenal','#/arsenal',null));
   nav.appendChild(navItem('glossary','Glossary & how it works','#/glossary',null));
   const v=(STATE.scopes&&STATE.scopes.verticals)||{};
@@ -774,19 +852,6 @@ function moveGlide(el){
   glide.style.opacity='1';glide.style.transform='translateY('+t.offsetTop+'px)';glide.style.height=t.offsetHeight+'px';
 }
 
-// ---------- live ticker tape: DISABLED ----------
-// The scrolling marquee ran a continuous CSS transform that caused input lag in
-// the in-app browser, so the tape is turned off. Kept as a no-op (rather than
-// ripping out the element + every caller) so it's a one-line revert if wanted.
-function buildTape(){
-  const tape=document.getElementById('tape');
-  if(!tape)return;
-  tape.classList.add('off');
-  tape.setAttribute('aria-hidden','true');
-  const track=document.getElementById('tapetrack');
-  if(track)track.innerHTML='';
-}
-
 // ---------- views ----------
 function statusSummary(){
   const st=STATE.status||{},hb=st.heartbeat||{},wd=st.watchdog||{},session=st.session||{},controls=st.live_controls||(STATE.overview&&STATE.overview.live_controls)||{};
@@ -799,21 +864,22 @@ function statusSummary(){
   // The old SHADOW heartbeat is retained only as historical observer data. It
   // has no sports-grade or live authority, so its age must not degrade the
   // operational ribbon after paper/shadow retirement.
-  const healthy=known&&wd.healthy!==false&&accountAge.stale!==true;
+  const accountFresh=accountAge.stale===false;
+  const healthy=known&&wd.healthy===true&&accountFresh;
   const stale=Object.entries(ages).filter(([k,v])=>['live_account','sports_model_seed'].includes(k)&&v&&v.stale);
   const auth=session.expired?'SESSION EXPIRED':(liveAuth?'ACTIVE':(contractAuth?'ARMED / NO SESSION':'LOCKED'));
-  if(!known)return {tone:'wait',mode:'WAIT',title:'Connecting to execution state',detail:'Loading the latest engine health, authorization, and evidence freshness.',healthy:false,auth:'CHECKING',stale:[],liveAuth:false};
-  if(liveAuth)return {tone:'live-auth',mode:'LIVE',title:'Live execution authorized — capital at risk',detail:'The engine reports an active live session. Confirm risk limits before taking action.',healthy,auth,stale,liveAuth:true};
-  const title=accountAge.stale!==true?'Live account observer active — submit locked':'Live submit locked';
+  if(!known)return {tone:'wait',mode:'WAIT',title:'Connecting to execution state',detail:'Loading the latest engine health, authorization, and evidence freshness.',healthy:false,accountFresh:false,auth:'CHECKING',stale:[],liveAuth:false};
+  if(liveAuth)return {tone:'live-auth',mode:'LIVE',title:'Live execution authorized — capital at risk',detail:'The engine reports an active live session. Confirm risk limits before taking action.',healthy,accountFresh,auth,stale,liveAuth:true};
+  const title=accountFresh?'Live account observer active — submit locked':'Live submit locked';
   const blocker=controls.blocker||'No active controlled-live authority and session';
-  return {tone:'',mode:'LOCKED',title,detail:blocker+'. Paper/shadow results are retired and cannot enable or block LIVE.',healthy,auth,stale,liveAuth:false};
+  return {tone:'',mode:'LOCKED',title,detail:blocker+'. Paper/shadow results are retired and cannot enable or block LIVE.',healthy,accountFresh,auth,stale,liveAuth:false};
 }
 function statusRibbon(){
   const s=statusSummary(),failure=STATE.connection&&STATE.connection.error;
   const health=failure?'DEGRADED':(s.healthy?'HEALTHY':'CHECK');
   const healthClass=failure?'bad':(s.healthy?'ok':'warn');
-  const staleLabel=s.stale.length?s.stale.length+' STALE':'CURRENT';
-  const staleClass=s.stale.length?'warn':'ok';
+  const staleLabel=s.stale.length?s.stale.length+' STALE':(s.accountFresh?'CURRENT':'UNAVAILABLE');
+  const staleClass=s.stale.length||!s.accountFresh?'warn':'ok';
   const staleTitle=s.stale.length?' title="Stale: '+esc(s.stale.map(([k])=>k.replace(/_/g,' ')).join(', '))+'"':'';
   const icon=s.liveAuth?'<path d="M12 3v10M8 7l4-4 4 4M5 11v9h14v-9"/>':'<rect x="5" y="10" width="14" height="10" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/>';
   return '<section class="opsbar '+s.tone+'" role="status" aria-live="polite" aria-label="Execution authority">'
@@ -827,14 +893,16 @@ function statusRibbon(){
 function render(){
   const view=document.getElementById('view');
   const parts=ROUTE.replace('#/','').split('/');
+  disposeMarketChart();
   view.style.animation='none';void view.offsetWidth;view.style.animation='';
   const allowedScope=parts[1]==='CRYPTO'||parts[1]==='SPORTS';
-  const page=parts[0]==='scope'&&allowedScope&&parts[2]?scopeView(parts[1],parts[2]):(parts[0]==='arsenal'?modelArsenalView():(parts[0]==='glossary'?glossaryView():overviewView()));
+  const page=parts[0]==='scope'&&allowedScope&&parts[2]?scopeView(parts[1],parts[2]):(parts[0]==='charts'?cryptoResearchView():(parts[0]==='arsenal'?modelArsenalView():(parts[0]==='glossary'?glossaryView():overviewView())));
   view.innerHTML=statusRibbon()+page;
   [...view.querySelectorAll('.reveal')].forEach((el,i)=>el.style.animationDelay=(i*45)+'ms');
   requestAnimationFrame(()=>revealGuideTab(view.querySelector('.daily-guide .bt-tab.on')));
   if(parts[0]==='glossary')wireGlossary();
-  buildNav();buildTape();
+  if(parts[0]==='charts')requestAnimationFrame(()=>{ensureMarketChartData();mountMarketChart();});
+  buildNav();
 }
 function kpi(lab,val,cls,sub,doFlip){
   return '<div class="card kpi reveal"><div class="lab">'+lab+'</div><div class="val '+(cls||'')+'">'+(doFlip?flip(val):val)+'</div>'+(sub?'<div class="sub">'+sub+'</div>':'')+'</div>';
@@ -984,9 +1052,421 @@ function tierPerformanceCard(scope){
   else if(evidenceN&&!freshness.known)h+='<div class="sub" style="margin-top:8px;color:var(--amber)">Evidence timestamp is unavailable. Metrics remain visible for audit only until freshness can be verified.</div>';
   return h+'</section>';
 }
+function safeEvidenceRows(value){
+  return Array.isArray(value)?value.filter(row=>row&&typeof row==='object'&&!Array.isArray(row)):[];
+}
+function evidenceCount(value){
+  return typeof value==='number'&&Number.isInteger(value)&&value>=0&&Number.isFinite(value)?value:null;
+}
+function evidenceMetric(value){
+  return typeof value==='number'&&Number.isFinite(value)?value:null;
+}
+function evidenceTime(value){
+  const at=Date.parse(String(value||''));
+  if(!Number.isFinite(at))return 'time unavailable';
+  if(at>Date.now())return 'future timestamp';
+  return ago(value);
+}
+function evidenceKpi(label,value,cls){
+  const tone=['ok','warn','bad'].includes(cls)?cls:'';
+  return '<div class="evidence-kpi"><span>'+esc(label)+'</span><b class="'+tone+'">'+esc(value)+'</b></div>';
+}
+function evidenceObject(value){
+  return value&&typeof value==='object'&&!Array.isArray(value)?value:{};
+}
+function evidenceContractState(value,requireSchema){
+  const item=evidenceObject(value);
+  if(requireSchema&&item.schema_version!==1)return {label:'UNAVAILABLE',tone:'warn',raw:'SCHEMA_UNAVAILABLE'};
+  const raw=String(item.status||'').trim().toUpperCase();
+  let label='UNAVAILABLE';
+  if(['AVAILABLE','OK','FRESH'].includes(raw))label='AVAILABLE';
+  else if(['PARTIAL','STALE','DEGRADED','AUDIT_ONLY','INSUFFICIENT_EVIDENCE','EVIDENCE_ONLY','EXACT_TAXONOMY'].includes(raw))label='PARTIAL';
+  if(item.stale===true&&label==='AVAILABLE')label='PARTIAL';
+  return {label:label,tone:label==='AVAILABLE'?'ok':'warn',raw:raw||'UNAVAILABLE'};
+}
+function evidenceSource(value,fallback){
+  const source=evidenceObject(value).source;
+  return typeof source==='string'&&source.trim()?source.trim():(fallback||'unavailable');
+}
+function evidenceMoment(value){
+  const at=Date.parse(String(value||''));
+  if(!Number.isFinite(at))return 'time unavailable';
+  const delta=(at-Date.now())/1000,abs=Math.abs(delta);
+  const amount=abs<90?Math.round(abs)+'s':(abs<5400?Math.round(abs/60)+'m':Math.round(abs/3600)+'h');
+  return delta>=0?'in '+amount:amount+' ago';
+}
+function evidenceBytes(value){
+  if(typeof value!=='number'||!Number.isFinite(value))return 'UNAVAILABLE';
+  const sign=value<0?'-':'',absolute=Math.abs(value),units=['B','KiB','MiB','GiB','TiB'];
+  let scaled=absolute,index=0;
+  while(scaled>=1024&&index<units.length-1){scaled/=1024;index++;}
+  return sign+scaled.toFixed(index?2:0)+' '+units[index];
+}
+function evidenceBytesRate(value){
+  if(typeof value!=='number'||!Number.isFinite(value))return 'UNAVAILABLE';
+  return (value>0?'+':'')+evidenceBytes(value)+'/h';
+}
+function evidenceContextHtml(source,windowLabel,staleness){
+  const stale=String(staleness||'UNAVAILABLE').toUpperCase();
+  const freshnessClass=stale==='CURRENT'?'current':(stale==='STALE'?'stale':'');
+  return '<div class="evidence-context">'
+    +'<span><b>Source:</b> '+esc(source||'unavailable')+'</span>'
+    +'<span><b>Window:</b> '+esc(windowLabel||'unavailable')+'</span>'
+    +'<span class="'+freshnessClass+'"><b>Staleness:</b> '+esc(stale)+'</span>'
+    +'</div>';
+}
+function renderSystemHealth(){
+  const st=STATE.status;
+  if(!st||!st.generated_at){
+    return '<section class="card reveal ops-evidence-card" aria-label="System health evidence"><div class="evidence-head"><h3>System health</h3>'
+      +'<span class="evidence-state warn">UNAVAILABLE</span></div>'
+      +'<div class="evidence-empty">No validated status snapshot is loaded. Health, alert history, and recent-cycle evidence are unavailable; no healthy state is inferred.</div></section>';
+  }
+  const sh=evidenceObject(st.system_health),hasContract=Object.keys(sh).length>0;
+  const contractState=hasContract?evidenceContractState(sh,true):null;
+  const ledger=evidenceObject(sh.ledger),growth=evidenceObject(ledger.growth);
+  const retention=evidenceObject(sh.retention),sqlite=evidenceObject(sh.sqlite_contention);
+  const deadlines=evidenceObject(sh.cycle_deadlines),promotion=evidenceObject(sh.promotion_run);
+  const wd=st.watchdog&&typeof st.watchdog==='object'?st.watchdog:{},hb=st.heartbeat&&typeof st.heartbeat==='object'?st.heartbeat:{};
+  const alerts=safeEvidenceRows(st.alerts).slice(-5).reverse(),cycles=safeEvidenceRows(st.recent_cycles).slice(-5).reverse();
+  const ageEntries=Object.entries(st.data_ages&&typeof st.data_ages==='object'?st.data_ages:{}).filter(([,v])=>v&&typeof v==='object');
+  const stale=ageEntries.filter(([,v])=>v.stale===true),staleTasks=Array.isArray(wd.stale_tasks)?wd.stale_tasks.filter(v=>typeof v==='string'&&v.trim()):[];
+  const watchdogKnown=typeof wd.healthy==='boolean',watchdogLabel=watchdogKnown?(wd.healthy?'HEALTHY':'DEGRADED'):'UNAVAILABLE';
+  const heartbeatKnown=typeof hb.alive==='boolean',heartbeatLabel=heartbeatKnown?(hb.alive?'ALIVE':'NOT ALIVE'):'UNAVAILABLE';
+  const fallbackKnown=watchdogKnown||heartbeatKnown||alerts.length>0||cycles.length>0;
+  const stateLabel=contractState?contractState.label:(fallbackKnown?'PARTIAL':'UNAVAILABLE');
+  const stateTone=contractState?contractState.tone:(fallbackKnown?'warn':'warn');
+  const ledgerState=evidenceContractState(ledger),sizeGib=evidenceMetric(ledger.size_gib);
+  const sizeText=ledgerState.label!=='UNAVAILABLE'&&sizeGib!==null?num(sizeGib,3)+' GiB':'UNAVAILABLE';
+  const growthState=evidenceContractState(growth),growthSamples=evidenceCount(growth.sample_count);
+  const growthRate=evidenceMetric(growth.bytes_per_hour);
+  const growthText=growthState.label!=='UNAVAILABLE'&&growthSamples!==null&&growthSamples>=2&&growthRate!==null
+    ?evidenceBytesRate(growthRate):'UNAVAILABLE';
+  const retryState=evidenceContractState({status:sqlite.retry_events_status});
+  const retryEvents=evidenceCount(sqlite.retry_events);
+  const retryText=retryState.label!=='UNAVAILABLE'&&retryEvents!==null?commaN(retryEvents):'UNAVAILABLE';
+  const deadlineState=evidenceContractState(deadlines),deadlineN=evidenceCount(deadlines.deadline_count);
+  const deadlineTotal=evidenceCount(deadlines.records_considered),deadlineRate=evidenceMetric(deadlines.rate);
+  const deadlineText=deadlineState.label!=='UNAVAILABLE'&&deadlineTotal!==null&&deadlineTotal>0&&deadlineRate!==null
+    ?pct(deadlineRate,1)+' · '+commaN(deadlineN)+' / '+commaN(deadlineTotal):'UNAVAILABLE';
+  const sources=[ledger.source,retention.source,deadlines.source,promotion.source]
+    .filter(value=>typeof value==='string'&&value.trim());
+  const uniqueSources=[...new Set(sources)];
+  const windowLabel=deadlineTotal!==null
+    ?String(deadlines.window_kind||'bounded records')+' · '+deadlineTotal+' considered / '+String(deadlines.tail_limit||'limit unavailable')
+    :'cycle window unavailable';
+  const promotionStaleness=promotion.stale===true?'STALE':(promotion.stale===false?'CURRENT':'UNAVAILABLE');
+  let h='<section class="card reveal ops-evidence-card" aria-label="System health evidence"><div class="evidence-head"><h3>System health <span class="r">persisted snapshot · GET-only</span></h3>'
+    +'<span class="evidence-state '+stateTone+'">'+esc(stateLabel)+'</span></div>'
+    +evidenceContextHtml(uniqueSources.join(' + ')||'status snapshot fallback',windowLabel,promotionStaleness);
+  h+='<div class="evidence-kpis">'
+    +evidenceKpi('Ledger size',sizeText,sizeText==='UNAVAILABLE'?'warn':(ledger.over_threshold===true?'bad':'ok'))
+    +evidenceKpi('Ledger growth',growthText,growthText==='UNAVAILABLE'?'warn':(growthRate>0?'warn':'ok'))
+    +evidenceKpi('SQLite retry events',retryText,retryText==='UNAVAILABLE'?'warn':(retryEvents>0?'bad':'ok'))
+    +evidenceKpi('CycleDeadline rate',deadlineText,deadlineText==='UNAVAILABLE'?'warn':(deadlineN>0?'bad':'ok'))
+    +'</div>';
+  const ledgerDetails=[];
+  if(ledger.sampled_at)ledgerDetails.push('sampled '+evidenceMoment(ledger.sampled_at));
+  if(evidenceMetric(ledger.wal_size_bytes)!==null)ledgerDetails.push('WAL '+evidenceBytes(ledger.wal_size_bytes));
+  if(evidenceMetric(ledger.threshold_bytes)!==null)ledgerDetails.push('threshold '+evidenceBytes(ledger.threshold_bytes));
+  if(growthSamples!==null)ledgerDetails.push('growth samples '+growthSamples);
+  if(growth.window_start||growth.window_end)ledgerDetails.push('growth window '+evidenceMoment(growth.window_start)+' to '+evidenceMoment(growth.window_end));
+  if(growthText==='UNAVAILABLE'&&growth.reason)ledgerDetails.push('growth unavailable: '+String(growth.reason));
+  h+='<div class="evidence-section"><div class="evidence-section-head"><b>Ledger &amp; contention evidence</b><span>observational · no database query from this page</span></div>'
+    +'<div class="evidence-item"><div class="evidence-main">'+esc(ledgerState.raw||'UNAVAILABLE')+'</div>'
+    +'<div class="evidence-time">'+esc(sqlite.status||'UNAVAILABLE')+'</div>'
+    +'<div class="evidence-meta">'+esc(ledgerDetails.length?ledgerDetails.join(' · '):'Ledger evidence unavailable.')
+    +(evidenceCount(sqlite.terminal_failure_count)!==null?' · terminal lock failures '+esc(sqlite.terminal_failure_count):'')
+    +(typeof sqlite.wal_checkpoint_busy==='boolean'?' · WAL checkpoint busy '+esc(sqlite.wal_checkpoint_busy):'')
+    +(sqlite.reason?' · '+esc(sqlite.reason):'')+'</div></div></div>';
+  const retentionState=evidenceContractState(retention),promotionState=evidenceContractState(promotion);
+  const retentionStatus=String(retention.last_run_status||retention.status||'UNAVAILABLE').toUpperCase();
+  const retentionTone=/REFUSED|FAILED|ERROR/.test(retentionStatus)?'bad':(retentionStatus==='APPLIED'?'ok':'warn');
+  const retentionMeta=[
+    'last run '+evidenceMoment(retention.last_run_at),
+    'last success '+evidenceMoment(retention.last_success_at),
+    'next due '+evidenceMoment(retention.next_due_at),
+    'due status '+String(retention.next_due_status||'UNAVAILABLE'),
+  ];
+  if(evidenceCount(retention.lock_retries_last_run)!==null)retentionMeta.push('lock retries '+retention.lock_retries_last_run);
+  if(retention.failure_reason)retentionMeta.push('failure '+retention.failure_reason);
+  const promotionStatus=String(promotion.run_status||promotion.status||'UNAVAILABLE').toUpperCase();
+  const promotionTone=/ABORTED|NO_DB|FAILED|ERROR/.test(promotionStatus)?'bad':(promotionStatus==='OK'&&!promotion.stale?'ok':'warn');
+  const promotionMeta=[
+    'generated '+evidenceMoment(promotion.generated_at),
+    'scopes '+(evidenceCount(promotion.scopes_evaluated)===null?'UNAVAILABLE':promotion.scopes_evaluated),
+    'eligible '+(evidenceCount(promotion.eligible_scopes)===null?'UNAVAILABLE':promotion.eligible_scopes),
+    'promoted '+(evidenceCount(promotion.promoted_count)===null?'UNAVAILABLE':promotion.promoted_count),
+    'declined '+(evidenceCount(promotion.declined_count)===null?'UNAVAILABLE':promotion.declined_count),
+    'human review '+(evidenceCount(promotion.human_review_candidate_count)===null?'UNAVAILABLE':promotion.human_review_candidate_count),
+  ];
+  h+='<div class="evidence-section"><div class="evidence-section-head"><b>Retention &amp; promotion runs</b><span>cadence and evidence only · no execution authority</span></div><div class="evidence-list">'
+    +'<div class="evidence-item"><div class="evidence-main"><span class="severity '+retentionTone+'">'+esc(retentionState.label)+'</span>Retention '+esc(retentionStatus)+'</div>'
+    +'<div class="evidence-time">'+esc(evidenceSource(retention,'source unavailable'))+'</div><div class="evidence-meta">'+esc(retentionMeta.join(' · '))+'</div></div>'
+    +'<div class="evidence-item"><div class="evidence-main"><span class="severity '+promotionTone+'">'+esc(promotionState.label)+'</span>Promotion run '+esc(promotionStatus)+'</div>'
+    +'<div class="evidence-time">'+esc(promotion.stale===true?'STALE':'audit')+'</div><div class="evidence-meta">'+esc(promotionMeta.join(' · '))+' · live trading authority '+esc(promotion.live_trading_authority||'UNAVAILABLE')+' · execution authority '+esc(promotion.execution_authority===false?'FALSE':'UNAVAILABLE')+'</div></div>'
+    +'</div></div>';
+  if(stale.length||staleTasks.length){
+    const detail=[];
+    if(stale.length)detail.push('Stale artifacts: '+stale.map(([name])=>name.replaceAll('_',' ')).join(', '));
+    if(staleTasks.length)detail.push('Watchdog stale tasks: '+staleTasks.join(', '));
+    h+='<div class="evidence-empty">'+esc(detail.join(' · '))+'</div>';
+  }
+  h+='<div class="evidence-section"><div class="evidence-section-head"><b>Recent alert records</b><span>historical · de-duplicated · newest first</span></div>';
+  if(alerts.length){
+    h+='<div class="evidence-list">'+alerts.map(row=>{
+      const rawSeverity=String(row.severity||'').toLowerCase(),severity=['critical','warning','info'].includes(rawSeverity)?rawSeverity:'unknown';
+      const kind=String(row.kind||'UNKNOWN_KIND').trim()||'UNKNOWN_KIND';
+      const message=String(row.message||'message unavailable').trim()||'message unavailable';
+      return '<div class="evidence-item"><div class="evidence-main"><span class="severity '+severity+'">'+esc(severity)+'</span>'+esc(kind)+'</div>'
+        +'<div class="evidence-time">'+esc(evidenceTime(row.at))+'</div><div class="evidence-meta">'+esc(message)+'</div></div>';
+    }).join('')+'</div>';
+  }else h+='<div class="evidence-empty">Alert history is empty or unavailable in this bounded status snapshot; those states are not distinguishable here.</div>';
+  h+='</div><div class="evidence-section"><div class="evidence-section-head"><b>Recent cycles</b><span>persisted receipts · newest first</span></div>';
+  if(cycles.length){
+    h+='<div class="evidence-list">'+cycles.map(row=>{
+      const status=String(row.status||'STATUS_UNAVAILABLE').trim()||'STATUS_UNAVAILABLE',parts=[];
+      [['markets_scanned','markets'],['signals_generated','signals'],['signals_rejected','rejected'],['decisions_made','decisions'],['abstained','abstained']].forEach(([key,label])=>{
+        const value=evidenceCount(row[key]);if(value!==null)parts.push(label+' '+value);
+      });
+      return '<div class="evidence-item"><div class="evidence-main">'+esc(status)+'</div><div class="evidence-time">'+esc(evidenceTime(row.completed_at||row.at))+'</div>'
+        +'<div class="evidence-meta">'+esc(parts.length?parts.join(' · '):'Cycle counters unavailable on this receipt.')+'</div></div>';
+    }).join('')+'</div>';
+  }else h+='<div class="evidence-empty">Recent-cycle evidence is unavailable. No successful or healthy cycle is inferred.</div>';
+  return h+'</div></section>';
+}
+function systemHealthCard(){return renderSystemHealth();}
+function currentBoardRows(){
+  const board=STATE.board;
+  if(!board||typeof board!=='object'||Array.isArray(board))return {available:false,rows:[]};
+  const coverageDate=String((STATE.boardMeta||{}).coverage_date||''),rows=[];let available=false;
+  Object.values(board).forEach(group=>{
+    const lists=Array.isArray(group)?[group]:(group&&typeof group==='object'?Object.values(group):[]);
+    if(lists.length)available=true;
+    lists.forEach(items=>(Array.isArray(items)?items:[]).forEach(row=>{
+      if(!row||typeof row!=='object'||Array.isArray(row))return;
+      if(coverageDate&&String(row.event_date||'')!==coverageDate)return;
+      rows.push(row);
+    }));
+  });
+  return {available:available,rows:rows};
+}
+function explicitBoardGateReasons(){
+  const meta=evidenceObject(STATE.boardMeta),artifactStatus=String(meta.artifact_status||'').toUpperCase();
+  const currentArtifact=STATE.boardFetchOk===true&&artifactStatus==='FRESH'&&meta.stale===false;
+  if(!currentArtifact)return {available:false,current:false,rows:0,nonIssued:0,missingReasons:0,reasons:[]};
+  const current=currentBoardRows(),counts=new Map();let nonIssued=0,missingReasons=0;
+  current.rows.forEach(row=>{
+    const tier=boardTier(row);
+    if(!['WATCH','UNATTRIBUTED'].includes(tier))return;
+    nonIssued++;
+    const display=String(row.tier_display_reason||'').trim(),policy=String(row.tier_reason||'').trim(),raw=display||policy;
+    if(!raw){missingReasons++;return;}
+    const key=tier+'|'+raw,found=counts.get(key);
+    if(found)found.count++;
+    else counts.set(key,{tier:tier,raw:raw,label:boardTierReason(row),count:1});
+  });
+  return {available:current.available,current:true,rows:current.rows.length,nonIssued:nonIssued,missingReasons:missingReasons,
+    reasons:[...counts.values()].sort((a,b)=>b.count-a.count||a.label.localeCompare(b.label))};
+}
+function renderAfterFeeDistribution(afterFee){
+  const state=evidenceContractState(afterFee),sampleCount=evidenceCount(afterFee.sample_count);
+  const bins=safeEvidenceRows(afterFee.bins).filter(row=>
+    typeof row.label==='string'&&row.label.trim()&&evidenceCount(row.count)!==null);
+  const binTotal=bins.reduce((total,row)=>total+row.count,0);
+  const valid=state.label==='AVAILABLE'&&sampleCount!==null&&sampleCount>0&&bins.length>0&&binTotal===sampleCount;
+  if(!valid){
+    const reason=String(afterFee.reason||(
+      sampleCount===0?'zero validated after-fee rows':'validated distribution unavailable'
+    ));
+    return '<div class="evidence-empty">After-fee edge distribution UNAVAILABLE: '+esc(reason)+'. A raw edge value or zero-row sample is not substituted.</div>';
+  }
+  const stats=[
+    ['min',afterFee.min],['p50',afterFee.p50],['p90',afterFee.p90],
+    ['max',afterFee.max],['mean',afterFee.mean],
+  ].filter(([,value])=>evidenceMetric(value)!==null)
+    .map(([label,value])=>label+' '+signed(value,2)).join(' · ');
+  return '<div class="edge-bins">'+bins.map(row=>'<div class="edge-bin"><span>'+esc(row.label)+'</span><b>'+commaN(row.count)+'</b></div>').join('')+'</div>'
+    +'<div class="evidence-meta" style="margin-top:6px">'+esc(sampleCount)+' validated rows'
+    +(evidenceCount(afterFee.missing_count)!==null?' · '+esc(afterFee.missing_count)+' missing/excluded':'')
+    +(stats?' · '+esc(stats):'')+'</div>';
+}
+function actionableShareEvidence(actionable){
+  const state=evidenceContractState(actionable),numerator=evidenceCount(actionable.numerator);
+  const denominator=evidenceCount(actionable.denominator),value=evidenceMetric(actionable.value);
+  const consistent=numerator!==null&&denominator!==null&&denominator>0&&numerator<=denominator
+    &&value!==null&&value>=0&&value<=1&&Math.abs(value-numerator/denominator)<=0.0002;
+  return {
+    available:state.label==='AVAILABLE'&&consistent,
+    text:state.label==='AVAILABLE'&&consistent?pct(value,1):'UNAVAILABLE',
+    numerator:numerator,denominator:denominator,value:value,
+    reason:String(actionable.reason||'validated numerator/denominator/share unavailable'),
+    definition:String(actionable.definition||'letter-tier A/B/C rows divided by all current board rows'),
+  };
+}
+function executionCohortPane(cohort,kind){
+  const value=evidenceObject(cohort),maker=kind==='maker';
+  const fixedLabel=maker?'Witnessed maker (C0)':'Counterfactual taker (C1)';
+  const fills=evidenceCount(value.fills),clusters=evidenceCount(value.fill_event_clusters);
+  const fillRate=evidenceMetric(value.fill_rate),edge=evidenceMetric(value.brier_edge_vs_market);
+  const lines=[
+    'fills '+(fills===null?'UNAVAILABLE':fills),
+    'clusters '+(clusters===null?'UNAVAILABLE':clusters),
+    'fill rate '+(fillRate===null?'UNAVAILABLE':pct(fillRate,1)),
+    'Brier edge '+(edge===null?'UNAVAILABLE':signed(edge,2)),
+    'gate '+String(value.gate_status||'UNAVAILABLE'),
+  ];
+  return '<div class="evidence-pane"><span class="pane-label">'+esc(fixedLabel)+'</span><b>'+esc(value.label||value.cohort||'UNAVAILABLE')+'</b>'
+    +'<p>'+esc(lines.join(' · '))+'</p><p>Evidence basis: '+esc(value.evidence_basis||'UNAVAILABLE')+'. '
+    +(maker?'Observed resting-maker fills only.':'Replay counterfactual; it is not a second realized book.')+'</p></div>';
+}
+function renderExecutionComparison(comparison){
+  const state=evidenceContractState(comparison),validAudit=comparison.audit_only===true
+    &&comparison.policy_switch_authority===false&&state.label!=='UNAVAILABLE';
+  if(!validAudit){
+    return '<div class="evidence-empty">Maker-versus-taker comparison UNAVAILABLE. No realized or policy-switch claim is inferred.</div>';
+  }
+  const stale=comparison.stale===true;
+  return '<div class="evidence-context"><span><b>Source:</b> '+esc(evidenceSource(comparison,'unavailable'))+'</span>'
+    +'<span><b>As of:</b> '+esc(evidenceMoment(comparison.generated_at))+'</span>'
+    +'<span class="'+(stale?'stale':'current')+'"><b>Staleness:</b> '+esc(stale?'STALE':'CURRENT')+'</span></div>'
+    +'<div class="evidence-panes">'+executionCohortPane(comparison.maker,'maker')+executionCohortPane(comparison.taker,'taker')+'</div>'
+    +'<div class="evidence-empty" style="margin-top:7px">AUDIT ONLY'+(stale?' · STALE':'')+': this comparison cannot switch policy, promote a model, or authorize execution.</div>';
+}
+function renderKxsol15m(kx){
+  const mapping=evidenceObject(kx.scope_mapping),stats=evidenceObject(kx.statistical_evidence);
+  const caps=evidenceObject(kx.caps_evidence),live=evidenceObject(kx.live_authority);
+  const kxState=evidenceContractState(kx),mappingState=evidenceContractState(mapping);
+  const statsState=evidenceContractState(stats),capsState=evidenceContractState(caps);
+  const statsAvailable=kxState.label!=='UNAVAILABLE'&&mappingState.label!=='UNAVAILABLE'
+    &&statsState.label!=='UNAVAILABLE'&&stats.execution_authority===false;
+  const classification=statsAvailable?String(stats.classification||'UNAVAILABLE'):'UNAVAILABLE';
+  const clusters=evidenceCount(stats.clusters),edgeMean=evidenceMetric(stats.edge_mean);
+  const ciLower=evidenceMetric(stats.ci_lower),ciUpper=evidenceMetric(stats.ci_upper);
+  const statsMeta=[
+    'scope '+String(mappingState.label==='UNAVAILABLE'?'UNAVAILABLE':(mapping.scope||'UNAVAILABLE')),
+    'clusters '+(clusters===null?'UNAVAILABLE':clusters),
+    'mean '+(edgeMean===null?'UNAVAILABLE':signed(edgeMean,2)),
+    'CI95 '+(ciLower===null||ciUpper===null?'UNAVAILABLE':signed(ciLower,2)+' to '+signed(ciUpper,2)),
+    stats.stale===true?'STALE':'staleness '+(stats.stale===false?'CURRENT':'UNAVAILABLE'),
+  ];
+  const capsUsable=kxState.label!=='UNAVAILABLE'&&capsState.label!=='UNAVAILABLE'
+    &&caps.execution_authority===false&&typeof caps.exact_series_allowed==='boolean';
+  const exactSeries=capsUsable&&caps.exact_series_allowed===true&&caps.matched_series==='KXSOL15M';
+  const capsText=!capsUsable?'UNAVAILABLE':(exactSeries?'EXACT SERIES LISTED':'NOT LISTED');
+  const liveKnown=typeof live.execution_authority==='boolean';
+  const liveText=liveKnown?(live.execution_authority?'LIVE AUTHORITY TRUE':'LOCKED'):'UNAVAILABLE';
+  const liveTone=liveKnown?(live.execution_authority?'bad':'ok'):'warn';
+  const session=String(live.session_status||'UNAVAILABLE')+(live.session_expired===true?' · EXPIRED':'');
+  return '<div class="evidence-panes" aria-label="KXSOL15M evidence separation">'
+    +'<div class="evidence-pane '+(statsAvailable?'':'warn')+'"><span class="pane-label">Statistical scope</span><b>'+esc(classification)+'</b>'
+    +'<p>'+esc(statsMeta.join(' · '))+'</p><p>Source: '+esc(evidenceSource(stats,evidenceSource(mapping,'unavailable')))+'. Statistical evidence cannot authorize trading.</p></div>'
+    +'<div class="evidence-pane '+(exactSeries?'ok':(!capsUsable?'warn':'bad'))+'"><span class="pane-label">Caps exact-series evidence</span><b>'+esc(capsText)+'</b>'
+    +'<p>Series '+esc(kx.series||'KXSOL15M')+' · matched '+esc(caps.matched_series||'UNAVAILABLE')+' · source '+esc(evidenceSource(caps,'unavailable'))+'.</p>'
+    +'<p>Positive caps candidacy is one predicate only; this pane has no execution authority.</p></div>'
+    +'<div class="evidence-pane '+liveTone+'"><span class="pane-label">Live authority &amp; session</span><b>'+esc(liveText)+'</b>'
+    +'<p>State '+esc(live.state||'UNAVAILABLE')+' · session '+esc(session)+(live.blocker?' · blocker '+esc(live.blocker):'')+'.</p>'
+    +'<p>Independent live gates and an active session are required; statistics do not authorize orders.</p></div>'
+    +'</div><div class="evidence-empty" style="margin-top:7px">'+esc(kx.conclusion||'KXSOL15M evidence panes are independent; none is substituted for another.')
+    +' · evidence-contract execution authority '+esc(kx.execution_authority===false?'FALSE':'UNAVAILABLE')+'</div>';
+}
+function renderEdgeQuality(){
+  const st=STATE.status||{},cycles=safeEvidenceRows(st.recent_cycles),latest=cycles.length?cycles[cycles.length-1]:null;
+  const eq=evidenceObject(st.edge_quality),hasContract=Object.keys(eq).length>0;
+  const contractState=hasContract?evidenceContractState(eq,true):null;
+  const board=evidenceObject(eq.current_board),afterFee=evidenceObject(board.after_fee_edge);
+  const boardState=evidenceContractState(board),hasContractBoard=Object.keys(board).length>0;
+  const boardArtifactStatus=String(board.artifact_status||'').toUpperCase();
+  const contractBoardCurrent=hasContractBoard&&boardState.label!=='UNAVAILABLE'
+    &&board.stale===false&&boardArtifactStatus==='FRESH';
+  const actionable=evidenceObject(board.actionable_share),actionableView=actionableShareEvidence(actionable);
+  const comparison=evidenceObject(eq.execution_comparison),kx=evidenceObject(eq.kxsol15m);
+  const summary=STATE.scopes&&STATE.scopes.telemetry&&STATE.scopes.telemetry.overall&&STATE.scopes.telemetry.overall.summary||{};
+  const graded=evidenceCount(summary.n),brier=evidenceMetric(summary.brier),brierEdge=evidenceMetric(summary.brier_edge),contested=evidenceCount(summary.contested_n);
+  const forecastKnown=graded!==null&&graded>0&&(brier!==null||brierEdge!==null),cycleFields=['markets_scanned','signals_generated','signals_rejected','decisions_made','abstained'];
+  const cycleKnown=!!latest&&cycleFields.some(key=>evidenceCount(latest[key])!==null);
+  const gates=hasContractBoard?{available:false,current:false,rows:0,nonIssued:0,missingReasons:0,reasons:[]}:explicitBoardGateReasons();
+  const fallbackKnown=forecastKnown||cycleKnown||gates.available;
+  const stateLabel=contractState?contractState.label:(fallbackKnown?'PARTIAL':'UNAVAILABLE');
+  const stateTone=contractState?contractState.tone:'warn';
+  const afterFeeState=evidenceContractState(afterFee),afterFeeN=evidenceCount(afterFee.sample_count);
+  const bins=safeEvidenceRows(afterFee.bins).filter(row=>evidenceCount(row.count)!==null);
+  const validAfterFee=afterFeeState.label==='AVAILABLE'&&afterFeeN!==null&&afterFeeN>0
+    &&bins.length>0&&bins.reduce((total,row)=>total+row.count,0)===afterFeeN;
+  const comparisonState=evidenceContractState(comparison);
+  const kxState=evidenceContractState(kx);
+  const sources=[board.source,comparison.source,evidenceObject(kx.statistical_evidence).source,evidenceObject(kx.caps_evidence).source]
+    .filter(value=>typeof value==='string'&&value.trim());
+  const uniqueSources=[...new Set(sources)];
+  const boardRows=evidenceCount(board.total_rows);
+  const windowLabel=(boardRows===null?'board rows unavailable':boardRows+(contractBoardCurrent?' current board rows':' board rows · current validation unavailable'))
+    +' · execution artifact '+(comparison.generated_at?evidenceMoment(comparison.generated_at):'time unavailable');
+  const anyStale=board.stale===true||comparison.stale===true||evidenceObject(kx.statistical_evidence).stale===true;
+  const allCurrent=board.stale===false&&comparison.stale===false&&evidenceObject(kx.statistical_evidence).stale===false;
+  const staleness=anyStale?'STALE':(allCurrent?'CURRENT':'UNAVAILABLE');
+  let h='<section class="card reveal ops-evidence-card" aria-label="Edge quality and abstention evidence"><div class="evidence-head"><h3>Edge quality &amp; abstention <span class="r">diagnostic only</span></h3>'
+    +'<span class="evidence-state '+stateTone+'">'+esc(stateLabel)+'</span></div>'
+    +evidenceContextHtml(uniqueSources.join(' + ')||'status/scopes fallback',windowLabel,staleness)
+    +'<div class="metric-note">Forecast quality includes markets Dummy did not trade. Cycle counters, board grades, statistical scopes, and execution replays have no live-submit authority and are not profitability evidence.</div>';
+  h+='<div class="evidence-kpis">'
+    +evidenceKpi('After-fee rows',validAfterFee?commaN(afterFeeN):'UNAVAILABLE',validAfterFee?'ok':'warn')
+    +evidenceKpi('Actionable share',actionableView.text,actionableView.available?'ok':'warn')
+    +evidenceKpi('Maker / taker',comparisonState.label==='UNAVAILABLE'?'UNAVAILABLE':(comparison.stale===true?'STALE AUDIT':'AUDIT ONLY'),comparisonState.label==='UNAVAILABLE'?'warn':(comparison.stale===true?'warn':''))
+    +evidenceKpi('KXSOL15M evidence',kxState.label,kxState.label==='AVAILABLE'?'ok':'warn')
+    +'</div>';
+  h+='<div class="evidence-section"><div class="evidence-section-head"><b>After-fee edge distribution</b><span>validated current-board rows only</span></div>'
+    +renderAfterFeeDistribution(afterFee)+'</div>';
+  h+='<div class="evidence-section"><div class="evidence-section-head"><b>Actionable share</b><span>A / B / C research grades · not order authority</span></div>';
+  if(actionableView.available){
+    h+='<div class="evidence-item"><div class="evidence-main">'+esc(actionableView.text)+'</div><div class="evidence-time">'
+      +esc(actionableView.numerator)+' / '+esc(actionableView.denominator)+'</div><div class="evidence-meta">'+esc(actionableView.definition)
+      +' · execution authority '+esc(actionable.execution_authority===false?'FALSE':'UNAVAILABLE')+'</div></div>';
+  }else h+='<div class="evidence-empty">Actionable share UNAVAILABLE: '+esc(actionableView.reason)+'. No percentage is inferred from raw edge or incomplete counts.</div>';
+  h+='</div><div class="evidence-section"><div class="evidence-section-head"><b>Maker versus taker</b><span>witnessed maker vs counterfactual taker · audit only</span></div>'
+    +renderExecutionComparison(comparison)+'</div>';
+  h+='<div class="evidence-section"><div class="evidence-section-head"><b>KXSOL15M evidence separation</b><span>statistics ≠ caps candidacy ≠ live authority</span></div>'
+    +renderKxsol15m(kx)+'</div>';
+  if(forecastKnown){
+    h+='<div class="evidence-section"><div class="evidence-section-head"><b>Graded forecast context</b><span>all graded forecasts · not only board rows</span></div><div class="evidence-kpis">'
+      +evidenceKpi('Graded forecasts',commaN(graded),'')
+      +evidenceKpi('Brier',brier===null?'UNAVAILABLE':num(brier,3),brier===null?'warn':'')
+      +evidenceKpi('Brier edge vs market',brierEdge===null?'UNAVAILABLE':signed(brierEdge,2),brierEdge===null?'warn':(brierEdge>=0?'ok':'bad'))
+      +evidenceKpi('Contested forecasts',contested===null?'UNAVAILABLE':commaN(contested),contested===null?'warn':'')
+      +'</div></div>';
+  }else h+='<div class="evidence-empty">Forecast edge diagnostics are unavailable; the current payload has no validated graded telemetry sample.</div>';
+  h+='<div class="evidence-section"><div class="evidence-section-head"><b>Latest cycle receipt</b><span>aggregate counters only</span></div>';
+  if(cycleKnown){
+    h+='<div class="evidence-item"><div class="evidence-main">'+esc(String(latest.status||'STATUS_UNAVAILABLE'))+'</div>'
+      +'<div class="evidence-time">'+esc(evidenceTime(latest.completed_at||latest.at))+'</div>'
+      +'<div class="evidence-meta">'+esc(cycleFields.map(key=>{
+        const value=evidenceCount(latest[key]);return value===null?null:key.replaceAll('_',' ')+' '+value;
+      }).filter(Boolean).join(' · '))+'</div></div>';
+  }else h+='<div class="evidence-empty">Aggregate abstention evidence is unavailable on the latest cycle receipt.</div>';
+  h+='<div class="evidence-empty" style="margin-top:6px">Cycle-level reason distribution unavailable: the status contract publishes aggregate abstained and signals-rejected counts, not per-decision reasons.</div></div>';
+  h+='<div class="evidence-section"><div class="evidence-section-head"><b>Explicit board gate reasons</b><span>'
+    +(contractBoardCurrent||gates.current?'current WATCH / UNATTRIBUTED rows · not cycle causes':'unavailable until a fresh validated board is present')+'</span></div>';
+  const contractGateReasons=contractBoardCurrent?safeEvidenceRows(board.gate_reason_counts).filter(reason=>
+    typeof reason.tier==='string'&&typeof reason.reason==='string'&&evidenceCount(reason.count)!==null):[];
+  if(contractGateReasons.length){
+    h+='<div class="evidence-list">'+contractGateReasons.slice(0,5).map(reason=>'<div class="evidence-item"><div class="evidence-main">'
+      +tierBadge(reason.tier)+' '+esc(reason.reason)+'</div><div class="reason-count">'+commaN(reason.count)+'</div>'
+      +'<div class="evidence-meta">Fresh complete-board reason count; not a cycle cause or execution authority.</div></div>').join('')+'</div>';
+  }else if(gates.reasons.length){
+    h+='<div class="evidence-list">'+gates.reasons.slice(0,5).map(reason=>'<div class="evidence-item"><div class="evidence-main">'
+      +tierBadge(reason.tier)+' '+esc(reason.label)+'</div><div class="reason-count">'+commaN(reason.count)+'</div>'
+      +'<div class="evidence-meta">Persisted reason code: '+esc(reason.raw)+'</div></div>').join('')+'</div>';
+    if(gates.missingReasons)h+='<div class="evidence-empty" style="margin-top:6px">'+commaN(gates.missingReasons)+' current non-issued row(s) have no explicit reason field and are excluded.</div>';
+  }else if(!contractBoardCurrent&&!gates.current)h+='<div class="evidence-empty">Board gate-reason evidence is unavailable because the board is missing, malformed, stale, or not explicitly fresh. Stored reasons are not rendered as current.</div>';
+  else if(!gates.available)h+='<div class="evidence-empty">Board gate-reason evidence is unavailable because no validated board snapshot is loaded.</div>';
+  else if(!gates.nonIssued)h+='<div class="evidence-empty">No current WATCH or UNATTRIBUTED rows are present in the visible board snapshot. This does not establish a cycle-level reason.</div>';
+  else h+='<div class="evidence-empty">Current non-issued board rows have no explicit reason fields; no reason is inferred.</div>';
+  return h+'</div></section>';
+}
+function edgeQualityCard(){return renderEdgeQuality();}
 function overviewView(){
   const o=STATE.overview;
-  if(!o||o.error)return topbar('Overview','live Kalshi account & execution control')+skeleton();
+  if(!o||o.error)return topbar('Overview','live Kalshi account & execution control')
+    +'<div class="ops-intel-grid">'+systemHealthCard()+edgeQualityCard()+'</div>'+skeleton();
   const account=o.live_account||{},controls=o.live_controls||(STATE.status&&STATE.status.live_controls)||{};
   const accountAvailable=Number.isInteger(account.balance_cents)&&!account.invalid;
   const accountFresh=accountAvailable&&account.stale===false&&String(account.status||'').toUpperCase()!=='ERROR';
@@ -1017,6 +1497,7 @@ function overviewView(){
       :'<b>'+esc(controls.blocker||'DEFAULT_DISABLED')+'</b>. Paper/shadow results cannot unlock or block LIVE; only the explicit live-control contracts can change this state.')+'</span></div>';
   h+='<div class="card reveal" style="margin-bottom:var(--s3)"><h3>Paper history retired <span class="r">RETIRED_NON_AUTHORITATIVE</span></h3>'
     +'<div class="sub" style="color:var(--muted)">Paper bankroll, paper P&amp;L, and paper-result promotion gates were removed from this operator view and from live authority. Raw ledger/history remains preserved for audit; it is not rewritten or deleted.</div></div>';
+  h+='<div class="ops-intel-grid">'+systemHealthCard()+edgeQualityCard()+'</div>';
   h+=tierPerformanceCard();
   h+='<section id="readiness"><div class="section-head"><h2>Live control contract</h2><p>Local checks only · no broker contact</p></div>';
   h+='<div class="card reveal"><div class="mini">'
@@ -1129,12 +1610,17 @@ document.addEventListener('click',e=>{
     const name=action.getAttribute('data-action');
     if(name==='search'){cmdOpen();return;}
     if(name==='refresh'){poll();return;}
+    if(name==='chart-refresh'){STATE.marketChart.loadedKey='';ensureMarketChartData(true);render();return;}
     if(name==='readiness'){
       if(ROUTE!=='#/overview'){location.hash='#/overview';setTimeout(()=>document.getElementById('readiness')?.scrollIntoView({behavior:REDUCE?'auto':'smooth'}),80);}
       else document.getElementById('readiness')?.scrollIntoView({behavior:REDUCE?'auto':'smooth'});
       return;
     }
   }
+  const assetChoice=e.target.closest&&e.target.closest('[data-chart-asset]');
+  if(assetChoice){STATE.marketChart.asset=assetChoice.getAttribute('data-chart-asset');STATE.marketChart.data=null;STATE.marketChart.error=null;STATE.marketChart.loadedKey='';render();return;}
+  const timeframeChoice=e.target.closest&&e.target.closest('[data-chart-timeframe]');
+  if(timeframeChoice){STATE.marketChart.timeframe=timeframeChoice.getAttribute('data-chart-timeframe');STATE.marketChart.data=null;STATE.marketChart.error=null;STATE.marketChart.loadedKey='';render();return;}
   const tab=e.target.closest&&e.target.closest('.bt-tab');
   if(tab){const card=tab.closest('.card'),bt=tab.getAttribute('data-bt');
     if(card.classList.contains('daily-guide')&&card.dataset.league){GUIDE_FILTERS[card.dataset.league]=tab.dataset.marketType||'all';card.dataset.filter=tab.dataset.marketType||'all';}
@@ -1342,6 +1828,124 @@ function modelArsenalSummaryCard(){
   const headline=sm.all_models_live_proven===true?String(n==null?4:n)+' / 4 live identities proven':'Model connectivity proof unavailable';
   return '<a class="card arsenal-link reveal" href="#/arsenal" aria-label="Open Model Arsenal" style="margin-top:var(--s3)"><div><h3>'+svgIcon('arsenal')+'Model Arsenal <span class="r">stored OpenRouter witness</span></h3><div style="font:700 15px var(--disp);color:var(--txt)">'+esc(headline)+'</div><div class="sub" style="margin-top:4px;color:var(--muted)">Paid-call gate '+esc(pc.gate_status||'UNKNOWN')+' · evidence, probability, and order authority remain separate.</div></div><span class="go">inspect →</span></a>';
 }
+const CHART_ASSETS=['BTC','ETH','SOL'];
+const CHART_TIMEFRAMES=['15m','1h','4h','1d','1w'];
+const INDICATOR_LABELS={
+  rsi_wilder_14:'RSI 14',ema_channel_trend:'EMA trend',atr_14:'ATR 14',
+  atr_normalized_momentum_10:'ATR momentum',macd_atr:'MACD / ATR',
+  bollinger_pct_b_20:'Bollinger %B',stochastic_k_14:'Stochastic K',
+  obv_slope_20:'OBV slope',volume_z_20:'Volume z',breakout_state:'Breakout',
+  fakeout_state:'Fakeout',close_location_value:'Close location'
+};
+function chartNumber(v){
+  if(typeof v!=='number'||!Number.isFinite(v))return null;
+  const a=Math.abs(v);
+  return a>=1000?v.toLocaleString(undefined,{maximumFractionDigits:2}):(a>=10?v.toFixed(2):v.toFixed(3));
+}
+function chartIndicators(bundle){
+  const rows=[],values=(bundle&&bundle.indicators)||{};
+  Object.entries(INDICATOR_LABELS).forEach(([key,label])=>{
+    const shown=chartNumber(values[key]);if(shown!=null)rows.push([label,shown]);
+  });
+  return rows;
+}
+function observerStatusBadge(d){
+  const s=String((d&&d.artifact_status)||'UNAVAILABLE').toUpperCase();
+  const cls=s==='COMPLETE'&&d.time_status==='FRESH'?'':'off';
+  return '<span class="badge '+cls+'"><span class="d"></span>'+esc(s)+'</span>';
+}
+function cryptoResearchView(){
+  const c=STATE.marketChart,d=c.data,available=!!(d&&d.available&&d.chart_bundle),bundle=available?d.chart_bundle:null;
+  let h=topbar('Crypto Research Charts','stored immutable observations only',
+    '<span class="badge off"><span class="d"></span>NO PRODUCTION AUTHORITY</span>');
+  h+='<div class="chart-controls reveal"><span class="label">Asset</span>'
+    +CHART_ASSETS.map(a=>'<button type="button" class="chart-choice '+(a===c.asset?'on':'')+'" data-chart-asset="'+a+'">'+a+'</button>').join('')
+    +'<span class="label" style="margin-left:8px">Timeframe</span>'
+    +CHART_TIMEFRAMES.map(t=>'<button type="button" class="chart-choice '+(t===c.timeframe?'on':'')+'" data-chart-timeframe="'+t+'">'+t+'</button>').join('')
+    +'<button type="button" class="ghostbtn" data-action="chart-refresh" '+(c.pending?'disabled':'')+'>'+(c.pending?'Reading…':'Re-read artifact')+'</button></div>';
+  if(!available){
+    const status=d&&d.artifact_status?d.artifact_status:(c.pending?'READING':'UNAVAILABLE');
+    const detail=c.error||(d&&d.detail)||'No persisted chart bundle exists for this asset and timeframe. Run the separate market-observer collector; the dashboard will never fetch market data itself.';
+    h+='<section class="card reveal"><h3>'+esc(c.asset)+' · '+esc(c.timeframe)+' '+observerStatusBadge({artifact_status:status})+'</h3>'
+      +'<div class="empty">'+esc(detail)+'</div></section>';
+    return h+observerAuthorityBanner();
+  }
+  const indicators=chartIndicators(bundle),patterns=Array.isArray(bundle.patterns)?bundle.patterns:[];
+  const latestRefresh=d.latest_refresh;
+  h+='<section class="card reveal" style="margin-bottom:var(--s3)"><h3>'+esc(c.asset)+' / USD · '+esc(c.timeframe)
+    +' <span class="r">'+observerStatusBadge(d)+(d.serving_last_complete?' last complete':' latest observation')+'</span></h3>';
+  if(latestRefresh)h+='<div class="observer-banner" style="margin-bottom:10px"><div><b>Latest refresh '+esc(latestRefresh.status)+'.</b> '
+    +'The chart remains on the last validated complete artifact. '+esc((latestRefresh.warnings||[]).join(' · '))+'</div></div>';
+  h+='<div class="market-chart-frame"><div id="marketChart" role="img" aria-label="'+esc(c.asset+' '+c.timeframe+' candlestick chart')+'"></div>'
+    +'<div class="market-chart-overlay">'+indicators.map(([label,value])=>'<span class="indicator-chip">'+esc(label)+' <b>'+esc(value)+'</b></span>').join('')+'</div></div>';
+  h+='<div class="observer-attribution">Rendered locally with <a href="https://github.com/tradingview/lightweight-charts" target="_blank" rel="noopener noreferrer">TradingView Lightweight Charts™ 5.2.0</a> (Apache-2.0). The library supplies rendering only; no TradingView data, account, widget, API, browser automation, or scraping is used.</div></section>';
+  const source=d.source||{},last=bundle.candles[bundle.candles.length-1]||{};
+  h+='<div class="observer-meta reveal" style="margin-bottom:var(--s3)">'
+    +observerMetaCell('Artifact status',String(d.artifact_status)+' / '+String(d.time_status||'UNKNOWN'))
+    +observerMetaCell('Closed through',last.close_time_s?new Date(last.close_time_s*1000).toISOString():'UNKNOWN')
+    +observerMetaCell('Source',String(source.provider||'UNKNOWN')+' · '+String(source.venue||'UNKNOWN'))
+    +observerMetaCell('Adapter',source.adapter_version||'UNKNOWN')
+    +observerMetaCell('Endpoint',source.endpoint||'UNKNOWN')
+    +observerMetaCell('Observation',d.observation_id||'UNKNOWN')
+    +observerMetaCell('Bars',String(bundle.candles.length))
+    +observerMetaCell('Age',d.data_age_seconds==null?'UNKNOWN':Math.max(0,Number(d.data_age_seconds)).toFixed(0)+'s')
+    +'</div>';
+  h+='<div class="grid cols2"><section class="card reveal"><h3>Detected candlestick patterns <span class="r">markers on final closed bar</span></h3>'
+    +(patterns.length?'<div class="observer-patterns">'+patterns.map(p=>'<span class="chip">'+esc(p.name||'pattern')+' · '+esc(p.direction||'neutral')+' · '+esc(chartNumber(Number(p.strength))||'—')+'</span>').join('')+'</div>':'<div class="empty">No named pattern detected on the latest closed bar.</div>')
+    +'</section><section class="card reveal"><h3>Artifact warnings <span class="r">fail-closed labels</span></h3>'
+    +((d.warnings||[]).length?'<div class="observer-patterns">'+d.warnings.map(w=>'<span class="chip">'+esc(w)+'</span>').join('')+'</div>':'<div class="empty">No persisted warnings.</div>')
+    +'</section></div>';
+  return h+observerAuthorityBanner();
+}
+function observerMetaCell(label,value){return '<div class="cell"><span>'+esc(label)+'</span><b>'+esc(value)+'</b></div>';}
+function observerAuthorityBanner(){
+  return '<div class="observer-banner reveal" style="margin-top:var(--s3)"><div><b>Observational research only.</b> '
+    +'Execution, order, cancel, amend, allocation, and promotion authority are all false. The page can only GET validated immutable artifacts and cannot refresh a provider, change a forecast, or reach the broker.</div></div>';
+}
+async function ensureMarketChartData(force=false){
+  if(!ROUTE.startsWith('#/charts'))return;
+  const c=STATE.marketChart,key=c.asset+'|'+c.timeframe;
+  if(c.pending||(!force&&c.loadedKey===key))return;
+  c.pending=true;c.error=null;
+  try{
+    const r=await fetch('/api/market-observer/chart/'+encodeURIComponent(c.asset)+'/'+encodeURIComponent(c.timeframe),{method:'GET',cache:'no-store',credentials:'same-origin'});
+    const data=await r.json();
+    if(key!==STATE.marketChart.asset+'|'+STATE.marketChart.timeframe)return;
+    c.data=data;c.loadedKey=key;c.error=r.ok?null:(data.detail||'Stored chart artifact is unavailable.');
+  }catch(_){
+    if(key!==STATE.marketChart.asset+'|'+STATE.marketChart.timeframe)return;
+    c.data=null;c.loadedKey=key;c.error='Artifact-only chart request failed. No provider refresh was attempted.';
+  }finally{
+    if(key===STATE.marketChart.asset+'|'+STATE.marketChart.timeframe)c.pending=false;
+    if(ROUTE.startsWith('#/charts'))render();
+  }
+}
+function disposeMarketChart(){
+  if(!ACTIVE_MARKET_CHART)return;
+  try{if(ACTIVE_MARKET_CHART.resize)ACTIVE_MARKET_CHART.resize.disconnect();ACTIVE_MARKET_CHART.chart.remove();}catch(_){}
+  ACTIVE_MARKET_CHART=null;
+}
+function mountMarketChart(){
+  const host=document.getElementById('marketChart'),d=STATE.marketChart.data,bundle=d&&d.available&&d.chart_bundle;
+  if(!host||!bundle||!Array.isArray(bundle.candles)||!bundle.candles.length)return;
+  const L=window.LightweightCharts;
+  if(!L||typeof L.createChart!=='function'){host.innerHTML='<div class="empty">Pinned local chart renderer is unavailable.</div>';return;}
+  const chart=L.createChart(host,{autoSize:true,layout:{background:{type:'solid',color:'#050c13'},textColor:'#8291a3',fontFamily:'IBM Plex Mono, monospace'},
+    grid:{vertLines:{color:'rgba(125,148,169,.08)'},horzLines:{color:'rgba(125,148,169,.08)'}},
+    rightPriceScale:{borderColor:'rgba(125,148,169,.18)'},timeScale:{borderColor:'rgba(125,148,169,.18)',timeVisible:true,secondsVisible:false},
+    crosshair:{mode:L.CrosshairMode?L.CrosshairMode.Normal:0},localization:{priceFormatter:p=>Number(p).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})}});
+  const options={upColor:'#2fe38f',downColor:'#ff627d',borderUpColor:'#2fe38f',borderDownColor:'#ff627d',wickUpColor:'#7ff2bb',wickDownColor:'#ff91a3'};
+  const series=typeof chart.addSeries==='function'&&L.CandlestickSeries?chart.addSeries(L.CandlestickSeries,options):chart.addCandlestickSeries(options);
+  series.setData(bundle.candles.map(row=>({time:Number(row.open_time_s),open:Number(row.open),high:Number(row.high),low:Number(row.low),close:Number(row.close)})));
+  const markers=(bundle.patterns||[]).map(p=>{const up=String(p.direction||'').toLowerCase()==='up';
+    return {time:Number(p.bar_open_time_s||bundle.candles[bundle.candles.length-1].open_time_s),position:up?'belowBar':'aboveBar',color:up?'#2fe38f':'#ff627d',shape:up?'arrowUp':'arrowDown',text:String(p.name||'pattern').slice(0,28)};});
+  if(markers.length){if(typeof L.createSeriesMarkers==='function')L.createSeriesMarkers(series,markers);else if(typeof series.setMarkers==='function')series.setMarkers(markers);}
+  chart.timeScale().fitContent();
+  let resize=null;
+  if(typeof ResizeObserver!=='undefined'&&!chart.options().autoSize){resize=new ResizeObserver(()=>chart.resize(host.clientWidth,host.clientHeight));resize.observe(host);}
+  ACTIVE_MARKET_CHART={chart:chart,resize:resize};
+}
+
 function modelArsenalView(){
   const a=STATE.arsenal;
   let h=topbar('Model Arsenal','exact four-model routing · stored proof · zero dashboard authority');
@@ -1617,6 +2221,7 @@ const cmdk=document.getElementById('cmdk'),cmdq=document.getElementById('cmdq'),
 let cmdRoutes=[],cmdSel=0,lastFocus=null;
 function cmdBuild(){
   cmdRoutes=[{icon:'overview',label:'Overview',hint:'performance & readiness',href:'#/overview'},
+    {icon:'chart',label:'Crypto Research Charts',hint:'stored BTC ETH SOL candles',href:'#/charts'},
     {icon:'arsenal',label:'Model Arsenal',hint:'four-model routing & stored proof',href:'#/arsenal'},
     {icon:'glossary',label:'Glossary & how Dummy works',hint:'terms and operating model',href:'#/glossary'}];
   const v=(STATE.scopes&&STATE.scopes.verticals)||{};
@@ -1698,7 +2303,8 @@ async function poll(){
     STATE.tierPerformanceFetchOk=results[6].status==='fulfilled';
     if(ov)STATE.overview=ov;if(sc)STATE.scopes=sc;if(st)STATE.status=st;
     if(wf)STATE.walk=wf.leagues||{};
-    if(bb){STATE.board=bb.groups||{};STATE.boardMeta=bb;buildTape();}   // tape tracks the board, independent of view re-render
+    STATE.boardFetchOk=results[4].status==='fulfilled';
+    if(bb){STATE.board=bb.groups||{};STATE.boardMeta=bb;}
     if(arsenal)STATE.arsenal=arsenal;
     if(tiers)STATE.tierPerformance=tiers;
     const live=document.getElementById('live'),fs=document.getElementById('footstat'),sideMode=document.getElementById('sideMode');
@@ -1709,7 +2315,7 @@ async function poll(){
     sideMode.textContent=summary.mode;sideMode.className='modechip '+(summary.liveAuth?'live-auth':(summary.mode==='SHADOW'?'shadow':''));
     // re-render (and re-flip the flaps) only when the data actually changed --
     // like a real tote board, the numbers roll when new results land.
-    const sig=JSON.stringify([STATE.overview,STATE.scopes,STATE.boardMeta&&STATE.boardMeta.generated_at,STATE.arsenal,STATE.tierPerformance,STATE.tierPerformanceFetchOk,summary.mode,summary.title,summary.healthy,summary.auth,summary.stale.map(([k])=>k),STATE.connection.error]);
+    const sig=JSON.stringify([STATE.overview,STATE.scopes,STATE.status&&STATE.status.system_health,STATE.status&&STATE.status.edge_quality,STATE.boardFetchOk,STATE.boardMeta&&STATE.boardMeta.generated_at,STATE.boardMeta&&STATE.boardMeta.artifact_status,STATE.boardMeta&&STATE.boardMeta.stale,STATE.arsenal,STATE.tierPerformance,STATE.tierPerformanceFetchOk,summary.mode,summary.title,summary.healthy,summary.accountFresh,summary.auth,summary.stale.map(([k])=>k),STATE.connection.error]);
     if(sig!==lastSig){const had=lastSig!=='';lastSig=sig;render();if(had)shock();}
   }catch(e){STATE.connection.error='Dashboard refresh failed; showing the last good snapshot.';render();}
   finally{POLLING=false;STATE.connection.pending=false;}

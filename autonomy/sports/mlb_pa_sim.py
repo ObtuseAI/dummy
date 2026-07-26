@@ -236,9 +236,26 @@ def simulate_half_inning(
     start_cursor: int,
     pa_fn: Any,
     rng: random.Random,
+    *,
+    start_outs: int = 0,
+    stop_after_runs: int | None = None,
 ) -> tuple[int, int]:
-    """Simulate one half-inning; return (runs, next batting-order cursor)."""
-    outs = 0
+    """Simulate one half-inning; return (runs, next batting-order cursor).
+
+    ``start_outs`` preserves a known partial-inning out count. Invalid values
+    fail closed with no simulated offense. ``stop_after_runs`` is the walk-off
+    threshold: once the home side has scored enough runs to win, the inning
+    ends immediately instead of fabricating additional plate appearances.
+    """
+    if (
+        isinstance(start_outs, bool)
+        or not isinstance(start_outs, int)
+        or not 0 <= start_outs <= 3
+    ):
+        return 0, start_cursor
+    if stop_after_runs is not None and stop_after_runs <= 0:
+        return 0, start_cursor
+    outs = start_outs
     runs = 0
     bases = [False, False, False]
     cursor = start_cursor
@@ -250,6 +267,8 @@ def simulate_half_inning(
             outs += 1
         else:
             runs += _advance(bases, outcome, rng)
+            if stop_after_runs is not None and runs >= stop_after_runs:
+                break
     return runs, cursor
 
 
@@ -264,6 +283,10 @@ TTO_MAX_TIMES = 3            # penalty saturates by the third time through
 RELIEVER_K_PCT = 0.245  # relievers strike out modestly more than league
 RELIEVER_BB_PCT = 0.090
 RELIEVER_HR9 = 1.15
+# Regulation ties continue one complete inning at a time. The finite cap is a
+# fail-closed guard against pathological no-resolution distributions; a game
+# still tied at the cap remains tied rather than receiving a fabricated winner.
+MAX_EXTRA_INNINGS = 12
 
 
 @dataclass(frozen=True)
@@ -274,6 +297,19 @@ class GameResult:
     away_first_inning_runs: int
     home_runs_through_5: int
     away_runs_through_5: int
+
+
+@dataclass
+class _SideSimulationState:
+    """Mutable state needed to interleave one offense's half-innings."""
+
+    total: int = 0
+    first: int = 0
+    through5: int = 0
+    cursor: int = 0
+    pitcher_faced: int = 0
+    total_faced: int = 0
+    on_bullpen: bool = False
 
 
 def _platoon(batter_bats: str | None, pitcher_throws: str | None) -> float:
@@ -402,6 +438,45 @@ def _simulate_side(
     return total, first, through5
 
 
+def _simulate_next_half(
+    state: _SideSimulationState,
+    starter_by_tto: list[list[dict[str, float]]],
+    bullpen_dists: list[dict[str, float]],
+    rng: random.Random,
+    inning: int,
+    *,
+    start_outs: int = 0,
+    stop_after_runs: int | None = None,
+) -> None:
+    """Advance one offense by one half-inning, preserving lineup/pitcher state."""
+    if not state.on_bullpen and state.total_faced >= STARTER_BATTERS_FACED:
+        state.on_bullpen = True
+        state.pitcher_faced = 0
+    if state.on_bullpen:
+        dists = bullpen_dists
+    else:
+        dists = starter_by_tto[
+            min(TTO_MAX_TIMES, state.pitcher_faced // 9)
+        ]
+    start_cursor = state.cursor
+    runs, state.cursor = simulate_half_inning(
+        state.cursor,
+        lambda index: dists[index],
+        rng,
+        start_outs=start_outs,
+        stop_after_runs=stop_after_runs,
+    )
+    batters = state.cursor - start_cursor
+    state.pitcher_faced += batters
+    if not state.on_bullpen:
+        state.total_faced += batters
+    state.total += runs
+    if inning == 1:
+        state.first = runs
+    if inning <= 5:
+        state.through5 += runs
+
+
 def simulate_one_game(
     context: MlbGameContext, rng: random.Random, *, innings: int = 9,
     weather: tuple[float, float] | None = None,
@@ -422,12 +497,51 @@ def simulate_one_game(
         context.away_lineup, context.batter_rates, context.home_bullpen_fatigue, park_hr,
         run_factor, weather_hr_factor=hr_factor,
         team_bullpen=context.home_bullpen_rates)
-    h_total, h_first, h_five = _simulate_side(home_starter, home_pen, rng, innings)
-    a_total, a_first, a_five = _simulate_side(away_starter, away_pen, rng, innings)
+    home = _SideSimulationState()
+    away = _SideSimulationState()
+
+    # Baseball geometry is sequential: the away top half can change whether
+    # the home bottom half is needed, and a home run in the final scheduled
+    # inning can end the game immediately.
+    for inning in range(1, innings + 1):
+        _simulate_next_half(away, away_starter, away_pen, rng, inning)
+        if inning == innings and home.total > away.total:
+            break  # home already leads after the top of the final inning
+        walkoff_runs = (
+            away.total - home.total + 1 if inning == innings else None
+        )
+        _simulate_next_half(
+            home,
+            home_starter,
+            home_pen,
+            rng,
+            inning,
+            stop_after_runs=walkoff_runs,
+        )
+
+    # Tied regulation games continue until one complete extra inning resolves
+    # them. A home score can walk off the bottom half; an away lead after the
+    # completed bottom half is final. The bounded fallback intentionally leaves
+    # an unresolved tie for the caller's existing neutral/tie treatment.
+    if home.total == away.total:
+        for extra in range(1, MAX_EXTRA_INNINGS + 1):
+            inning = innings + extra
+            _simulate_next_half(away, away_starter, away_pen, rng, inning)
+            _simulate_next_half(
+                home,
+                home_starter,
+                home_pen,
+                rng,
+                inning,
+                stop_after_runs=away.total - home.total + 1,
+            )
+            if home.total != away.total:
+                break
+
     return GameResult(
-        home_runs=h_total, away_runs=a_total,
-        home_first_inning_runs=h_first, away_first_inning_runs=a_first,
-        home_runs_through_5=h_five, away_runs_through_5=a_five,
+        home_runs=home.total, away_runs=away.total,
+        home_first_inning_runs=home.first, away_first_inning_runs=away.first,
+        home_runs_through_5=home.through5, away_runs_through_5=away.through5,
     )
 
 

@@ -2,13 +2,10 @@ from __future__ import annotations
 
 import json
 import subprocess
-import threading
-from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
 
 from autonomy.crypto_paper_twin import PaperTwinLedger
 from autonomy.paper_dashboard import (
-    PAPER_CONTROL_HEADER,
     assemble_paper_dashboard,
     control_paper_scheduler,
     scheduled_task_status,
@@ -148,6 +145,22 @@ def test_scheduled_task_status_normalizes_windows_task():
     assert status["capital_authority"] is False
 
 
+def test_scheduled_task_status_fails_closed_when_query_times_out():
+    def runner(*_args, **_kwargs):
+        raise subprocess.TimeoutExpired(["powershell.exe"], 10)
+
+    status = scheduled_task_status(runner=runner)
+
+    assert status == {
+        "task_name": "DummyCryptoPaperTwin",
+        "supported": True,
+        "enabled": False,
+        "state": "UNAVAILABLE",
+        "healthy": False,
+        "error": "TimeoutExpired",
+    }
+
+
 def test_scheduler_controls_are_fixed_scope_and_fail_closed():
     commands: list[str] = []
 
@@ -163,90 +176,6 @@ def test_scheduler_controls_are_fixed_scope_and_fail_closed():
     assert "Start-ScheduledTask" in commands[0]
     assert "Disable-ScheduledTask" in commands[1]
     assert all(result["capital_authority"] is False for result in (started, stopped))
-
-
-def test_dashboard_control_endpoint_requires_header_and_never_grants_authority(
-    tmp_path, monkeypatch,
-):
-    from fastapi.testclient import TestClient
-
-    monkeypatch.setattr("autonomy.dashboard.RUNTIME_DIR", tmp_path)
-    monkeypatch.setattr(
-        "autonomy.paper_dashboard.control_paper_scheduler",
-        lambda action: {
-            "ok": True,
-            "action": action,
-            "live_execution_authority": False,
-            "capital_authority": False,
-        },
-    )
-    monkeypatch.setattr(
-        "autonomy.paper_dashboard.scheduled_task_status",
-        lambda: {"state": "Running", "enabled": True, "healthy": True},
-    )
-    from autonomy.dashboard import build_app
-
-    client = TestClient(build_app())
-    assert client.post("/api/paper-scheduler/start").status_code == 403
-    assert client.post(
-        "/api/paper-scheduler/start",
-        headers={
-            "X-Dummy-Paper-Control": PAPER_CONTROL_HEADER,
-            "Origin": "http://localhost.evil.example",
-        },
-    ).status_code == 403
-    response = client.post(
-        "/api/paper-scheduler/start",
-        headers={"X-Dummy-Paper-Control": PAPER_CONTROL_HEADER},
-    )
-
-    assert response.status_code == 200
-    assert response.json()["capital_authority"] is False
-
-
-def test_control_invalidates_an_inflight_stale_dashboard_refresh(monkeypatch):
-    from fastapi.testclient import TestClient
-
-    entered = threading.Event()
-    release = threading.Event()
-    calls = 0
-
-    def assemble():
-        nonlocal calls
-        calls += 1
-        version = calls
-        if version == 1:
-            entered.set()
-            assert release.wait(timeout=5)
-        return {"version": version}
-
-    monkeypatch.setattr("autonomy.dashboard.assemble_dashboard_state", assemble)
-    monkeypatch.setattr(
-        "autonomy.paper_dashboard.control_paper_scheduler",
-        lambda action: {"ok": True, "action": action},
-    )
-    monkeypatch.setattr(
-        "autonomy.paper_dashboard.scheduled_task_status",
-        lambda: {"state": "Disabled", "enabled": False, "healthy": False},
-    )
-    from autonomy.dashboard import build_app
-
-    client = TestClient(build_app())
-    with ThreadPoolExecutor(max_workers=2) as executor:
-        old_request = executor.submit(client.get, "/api/autonomy")
-        assert entered.wait(timeout=5)
-        response = client.post(
-            "/api/paper-scheduler/stop",
-            headers={"X-Dummy-Paper-Control": PAPER_CONTROL_HEADER},
-        )
-        assert response.status_code == 200
-        release.set()
-        assert old_request.result(timeout=5).json()["version"] == 1
-
-    assert client.get("/api/autonomy").json()["version"] == 2
-    assert calls == 2
-
-
 def test_hidden_run_injects_create_no_window(monkeypatch):
     """Scheduler-status spawns must never pop a console under pythonw: _hidden_run
     forces CREATE_NO_WINDOW on the child (the terminal-popup regression)."""

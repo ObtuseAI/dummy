@@ -1,9 +1,0 @@
-import StageDashboard from './StageDashboard';
-
-const endpoints = [["Activation Completion Lock V2 Controller", "/api/v224/activation-completion-lock-v2-controller"], ["V223 Baseline", "/api/v224/v223-baseline"], ["Activation Packet Summary", "/api/v224/activation-packet-summary"], ["Manifest Intake Summary", "/api/v224/manifest-intake-summary"], ["Dry Validation Summary", "/api/v224/dry-validation-summary"], ["Arming Check Summary", "/api/v224/arming-check-summary"], ["Hardened Live Proof Summary", "/api/v224/hardened-live-proof-summary"], ["Reconcile Spine Summary", "/api/v224/reconcile-spine-summary"], ["Forensic Spine Summary", "/api/v224/forensic-spine-summary"], ["Repeat Session Bridge Summary", "/api/v224/repeat-session-bridge-summary"], ["Completion Scoreboard Summary", "/api/v224/completion-scoreboard-summary"], ["Total Live Order Count", "/api/v224/total-live-order-count"], ["Next Action Matrix", "/api/v224/next-action-matrix"], ["No Scale Proof", "/api/v224/no-scale-proof"], ["No Autonomy Proof", "/api/v224/no-autonomy-proof"], ["No New Order Proof", "/api/v224/no-new-order-proof"], ["Readiness Governor", "/api/v224/readiness-governor"], ["Execution Lock", "/api/v224/execution-lock"], ["Mission State", "/api/v224/mission-state"]];
-
-const summaryFields = [["Mission", "mission_state_verdict"], ["Completion Lock", "activation_completion_lock_v2_controller_status"], ["Next Action Matrix", "next_action_matrix_selection"], ["Total Live Orders", "total_real_live_orders_submitted"], ["Next Action", "current_next_action"], ["Blockers", "current_blockers"]];
-
-export default function V224Dashboard() {
-  return <StageDashboard title="Dummy V224 Activation Completion Lock V2 Next Phase Map" endpoints={endpoints} missionKey="dummy_mission_state_report_v210" summaryFields={summaryFields} />;
-}

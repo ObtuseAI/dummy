@@ -12,6 +12,7 @@ from pathlib import Path
 
 import pytest
 
+import autonomy.ingest.fantasy.fangraphs as fangraphs_module
 from autonomy.ingest.fantasy.fangraphs import (
     DEFAULT_SYSTEM,
     LEAGUE_AVG_RUNS_PER_GAME,
@@ -231,7 +232,14 @@ def test_unknown_projection_system_falls_back_to_default():
 
 # ---------------------------------------------------------------------- ledger
 
-def test_refresh_records_external_observations(tmp_path):
+def test_refresh_records_external_observations(tmp_path, monkeypatch):
+    observed_times = iter(
+        (
+            NOW.isoformat(),
+            (NOW + timedelta(seconds=1)).isoformat(),
+        )
+    )
+    monkeypatch.setattr(fangraphs_module, "_now_iso", lambda: next(observed_times))
     ledger = AutonomyLedger(tmp_path / "ledger.db")
     book = ProjectionBook(fetch_fn=_fixture_fetch, ledger=ledger)
     book.refresh()

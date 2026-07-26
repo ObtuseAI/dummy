@@ -33,7 +33,7 @@ from datetime import datetime, timezone
 import json
 import sys
 from pathlib import Path
-from typing import Callable
+from typing import Callable, Sequence
 
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
@@ -54,6 +54,12 @@ from dummy.autoresearch.operational_ignition import (  # noqa: E402
     operational_ignition_report,
     record_campaign_ignition_trial,
     write_ignition_report,
+)
+from dummy.autoresearch.research_coordinator import (  # noqa: E402
+    consume_intelligence_queue,
+)
+from dummy.autoresearch.research_plugins import (  # noqa: E402
+    intelligence_evidence_snapshot,
 )
 from dummy.genome import ForecastGenome  # noqa: E402
 from dummy.intelligence_lab import run_intelligence_research_cycle  # noqa: E402
@@ -295,6 +301,36 @@ def run_cycle(
         output_dir=output_dir / "intelligence_lab",
         observed_at=issued_at,
     )
+    control_dir = output_dir / "intelligence_lab"
+    control_report_path = control_dir / "research_control_plane_report.json"
+    try:
+        control_report = consume_intelligence_queue(
+            queue_path=control_dir / "research_queue.json",
+            journal_path=control_dir / "research_journal.sqlite3",
+            report_path=control_report_path,
+            evidence=intelligence_evidence_snapshot(
+                multi_cohort_report=multi,
+                forward_report=aggregate_forward,
+                ignition_report=ignition,
+                captured_at=issued_at,
+            ),
+            generated_at=issued_at,
+        )
+    except Exception as exc:  # noqa: BLE001 - forecast cycle remains fail-soft
+        control_report = {
+            "schema_version": 1,
+            "generated_at": issued_at.isoformat(),
+            "status": "ERROR",
+            "error_type": type(exc).__name__,
+            "negative_controls_passed": False,
+            "source_edits_applied": False,
+            "runtime_application": False,
+            "automatic_promotion": False,
+            "execution_authority": False,
+            "capital_authority": False,
+            "orders_placed": False,
+        }
+        _write_status(control_report_path, control_report)
     campaign = primary["campaign"]
     issuance = primary["issuance"]
     forward = primary["forward"]
@@ -323,6 +359,13 @@ def run_cycle(
                 + intelligence["cognitive_state"]["general_laws"]
             ),
             "highest_supported_level": intelligence["highest_supported_level"],
+            "control_plane_status": control_report["status"],
+            "control_plane_runs_created": int(
+                control_report.get("runs_created") or 0
+            ),
+            "control_plane_runs_reused": int(
+                control_report.get("runs_reused") or 0
+            ),
         },
         "orders_placed": False,
         "execution_authority": False,
@@ -351,11 +394,19 @@ def run_cycle(
             "intelligence_research_queue": str(
                 output_dir / "intelligence_lab" / "research_queue.json"
             ),
+            "research_control_plane": str(control_report_path),
+            "research_journal": str(
+                output_dir / "intelligence_lab" / "research_journal.sqlite3"
+            ),
         },
     }
 
 
-def main() -> int:
+def main(
+    argv: Sequence[str] | None = None,
+    *,
+    monotonic_fn: Callable[[], float] = time.monotonic,
+) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--ledger",
@@ -390,11 +441,11 @@ def main() -> int:
         default=DEFAULT_MAX_TRIAL_LINES,
         help="tail cap for the append-only ignition trial ledger; 0 disables",
     )
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
     if args.status_path is None:
         args.status_path = default_status_path(args.output_dir)
 
-    started = time.monotonic()
+    started = monotonic_fn()
     started_at = datetime.now(timezone.utc)
     status: dict[str, object] = {
         "schema_version": 1,
@@ -416,11 +467,13 @@ def main() -> int:
     def _deadline() -> bool:
         if args.max_seconds <= 0:
             return False
-        return (time.monotonic() - started) >= args.max_seconds
+        return (monotonic_fn() - started) >= args.max_seconds
 
     try:
         if not args.ledger.exists():
             raise InsufficientEvidence(f"ledger not found: {args.ledger}")
+        if _deadline():
+            raise InsufficientEvidence("run deadline reached before cycle started")
         summary = run_cycle(
             ledger_path=args.ledger,
             output_dir=args.output_dir,
@@ -439,7 +492,7 @@ def main() -> int:
                 else "SKIPPED_INSUFFICIENT_EVIDENCE"
             ),
             "generated_at": finished.isoformat(),
-            "duration_seconds": round(time.monotonic() - started, 3),
+            "duration_seconds": round(monotonic_fn() - started, 3),
             "detail": str(exc),
         })
         _write_status(args.status_path, status)
@@ -452,7 +505,7 @@ def main() -> int:
         status.update({
             "status": "ERROR",
             "generated_at": finished.isoformat(),
-            "duration_seconds": round(time.monotonic() - started, 3),
+            "duration_seconds": round(monotonic_fn() - started, 3),
             "error_type": type(exc).__name__,
             "error": str(exc)[:2000],
             "traceback_tail": "".join(
@@ -471,7 +524,7 @@ def main() -> int:
         "status": "OK",
         "generated_at": finished.isoformat(),
         "last_success_at": finished.isoformat(),
-        "duration_seconds": round(time.monotonic() - started, 3),
+        "duration_seconds": round(monotonic_fn() - started, 3),
         "evidence_rows": summary.get("evidence_rows"),
         "multi_cohort": summary.get("multi_cohort"),
         "forward_observations_issued": summary.get("forward_observations_issued"),

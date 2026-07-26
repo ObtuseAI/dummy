@@ -1,7 +1,8 @@
-"""Leakage and authority invariants for Sports Temporal Holdout Gate v1."""
+"""Leakage and authority invariants for Sports Temporal Holdout Gate v2."""
 from __future__ import annotations
 
 import json
+import sqlite3
 from datetime import datetime, timedelta, timezone
 
 import pytest
@@ -10,6 +11,8 @@ from autonomy.sports.history_store import SportsHistoryStore
 from autonomy.sports.temporal_holdout import (
     HoldoutAlreadyConsumed,
     HoldoutIntegrityError,
+    MANIFEST_VERSION,
+    _game_manifest_hashes,
     _metrics,
     run_temporal_holdout_gate,
 )
@@ -18,6 +21,10 @@ from autonomy.sports.walk_forward import glicko_prediction_records
 
 def _iso(value: datetime) -> str:
     return value.astimezone(timezone.utc).isoformat()
+
+
+def _is_sha256(value: str) -> bool:
+    return len(value) == 64 and all(ch in "0123456789abcdef" for ch in value)
 
 
 def _game(
@@ -154,6 +161,26 @@ def test_sealed_holdout_is_disjoint_one_shot_and_has_no_live_authority(tmp_path)
     assert json.loads(artifact.read_text(encoding="utf-8")) == report
 
     claim = store.research_holdout_claim(report["sealed_holdout"]["seal_key"])
+    sealed = report["sealed_holdout"]
+    selection = report["candidate_selection"]
+    assert sealed["manifest_version"] == MANIFEST_VERSION
+    assert selection["manifest_version"] == MANIFEST_VERSION
+    for key in ("game_ids_sha256", "manifest_sha256", "content_sha256", "outcomes_sha256"):
+        assert _is_sha256(sealed[key])
+    for key in (
+        "input_game_ids_sha256",
+        "input_manifest_sha256",
+        "input_content_sha256",
+        "input_outcomes_sha256",
+    ):
+        assert _is_sha256(selection[key])
+    assert claim["manifest_version"] == MANIFEST_VERSION
+    assert claim["holdout_manifest_hash"] == sealed["manifest_sha256"]
+    assert claim["holdout_content_hash"] == sealed["content_sha256"]
+    assert claim["holdout_outcomes_hash"] == sealed["outcomes_sha256"]
+    assert claim["selection_manifest_hash"] == selection["input_manifest_sha256"]
+    assert claim["selection_content_hash"] == selection["input_content_sha256"]
+    assert claim["selection_outcomes_hash"] == selection["input_outcomes_sha256"]
     assert claim["execution_authority"] == 0
     assert claim["promotion_authority"] == 0
     with pytest.raises(HoldoutAlreadyConsumed):
@@ -168,6 +195,152 @@ def test_sealed_holdout_is_disjoint_one_shot_and_has_no_live_authority(tmp_path)
             bootstrap_samples=100,
         )
     assert not (tmp_path / "second-look.json").exists()
+    store.close()
+
+
+@pytest.mark.parametrize("mutation", ("late_added_game", "corrected_outcome"))
+def test_changed_holdout_manifest_cannot_reopen_consumed_scope(tmp_path, mutation):
+    store = SportsHistoryStore(tmp_path / "history.db")
+    _seed_three_seasons(store)
+    first_artifact = tmp_path / "first.json"
+    first = run_temporal_holdout_gate(
+        store,
+        league="nfl",
+        holdout_season=2025,
+        artifact_path=first_artifact,
+        confirm_completed_season=True,
+        generated_at="2026-07-21T12:00:00+00:00",
+        bootstrap_samples=100,
+    )
+    claim_before = store.research_holdout_claim(first["sealed_holdout"]["seal_key"])
+
+    if mutation == "late_added_game":
+        store.upsert_game(_game(
+            "2025-late",
+            2025,
+            datetime(2025, 10, 1, tzinfo=timezone.utc),
+            home="DDD",
+            away="EEE",
+            home_score=24,
+            away_score=21,
+        ))
+    else:
+        store.upsert_game(_game(
+            "2025-0",
+            2025,
+            datetime(2025, 9, 1, tzinfo=timezone.utc),
+            home="AAA",
+            away="BBB",
+            home_score=17,
+            away_score=31,
+        ))
+
+    current_holdout = [
+        game for game in store.evaluation_games(league="nfl")
+        if int(game["season"]) == 2025
+    ]
+    current_manifest = _game_manifest_hashes(current_holdout)
+    sealed = first["sealed_holdout"]
+    assert current_manifest["manifest_sha256"] != sealed["manifest_sha256"]
+    assert current_manifest["outcomes_sha256"] != sealed["outcomes_sha256"]
+    if mutation == "corrected_outcome":
+        assert current_manifest["game_ids_sha256"] == sealed["game_ids_sha256"]
+        assert current_manifest["content_sha256"] == sealed["content_sha256"]
+    else:
+        assert current_manifest["game_ids_sha256"] != sealed["game_ids_sha256"]
+        assert current_manifest["content_sha256"] != sealed["content_sha256"]
+
+    retry_artifact = tmp_path / f"{mutation}-retry.json"
+    with pytest.raises(HoldoutAlreadyConsumed, match="scope already consumed"):
+        run_temporal_holdout_gate(
+            store,
+            league="nfl",
+            holdout_season=2025,
+            artifact_path=retry_artifact,
+            confirm_completed_season=True,
+            generated_at="2026-07-21T13:00:00+00:00",
+            bootstrap_samples=100,
+        )
+    assert not retry_artifact.exists()
+    assert store.conn.execute(
+        "SELECT COUNT(*) FROM research_holdout_consumptions"
+    ).fetchone()[0] == 1
+    assert store.research_holdout_claim(
+        first["sealed_holdout"]["seal_key"]
+    ) == claim_before
+    store.close()
+
+
+def test_legacy_scope_conflicts_are_preserved_immutable_and_fail_closed(tmp_path):
+    db_path = tmp_path / "legacy-history.db"
+    connection = sqlite3.connect(db_path)
+    connection.executescript(
+        """
+        CREATE TABLE research_holdout_consumptions(
+            seal_key TEXT PRIMARY KEY,
+            league TEXT NOT NULL, holdout_season INTEGER NOT NULL,
+            model TEXT NOT NULL, holdout_ids_hash TEXT NOT NULL,
+            selection_ids_hash TEXT NOT NULL, consumed_at TEXT NOT NULL,
+            execution_authority INTEGER NOT NULL DEFAULT 0,
+            promotion_authority INTEGER NOT NULL DEFAULT 0
+        );
+        """
+    )
+    connection.executemany(
+        """INSERT INTO research_holdout_consumptions(
+               seal_key,league,holdout_season,model,holdout_ids_hash,
+               selection_ids_hash,consumed_at
+           ) VALUES(?,?,?,?,?,?,?)""",
+        (
+            ("a" * 64, "nfl", 2025, "glicko", "c" * 64, "d" * 64, "2026-01-01"),
+            ("b" * 64, "NFL", 2025, "GLICKO", "e" * 64, "f" * 64, "2026-01-02"),
+        ),
+    )
+    connection.commit()
+    connection.close()
+
+    store = SportsHistoryStore(db_path)
+    claims = store.research_holdout_claims_for_scope(
+        league="nfl", holdout_season=2025, model="glicko",
+    )
+    assert len(claims) == 2
+    assert {claim["seal_key"] for claim in claims} == {"a" * 64, "b" * 64}
+    assert all(claim["manifest_version"] is None for claim in claims)
+    assert store.claim_research_holdout(
+        seal_key="1" * 64,
+        league="nfl",
+        holdout_season=2025,
+        model="glicko",
+        holdout_ids_hash="2" * 64,
+        selection_ids_hash="3" * 64,
+        manifest_version=MANIFEST_VERSION,
+        holdout_manifest_hash="4" * 64,
+        holdout_content_hash="5" * 64,
+        holdout_outcomes_hash="6" * 64,
+        selection_manifest_hash="7" * 64,
+        selection_content_hash="8" * 64,
+        selection_outcomes_hash="9" * 64,
+        consumed_at="2026-02-01",
+    ) is False
+    with pytest.raises(sqlite3.IntegrityError, match="complete SHA-256 manifests"):
+        store.conn.execute(
+            """INSERT INTO research_holdout_consumptions(
+                   seal_key,league,holdout_season,model,holdout_ids_hash,
+                   selection_ids_hash,consumed_at
+               ) VALUES(?,?,?,?,?,?,?)""",
+            ("1" * 64, "nfl", 2026, "glicko", "2" * 64, "3" * 64, "2026-02-02"),
+        )
+    store.conn.rollback()
+    for statement in (
+        "UPDATE research_holdout_consumptions SET consumed_at='changed'",
+        "DELETE FROM research_holdout_consumptions",
+    ):
+        with pytest.raises(sqlite3.IntegrityError, match="immutable"):
+            store.conn.execute(statement)
+        store.conn.rollback()
+    assert store.conn.execute(
+        "SELECT COUNT(*) FROM research_holdout_consumptions"
+    ).fetchone()[0] == 2
     store.close()
 
 

@@ -8,11 +8,59 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Rights-reviewed, provider-neutral BTC/ETH/SOL Market Observer MCP with
+  content-addressed closed-candle evidence, indicators, candlestick patterns,
+  rate/circuit/single-run guards, and a GET-only dashboard chart surface.
+- Locally vendored TradingView Lightweight Charts 5.2.0 renderer with pinned
+  hashes, license/notice, package-data inclusion, and no TradingView data or
+  account integration.
+- Cooperative ledger maintenance lease, verified off-volume online backups,
+  restore drills, gated vacuum/retention/prune tools, and a no-shell job
+  supervisor with exact exit receipts.
+- Out-of-band settlement-grading worker and atomic grading support.
+- Hash-chained recursive-research control plane with preregistration,
+  deterministic negative controls, explicit resource budgets, zero inherited
+  environment, and no automatic promotion.
+- Fail-closed elite-readiness validator, authority-state matrix, dependency
+  license gate, vulnerability-audit workflow, and frozen `uv.lock`.
+- Opt-in, allowlisted critical HTTPS alert delivery plus content-aware
+  retention and research-stall watchdog checks.
+- Shared operator-state vocabulary and current-document index.
 - Coverage gate in the `tests` CI job: `pytest-cov` now reports line coverage
   across the main packages (`--cov-report=term`) and enforces a `--cov-fail-under`
   floor.
 - `pytest-cov` added to the `dev` optional-dependency group.
 - `CHANGELOG.md` following the Keep a Changelog format.
+
+### Changed
+- The canonical operator board is loopback-only, GET-only, responsive, and
+  reads persisted evidence without broker, provider, scheduler, authority,
+  risk, or capital mutations.
+- Live-firewall EV is independently recomputed with conservative uncertainty,
+  fees, caps, and evidence-gated adverse-selection haircuts; per-candidate
+  sizing uses uncertainty-adjusted Kelly under existing ceilings.
+- Fused calibration can affect a decision only through exact, content-bound
+  settled-evidence promotion; no scope is promoted by this release.
+- Macro/equity crypto evidence abstains on physics-incompatible 15m/1h
+  horizons, debate output is explicitly record-only, and fee schedules warn
+  before their fail-closed staleness cliff.
+- CI now installs and runs the exact frozen environment with `uv`.
+
+### Removed
+- Android operator app, Node/React client, tailnet listener, PySide Tote
+  renderer, and the duplicate legacy FastAPI dashboard.
+- Dormant live-order route alternatives and the unused V1 forecast engine.
+- Historical `archive/` generators/routes, all `predator_mesh/vNN` source
+  packages, generated adapter shells, constant-abstention strategies, and
+  their duplicate historical tests. Preserved contracts live in stable,
+  hash-pinned registries; historical source remains in Git.
+
+### Security
+- Research subprocesses inherit no parent environment variables and cannot
+  access execution, credentials, network, capital, or promotion authority.
+- Dashboard peer/Host validation, restrictive browser headers, public-source
+  rights metadata, exact provider-host allowlists, redacted alert receipts,
+  and fail-closed stale/malformed evidence handling are enforced by tests.
 
 ## [0.1.0] - 2026-07-16
 

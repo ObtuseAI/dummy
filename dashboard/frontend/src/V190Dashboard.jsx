@@ -1,9 +1,0 @@
-import StageDashboard from './StageDashboard';
-
-const endpoints = [["Autonomy Quorum Controller", "/api/v190/autonomy-quorum-controller"], ["V189 Baseline", "/api/v190/v189-baseline"], ["Autonomy Review Approval Validator", "/api/v190/autonomy-review-approval-validator"], ["Dryrun Approval Validator", "/api/v190/dryrun-approval-validator"], ["Live Proof Prerequisite Checker", "/api/v190/live-proof-prerequisite-checker"], ["Controlled Session Proof Prerequisite Checker", "/api/v190/controlled-session-proof-prerequisite-checker"], ["Risk Governor Prerequisite", "/api/v190/risk-governor-prerequisite"], ["Abstention Governor Prerequisite", "/api/v190/abstention-governor-prerequisite"], ["Shadow Forensic Prerequisite", "/api/v190/shadow-forensic-prerequisite"], ["Scale Status Prerequisite", "/api/v190/scale-status-prerequisite"], ["Live Submit Caps Control Proof", "/api/v190/live-submit-caps-control-proof"], ["Firewall Adapter Proof", "/api/v190/firewall-adapter-proof"], ["Autonomy Eligibility", "/api/v190/autonomy-eligibility"], ["No Autonomous Order Proof", "/api/v190/no-autonomous-order-proof"], ["No Live Submit Caps Change Proof", "/api/v190/no-live-submit-caps-change-proof"], ["Readiness Governor", "/api/v190/readiness-governor"], ["Execution Lock", "/api/v190/execution-lock"], ["Mission State", "/api/v190/mission-state"]];
-
-const summaryFields = [["Mission", "mission_state_verdict"], ["Autonomy Quorum", "autonomy_quorum_controller_status"], ["Eligibility", "autonomy_eligibility"], ["Autonomous Trading", "autonomous_trading_enabled"], ["Next Action", "current_next_action"], ["Blockers", "current_blockers"]];
-
-export default function V190Dashboard() {
-  return <StageDashboard title="Dummy V190 Guarded Autonomy Eligibility Quorum" endpoints={endpoints} missionKey="dummy_mission_state_report_v176" summaryFields={summaryFields} />;
-}

@@ -170,14 +170,49 @@ def start_session(mode: SessionMode, ack: str = "", hours: float = 24.0,
     return {"started": True, "mode": mode.value, "expires_at": payload["expires_at"]}
 
 
-def stop_session(session_path: Path | None = None) -> dict[str, Any]:
-    """Kill switch + disarm: instant, unconditional."""
+def stop_session(
+    session_path: Path | None = None,
+    *,
+    kill_reconciliation_path: Path | None = None,
+) -> dict[str, Any]:
+    """Kill + disarm immediately, then queue cancel/reconcile honestly."""
     KILL_PATH.parent.mkdir(parents=True, exist_ok=True)
-    KILL_PATH.write_text(datetime.now(timezone.utc).isoformat(), encoding="utf-8")
+    asserted_at = datetime.now(timezone.utc).isoformat()
+    KILL_PATH.write_text(asserted_at, encoding="utf-8")
     path = session_path or SESSION_PATH
     if path.exists():
         path.unlink()
-    return {"stopped": True, "kill_switch": str(KILL_PATH)}
+    from autonomy.kill_reconciliation import (
+        DEFAULT_KILL_RECONCILIATION_PATH,
+        queue_kill_reconciliation,
+    )
+
+    receipt_path = (
+        DEFAULT_KILL_RECONCILIATION_PATH
+        if kill_reconciliation_path is None
+        else Path(kill_reconciliation_path)
+    )
+    result: dict[str, Any] = {
+        "stopped": True,
+        "kill_switch": str(KILL_PATH),
+        "submission_authority": False,
+        "flat_book_observed": False,
+        "liquidation_attempted": False,
+    }
+    try:
+        receipt = queue_kill_reconciliation(
+            kill_asserted_at=asserted_at,
+            receipt_path=receipt_path,
+        )
+        result["kill_reconciliation"] = receipt
+    except Exception as exc:
+        # Nothing may undo or delay the already-persisted KILL.
+        result["kill_reconciliation"] = {
+            "status": "RECEIPT_WRITE_FAILED",
+            "error": type(exc).__name__,
+            "operator_action": "cancel and reconcile open orders manually",
+        }
+    return result
 
 
 def session_status(ledger: AutonomyLedger | None = None) -> dict[str, Any]:

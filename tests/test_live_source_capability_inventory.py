@@ -5,7 +5,25 @@ from autonomy.ledger import AutonomyLedger
 from autonomy.ontology import Signal
 
 
-def test_recent_unsettled_default_source_blocks_canary_capability_not_shadow(tmp_path):
+def test_recent_unsettled_default_source_blocks_canary_capability_not_shadow(
+    tmp_path, monkeypatch,
+):
+    import autonomy.backtest as backtest
+
+    real_gate = backtest._recal_oos_gate
+    monkeypatch.setattr(
+        backtest,
+        "_recal_oos_gate",
+        lambda conn, signals, settlements, incumbent: real_gate(
+            conn,
+            signals,
+            settlements,
+            incumbent,
+            holdout_fraction=0.25,
+            min_holdout=1,
+            min_holdout_clusters=1,
+        ),
+    )
     ledger = AutonomyLedger(tmp_path / "ledger.db")
     try:
         for index in range(25):
@@ -29,6 +47,7 @@ def test_recent_unsettled_default_source_blocks_canary_capability_not_shadow(tmp
         proven = run_backtest(
             ledger, bootstrap_weights=True, include_diagnostics=False,
         )
+        assert proven["recal_oos_gate"]["held_out_improvement_verified"] is True
         assert proven["live_source_capability_matrix"][
             "ready_for_live_canary"
         ] is True

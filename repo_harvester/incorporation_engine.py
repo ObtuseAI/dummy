@@ -9,9 +9,14 @@ from repo_harvester.incorporation_registry import (
     load_registry,
     save_registry,
 )
+from repo_harvester.lifecycle import (
+    VERIFIED_CHALLENGER,
+    dormant_adapter_record,
+)
 from repo_harvester.retry_policy import PENDING_RETRY, PENDING_REVIEW
 
-ARTIFACTS = Path("C:/src/engine/dummy/artifacts/repo_harvester")
+REPO_ROOT = Path(__file__).resolve().parents[1]
+ARTIFACTS = REPO_ROOT / "artifacts" / "repo_harvester"
 
 
 def _artifacts_dir() -> Path:
@@ -40,21 +45,18 @@ def _pending_entry(plan: dict[str, Any], adapter_plan: dict[str, Any]) -> dict[s
         "weather_prediction_market",
         "commodities_energy_agriculture",
     }
-    return {
-        "repo": plan["repo"],
-        "adapter_name": adapter_plan["adapter_name"],
-        "category": category,
-        "tests_passed": False,
-        "test_status": "pending_adapter_specific_tests",
-        "integration_status": "pending",
-        "integration_kind": adapter_plan.get("integration_kind", "scaffold_only"),
-        "upstream_integration_verified": False,
-        "production_capability": False,
-        "prediction_authority": False,
-        "execution_authority": False,
-        "data_only": bool(adapter_plan.get("data_only", data_only)),
-        "passthrough_model_zoo": bool(adapter_plan.get("passthrough_model_zoo", False)),
-    }
+    return dormant_adapter_record(
+        {
+            "repo": plan["repo"],
+            "adapter_name": adapter_plan["adapter_name"],
+            "category": category,
+            "integration_kind": adapter_plan.get("integration_kind", "metadata_only"),
+            "data_only": bool(adapter_plan.get("data_only", data_only)),
+            "passthrough_model_zoo": bool(
+                adapter_plan.get("passthrough_model_zoo", False)
+            ),
+        }
+    )
 
 
 def incorporate_adapter_plans(require_tests: bool = True):
@@ -103,7 +105,7 @@ def incorporate_adapter_plans(require_tests: bool = True):
         for p in plan.get("plans", []):
             entry = _pending_entry(plan, p)
             if not require_tests:
-                entry["test_status"] = "test_waiver_refused"
+                entry["last_verification_attempt_status"] = "test_waiver_refused"
             _upsert_by_adapter(registry["pending_tests"], entry)
             registry["incorporated"] = [
                 item
@@ -129,8 +131,8 @@ def approve_adapter_tests(
     """Approve only a real, adapter-specific upstream integration.
 
     Structural import/schema/firewall tests for generated pass-through shells do
-    not establish production capability. Callers must provide a durable report
-    digest and prove that source-specific integration code was exercised.
+    not establish production capability. Callers must provide pinned upstream,
+    adapter-specific test, and challenger-grade evidence.
     """
 
     registry = load_registry()
@@ -153,10 +155,15 @@ def approve_adapter_tests(
             "upstream_integration_verified": (
                 evidence.get("upstream_integration_verified") is True
             ),
+            "upstream_revision": evidence.get("upstream_revision"),
+            "challenger_graded": evidence.get("challenger_graded") is True,
+            "challenger_grade_status": evidence.get("challenger_grade_status"),
+            "challenger_report_sha256": evidence.get("challenger_report_sha256"),
             "production_capability": evidence.get("production_capability") is True,
             "prediction_authority": evidence.get("prediction_authority") is True,
             "execution_authority": False,
             "test_report_sha256": evidence.get("test_report_sha256"),
+            "lifecycle_status": VERIFIED_CHALLENGER,
         }
         if entry.get("passthrough_model_zoo") is True:
             candidate["test_status"] = "approval_refused_model_zoo_passthrough"
@@ -164,14 +171,19 @@ def approve_adapter_tests(
             candidate["test_status"] = "approval_refused_scaffold_only"
 
         if is_verified_integration(candidate):
-            candidate["integration_status"] = "incorporated_verified"
+            candidate["integration_status"] = VERIFIED_CHALLENGER
             _upsert_by_adapter(registry["incorporated"], candidate)
             approved = True
         else:
-            candidate["tests_passed"] = False
-            candidate["production_capability"] = False
-            candidate["prediction_authority"] = False
-            retained_pending.append(candidate)
+            retained_pending.append(
+                dormant_adapter_record(
+                    {
+                        **candidate,
+                        "last_verification_attempt_status": candidate["test_status"],
+                    },
+                    reason="verification_attempt_missing_complete_upstream_or_challenger_evidence",
+                )
+            )
 
     registry["pending_tests"] = retained_pending
     save_registry(registry)
@@ -180,7 +192,10 @@ def approve_adapter_tests(
 
 def get_allowed_adapter_names() -> set[str]:
     registry = load_registry()
-    base = {"kalshi_live_firewall_adapter", "kalshi_official_reference_adapter", "kalshi_python_sdk_adapter", "pykalshi_reference_adapter"}
+    # The central firewall identity is a maintained execution-boundary label,
+    # not a harvested adapter. Historical reference wrappers never imported
+    # their named upstreams and therefore are not allowlisted.
+    base = {"kalshi_live_firewall_adapter"}
     base.update(
         entry["adapter_name"]
         for entry in registry["incorporated"]

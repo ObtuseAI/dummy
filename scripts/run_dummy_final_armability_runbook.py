@@ -10,7 +10,7 @@ ROOT = Path(__file__).resolve().parent.parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from archive.report_scripts.generate_v271_reports import main as generate_main
+from predator_mesh.report_runtime import run_v271_reports as generate_main
 
 
 def main() -> dict:

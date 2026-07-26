@@ -7,6 +7,8 @@ from autonomy.crypto_chartist import (
     Candle,
     TimeframeView,
     aggregate_candles,
+    build_views,
+    candles_from_state,
     cross_examine,
     detect_divergences,
     detect_patterns,
@@ -206,19 +208,37 @@ def _state(closes_up=True):
     n = 240
     step = 30.0 if closes_up else -30.0
     closes = [100000.0 + step * i for i in range(n)]
-    ohlcv = {
-        "at_s": list(range(n)),
-        "open": [c - step for c in closes],
-        "high": [c + 20 for c in closes],
-        "low": [c - 20 for c in closes],
-        "close": closes,
-        "volume": [10.0] * n,
-    }
+    received_at_s = 2_000_000_000
+
+    def rows(interval_s):
+        start = received_at_s - n * interval_s
+        return [
+            {
+                "asset": "BTC",
+                "venue": "fixture",
+                "timeframe": f"{interval_s}s",
+                "interval_s": interval_s,
+                "at_s": start + index * interval_s,
+                "open_time_s": start + index * interval_s,
+                "close_time_s": start + (index + 1) * interval_s,
+                "received_at_s": received_at_s,
+                "open": close - step,
+                "high": max(close - step, close) + 20.0,
+                "low": min(close - step, close) - 20.0,
+                "close": close,
+                "volume": 10.0,
+                "closed": True,
+                "source": "fixture",
+            }
+            for index, close in enumerate(closes)
+        ]
     return {
         "spot": closes[-1],
-        "minute_ohlcv": ohlcv,
-        "hourly_ohlcv": ohlcv,
-        "daily_ohlcv": ohlcv,
+        "received_at_s": received_at_s,
+        "minute_ohlcv": rows(60),
+        "five_minute_ohlcv": rows(300),
+        "hourly_ohlcv": rows(3600),
+        "daily_ohlcv": rows(86400),
         "realized_vol_60m_annualized": 0.5,
     }
 
@@ -250,12 +270,17 @@ def test_signal_emits_trend_shaped_probability_and_full_audit():
 
 def test_signal_abstains_without_conviction_or_state():
     flat = {**_state(True)}
-    flat_closes = [100000.0] * 240
-    flat["minute_ohlcv"] = {**flat["minute_ohlcv"], "close": flat_closes,
-                            "open": flat_closes, "high": [c + 1 for c in flat_closes],
-                            "low": [c - 1 for c in flat_closes]}
-    flat["hourly_ohlcv"] = flat["minute_ohlcv"]
-    flat["daily_ohlcv"] = flat["minute_ohlcv"]
+    for stream in ("minute_ohlcv", "five_minute_ohlcv", "hourly_ohlcv", "daily_ohlcv"):
+        flat[stream] = [
+            {
+                **row,
+                "open": 100000.0,
+                "high": 100001.0,
+                "low": 99999.0,
+                "close": 100000.0,
+            }
+            for row in flat[stream]
+        ]
     flat["spot"] = 100000.0
     quiet = CryptoChartistSignal(
         fetch_state=lambda asset: flat, hours_to_close=lambda market: 0.25)
@@ -266,3 +291,47 @@ def test_signal_abstains_without_conviction_or_state():
         fetch_state=lambda asset: {}, hours_to_close=lambda market: 0.25)
     dead.on_cycle_start()
     assert dead.generate(_market()) is None
+    assert dead.diagnostic_for("BTC") == {
+        "status": "PARTIAL",
+        "reason": "no_timeframe_has_25_closed_bars",
+        "available_timeframes": [],
+        "stream_rows": {
+            "minute": 0,
+            "five_minute": 0,
+            "hourly": 0,
+            "daily": 0,
+        },
+    }
+
+
+def test_production_row_shape_is_sorted_and_open_bars_are_excluded():
+    state = _state(True)
+    rows = list(reversed(state["hourly_ohlcv"]))
+    open_row = {
+        **rows[0],
+        "open_time_s": state["received_at_s"],
+        "close_time_s": state["received_at_s"] + 3600,
+        "closed": False,
+    }
+    state["hourly_ohlcv"] = [open_row, *rows]
+    candles = candles_from_state(state, "hourly")
+    assert len(candles) == 240
+    assert candles[0].close < candles[-1].close
+    assert set(build_views(state)) >= {"5m", "15m", "1h", "4h", "1d"}
+
+
+def test_fetch_errors_are_structured_and_no_longer_silent(caplog):
+    def broken(_asset):
+        raise RuntimeError("fixture")
+
+    signal = CryptoChartistSignal(
+        fetch_state=broken,
+        hours_to_close=lambda market: 0.25,
+    )
+    assert signal.generate(_market()) is None
+    assert signal.diagnostic_for("BTC") == {
+        "status": "UNAVAILABLE",
+        "reason": "chartist_input_error",
+        "error_type": "RuntimeError",
+    }
+    assert "chartist abstained for BTC" in caplog.text

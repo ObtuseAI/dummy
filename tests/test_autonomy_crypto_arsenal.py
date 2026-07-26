@@ -157,6 +157,12 @@ def test_hub_uses_coinbase_when_healthy_and_never_calls_kraken_ohlc():
     assert state["hourly_source"] == "coinbase"
     assert not any("OHLC" in url for url in client.calls)
     assert state["hourly_closes"][-1] == pytest.approx(70_059.0)
+    latest = state["hourly_ohlcv"][-1]
+    assert latest["closed"] is True
+    assert latest["venue"] == "coinbase"
+    assert latest["close_time_s"] <= latest["received_at_s"]
+    assert latest["raw_sha256"]
+    assert state["realized_vol_7d_annualized"] is not None
 
 
 def test_hub_fails_over_to_kraken_when_coinbase_hourly_is_stale():
@@ -174,6 +180,9 @@ def test_hub_fails_over_to_kraken_when_coinbase_hourly_is_stale():
     assert state["hourly_source"] == "kraken"
     assert any("OHLC" in url for url in client.calls)
     assert state["hourly_closes"][-1] == pytest.approx(69_559.0)
+    assert state["hourly_venue"] == "kraken"
+    assert state["hourly_ohlcv"][-1]["venue"] == "kraken"
+    assert state["hourly_ohlcv"][-1]["source"] == "kraken-public-ohlc-v1"
     # Realized vol still computes from the failover closes.
     spot, vol = hub.flat_spot_and_vol("BTC")
     assert spot > 0 and vol > 0

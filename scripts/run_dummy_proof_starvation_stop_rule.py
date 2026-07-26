@@ -10,11 +10,11 @@ ROOT = Path(__file__).resolve().parent.parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from archive.report_scripts.generate_v303_reports import main as generate_main
+from predator_mesh.operator_proof_workflows import run_starvation_reports
 
 
 def main() -> dict:
-    final = generate_main()
+    final = run_starvation_reports()
     return {
         "runner": "proof_starvation_stop_rule",
         "verdict": final.get("verdict"),

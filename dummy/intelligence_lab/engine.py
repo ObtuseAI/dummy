@@ -7,6 +7,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from dummy.autoresearch.research_journal import ResearchJournal
 from dummy.world_model.models import digest_json, iso
 
 from .discovery import design_experiments, discover_opportunities, generate_hypotheses
@@ -247,6 +248,9 @@ def run_intelligence_research_cycle(
         for hypothesis in hypotheses
     ]
 
+    # SQLite is canonical for concurrent/deduplicated research history.  The
+    # JSONL chain remains a verified compatibility view for existing readers.
+    journal = ResearchJournal(output_dir / "research_journal.sqlite3")
     memory = ScientificMemory(output_dir / "scientific_memory.jsonl")
     appended = 0
     for record_type, records in (
@@ -259,8 +263,15 @@ def run_intelligence_research_cycle(
         ("cognitive_genome", [genome.to_dict()]),
     ):
         for payload in records:
-            _, created = memory.append_unique(record_type=record_type, payload=payload)
-            appended += int(created)
+            record_id = digest_json(payload)
+            journal_created = journal.store_definition(
+                record_id=record_id,
+                record_type=record_type,
+                semantic=payload,
+                stored_at=observed_at,
+            )
+            memory.append_unique(record_type=record_type, payload=payload)
+            appended += int(journal_created)
 
     nodes = [
         *[_node(item.graph_kind, item.observation_id, item.statement, item.domain_id) for item in observations],
@@ -315,6 +326,7 @@ def run_intelligence_research_cycle(
             "general_laws": 0,
             "new_scientific_memory_entries": appended,
         },
+        "research_journal": journal.summary(),
         "research_queue": [item.to_dict() for item in experiments],
         "adversarial_challenges": challenges,
         "opportunity_queue": [item.to_dict() for item in opportunities],

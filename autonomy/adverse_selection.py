@@ -27,17 +27,21 @@ Every interval is cluster-level (per event-cluster mean, then a bootstrap /
 t-interval over cluster means) -- never a per-emission CI, which would be
 dishonestly tight because sibling strikes on one event share a settlement.
 
-This module NEVER mutates live behavior: it opens nothing but the read-only
-ledger and returns / writes JSON. Policy changes belong to the separate
-execution-policy tournament, not here.
+This module never mutates execution state: it opens nothing but the read-only
+ledger and returns / writes JSON. Its fresh-evidence loader may supply a
+non-negative information-cost measurement to the allocator, but it cannot
+select an execution cohort, authorize an order, or turn missing evidence into
+an estimate. Policy changes belong to the separate execution-policy tournament.
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import math
 import random
 import sqlite3
-from datetime import datetime, timezone
+from dataclasses import dataclass
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
@@ -564,6 +568,119 @@ def _time_to_fill_vs_move(settled_fills: list[dict[str, Any]]) -> dict[str, Any]
 # --------------------------------------------------------------------------- #
 
 REPORT_NAME = "EXECUTION_ADVERSE_SELECTION"
+DEFAULT_ADVERSE_SELECTION_PATH = Path("runtime/autonomy/adverse_selection.json")
+ADVERSE_SELECTION_EVIDENCE_MAX_AGE_HOURS = 24.0
+
+
+@dataclass(frozen=True)
+class MakerAdverseSelectionEvidence:
+    """Fresh, cluster-based fill-information cost for maker EV.
+
+    ``haircut_cents`` is the observed unfilled-minus-filled Brier edge, placed
+    on the contract-cent scale.  It is never negative: evidence that does not
+    show adverse selection cannot manufacture maker alpha.
+    """
+
+    haircut_cents: float
+    generated_at: str
+    source_report_sha256: str
+    filled_clusters: int
+    unfilled_clusters: int
+
+    def __post_init__(self) -> None:
+        digest = str(self.source_report_sha256)
+        if (
+            not math.isfinite(float(self.haircut_cents))
+            or not 0.0 <= float(self.haircut_cents) <= 100.0
+            or self.filled_clusters < 1
+            or self.unfilled_clusters < 1
+            or len(digest) != 64
+            or any(character not in "0123456789abcdef" for character in digest)
+        ):
+            raise ValueError("invalid maker adverse-selection evidence")
+
+
+def load_maker_adverse_selection_evidence(
+    path: Path = DEFAULT_ADVERSE_SELECTION_PATH,
+    *,
+    now: datetime | None = None,
+    max_age_hours: float = ADVERSE_SELECTION_EVIDENCE_MAX_AGE_HOURS,
+) -> MakerAdverseSelectionEvidence | None:
+    """Load a fresh measured maker haircut, or ``None`` on any evidence gap.
+
+    The report is measurement, not execution authority.  This loader only
+    converts its already-defined cluster means into a non-negative EV cost;
+    the allocator decides whether missing evidence must abstain.  No point
+    estimate is inferred when the report, timestamps, or cluster diagnostics
+    are absent or malformed.
+    """
+
+    try:
+        raw_bytes = Path(path).read_bytes()
+        payload = json.loads(raw_bytes)
+    except (OSError, json.JSONDecodeError, TypeError, ValueError):
+        return None
+    if not isinstance(payload, dict) or payload.get("report_name") != REPORT_NAME:
+        return None
+    try:
+        generated = datetime.fromisoformat(
+            str(payload["generated_at"]).replace("Z", "+00:00")
+        )
+    except (KeyError, TypeError, ValueError):
+        return None
+    if generated.tzinfo is None:
+        return None
+    observed_now = now or datetime.now(timezone.utc)
+    if observed_now.tzinfo is None:
+        return None
+    observed_now = observed_now.astimezone(timezone.utc)
+    generated = generated.astimezone(timezone.utc)
+    try:
+        resolved_max_age = float(max_age_hours)
+    except (TypeError, ValueError):
+        return None
+    if not math.isfinite(resolved_max_age) or resolved_max_age < 0.0:
+        return None
+    if (
+        generated > observed_now + timedelta(minutes=5)
+        or observed_now - generated
+        > timedelta(hours=resolved_max_age)
+    ):
+        return None
+    try:
+        delta = payload["adverse_selection_metrics"][
+            "fill_vs_nofill_outcome_delta"
+        ]
+        filled = delta["filled_cluster_robust_brier_edge_vs_market"]
+        unfilled = delta["unfilled_cluster_robust_brier_edge_vs_market"]
+        filled_mean = float(filled["mean"])
+        unfilled_mean = float(unfilled["mean"])
+        filled_clusters = int(filled["clusters"])
+        unfilled_clusters = int(unfilled["clusters"])
+    except (KeyError, TypeError, ValueError):
+        return None
+    if (
+        not math.isfinite(filled_mean)
+        or not math.isfinite(unfilled_mean)
+        or not -1.0 <= filled_mean <= 1.0
+        or not -1.0 <= unfilled_mean <= 1.0
+        or filled_clusters < 1
+        or unfilled_clusters < 1
+        or filled.get("method") != "event_cluster_bootstrap_95"
+        or unfilled.get("method") != "event_cluster_bootstrap_95"
+    ):
+        return None
+    haircut_cents = min(
+        100.0,
+        max(0.0, (unfilled_mean - filled_mean) * 100.0),
+    )
+    return MakerAdverseSelectionEvidence(
+        haircut_cents=round(haircut_cents, 6),
+        generated_at=generated.isoformat(),
+        source_report_sha256=hashlib.sha256(raw_bytes).hexdigest(),
+        filled_clusters=filled_clusters,
+        unfilled_clusters=unfilled_clusters,
+    )
 
 
 def adverse_selection_report(conn: sqlite3.Connection) -> dict[str, Any]:

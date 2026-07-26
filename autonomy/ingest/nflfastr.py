@@ -6,7 +6,8 @@ than reconstruct it. We don't store 50k plays/season; we aggregate each play's
 EPA to per-(game, team) offense (posteam) and defense-allowed (defteam) sums and
 persist those as boxscore-style rows. The nflfastR ``game_id`` matches the
 nflverse ``games.csv`` ids already in the lake, so the EPA rows join to games
-for free. Point-in-time falls out of the games' start_time.
+for free. Each fetched release is stamped with its actual observation time so
+historical queries cannot use the retro backfill before it reached Dummy.
 
 Pure-stdlib parse; fetch is injectable (deterministic under test, no network).
 """
@@ -15,6 +16,7 @@ from __future__ import annotations
 import csv
 import gzip
 import io
+from datetime import datetime, timezone
 from typing import Any, Callable, Iterable
 
 NFLFASTR_PBP_URL = (
@@ -59,6 +61,7 @@ def _default_fetch(season: int) -> str:
 def ingest_nflfastr_epa(
     store: Any, seasons: Iterable[int], *,
     fetch: Callable[[int], str] | None = None,
+    received_at: str | None = None,
 ) -> dict[str, Any]:
     fetch = fetch or _default_fetch
     total = 0
@@ -66,10 +69,18 @@ def ingest_nflfastr_epa(
     for season in seasons:
         try:
             text = fetch(int(season))
+            observed_at = received_at or datetime.now(timezone.utc).isoformat()
         except Exception:  # noqa: BLE001 -- a down/missing season is skipped
             store.record_ingest("nflfastr", "nfl", str(season), status="error", rows=0, http={})
             continue
         agg = aggregate_epa(parse_pbp_csv(text))
+        for row in agg:
+            # The release fetch does not expose a trustworthy per-game
+            # publication timestamp. Record the actual observation time as
+            # the conservative source-availability upper bound.
+            row["source_available_at"] = observed_at
+            row["received_at"] = observed_at
+            row["source"] = "nflfastr"
         total += store.record_team_boxscores(agg)
         team_games += len(agg)
         store.record_ingest("nflfastr", "nfl", str(season), status="ok",

@@ -1,12 +1,8 @@
-"""Operator dashboard for the autonomy predator.
-
-A query-only evidence view plus narrowly scoped local controls for the public
-paper scheduler. The control path cannot reach the broker, live executor,
-weights, risk settings, or capital authority.
-"""
+"""Loopback-only, query-only operator dashboard for the autonomy predator."""
 from __future__ import annotations
 
 import hashlib
+import ipaddress
 import json
 import math
 import os
@@ -14,10 +10,6 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
-from urllib.parse import urlparse
-
-from starlette.requests import Request
-
 from autonomy.dashboard_ui import DASHBOARD_HTML
 
 RUNTIME_DIR = Path("runtime/autonomy")
@@ -32,6 +24,18 @@ SPORTS_MODEL_SEED_TASK_NAME = "DummySportsModelSeed"
 SPORTS_BOARD_REFRESH_TASK_NAME = "DummySportsBoardRefresh"
 SPORTS_MODEL_SEED_STATUS_FILE = "sports_model_seed_authoritative_status.json"
 WATCHDOG_STATUS_MAX_AGE_SECONDS = 600.0
+STATUS_TAIL_MAX_BYTES = 1_048_576
+STATUS_CYCLE_WINDOW = 40
+# Current boards legitimately contain thousands of rows. Keep a generous hard
+# ceiling, but refuse to hand an arbitrarily large local artifact to the JSON
+# parser from the latency-sensitive status endpoint.
+STATUS_BOARD_MAX_BYTES = 32 * 1024 * 1024
+STATUS_CAPS_MAX_BYTES = 64 * 1024
+PROMOTION_STATUS_MAX_AGE_SECONDS = 172_800.0
+EXECUTION_TOURNAMENT_MAX_AGE_SECONDS = 172_800.0
+KXSOL15M_SERIES = "KXSOL15M"
+KXSOL15M_SOURCE = "crypto_patience_confirm"
+CAPS_CONFIG_PATH = Path("configs/caps.json")
 
 MISPRICING_MONITOR_AUTHORITY = {
     "status": "LEGACY_RESEARCH_NON_AUTHORITATIVE",
@@ -39,6 +43,50 @@ MISPRICING_MONITOR_AUTHORITY = {
     "can_gate_sports_grades": False,
     "can_gate_live": False,
 }
+
+_LOOPBACK_NAMES = frozenset({"localhost", "127.0.0.1", "::1"})
+_TEST_CLIENT_NAME = "testclient"
+_TEST_HOST_NAME = "testserver"
+_DASHBOARD_SECURITY_HEADERS = {
+    "Cache-Control": "no-store",
+    "Content-Security-Policy": (
+        "default-src 'none'; "
+        "connect-src 'self'; "
+        "img-src data:; "
+        "script-src 'self' 'unsafe-inline'; "
+        "style-src 'unsafe-inline'; "
+        "font-src 'self'; "
+        "base-uri 'none'; "
+        "form-action 'none'; "
+        "frame-ancestors 'none'"
+    ),
+    "Cross-Origin-Resource-Policy": "same-origin",
+    "Permissions-Policy": (
+        "camera=(), display-capture=(), geolocation=(), microphone=(), "
+        "payment=(), usb=()"
+    ),
+    "Referrer-Policy": "no-referrer",
+    "X-Content-Type-Options": "nosniff",
+    "X-Frame-Options": "DENY",
+}
+
+
+def _is_loopback_address(value: str | None, *, allow_test_name: bool = False) -> bool:
+    """Return whether an ASGI peer/host is an explicit loopback address.
+
+    Uvicorn supplies a numeric socket peer, so names other than ``localhost``
+    are never resolved here. ``testclient`` is an in-process Starlette sentinel
+    and cannot be supplied by a network socket.
+    """
+    candidate = str(value or "").strip().casefold().rstrip(".")
+    if allow_test_name and candidate == _TEST_CLIENT_NAME:
+        return True
+    if candidate == "localhost":
+        return True
+    try:
+        return ipaddress.ip_address(candidate.split("%", 1)[0]).is_loopback
+    except ValueError:
+        return False
 
 
 def _load_json(path: Path) -> Any:
@@ -54,7 +102,8 @@ def _to_epoch(value: Any) -> float | None:
     if value is None:
         return None
     if isinstance(value, (int, float)):
-        return float(value)
+        epoch = float(value)
+        return epoch if math.isfinite(epoch) else None
     try:
         text = str(value).strip()
         if not text:
@@ -871,20 +920,657 @@ def _tier_performance_validation_error(
     return None
 
 
-def _tail_jsonl(path: Path, limit: int) -> list[dict[str, Any]]:
-    if not path.exists():
-        return []
+def _bounded_tail_text(path: Path, max_bytes: int = STATUS_TAIL_MAX_BYTES) -> str | None:
+    """Read at most ``max_bytes`` from a file tail without trusting its size."""
     try:
-        lines = path.read_text(encoding="utf-8").strip().splitlines()
-    except Exception:
+        with path.open("rb") as handle:
+            size = handle.seek(0, 2)
+            start = max(0, size - max_bytes)
+            handle.seek(start)
+            payload = handle.read(max_bytes)
+    except OSError:
+        return None
+    if start:
+        _, separator, payload = payload.partition(b"\n")
+        if not separator:
+            return None
+    return payload.decode("utf-8", errors="replace")
+
+
+def _bounded_file_bytes(
+    path: Path,
+    *,
+    max_bytes: int = STATUS_TAIL_MAX_BYTES,
+) -> tuple[bytes | None, str | None]:
+    """Read a complete small artifact or return a fail-closed reason.
+
+    Reading ``max_bytes + 1`` closes the stat/read race: even if a producer
+    grows the file after a size check, the dashboard never buffers beyond the
+    declared bound.
+    """
+
+    try:
+        with path.open("rb") as handle:
+            payload = handle.read(max_bytes + 1)
+    except FileNotFoundError:
+        return None, "missing"
+    except OSError:
+        return None, "unreadable"
+    if len(payload) > max_bytes:
+        return None, "size_limit_exceeded"
+    return payload, None
+
+
+def _bounded_json_object(
+    path: Path,
+    *,
+    max_bytes: int = STATUS_TAIL_MAX_BYTES,
+) -> tuple[dict[str, Any] | None, str | None]:
+    payload, error = _bounded_file_bytes(path, max_bytes=max_bytes)
+    if payload is None:
+        return None, error
+    try:
+        value = json.loads(payload.decode("utf-8"))
+    except (UnicodeError, json.JSONDecodeError):
+        return None, "invalid_json"
+    if not isinstance(value, dict):
+        return None, "not_an_object"
+    return value, None
+
+
+def _tail_jsonl(path: Path, limit: int) -> list[dict[str, Any]]:
+    text = _bounded_tail_text(path)
+    if text is None:
         return []
     out = []
-    for line in lines[-limit:]:
+    for line in text.strip().splitlines()[-limit:]:
         try:
-            out.append(json.loads(line))
-        except Exception:
+            value = json.loads(line)
+        except (json.JSONDecodeError, TypeError):
             continue
+        if isinstance(value, dict):
+            out.append(value)
     return out
+
+
+def _aware_timestamp(
+    value: Any,
+    *,
+    now_epoch: float | None = None,
+    future_tolerance_seconds: float = 300.0,
+) -> tuple[float, str] | None:
+    """Return a timezone-aware timestamp only; naive receipts are not evidence."""
+    if not isinstance(value, str) or not value.strip():
+        return None
+    try:
+        parsed = datetime.fromisoformat(value.strip().replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if parsed.tzinfo is None or parsed.utcoffset() is None:
+        return None
+    normalized = parsed.astimezone(timezone.utc)
+    epoch = normalized.timestamp()
+    if now_epoch is not None and epoch - now_epoch > future_tolerance_seconds:
+        return None
+    return epoch, normalized.isoformat()
+
+
+def _bounded_cycle_window(
+    path: Path,
+    *,
+    limit: int = STATUS_CYCLE_WINDOW,
+) -> tuple[list[dict[str, Any]], int]:
+    """Collect the last valid cycle receipts from a bounded byte tail."""
+    text = _bounded_tail_text(path)
+    if text is None:
+        return [], 0
+    records: list[dict[str, Any]] = []
+    malformed = 0
+    for line in reversed(text.splitlines()):
+        if not line.strip():
+            continue
+        try:
+            value = json.loads(line)
+        except (json.JSONDecodeError, TypeError):
+            malformed += 1
+            continue
+        if (
+            not isinstance(value, dict)
+            or not isinstance(value.get("status"), str)
+            or not value["status"].strip()
+        ):
+            malformed += 1
+            continue
+        records.append(value)
+        if len(records) >= limit:
+            break
+    records.reverse()
+    return records, malformed
+
+
+def _bounded_structured_records(
+    path: Path,
+    *,
+    limit: int = 200,
+) -> list[dict[str, Any]]:
+    """Extract concatenated top-level JSON receipts from a bounded log tail."""
+    text = _bounded_tail_text(path)
+    if text is None:
+        return []
+    decoder = json.JSONDecoder()
+    records: list[dict[str, Any]] = []
+    position = 0
+    while position < len(text):
+        start = text.find("{", position)
+        if start < 0:
+            break
+        line_start = text.rfind("\n", 0, start) + 1
+        if start != line_start:
+            position = start + 1
+            continue
+        try:
+            value, end = decoder.raw_decode(text, start)
+        except ValueError:
+            position = start + 1
+            continue
+        if isinstance(value, dict):
+            records.append(value)
+        position = end
+    return records[-limit:]
+
+
+def _nonnegative_int(value: Any) -> int | None:
+    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+        return None
+    return value
+
+
+def _count_or_list_length(value: Any) -> int | None:
+    count = _nonnegative_int(value)
+    if count is not None:
+        return count
+    return len(value) if isinstance(value, list) else None
+
+
+def _cycle_timestamp(
+    record: dict[str, Any],
+    *,
+    now_epoch: float,
+) -> tuple[float, str] | None:
+    for field in ("completed_at", "at", "started_at"):
+        parsed = _aware_timestamp(record.get(field), now_epoch=now_epoch)
+        if parsed is not None:
+            return parsed
+    return None
+
+
+def _ledger_health_status(
+    runtime_dir: Path,
+    *,
+    heartbeat: dict[str, Any],
+    watchdog: dict[str, Any],
+    cycles: list[dict[str, Any]],
+    now_epoch: float,
+) -> dict[str, Any]:
+    raw_health = heartbeat.get("ledger_health")
+    health = raw_health if isinstance(raw_health, dict) else {}
+    size_bytes = _nonnegative_int(health.get("size_bytes"))
+    wal_size_bytes = _nonnegative_int(health.get("wal_size_bytes"))
+    source = "heartbeat.ledger_health"
+    wal_source = "heartbeat.ledger_health"
+    if size_bytes is None:
+        try:
+            size_bytes = (runtime_dir / "ledger.db").stat().st_size
+            source = "filesystem_stat"
+        except OSError:
+            size_bytes = None
+    if wal_size_bytes is None:
+        try:
+            wal_size_bytes = (runtime_dir / "ledger.db-wal").stat().st_size
+            wal_source = "filesystem_stat"
+        except OSError:
+            wal_size_bytes = None
+            wal_source = "unavailable"
+
+    sampled = _aware_timestamp(
+        heartbeat.get("last_cycle_at"),
+        now_epoch=now_epoch,
+    )
+    sampled_at = sampled[1] if sampled is not None else None
+    if source == "filesystem_stat":
+        sampled_at = datetime.fromtimestamp(now_epoch, tz=timezone.utc).isoformat()
+
+    max_gb = _finite_number(watchdog.get("ledger_max_gb"))
+    threshold_bytes = None if max_gb is None or max_gb < 0 else round(max_gb * 1e9)
+    over_threshold = watchdog.get("ledger_over_threshold")
+    if not isinstance(over_threshold, bool):
+        over_threshold = (
+            size_bytes is not None
+            and threshold_bytes is not None
+            and size_bytes > threshold_bytes
+        )
+
+    samples: list[tuple[float, str, int]] = []
+    for cycle in cycles:
+        cycle_health = cycle.get("ledger_health")
+        if not isinstance(cycle_health, dict):
+            continue
+        cycle_size = _nonnegative_int(cycle_health.get("size_bytes"))
+        cycle_time = _cycle_timestamp(cycle, now_epoch=now_epoch)
+        if cycle_size is None or cycle_time is None:
+            continue
+        samples.append((cycle_time[0], cycle_time[1], cycle_size))
+    if size_bytes is not None and sampled is not None:
+        samples.append((sampled[0], sampled[1], size_bytes))
+    samples = sorted({(epoch, stamp, size) for epoch, stamp, size in samples})
+
+    growth: dict[str, Any] = {
+        "status": "UNAVAILABLE",
+        "reason": "insufficient_persisted_history",
+        "sample_count": len(samples),
+        "window_start": None,
+        "window_end": None,
+        "bytes_delta": None,
+        "bytes_per_hour": None,
+    }
+    if len(samples) >= 2:
+        start_epoch, start_stamp, start_size = samples[0]
+        end_epoch, end_stamp, end_size = samples[-1]
+        elapsed = end_epoch - start_epoch
+        if elapsed > 0:
+            delta = end_size - start_size
+            growth = {
+                "status": "AVAILABLE",
+                "reason": None,
+                "sample_count": len(samples),
+                "window_start": start_stamp,
+                "window_end": end_stamp,
+                "bytes_delta": delta,
+                "bytes_per_hour": round(delta * 3600.0 / elapsed, 3),
+            }
+        else:
+            growth["reason"] = "nonpositive_history_window"
+
+    return {
+        "status": "AVAILABLE" if size_bytes is not None else "UNAVAILABLE",
+        "source": source,
+        "sampled_at": sampled_at,
+        "size_bytes": size_bytes,
+        "size_gib": (
+            None if size_bytes is None else round(size_bytes / (1024 ** 3), 3)
+        ),
+        "wal_size_bytes": wal_size_bytes,
+        "wal_source": wal_source,
+        "threshold_bytes": threshold_bytes,
+        "over_threshold": bool(over_threshold),
+        "growth": growth,
+    }
+
+
+def _retention_status(
+    runtime_dir: Path,
+    *,
+    watchdog: dict[str, Any],
+    now_epoch: float,
+) -> dict[str, Any]:
+    records = [
+        record
+        for record in _bounded_structured_records(
+            runtime_dir / "ledger_retention_stdout.log"
+        )
+        if isinstance(record.get("status"), str) and record["status"].strip()
+    ]
+    task = next(
+        (
+            row
+            for row in (watchdog.get("tasks") or [])
+            if isinstance(row, dict)
+            and row.get("task_name") == "DummyLedgerRetention"
+        ),
+        {},
+    )
+    latest = records[-1] if records else {}
+    last_run_status = str(latest.get("status") or task.get("last_status") or "").upper()
+    last_run_status = last_run_status or None
+
+    latest_time = None
+    for field in ("generated_at", "completed_at", "at"):
+        latest_time = _aware_timestamp(latest.get(field), now_epoch=now_epoch)
+        if latest_time is not None:
+            break
+    if latest_time is None:
+        latest_time = _aware_timestamp(task.get("last_status_at"), now_epoch=now_epoch)
+
+    success_time = None
+    for record in reversed(records):
+        if str(record.get("status") or "").upper() != "APPLIED":
+            continue
+        for field in ("generated_at", "completed_at", "at"):
+            success_time = _aware_timestamp(record.get(field), now_epoch=now_epoch)
+            if success_time is not None:
+                break
+        if success_time is not None:
+            break
+    if success_time is None:
+        success_time = _aware_timestamp(
+            task.get("last_success_at"),
+            now_epoch=now_epoch,
+        )
+
+    next_due = _aware_timestamp(task.get("next_due_at"), now_epoch=now_epoch)
+    cadence = _nonnegative_int(task.get("cadence_seconds"))
+    if cadence is None:
+        cadence = 86_400
+    threshold_seconds = _finite_number(task.get("threshold_seconds"))
+    if threshold_seconds is None or threshold_seconds <= 0:
+        threshold_seconds = float(cadence * 2)
+    last_run_age = (
+        None if latest_time is None else max(0.0, now_epoch - latest_time[0])
+    )
+    last_success_age = (
+        None if success_time is None else max(0.0, now_epoch - success_time[0])
+    )
+    last_run_stale = (
+        None if last_run_age is None else last_run_age > threshold_seconds
+    )
+    last_success_stale = (
+        None if last_success_age is None else last_success_age > threshold_seconds
+    )
+    next_due_overdue = next_due is not None and next_due[0] < now_epoch
+    task_stale = task.get("stale") if isinstance(task.get("stale"), bool) else None
+    task_contract_valid = bool(task) and task_stale is not None
+    lock_retries = _nonnegative_int(latest.get("lock_retries"))
+    failure_reason = latest.get("error") or task.get("content_error")
+    if not isinstance(failure_reason, str) or not failure_reason.strip():
+        failure_reason = None
+    elif len(failure_reason) > 240:
+        failure_reason = failure_reason[:240]
+
+    if (
+        last_run_status in {"REFUSED", "FAILED", "ERROR"}
+        or last_run_stale is True
+        or last_success_stale is True
+        or next_due_overdue
+        or task_stale is True
+    ):
+        status = "DEGRADED"
+    elif (
+        last_run_status == "APPLIED"
+        and latest_time is not None
+        and success_time is not None
+        and next_due is not None
+        and task_contract_valid
+    ):
+        status = "AVAILABLE"
+    elif last_run_status is None:
+        status = "UNAVAILABLE"
+    else:
+        status = "PARTIAL"
+    return {
+        "status": status,
+        "source": "ledger_retention_stdout.log+watchdog.tasks",
+        "last_run_status": last_run_status,
+        "last_run_at": latest_time[1] if latest_time is not None else None,
+        "last_run_age_seconds": (
+            round(last_run_age, 1) if last_run_age is not None else None
+        ),
+        "last_run_stale": last_run_stale,
+        "last_success_at": success_time[1] if success_time is not None else None,
+        "last_success_age_seconds": (
+            round(last_success_age, 1) if last_success_age is not None else None
+        ),
+        "last_success_stale": last_success_stale,
+        "next_due_at": next_due[1] if next_due is not None else None,
+        "next_due_status": (
+            "OVERDUE"
+            if next_due_overdue
+            else ("AVAILABLE" if next_due is not None else "UNAVAILABLE")
+        ),
+        "next_due_overdue": next_due_overdue,
+        "cadence_seconds": cadence,
+        "threshold_seconds": round(threshold_seconds, 1),
+        "watchdog_task_stale": task_stale,
+        "records_considered": len(records),
+        "lock_retries_last_run": lock_retries,
+        "failure_reason": failure_reason,
+    }
+
+
+def _sqlite_contention_status(
+    *,
+    heartbeat: dict[str, Any],
+    cycles: list[dict[str, Any]],
+) -> dict[str, Any]:
+    retry_samples: list[int] = []
+    terminal_failures = 0
+    for cycle in cycles:
+        contention = cycle.get("sqlite_contention")
+        if isinstance(contention, dict):
+            retry_count = _nonnegative_int(contention.get("retry_events"))
+            if retry_count is not None:
+                retry_samples.append(retry_count)
+        status = str(cycle.get("status") or "")
+        error = str(cycle.get("error") or "").casefold()
+        if (
+            status == "CYCLE_ERROR:OperationalError"
+            and ("database is locked" in error or "sqlite_busy" in error)
+        ):
+            terminal_failures += 1
+
+    health = heartbeat.get("ledger_health")
+    checkpoint = health.get("wal_checkpoint") if isinstance(health, dict) else None
+    checkpoint_busy = (
+        _nonnegative_int(checkpoint.get("busy"))
+        if isinstance(checkpoint, dict)
+        else None
+    )
+    retry_events = sum(retry_samples) if retry_samples else None
+    status = "AVAILABLE" if retry_events is not None else (
+        "PARTIAL" if cycles else "UNAVAILABLE"
+    )
+    return {
+        "status": status,
+        "retry_events": retry_events,
+        "retry_events_status": (
+            "AVAILABLE" if retry_events is not None else "UNAVAILABLE"
+        ),
+        "terminal_failure_count": terminal_failures,
+        "wal_checkpoint_busy": checkpoint_busy,
+        "records_considered": len(cycles),
+        "reason": (
+            None
+            if retry_events is not None
+            else "per_cycle_retry_counter_not_persisted"
+        ),
+    }
+
+
+def _cycle_deadline_status(
+    cycles: list[dict[str, Any]],
+    *,
+    malformed_records: int,
+    now_epoch: float,
+) -> dict[str, Any]:
+    deadline_count = sum(
+        1 for cycle in cycles if cycle.get("status") == "CYCLE_ERROR:CycleDeadline"
+    )
+    first = _cycle_timestamp(cycles[0], now_epoch=now_epoch) if cycles else None
+    last = _cycle_timestamp(cycles[-1], now_epoch=now_epoch) if cycles else None
+    return {
+        "status": "AVAILABLE" if cycles else "UNAVAILABLE",
+        "source": "cycles.jsonl",
+        "window_kind": "last_valid_records",
+        "tail_limit": STATUS_CYCLE_WINDOW,
+        "records_considered": len(cycles),
+        "malformed_records": malformed_records,
+        "deadline_count": deadline_count,
+        "rate": round(deadline_count / len(cycles), 6) if cycles else None,
+        "window_start": first[1] if first is not None else None,
+        "window_end": last[1] if last is not None else None,
+    }
+
+
+def _promotion_run_status(
+    payload: Any,
+    *,
+    now_epoch: float,
+) -> dict[str, Any]:
+    unavailable = {
+        "status": "UNAVAILABLE",
+        "source": "auto_promotion_state.json",
+        "generated_at": None,
+        "age_seconds": None,
+        "stale": True,
+        "run_status": None,
+        "scopes_evaluated": None,
+        "eligible_scopes": None,
+        "promoted_count": None,
+        "declined_count": None,
+        "human_review_candidate_count": None,
+        "live_trading_authority": None,
+        "execution_authority": False,
+    }
+    if not isinstance(payload, dict) or payload.get("report_name") != "AUTO_PROMOTION":
+        return unavailable
+    timestamp = _aware_timestamp(payload.get("generated_at"), now_epoch=now_epoch)
+    if timestamp is None:
+        return {**unavailable, "status": "INVALID"}
+    lists = {
+        "promoted_count": payload.get("promoted"),
+        "declined_count": payload.get("declined"),
+        "human_review_candidate_count": payload.get("human_review_candidates"),
+    }
+    if any(not isinstance(value, list) for value in lists.values()):
+        return {
+            **unavailable,
+            "status": "INVALID",
+            "generated_at": timestamp[1],
+        }
+    age = max(0.0, now_epoch - timestamp[0])
+    stale = age > PROMOTION_STATUS_MAX_AGE_SECONDS
+    run_status = str(payload.get("status") or "").upper() or None
+    status = "STALE" if stale else "AVAILABLE"
+    if run_status not in {"OK"}:
+        status = "DEGRADED"
+    return {
+        "status": status,
+        "source": "auto_promotion_state.json",
+        "generated_at": timestamp[1],
+        "age_seconds": round(age, 1),
+        "stale": stale,
+        "run_status": run_status,
+        "scopes_evaluated": _count_or_list_length(
+            payload.get("scopes_evaluated")
+        ),
+        "eligible_scopes": _count_or_list_length(payload.get("eligible_scopes")),
+        "promoted_count": len(lists["promoted_count"]),
+        "declined_count": len(lists["declined_count"]),
+        "human_review_candidate_count": len(
+            lists["human_review_candidate_count"]
+        ),
+        "live_trading_authority": (
+            payload.get("live_trading_authority")
+            if isinstance(payload.get("live_trading_authority"), str)
+            else None
+        ),
+        "execution_authority": False,
+    }
+
+
+def _watchdog_health_contract(watchdog: Any) -> dict[str, Any]:
+    """Sanitize the supervisory verdict without treating absence as health."""
+
+    payload = watchdog if isinstance(watchdog, dict) else {}
+    healthy = payload.get("healthy") if isinstance(payload.get("healthy"), bool) else None
+    raw_stale_tasks = payload.get("stale_tasks")
+    stale_tasks_valid = isinstance(raw_stale_tasks, list) and all(
+        isinstance(item, str) and item.strip() for item in raw_stale_tasks
+    )
+    stale_tasks = (
+        [item.strip() for item in raw_stale_tasks[:50]]
+        if stale_tasks_valid
+        else []
+    )
+    contract_valid = healthy is not None and stale_tasks_valid
+    available = contract_valid and healthy is True and not stale_tasks
+    if not contract_valid:
+        reason = "watchdog_health_contract_missing_or_invalid"
+    elif healthy is not True:
+        reason = "watchdog_reported_unhealthy"
+    elif stale_tasks:
+        reason = "watchdog_authoritative_tasks_stale"
+    else:
+        reason = None
+    return {
+        "status": "AVAILABLE" if available else "DEGRADED",
+        "healthy": healthy,
+        "stale_tasks": stale_tasks,
+        "contract_valid": contract_valid,
+        "reason": reason,
+    }
+
+
+def _system_health_status(
+    runtime_dir: Path,
+    *,
+    heartbeat: dict[str, Any],
+    watchdog: dict[str, Any],
+    cycles: list[dict[str, Any]],
+    malformed_cycles: int,
+    promotion: Any,
+    now_epoch: float,
+) -> dict[str, Any]:
+    ledger = _ledger_health_status(
+        runtime_dir,
+        heartbeat=heartbeat,
+        watchdog=watchdog,
+        cycles=cycles,
+        now_epoch=now_epoch,
+    )
+    retention = _retention_status(
+        runtime_dir,
+        watchdog=watchdog,
+        now_epoch=now_epoch,
+    )
+    sqlite_contention = _sqlite_contention_status(
+        heartbeat=heartbeat,
+        cycles=cycles,
+    )
+    cycle_deadlines = _cycle_deadline_status(
+        cycles,
+        malformed_records=malformed_cycles,
+        now_epoch=now_epoch,
+    )
+    promotion_run = _promotion_run_status(promotion, now_epoch=now_epoch)
+    watchdog_health = _watchdog_health_contract(watchdog)
+    degraded = (
+        watchdog_health["status"] != "AVAILABLE"
+        or ledger.get("over_threshold") is True
+        or retention["status"] in {"DEGRADED", "STALE"}
+        or bool(cycle_deadlines["deadline_count"])
+        or promotion_run["status"] == "DEGRADED"
+    )
+    complete = (
+        watchdog_health["status"] == "AVAILABLE"
+        and ledger["status"] == "AVAILABLE"
+        and ledger["growth"]["status"] == "AVAILABLE"
+        and retention["status"] == "AVAILABLE"
+        and retention["next_due_status"] == "AVAILABLE"
+        and sqlite_contention["status"] == "AVAILABLE"
+        and cycle_deadlines["status"] == "AVAILABLE"
+        and promotion_run["status"] == "AVAILABLE"
+    )
+    return {
+        "schema_version": 1,
+        "status": "DEGRADED" if degraded else ("AVAILABLE" if complete else "PARTIAL"),
+        "authority": {"execution": False, "promotion": False},
+        "watchdog": watchdog_health,
+        "ledger": ledger,
+        "retention": retention,
+        "sqlite_contention": sqlite_contention,
+        "cycle_deadlines": cycle_deadlines,
+        "promotion_run": promotion_run,
+    }
 
 
 def session_authorization_state(runtime_dir: Path) -> dict[str, Any]:
@@ -1329,6 +2015,10 @@ def assemble_dashboard_state(runtime_dir: Path | None = None) -> dict[str, Any]:
             for c in cycles if c.get("bankroll_cents") is not None
         ][-30:],
         "alerts": alerts,
+        # Launch-plan truth surfaces: one strategy catalog and one harvested
+        # adapter lifecycle registry. Both are read-only and grant no authority.
+        "strategy_catalog": _strategy_catalog_status(),
+        "repo_harvester": _repo_harvester_status(),
         # Wave-16: the mounted live-game poller's session summary.
         "live_poller": _load_json(rd / "live_poller_status.json") or {},
         # Wave-20: the machine's own ranked improvement plan.
@@ -1371,6 +2061,37 @@ def _live_controls_status() -> dict[str, Any]:
             "paper_results_can_enable_live": False,
             "paper_results_can_block_live": False,
             "broker_contacted": False,
+        }
+
+
+def _strategy_catalog_status() -> dict[str, Any]:
+    try:
+        from strategies.registry import strategy_catalog_payload
+
+        return strategy_catalog_payload()
+    except Exception as exc:  # noqa: BLE001 -- dashboard must fail closed
+        return {
+            "catalog_status": "UNAVAILABLE_FAIL_CLOSED",
+            "execution_authority_count": 0,
+            "strategies": [],
+            "error": f"{type(exc).__name__}: {exc}"[:200],
+        }
+
+
+def _repo_harvester_status() -> dict[str, Any]:
+    try:
+        from repo_harvester.incorporation_registry import dashboard_registry_payload
+
+        return dashboard_registry_payload()
+    except Exception as exc:  # noqa: BLE001 -- dashboard must fail closed
+        return {
+            "registry_status": "UNAVAILABLE_FAIL_CLOSED",
+            "verified_challenger_count": 0,
+            "dormant_adapter_count": 0,
+            "all_unverified_adapters_dormant": False,
+            "authority": {"prediction": False, "execution": False},
+            "adapters": [],
+            "error": f"{type(exc).__name__}: {exc}"[:200],
         }
 
 
@@ -1427,28 +2148,613 @@ def _retired_paper_canary_status(value: dict[str, Any] | None) -> dict[str, Any]
 
 
 def _use_sidecar_summary(rd: Path) -> dict[str, Any]:
-    predictions = _load_json(rd / "use_predictions.json") or {}
+    predictions, predictions_error = _bounded_json_object(
+        rd / "use_predictions.json",
+        max_bytes=STATUS_TAIL_MAX_BYTES,
+    )
+    predictions = predictions or {}
     provenance: dict[str, int] = {}
-    for row in predictions.get("rows") or []:
+    rows = predictions.get("rows")
+    for row in rows if isinstance(rows, list) else []:
         if isinstance(row, dict) and "error" not in row:
             key = str(row.get("provenance"))
             provenance[key] = provenance.get(key, 0) + 1
-    try:
-        with (rd / "use_outcomes.jsonl").open(encoding="utf-8") as fh:
-            outcomes = sum(1 for _ in fh)
-    except OSError:
-        outcomes = 0
+    outcomes_payload, outcomes_error = _bounded_file_bytes(
+        rd / "use_outcomes.jsonl",
+        max_bytes=STATUS_TAIL_MAX_BYTES,
+    )
+    outcomes = None
+    if outcomes_payload is not None:
+        try:
+            outcomes = len(outcomes_payload.decode("utf-8").splitlines())
+        except UnicodeError:
+            outcomes_error = "invalid_utf8"
     return {
-        "status": predictions.get("status"),
+        "status": (
+            predictions.get("status")
+            if predictions_error is None
+            else "UNAVAILABLE"
+        ),
         "generated_at": predictions.get("generated_at"),
         "predictions": sum(provenance.values()),
         "provenance": provenance,
         "outcomes_on_tape": outcomes,
+        "outcomes_status": "AVAILABLE" if outcomes is not None else "UNAVAILABLE",
+        "outcomes_unavailable_reason": outcomes_error,
+        "bounded_read_limit_bytes": STATUS_TAIL_MAX_BYTES,
+    }
+
+
+def _flatten_board_rows(board: dict[str, Any]) -> list[dict[str, Any]]:
+    return [
+        row
+        for markets in (board.get("groups") or {}).values()
+        if isinstance(markets, dict)
+        for rows in markets.values()
+        if isinstance(rows, list)
+        for row in rows
+        if isinstance(row, dict)
+    ]
+
+
+def _quantile(sorted_values: list[float], fraction: float) -> float | None:
+    if not sorted_values:
+        return None
+    position = (len(sorted_values) - 1) * fraction
+    lower = math.floor(position)
+    upper = math.ceil(position)
+    if lower == upper:
+        return sorted_values[lower]
+    weight = position - lower
+    return (
+        sorted_values[lower] * (1.0 - weight)
+        + sorted_values[upper] * weight
+    )
+
+
+def _board_artifact_size_error(runtime_dir: Path) -> str | None:
+    for name in ("bet_board.json", "bet_board_display.json"):
+        path = runtime_dir / name
+        try:
+            size = path.stat().st_size
+        except FileNotFoundError:
+            continue
+        except OSError:
+            return f"artifact_stat_unavailable:{name}"
+        if size > STATUS_BOARD_MAX_BYTES:
+            return f"artifact_size_limit_exceeded:{name}"
+    return None
+
+
+def _board_edge_quality(
+    runtime_dir: Path,
+    *,
+    now_epoch: float,
+) -> dict[str, Any]:
+    from autonomy.bet_board import read_current_board_artifact
+
+    current = datetime.fromtimestamp(now_epoch, tz=timezone.utc)
+    size_error = _board_artifact_size_error(runtime_dir)
+    if size_error is None:
+        board = read_current_board_artifact(
+            runtime_dir / "bet_board.json",
+            display_path=runtime_dir / "bet_board_display.json",
+            now=current,
+        )
+    else:
+        board = {
+            "artifact_status": "INVALID",
+            "generated_at": None,
+            "stale": True,
+            "groups": {},
+        }
+    rows = _flatten_board_rows(board)
+    artifact_status = str(board.get("artifact_status") or "UNAVAILABLE").upper()
+    is_fresh = artifact_status == "FRESH" and board.get("stale") is False
+    valid_labels = {"A", "B", "C", "WATCH"}
+    validated = (
+        [
+            row
+            for row in rows
+            if str(row.get("tier_display_bucket") or "") in valid_labels
+        ]
+        if is_fresh
+        else []
+    )
+    edges = sorted(
+        edge
+        for row in validated
+        if (edge := _finite_number(row.get("after_fee_edge"))) is not None
+    )
+    bins = [
+        {"label": "<0%", "count": sum(value < 0.0 for value in edges)},
+        {
+            "label": "0% to <1%",
+            "count": sum(0.0 <= value < 0.01 for value in edges),
+        },
+        {
+            "label": "1% to <2%",
+            "count": sum(0.01 <= value < 0.02 for value in edges),
+        },
+        {
+            "label": "2% to <4%",
+            "count": sum(0.02 <= value < 0.04 for value in edges),
+        },
+        {"label": ">=4%", "count": sum(value >= 0.04 for value in edges)},
+    ]
+    if not is_fresh:
+        edge_reason = "board_not_fresh"
+    elif not validated:
+        edge_reason = "no_schema_valid_current_rows"
+    elif not edges:
+        edge_reason = "validated_rows_missing_after_fee_edge"
+    else:
+        edge_reason = None
+    after_fee = {
+        "status": "AVAILABLE" if edges else "UNAVAILABLE",
+        "reason": edge_reason,
+        "sample_count": len(edges),
+        "missing_count": len(validated) - len(edges),
+        "bins": bins,
+        "min": round(edges[0], 6) if edges else None,
+        "p50": (
+            round(value, 6)
+            if (value := _quantile(edges, 0.5)) is not None
+            else None
+        ),
+        "p90": (
+            round(value, 6)
+            if (value := _quantile(edges, 0.9)) is not None
+            else None
+        ),
+        "max": round(edges[-1], 6) if edges else None,
+        "mean": round(sum(edges) / len(edges), 6) if edges else None,
+    }
+
+    reason_counts: dict[tuple[str, str], int] = {}
+    for row in rows if is_fresh else []:
+        tier = str(row.get("tier_display_bucket") or "UNATTRIBUTED")
+        if tier not in {"WATCH", "UNATTRIBUTED"}:
+            continue
+        reason = str(row.get("tier_display_reason") or "").strip()
+        if not reason:
+            continue
+        key = tier, reason
+        reason_counts[key] = reason_counts.get(key, 0) + 1
+    gate_reason_counts = [
+        {"tier": tier, "reason": reason, "count": count}
+        for (tier, reason), count in sorted(
+            reason_counts.items(),
+            key=lambda item: (-item[1], item[0]),
+        )[:20]
+    ]
+
+    if artifact_status in {"MISSING", "INVALID", "UNREADABLE", "UNAVAILABLE"}:
+        status = "UNAVAILABLE"
+    elif not is_fresh:
+        status = "STALE"
+    elif validated:
+        status = "AVAILABLE"
+    else:
+        status = "PARTIAL"
+    return {
+        "status": status,
+        "source": "bet_board.json+bet_board_display.json",
+        "reason": size_error,
+        "artifact_status": artifact_status,
+        "generated_at": board.get("generated_at"),
+        "stale": board.get("stale") is not False,
+        "total_rows": len(rows),
+        "validated_rows": len(validated),
+        "excluded_rows": len(rows) - len(validated),
+        "after_fee_edge": after_fee,
+        "actionable_share": {
+            "status": "UNAVAILABLE",
+            "reason": "dedicated_actionable_population_receipt_missing",
+            "numerator": None,
+            "denominator": None,
+            "value": None,
+            "definition": (
+                "trailing main-lane decisions meeting the declared "
+                "submission-actionable gate"
+            ),
+            "execution_authority": False,
+        },
+        "gate_reason_counts": gate_reason_counts,
+    }
+
+
+def _execution_cohort(
+    report: dict[str, Any],
+    *,
+    cohort_name: str,
+    expected_mode: str,
+) -> dict[str, Any] | None:
+    matches = [
+        cohort
+        for cohort in (report.get("cohorts") or [])
+        if isinstance(cohort, dict)
+        and isinstance(cohort.get("policy"), dict)
+        and cohort["policy"].get("cohort") == cohort_name
+    ]
+    if len(matches) != 1:
+        return None
+    cohort = matches[0]
+    policy = cohort["policy"]
+    if policy.get("mode") != expected_mode:
+        return None
+    fills = _nonnegative_int(cohort.get("fills"))
+    clusters = _nonnegative_int(cohort.get("fill_event_clusters"))
+    fill_rate = _finite_number(cohort.get("fill_rate"))
+    if fills is None or clusters is None or fill_rate is None or not 0 <= fill_rate <= 1:
+        return None
+    evidence_class = cohort.get("evidence_class")
+    output_authority = cohort.get("output_authority")
+    if not isinstance(evidence_class, str) or not isinstance(output_authority, str):
+        return None
+    authority_flags = {
+        "witnessed_broker_fill_backing": cohort.get(
+            "witnessed_broker_fill_backing"
+        ),
+        "counts_toward_policy_switch": cohort.get(
+            "counts_toward_policy_switch"
+        ),
+        "counts_toward_promotion_readiness": cohort.get(
+            "counts_toward_promotion_readiness"
+        ),
+        "promotion_review_eligible": cohort.get("promotion_review_eligible"),
+    }
+    if any(not isinstance(value, bool) for value in authority_flags.values()):
+        return None
+    return {
+        "cohort": cohort_name,
+        "mode": expected_mode,
+        "label": (
+            policy.get("label") if isinstance(policy.get("label"), str) else None
+        ),
+        "evidence_basis": (
+            cohort.get("evidence_basis")
+            if isinstance(cohort.get("evidence_basis"), str)
+            else None
+        ),
+        "fills": fills,
+        "fill_event_clusters": clusters,
+        "fill_rate": fill_rate,
+        "brier_edge_vs_market": _finite_number(
+            cohort.get("fill_conditioned_brier_edge_vs_market")
+        ),
+        "net_pnl_cents": _finite_number(cohort.get("net_pnl_cents")),
+        "mean_pnl_cents": _finite_number(cohort.get("mean_pnl_cents")),
+        "gate_status": (
+            cohort.get("gate_status")
+            if isinstance(cohort.get("gate_status"), str)
+            else None
+        ),
+        "evidence_class": evidence_class,
+        "output_authority": output_authority,
+        **authority_flags,
+    }
+
+
+def _execution_comparison_status(
+    report: Any,
+    *,
+    now_epoch: float,
+) -> dict[str, Any]:
+    unavailable = {
+        "status": "UNAVAILABLE",
+        "source": "execution_tournament.json",
+        "generated_at": None,
+        "age_seconds": None,
+        "stale": True,
+        "audit_only": True,
+        "policy_switch_authority": False,
+        "maker": None,
+        "taker": None,
+    }
+    if (
+        not isinstance(report, dict)
+        or report.get("report_name") != "EXECUTION_POLICY_TOURNAMENT"
+    ):
+        return unavailable
+    timestamp = _aware_timestamp(report.get("generated_at"), now_epoch=now_epoch)
+    if timestamp is None:
+        return {**unavailable, "status": "INVALID"}
+    switch = report.get("policy_switch_authority")
+    if not isinstance(switch, dict) or switch.get("auto_switch") is not False:
+        return {
+            **unavailable,
+            "status": "INVALID",
+            "generated_at": timestamp[1],
+        }
+    maker = _execution_cohort(report, cohort_name="C0", expected_mode="maker")
+    taker = _execution_cohort(report, cohort_name="C1", expected_mode="taker")
+    if maker is None or taker is None:
+        return {
+            **unavailable,
+            "status": "INVALID",
+            "generated_at": timestamp[1],
+        }
+    if (
+        maker.get("evidence_class") != "observed_incumbent_fill_replay"
+        or taker.get("evidence_class") != "modeled_counterfactual"
+        or taker.get("witnessed_broker_fill_backing") is not False
+        or taker.get("counts_toward_policy_switch") is not False
+        or taker.get("counts_toward_promotion_readiness") is not False
+        or taker.get("promotion_review_eligible") is not False
+    ):
+        return {
+            **unavailable,
+            "status": "INVALID",
+            "generated_at": timestamp[1],
+        }
+    age = max(0.0, now_epoch - timestamp[0])
+    return {
+        "status": "AUDIT_ONLY",
+        "source": "execution_tournament.json",
+        "generated_at": timestamp[1],
+        "age_seconds": round(age, 1),
+        "stale": age > EXECUTION_TOURNAMENT_MAX_AGE_SECONDS,
+        "audit_only": True,
+        "policy_switch_authority": False,
+        "maker": maker,
+        "taker": taker,
+    }
+
+
+def _caps_evidence_status() -> dict[str, Any]:
+    """Verify the protected caps contract before exposing allowlist evidence."""
+
+    from core import caps_authority
+
+    try:
+        caps_size = CAPS_CONFIG_PATH.stat().st_size
+        size_error = (
+            "CAPS_CONFIG_SIZE_LIMIT_EXCEEDED"
+            if caps_size > STATUS_CAPS_MAX_BYTES
+            else None
+        )
+    except FileNotFoundError:
+        caps_size = None
+        size_error = "CAPS_CONFIG_MISSING"
+    except OSError:
+        caps_size = None
+        size_error = "CAPS_CONFIG_UNREADABLE"
+
+    authority = None
+    if size_error is None:
+        try:
+            authority = caps_authority.evaluate_caps_authority(
+                caps_path=CAPS_CONFIG_PATH
+            )
+        except Exception as exc:
+            size_error = f"CAPS_AUTHORITY_EVALUATION_FAILED:{type(exc).__name__}"
+
+    config_verified = bool(
+        authority is not None and authority.config_integrity_valid
+    )
+    caps = None
+    caps_error = None
+    if config_verified:
+        caps, caps_error = _bounded_json_object(
+            CAPS_CONFIG_PATH,
+            max_bytes=STATUS_CAPS_MAX_BYTES,
+        )
+    allowed_series = caps.get("allowed_series") if isinstance(caps, dict) else None
+    valid_series = (
+        isinstance(allowed_series, list)
+        and all(isinstance(item, str) and item for item in allowed_series)
+    )
+    exact_series_allowed = bool(
+        config_verified
+        and caps_error is None
+        and valid_series
+        and KXSOL15M_SERIES in allowed_series
+    )
+    errors = list(authority.errors) if authority is not None else []
+    if size_error is not None:
+        errors.append(size_error)
+    if caps_error is not None:
+        errors.append(f"CAPS_CONFIG_{caps_error.upper()}")
+    return {
+        "status": (
+            "AVAILABLE"
+            if config_verified and caps_error is None and valid_series
+            else "INVALID"
+        ),
+        "source": str(CAPS_CONFIG_PATH).replace("\\", "/"),
+        "size_bytes": caps_size,
+        "authority_state": authority.state if authority is not None else None,
+        "config_integrity_valid": config_verified,
+        "authority_registration_valid": (
+            authority.authority_registration_valid
+            if authority is not None
+            else False
+        ),
+        "current_caps_sha256": (
+            authority.current_caps_sha256 if authority is not None else None
+        ),
+        "protected_caps_sha256": caps_authority.PROTECTED_CAPS_SHA256,
+        "errors": errors,
+        "exact_series_allowed": exact_series_allowed,
+        "matched_series": KXSOL15M_SERIES if exact_series_allowed else None,
+        "execution_authority": False,
+    }
+
+
+def _kxsol15m_status(
+    runtime_dir: Path,
+    *,
+    live_controls: dict[str, Any],
+    session: dict[str, Any],
+    now_epoch: float,
+) -> dict[str, Any]:
+    from autonomy.no_edge_map import load_negative_scopes
+    from autonomy.taxonomy import grading_scope
+
+    scope = grading_scope(
+        KXSOL15M_SOURCE,
+        KXSOL15M_SERIES,
+        {"vertical": "CRYPTO", "market_type": "15m_direction"},
+    )
+    map_path = runtime_dir / "no_edge_map.json"
+    now = datetime.fromtimestamp(now_epoch, tz=timezone.utc)
+    evidence = load_negative_scopes(map_path, now=now)
+    payload = _load_json(map_path)
+    classification = None
+    selected: dict[str, Any] | None = None
+    if evidence.trusted and isinstance(payload, dict):
+        matches: list[tuple[str, dict[str, Any]]] = []
+        for category in (
+            "edge",
+            "no_demonstrated_edge",
+            "significantly_negative",
+        ):
+            for row in payload.get(category) or []:
+                if isinstance(row, dict) and row.get("scope") == scope:
+                    matches.append((category, row))
+        if scope in (payload.get("insufficient_evidence_scopes") or []):
+            matches.append(("insufficient_evidence", {"scope": scope}))
+        if len(matches) == 1:
+            classification, selected = matches[0]
+
+    clusters = (
+        _nonnegative_int(selected.get("clusters"))
+        if isinstance(selected, dict)
+        else None
+    )
+    edge_mean = (
+        _finite_number(selected.get("edge_mean"))
+        if isinstance(selected, dict)
+        else None
+    )
+    ci_lower = (
+        _finite_number(selected.get("ci_lower"))
+        if isinstance(selected, dict)
+        else None
+    )
+    ci_upper = (
+        _finite_number(selected.get("ci_upper"))
+        if isinstance(selected, dict)
+        else None
+    )
+    selected_complete = classification == "insufficient_evidence" or (
+        classification is not None
+        and clusters is not None
+        and edge_mean is not None
+        and ci_lower is not None
+        and ci_upper is not None
+    )
+    statistical_status = (
+        "AVAILABLE" if evidence.trusted and selected_complete else "UNAVAILABLE"
+    )
+    generated_at = (
+        evidence.generated_at.isoformat()
+        if evidence.generated_at is not None
+        else None
+    )
+    statistical = {
+        "status": statistical_status,
+        "source": "no_edge_map.json",
+        "generated_at": generated_at,
+        "stale": evidence.status == "stale",
+        "trust_status": evidence.status,
+        "classification": classification,
+        "clusters": clusters,
+        "edge_mean": edge_mean,
+        "ci_lower": ci_lower,
+        "ci_upper": ci_upper,
+        "execution_authority": False,
+    }
+
+    caps_evidence = _caps_evidence_status()
+    exact_series_allowed = caps_evidence["exact_series_allowed"] is True
+    source_state = (
+        live_controls.get("state")
+        if isinstance(live_controls.get("state"), str)
+        else "invalid_or_blocked"
+    )
+    blocker = (
+        live_controls.get("blocker")
+        if isinstance(live_controls.get("blocker"), str)
+        else None
+    )
+    live_authority = {
+        "state": source_state,
+        # This observer contract can never grant submission authority.
+        "execution_authority": False,
+        "blocker": blocker,
+        "session_status": session.get("status"),
+        "session_expired": (
+            session.get("expired")
+            if isinstance(session.get("expired"), bool)
+            else None
+        ),
+    }
+    if statistical_status != "AVAILABLE":
+        conclusion = "STATISTICAL_SCOPE_EVIDENCE_UNAVAILABLE"
+    elif not exact_series_allowed:
+        conclusion = "STATISTICAL_EVIDENCE_PRESENT_SERIES_CAP_ABSENT"
+    else:
+        conclusion = (
+            "STATISTICAL_EVIDENCE_PRESENT_SERIES_CAP_PRESENT_"
+            "LIVE_AUTHORITY_FALSE"
+        )
+    return {
+        "status": (
+            "EVIDENCE_ONLY"
+            if statistical_status == "AVAILABLE"
+            and caps_evidence["status"] == "AVAILABLE"
+            else "PARTIAL"
+        ),
+        "series": KXSOL15M_SERIES,
+        "scope_mapping": {
+            "status": "EXACT_TAXONOMY",
+            "scope": scope,
+            "source": "autonomy.taxonomy.grading_scope",
+        },
+        "statistical_evidence": statistical,
+        "caps_evidence": caps_evidence,
+        "live_authority": live_authority,
+        "conclusion": conclusion,
+        "execution_authority": False,
+    }
+
+
+def _edge_quality_status(
+    runtime_dir: Path,
+    *,
+    tournament: Any,
+    live_controls: dict[str, Any],
+    session: dict[str, Any],
+    now_epoch: float,
+) -> dict[str, Any]:
+    current_board = _board_edge_quality(runtime_dir, now_epoch=now_epoch)
+    comparison = _execution_comparison_status(tournament, now_epoch=now_epoch)
+    kxsol = _kxsol15m_status(
+        runtime_dir,
+        live_controls=live_controls,
+        session=session,
+        now_epoch=now_epoch,
+    )
+    available = (
+        current_board["status"] in {"AVAILABLE", "PARTIAL", "STALE"}
+        or comparison["status"] == "AUDIT_ONLY"
+        or kxsol["status"] == "EVIDENCE_ONLY"
+    )
+    return {
+        "schema_version": 1,
+        # Actionable-share producer truth is deliberately still unavailable.
+        "status": "PARTIAL" if available else "UNAVAILABLE",
+        "authority": {"execution": False, "promotion": False},
+        "current_board": current_board,
+        "execution_comparison": comparison,
+        "kxsol15m": kxsol,
     }
 
 
 def assemble_status_snapshot(runtime_dir: Path | None = None) -> dict[str, Any]:
-    """Fast, precomputed operator snapshot -- reads fresh runtime JSON only.
+    """Fast, precomputed operator snapshot -- reads runtime artifacts only.
 
     This NEVER touches ledger.db (no backtest, no bootstrap, no canary): it is
     the responsive endpoint the dashboard falls back to while the heavy
@@ -1475,18 +2781,38 @@ def assemble_status_snapshot(runtime_dir: Path | None = None) -> dict[str, Any]:
         "clv_report": _load_json(rd / "clv_report.json") or {},
         "execution_tournament": _load_json(rd / "execution_tournament.json") or {},
     }
+    promotion = _load_json(rd / "auto_promotion_state.json") or {}
     data_ages: dict[str, Any] = {}
     for name, payload in panels_raw.items():
         data_ages[name] = _panel_data_age(name, payload, now_epoch)
 
     watchdog_status = _dashboard_watchdog_status(rd, now_epoch)
+    cycles, malformed_cycles = _bounded_cycle_window(rd / "cycles.jsonl")
+    session = session_authorization_state(rd)
+    live_controls = _live_controls_status()
+    system_health = _system_health_status(
+        rd,
+        heartbeat=heartbeat,
+        watchdog=watchdog_status,
+        cycles=cycles,
+        malformed_cycles=malformed_cycles,
+        promotion=promotion,
+        now_epoch=now_epoch,
+    )
+    edge_quality = _edge_quality_status(
+        rd,
+        tournament=panels_raw["execution_tournament"],
+        live_controls=live_controls,
+        session=session,
+        now_epoch=now_epoch,
+    )
     return {
         "generated_at": datetime.fromtimestamp(now_epoch, tz=timezone.utc).isoformat(),
         "source": "status_snapshot",
         "ledger_touched": False,
         "heartbeat": heartbeat,
-        "session": session_authorization_state(rd),
-        "live_controls": _live_controls_status(),
+        "session": session,
+        "live_controls": live_controls,
         "live_account": live_account,
         "paper_results": {
             "status": "RETIRED_NON_AUTHORITATIVE",
@@ -1498,6 +2824,8 @@ def assemble_status_snapshot(runtime_dir: Path | None = None) -> dict[str, Any]:
         "risk_state": _load_json(rd / "risk_state_live.json"),
         "risk_state_scope": "live",
         "watchdog": watchdog_status,
+        "system_health": system_health,
+        "edge_quality": edge_quality,
         "data_ages": data_ages,
         "sports_model_seed": panels_raw["sports_model_seed"],
         "mispricing_monitor": panels_raw["mispricing_monitor"],
@@ -1510,7 +2838,7 @@ def assemble_status_snapshot(runtime_dir: Path | None = None) -> dict[str, Any]:
         "sports_clv": _sports_clv_summary(panels_raw["clv_report"]),
         "execution_tournament": _tournament_status_panel(panels_raw["execution_tournament"]),
         "alerts": _tail_jsonl(rd / "alerts.jsonl", 20),
-        "recent_cycles": _tail_jsonl(rd / "cycles.jsonl", 10),
+        "recent_cycles": cycles[-10:],
         # Both are cheap runtime-file reads (no ledger), so they belong in the
         # fast snapshot too: /api/autonomy 503s under a busy ledger, and without
         # these the vNext and USE cards would render blank on that fallback.
@@ -1527,14 +2855,60 @@ def _tournament_status_panel(report: dict[str, Any]) -> dict[str, Any]:
     try:
         from autonomy.execution_tournament import summarize_tournament
 
-        return summarize_tournament(report)
-    except Exception:
-        return {
-            "report_name": report.get("report_name"),
-            "ranking": report.get("ranking", []),
-            "headline": report.get("headline", {}),
-            "generated_at": report.get("generated_at"),
+        summary = summarize_tournament(report)
+        ranking = summary.get("ranking")
+        headline = summary.get("headline")
+        switch = summary.get("policy_switch_authority")
+        expected_research_classes = {
+            "C1": "modeled_counterfactual",
+            "C2": "modeled_counterfactual",
+            "C3": "observed_fill_censoring_counterfactual",
+            "C4": "modeled_counterfactual",
         }
+        valid_research_authority = (
+            isinstance(ranking, list)
+            and isinstance(headline, dict)
+            and isinstance(switch, dict)
+            and switch.get("auto_switch") is False
+            and headline.get("evidence_sufficient_for_promotion_review") is False
+            and headline.get("evidence_sufficient_for_policy_switch") is False
+        )
+        by_cohort = {
+            row.get("cohort"): row
+            for row in ranking or []
+            if isinstance(row, dict)
+        }
+        for cohort_name, evidence_class in expected_research_classes.items():
+            row = by_cohort.get(cohort_name)
+            if row is None:
+                continue
+            valid_research_authority = valid_research_authority and (
+                row.get("evidence_class") == evidence_class
+                and row.get("witnessed_broker_fill_backing") is False
+                and row.get("counts_toward_policy_switch") is False
+                and row.get("counts_toward_promotion_readiness") is False
+                and row.get("promotion_review_eligible") is False
+            )
+        if valid_research_authority:
+            return summary
+    except Exception:
+        pass
+    return {
+        "report_name": report.get("report_name"),
+        "status": "INVALID",
+        "audit_only": True,
+        "ranking": [],
+        "headline": {
+            "leading_cohort": None,
+            "evidence_sufficient_for_promotion_review": False,
+            "evidence_sufficient_for_policy_switch": False,
+        },
+        "policy_switch_authority": {
+            "auto_switch": False,
+            "reason": "invalid_or_unlabeled_tournament_evidence",
+        },
+        "generated_at": report.get("generated_at"),
+    }
 
 
 _HTML = DASHBOARD_HTML
@@ -1650,21 +3024,36 @@ def _current_html() -> str:
 
 
 def build_app():
-    """Construct the evidence dashboard and paper-scheduler control surface."""
-    from fastapi import FastAPI, HTTPException
-    from fastapi.responses import HTMLResponse, JSONResponse
-    from autonomy.paper_dashboard import (
-        PAPER_CONTROL_HEADER,
-        control_paper_scheduler,
-        scheduled_task_status,
-    )
-    from autonomy.sports.dashboard import SPORTS_TASK_NAME
+    """Construct the canonical loopback-only, query-only evidence dashboard."""
+    from fastapi import FastAPI, Request
+    from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 
     import os
     import threading
     from concurrent.futures import Future, ThreadPoolExecutor, TimeoutError as FutureTimeout
 
     app = FastAPI(title="Dummy Autonomy Dashboard")
+
+    @app.middleware("http")
+    async def _loopback_only(request: Request, call_next):
+        """Fail closed if either the socket peer or Host header is non-local."""
+        peer = request.client.host if request.client is not None else None
+        peer_ok = _is_loopback_address(peer, allow_test_name=True)
+        host = request.url.hostname
+        host_ok = _is_loopback_address(host)
+        if peer == _TEST_CLIENT_NAME and str(host or "").casefold() == _TEST_HOST_NAME:
+            host_ok = True
+        if not peer_ok or not host_ok:
+            response = JSONResponse(
+                {"detail": "Dummy dashboard is available on loopback only."},
+                status_code=403,
+            )
+        else:
+            response = await call_next(request)
+        for name, value in _DASHBOARD_SECURITY_HEADERS.items():
+            response.headers[name] = value
+        return response
+
     # The /api/autonomy report includes a 1,000-resample cluster bootstrap over
     # a multi-gigabyte ledger and can exceed a browser/proxy timeout on a cold
     # cache. Guard it: a 30-second cache serves warm polls; a cold poll kicks
@@ -1743,6 +3132,18 @@ def build_app():
         # Fast, precomputed snapshot: fresh runtime JSON + watchdog only, never
         # ledger.db. Always responsive, even while /api/autonomy recomputes.
         return JSONResponse(assemble_status_snapshot())
+
+    @app.get("/api/repo-harvester")
+    def api_repo_harvester() -> JSONResponse:
+        """Dashboard-visible lifecycle registry; artifact-only, no network."""
+
+        return JSONResponse(_repo_harvester_status())
+
+    @app.get("/api/strategy-catalog")
+    def api_strategy_catalog() -> JSONResponse:
+        """Single research-strategy catalog with explicit authority state."""
+
+        return JSONResponse(_strategy_catalog_status())
 
     @app.get("/api/walk_forward")
     def api_walk_forward() -> JSONResponse:
@@ -1924,9 +3325,116 @@ def build_app():
     @app.get("/api/model-arsenal")
     def api_model_arsenal() -> JSONResponse:
         """Read local, redacted four-model status without provider contact."""
-        from dashboard.model_arsenal_status import build_model_arsenal_status
+        from autonomy.model_arsenal_status import build_model_arsenal_status
 
         return JSONResponse(build_model_arsenal_status())
+
+    @app.get("/api/market-observer/chart/{asset}/{timeframe}")
+    def api_market_observer_chart(asset: str, timeframe: str) -> JSONResponse:
+        """Serve a validated immutable chart artifact without refreshing it."""
+        from autonomy.dashboard_market_observer import (
+            ChartArtifactError,
+            read_market_chart,
+        )
+        from autonomy.market_observer.contracts import (
+            ALLOWED_ASSETS,
+            ALLOWED_TIMEFRAMES,
+        )
+
+        normalized_asset = str(asset).upper()
+        normalized_timeframe = str(timeframe)
+        if (
+            normalized_asset not in ALLOWED_ASSETS
+            or normalized_timeframe not in ALLOWED_TIMEFRAMES
+        ):
+            return JSONResponse(
+                {
+                    "available": False,
+                    "artifact_status": "UNAVAILABLE",
+                    "detail": "Unsupported market-observer chart identity.",
+                    "allowed_assets": sorted(ALLOWED_ASSETS),
+                    "allowed_timeframes": sorted(ALLOWED_TIMEFRAMES),
+                    "authority": {
+                        "allocation": False,
+                        "amend": False,
+                        "cancel": False,
+                        "execution": False,
+                        "order": False,
+                        "promotion": False,
+                    },
+                },
+                status_code=404,
+            )
+        root = Path(
+            os.environ.get(
+                "DUMMY_MARKET_OBSERVER_ROOT",
+                "artifacts/dummy/market_observer",
+            )
+        )
+        try:
+            payload = read_market_chart(
+                root,
+                normalized_asset,
+                normalized_timeframe,
+            )
+            return JSONResponse(
+                payload,
+                status_code=200 if payload.get("available") is True else 503,
+            )
+        except ChartArtifactError as exc:
+            return JSONResponse(
+                {
+                    "available": False,
+                    "artifact_status": "SCHEMA_DRIFT",
+                    "asset": normalized_asset,
+                    "timeframe": normalized_timeframe,
+                    "detail": "Stored chart artifact failed validation.",
+                    "error_type": type(exc).__name__,
+                    "authority": {
+                        "allocation": False,
+                        "amend": False,
+                        "cancel": False,
+                        "execution": False,
+                        "order": False,
+                        "promotion": False,
+                    },
+                },
+                status_code=503,
+            )
+        except (KeyError, OSError, RuntimeError, ValueError) as exc:
+            return JSONResponse(
+                {
+                    "available": False,
+                    "artifact_status": "UNAVAILABLE",
+                    "asset": normalized_asset,
+                    "timeframe": normalized_timeframe,
+                    "detail": "Stored chart artifact is unavailable.",
+                    "error_type": type(exc).__name__,
+                    "authority": {
+                        "allocation": False,
+                        "amend": False,
+                        "cancel": False,
+                        "execution": False,
+                        "order": False,
+                        "promotion": False,
+                    },
+                },
+                status_code=503,
+            )
+
+    @app.get(
+        "/assets/vendor/lightweight-charts/5.2.0/"
+        "lightweight-charts.standalone.production.js",
+        include_in_schema=False,
+    )
+    def lightweight_charts_asset() -> FileResponse:
+        """Serve the pinned local renderer; it contains no market data client."""
+        from autonomy.dashboard_market_observer import LIGHTWEIGHT_CHARTS_ASSET
+
+        return FileResponse(
+            LIGHTWEIGHT_CHARTS_ASSET,
+            media_type="application/javascript",
+        )
 
     def _snapshot_block(key: str) -> dict[str, Any]:
         # Wave-51: serve the redesigned dashboard's overview / per-scope blocks
@@ -2042,42 +3550,6 @@ def build_app():
                     "year_round_navigation_not_current_listings"
                 ),
             })
-
-    def _scheduler_control(
-        action: str, request: Request, task_name: str | None = None
-    ) -> JSONResponse:
-        """Shared paper-scheduler control: CSRF header + loopback origin, fixed task.
-
-        ``task_name=None`` targets the default crypto paper task and keeps the
-        one-argument call contract the paper endpoint has always had.
-        """
-        if request.headers.get("x-dummy-paper-control") != PAPER_CONTROL_HEADER:
-            raise HTTPException(status_code=403, detail="paper control header required")
-        origin = request.headers.get("origin")
-        if origin and urlparse(origin).hostname not in {"127.0.0.1", "localhost", "::1"}:
-            raise HTTPException(status_code=403, detail="loopback origin required")
-        try:
-            if task_name is None:
-                result = control_paper_scheduler(action)
-            else:
-                result = control_paper_scheduler(action, task_name=task_name)
-        except ValueError as exc:
-            raise HTTPException(status_code=400, detail=str(exc)) from exc
-        state_cache["epoch"] = int(state_cache["epoch"]) + 1
-        state_cache["at"] = 0.0
-        state_cache["value"] = None
-        result["scheduler"] = (
-            scheduled_task_status() if task_name is None else scheduled_task_status(task_name)
-        )
-        return JSONResponse(result, status_code=200 if result.get("ok") else 503)
-
-    @app.post("/api/paper-scheduler/{action}")
-    def paper_scheduler_control(action: str, request: Request) -> JSONResponse:
-        return _scheduler_control(action, request)
-
-    @app.post("/api/sports-paper-scheduler/{action}")
-    def sports_paper_scheduler_control(action: str, request: Request) -> JSONResponse:
-        return _scheduler_control(action, request, SPORTS_TASK_NAME)
 
     @app.get("/")
     def index() -> HTMLResponse:

@@ -9,9 +9,13 @@ so the same standing condition does not spam every cycle.
 from __future__ import annotations
 
 import json
+import os
+from collections.abc import Callable, Mapping
 from datetime import datetime, timezone
+from ipaddress import ip_address
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlsplit
 
 
 class _WatchdogCheckSkipped(Exception):
@@ -21,6 +25,12 @@ RUNTIME_DIR = Path("runtime/autonomy")
 ALERTS_LOG = RUNTIME_DIR / "alerts.jsonl"
 ALERTS_LATEST = RUNTIME_DIR / "alerts_latest.json"
 ALERT_STATE = RUNTIME_DIR / "alert_state.json"
+CRITICAL_ALERTS_ENABLED_ENV = "DUMMY_CRITICAL_ALERTS_ENABLED"
+CRITICAL_ALERT_WEBHOOK_URL_ENV = "DUMMY_CRITICAL_ALERT_WEBHOOK_URL"
+CRITICAL_ALERT_ALLOWED_HOSTS_ENV = "DUMMY_CRITICAL_ALERT_ALLOWED_HOSTS"
+CRITICAL_ALERT_TIMEOUT_SECONDS = 3.0
+
+ExternalAlertTransport = Callable[[str, dict[str, str], float], int]
 
 SEVERITY = {
     "SELF_STOP": "critical",
@@ -40,10 +50,12 @@ SEVERITY = {
     # are erroring in a streak, the ledger crossed its size ceiling, an operator
     # kill file is present, or free disk fell below the floor.
     "WATCHDOG_TASK_STALE": "critical",
+    "WATCHDOG_JOB_REFUSED": "critical",
     "WATCHDOG_CYCLE_ERROR_STREAK": "warning",
-    "WATCHDOG_LEDGER_SIZE": "warning",
+    "WATCHDOG_LEDGER_SIZE": "critical",
     "WATCHDOG_KILL_FILE": "critical",
     "WATCHDOG_DISK_FLOOR": "critical",
+    "RESEARCH_STALL": "critical",
     # Execution-policy tournament (WS-A2/F2): a challenger cohort accrued enough
     # witnessed fill clusters to clear the evidence gate and become eligible for
     # a promotion-ladder review. Evidence only -- never an automatic policy
@@ -80,15 +92,149 @@ def _save_state(state: dict[str, Any]) -> None:
     ALERT_STATE.write_text(json.dumps(state, indent=2, sort_keys=True), encoding="utf-8")
 
 
-def emit_alert(kind: str, message: str, detail: dict[str, Any] | None = None, now_iso: str | None = None) -> dict[str, Any]:
-    """Append + mirror one alert. Returns the alert record."""
+def _default_external_transport(
+    endpoint: str,
+    payload: dict[str, str],
+    timeout_seconds: float,
+) -> int:
+    """POST one alert without following redirects; return the HTTP status."""
+    from urllib.request import HTTPRedirectHandler, Request, build_opener
+
+    class _NoRedirects(HTTPRedirectHandler):
+        def redirect_request(self, req, fp, code, msg, headers, newurl):  # noqa: ANN001
+            return None
+
+    request = Request(
+        endpoint,
+        data=json.dumps(payload, sort_keys=True).encode("utf-8"),
+        headers={
+            "Content-Type": "application/json",
+            "User-Agent": "Dummy-Critical-Alert/1",
+        },
+        method="POST",
+    )
+    with build_opener(_NoRedirects).open(request, timeout=timeout_seconds) as response:
+        return int(response.status)
+
+
+def _endpoint_refusal(endpoint: str, allowed_hosts: set[str]) -> str | None:
+    """Return a stable refusal code without ever echoing the secret-bearing URL."""
+    try:
+        parsed = urlsplit(endpoint)
+        host = (parsed.hostname or "").casefold().rstrip(".")
+    except ValueError:
+        return "malformed_endpoint"
+    if parsed.scheme.casefold() != "https":
+        return "https_required"
+    if not host:
+        return "missing_endpoint_host"
+    if parsed.username is not None or parsed.password is not None:
+        return "userinfo_forbidden"
+    if parsed.fragment:
+        return "fragment_forbidden"
+    try:
+        if parsed.port not in (None, 443):
+            return "nonstandard_port_forbidden"
+    except ValueError:
+        return "malformed_endpoint"
+    if not allowed_hosts:
+        return "missing_host_allowlist"
+    if host not in allowed_hosts:
+        return "host_not_allowlisted"
+    if host == "localhost":
+        return "local_endpoint_forbidden"
+    try:
+        address = ip_address(host)
+    except ValueError:
+        return None
+    if not address.is_global:
+        return "non_public_endpoint_forbidden"
+    return None
+
+
+def _external_delivery(
+    record: Mapping[str, Any],
+    *,
+    external_transport: ExternalAlertTransport | None,
+    environ: Mapping[str, str],
+) -> dict[str, str]:
+    """Attempt an explicitly enabled critical-only delivery, fail closed."""
+    if record["severity"] != "critical":
+        return {"status": "NOT_CRITICAL"}
+    if external_transport is None and "PYTEST_CURRENT_TEST" in environ:
+        return {"status": "REFUSED", "reason": "test_environment"}
+    if environ.get(CRITICAL_ALERTS_ENABLED_ENV) != "1":
+        return {"status": "DISABLED"}
+    endpoint = str(environ.get(CRITICAL_ALERT_WEBHOOK_URL_ENV) or "").strip()
+    allowed_hosts = {
+        item.strip().casefold().rstrip(".")
+        for item in str(environ.get(CRITICAL_ALERT_ALLOWED_HOSTS_ENV) or "").split(",")
+        if item.strip()
+    }
+    refusal = _endpoint_refusal(endpoint, allowed_hosts)
+    if refusal is not None:
+        return {"status": "REFUSED", "reason": refusal}
+
+    # Deliberately exclude ``detail``: it can contain paths, raw exceptions, or
+    # other operational data that belongs only in the local evidence log.
+    from core.secret_guard import redact_text
+
+    safe_message = " ".join(redact_text(str(record["message"])).split())[:512]
+    payload = {
+        "kind": str(record["kind"]),
+        "severity": str(record["severity"]),
+        "message": safe_message,
+        "at": str(record["at"]),
+    }
+    transport = external_transport or _default_external_transport
+    try:
+        response_status = int(
+            transport(
+                endpoint,
+                payload,
+                CRITICAL_ALERT_TIMEOUT_SECONDS,
+            )
+        )
+    except Exception as exc:
+        # Exception messages from HTTP clients commonly include the full URL.
+        # Persist only the exception type so webhook credentials never land in
+        # alerts.jsonl or the dashboard mirror.
+        return {
+            "status": "FAILED",
+            "reason": f"transport_error:{type(exc).__name__}",
+        }
+    if not 200 <= response_status < 300:
+        return {
+            "status": "FAILED",
+            "reason": f"http_status:{response_status}",
+        }
+    return {"status": "DELIVERED"}
+
+
+def emit_alert(
+    kind: str,
+    message: str,
+    detail: dict[str, Any] | None = None,
+    now_iso: str | None = None,
+    *,
+    external_transport: ExternalAlertTransport | None = None,
+    environ: Mapping[str, str] | None = None,
+) -> dict[str, Any]:
+    """Append + mirror one alert and optionally deliver critical alerts."""
+    from core.secret_guard import redact, redact_text
+
     record = {
         "kind": kind,
         "severity": SEVERITY.get(kind, "info"),
-        "message": message,
-        "detail": detail or {},
+        "message": redact_text(message),
+        "detail": redact(detail or {}),
         "at": now_iso or datetime.now(timezone.utc).isoformat(),
     }
+    record["external_delivery"] = _external_delivery(
+        record,
+        external_transport=external_transport,
+        environ=os.environ if environ is None else environ,
+    )
     RUNTIME_DIR.mkdir(parents=True, exist_ok=True)
     with ALERTS_LOG.open("a", encoding="utf-8") as fh:
         fh.write(json.dumps(record, sort_keys=True) + "\n")
@@ -236,22 +382,27 @@ def evaluate_alerts(cycle_record: dict[str, Any], risk_state: dict[str, Any] | N
             ))
         state["backtest_stale_alert_active"] = stale
 
-    # Execution tournament: a challenger cohort (not the control) cleared the
-    # fill-cluster evidence gate. Fire once per cohort on the rising edge so a
-    # standing eligibility does not spam; it is a review prompt, not a switch.
+    # Execution tournament: sample volume alone is never promotion authority.
+    # Fire only for a future lane that explicitly carries promotion readiness
+    # and witnessed broker-fill backing. Missing/legacy labels fail closed.
     if tournament_summary:
         gated = {
             str(row.get("cohort"))
             for row in (tournament_summary.get("ranking") or [])
-            if row.get("gate_met") and str(row.get("cohort")) != "C0"
+            if row.get("gate_met") is True
+            and row.get("promotion_review_eligible") is True
+            and row.get("counts_toward_promotion_readiness") is True
+            and row.get("witnessed_broker_fill_backing") is True
+            and row.get("counts_toward_policy_switch") is False
+            and str(row.get("cohort")) != "C0"
         }
         already = set(state.get("tournament_gated_cohorts") or [])
         newly = sorted(gated - already)
         if newly:
             fired.append(emit_alert(
                 "EXECUTION_TOURNAMENT_GATE",
-                f"execution cohort(s) {', '.join(newly)} cleared the fill-cluster "
-                "evidence gate; eligible for promotion-ladder review",
+                f"execution cohort(s) {', '.join(newly)} carry an explicit "
+                "witnessed-fill promotion-review qualification",
                 {"newly_gated_cohorts": newly,
                  "headline": tournament_summary.get("headline", {})},
                 now_iso,

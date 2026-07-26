@@ -5,8 +5,9 @@ results + boxscores + play-by-play + odds lines + injuries), the foundation the
 analytics foundry and the walk-forward backtester read from. Every game can
 carry ``result_available_at`` (when the source made the result knowable),
 ``received_at`` (when Dummy observed that version), and ``provenance_quality``.
-Historical evaluation is fail-closed: rows missing any of that evidence are
-not eligible to train or grade a model.
+Each boxscore feature can separately carry ``source_available_at`` and
+``received_at``. Historical evaluation is fail-closed: rows missing their
+required availability evidence are not eligible to train or grade a model.
 
 Point-in-time is the whole point: :meth:`games_before` and :meth:`team_form`
 return only games that had already **finished** strictly before the given
@@ -101,6 +102,7 @@ class SportsHistoryStore:
                 game_id TEXT NOT NULL, team TEXT NOT NULL, player TEXT,
                 stat TEXT NOT NULL, value REAL,
                 as_of TEXT, source TEXT,
+                source_available_at TEXT, received_at TEXT,
                 PRIMARY KEY (game_id, team, player, stat)
             );
             CREATE INDEX IF NOT EXISTS ix_box_game ON boxscores(game_id);
@@ -132,6 +134,11 @@ class SportsHistoryStore:
                 league TEXT NOT NULL, holdout_season INTEGER NOT NULL,
                 model TEXT NOT NULL, holdout_ids_hash TEXT NOT NULL,
                 selection_ids_hash TEXT NOT NULL, consumed_at TEXT NOT NULL,
+                manifest_version TEXT,
+                holdout_manifest_hash TEXT, holdout_content_hash TEXT,
+                holdout_outcomes_hash TEXT,
+                selection_manifest_hash TEXT, selection_content_hash TEXT,
+                selection_outcomes_hash TEXT,
                 execution_authority INTEGER NOT NULL DEFAULT 0,
                 promotion_authority INTEGER NOT NULL DEFAULT 0
             );
@@ -156,6 +163,132 @@ class SportsHistoryStore:
         cur.execute(
             "CREATE INDEX IF NOT EXISTS ix_games_result_availability "
             "ON games(league, result_available_at, received_at)"
+        )
+        # Feature arrival is independent of the game-result envelope. Legacy
+        # boxscores remain NULL here: neither as_of nor game start/result time
+        # proves when an individual feature version reached Dummy.
+        boxscore_columns = {
+            str(row[1]) for row in cur.execute("PRAGMA table_info(boxscores)")
+        }
+        for name in ("source_available_at", "received_at"):
+            if name not in boxscore_columns:
+                try:
+                    cur.execute(f"ALTER TABLE boxscores ADD COLUMN {name} TEXT")
+                except sqlite3.OperationalError:
+                    current = {
+                        str(row[1])
+                        for row in cur.execute("PRAGMA table_info(boxscores)")
+                    }
+                    if name not in current:
+                        raise
+        cur.execute(
+            "CREATE INDEX IF NOT EXISTS ix_box_feature_availability "
+            "ON boxscores(game_id, source_available_at, received_at)"
+        )
+        # V1 claims remain immutable evidence. Add nullable manifest columns
+        # without fabricating hashes for those historical rows; the permanent
+        # scope lock below still prevents a V1 claim from being reopened by a
+        # changed game list or corrected result.
+        holdout_columns = {
+            str(row[1])
+            for row in cur.execute("PRAGMA table_info(research_holdout_consumptions)")
+        }
+        for name in (
+            "manifest_version",
+            "holdout_manifest_hash",
+            "holdout_content_hash",
+            "holdout_outcomes_hash",
+            "selection_manifest_hash",
+            "selection_content_hash",
+            "selection_outcomes_hash",
+        ):
+            if name not in holdout_columns:
+                try:
+                    cur.execute(
+                        f"ALTER TABLE research_holdout_consumptions ADD COLUMN {name} TEXT"
+                    )
+                except sqlite3.OperationalError:
+                    current = {
+                        str(row[1])
+                        for row in cur.execute(
+                            "PRAGMA table_info(research_holdout_consumptions)"
+                        )
+                    }
+                    if name not in current:
+                        raise
+        cur.execute(
+            "CREATE INDEX IF NOT EXISTS ix_research_holdout_scope "
+            "ON research_holdout_consumptions(league, holdout_season, model)"
+        )
+        try:
+            cur.execute(
+                "CREATE UNIQUE INDEX IF NOT EXISTS ux_research_holdout_scope_v2 "
+                "ON research_holdout_consumptions("
+                "lower(trim(league)), holdout_season, lower(trim(model)))"
+            )
+        except sqlite3.IntegrityError:
+            # Preserve every pre-existing conflicting claim rather than
+            # deleting or rewriting evidence. The trigger below blocks all
+            # additional claims for any already-consumed scope.
+            pass
+        cur.executescript(
+            """
+            CREATE TRIGGER IF NOT EXISTS trg_research_holdout_require_v2_manifest
+            BEFORE INSERT ON research_holdout_consumptions
+            WHEN NEW.manifest_version IS NULL
+              OR trim(NEW.manifest_version) = ''
+              OR length(NEW.seal_key) != 64
+              OR lower(NEW.seal_key) GLOB '*[^0-9a-f]*'
+              OR length(NEW.holdout_ids_hash) != 64
+              OR lower(NEW.holdout_ids_hash) GLOB '*[^0-9a-f]*'
+              OR length(NEW.selection_ids_hash) != 64
+              OR lower(NEW.selection_ids_hash) GLOB '*[^0-9a-f]*'
+              OR NEW.holdout_manifest_hash IS NULL
+              OR length(NEW.holdout_manifest_hash) != 64
+              OR lower(NEW.holdout_manifest_hash) GLOB '*[^0-9a-f]*'
+              OR NEW.holdout_content_hash IS NULL
+              OR length(NEW.holdout_content_hash) != 64
+              OR lower(NEW.holdout_content_hash) GLOB '*[^0-9a-f]*'
+              OR NEW.holdout_outcomes_hash IS NULL
+              OR length(NEW.holdout_outcomes_hash) != 64
+              OR lower(NEW.holdout_outcomes_hash) GLOB '*[^0-9a-f]*'
+              OR NEW.selection_manifest_hash IS NULL
+              OR length(NEW.selection_manifest_hash) != 64
+              OR lower(NEW.selection_manifest_hash) GLOB '*[^0-9a-f]*'
+              OR NEW.selection_content_hash IS NULL
+              OR length(NEW.selection_content_hash) != 64
+              OR lower(NEW.selection_content_hash) GLOB '*[^0-9a-f]*'
+              OR NEW.selection_outcomes_hash IS NULL
+              OR length(NEW.selection_outcomes_hash) != 64
+              OR lower(NEW.selection_outcomes_hash) GLOB '*[^0-9a-f]*'
+            BEGIN
+                SELECT RAISE(ABORT, 'research holdout requires complete SHA-256 manifests');
+            END;
+
+            CREATE TRIGGER IF NOT EXISTS trg_research_holdout_scope_once
+            BEFORE INSERT ON research_holdout_consumptions
+            WHEN EXISTS(
+                SELECT 1 FROM research_holdout_consumptions
+                WHERE lower(trim(league)) = lower(trim(NEW.league))
+                  AND holdout_season = NEW.holdout_season
+                  AND lower(trim(model)) = lower(trim(NEW.model))
+            )
+            BEGIN
+                SELECT RAISE(ABORT, 'research holdout scope already consumed');
+            END;
+
+            CREATE TRIGGER IF NOT EXISTS trg_research_holdout_immutable_update
+            BEFORE UPDATE ON research_holdout_consumptions
+            BEGIN
+                SELECT RAISE(ABORT, 'research holdout claims are immutable');
+            END;
+
+            CREATE TRIGGER IF NOT EXISTS trg_research_holdout_immutable_delete
+            BEFORE DELETE ON research_holdout_consumptions
+            BEGIN
+                SELECT RAISE(ABORT, 'research holdout claims are immutable');
+            END;
+            """
         )
         self.conn.commit()
 
@@ -253,40 +386,84 @@ class SportsHistoryStore:
         return [dict(r) for r in rows]
 
     def record_team_boxscores(self, rows: Iterable[dict[str, Any]]) -> int:
-        """Upsert team-level boxscores. Each row: {game_id, team, stats:{k:v}}."""
+        """Upsert team features, including their source/receipt-time envelope."""
         tuples = [
             (r["game_id"], r["team"], "", stat, float(val),
-             r.get("as_of"), r.get("source", "espn"))
+             r.get("as_of"), r.get("source", "espn"),
+             r.get("source_available_at"), r.get("received_at"))
             for r in rows
             for stat, val in (r.get("stats") or {}).items()
         ]
         if not tuples:
             return 0
         self.conn.executemany(
-            """INSERT INTO boxscores(game_id,team,player,stat,value,as_of,source)
-               VALUES(?,?,?,?,?,?,?)
+            """INSERT INTO boxscores(
+                   game_id,team,player,stat,value,as_of,source,
+                   source_available_at,received_at
+               )
+               VALUES(?,?,?,?,?,?,?,?,?)
                ON CONFLICT(game_id,team,player,stat) DO UPDATE SET
-                   value=excluded.value, as_of=excluded.as_of, source=excluded.source""",
+                   value=excluded.value, as_of=excluded.as_of, source=excluded.source,
+                   source_available_at=CASE
+                       WHEN boxscores.value = excluded.value
+                            AND julianday(boxscores.source_available_at) IS NOT NULL
+                            AND julianday(boxscores.received_at) IS NOT NULL
+                            AND julianday(boxscores.received_at)
+                                >= julianday(boxscores.source_available_at)
+                       THEN boxscores.source_available_at
+                       ELSE excluded.source_available_at
+                   END,
+                   received_at=CASE
+                       WHEN boxscores.value = excluded.value
+                            AND julianday(boxscores.source_available_at) IS NOT NULL
+                            AND julianday(boxscores.received_at) IS NOT NULL
+                            AND julianday(boxscores.received_at)
+                                >= julianday(boxscores.source_available_at)
+                       THEN boxscores.received_at
+                       ELSE excluded.received_at
+                   END""",
             tuples,
         )
         self.conn.commit()
         return len(tuples)
 
     def record_player_boxscores(self, rows: Iterable[dict[str, Any]]) -> int:
-        """Upsert player-level boxscore rows: {game_id, team, player, stat, value}."""
+        """Upsert player features, including their source/receipt-time envelope."""
         tuples = [
             (r["game_id"], r["team"], r["player"], r["stat"], float(r["value"]),
-             r.get("as_of"), r.get("source", "espn"))
+             r.get("as_of"), r.get("source", "espn"),
+             r.get("source_available_at"), r.get("received_at"))
             for r in rows
             if r.get("player")
         ]
         if not tuples:
             return 0
         self.conn.executemany(
-            """INSERT INTO boxscores(game_id,team,player,stat,value,as_of,source)
-               VALUES(?,?,?,?,?,?,?)
+            """INSERT INTO boxscores(
+                   game_id,team,player,stat,value,as_of,source,
+                   source_available_at,received_at
+               )
+               VALUES(?,?,?,?,?,?,?,?,?)
                ON CONFLICT(game_id,team,player,stat) DO UPDATE SET
-                   value=excluded.value, as_of=excluded.as_of, source=excluded.source""",
+                   value=excluded.value, as_of=excluded.as_of, source=excluded.source,
+                   source_available_at=CASE
+                       WHEN boxscores.value = excluded.value
+                            AND julianday(boxscores.source_available_at) IS NOT NULL
+                            AND julianday(boxscores.received_at) IS NOT NULL
+                            AND julianday(boxscores.received_at)
+                                >= julianday(boxscores.source_available_at)
+                       THEN boxscores.source_available_at
+                       ELSE excluded.source_available_at
+                   END,
+                   received_at=CASE
+                       WHEN boxscores.value = excluded.value
+                            AND julianday(boxscores.source_available_at) IS NOT NULL
+                            AND julianday(boxscores.received_at) IS NOT NULL
+                            AND julianday(boxscores.received_at)
+                                >= julianday(boxscores.source_available_at)
+                       THEN boxscores.received_at
+                       ELSE excluded.received_at
+                   END""",
             tuples,
         )
         self.conn.commit()
@@ -297,11 +474,16 @@ class SportsHistoryStore:
     ) -> list[dict[str, Any]]:
         """A player's recent games (most recent first) as pivoted stat dicts.
 
-        Point-in-time: only games that started before ``as_of``. Each entry
-        carries ``game_id``, ``start_time`` and every recorded stat (minutes,
-        points, rebounds, ...). The prop model consumes this directly.
+        Point-in-time: every returned feature version was source-available and
+        received strictly before ``as_of``. Legacy/unknown-arrival rows remain
+        quarantined. Each entry carries ``game_id``, ``start_time`` and every
+        eligible stat (minutes, points, rebounds, ...).
         """
-        params: list[Any] = [player, as_of]
+        finals = ",".join("?" * len(_FINAL_STATUSES))
+        feature_sql, feature_params = self._feature_availability_sql(
+            as_of, table_alias="b", start_time_sql="g.start_time",
+        )
+        params: list[Any] = [player, as_of, *_FINAL_STATUSES, *feature_params]
         league_clause = ""
         if league is not None:
             league_clause = " AND g.league = ?"
@@ -309,7 +491,10 @@ class SportsHistoryStore:
         rows = self.conn.execute(
             "SELECT b.game_id, g.start_time, b.stat, b.value "
             "FROM boxscores b JOIN games g ON g.game_id = b.game_id "
-            "WHERE b.player = ? AND g.start_time < ?" + league_clause +
+            "WHERE b.player = ? "
+            "AND julianday(g.start_time) < julianday(?) "
+            f"AND g.status IN ({finals}) "
+            f"{feature_sql}" + league_clause +
             " ORDER BY g.start_time DESC",
             params,
         ).fetchall()
@@ -325,11 +510,19 @@ class SportsHistoryStore:
         return [by_game[g] for g in order[:int(n)]]
 
     def game_ids_missing_boxscores(self, league: str, limit: int | None = None) -> list[str]:
-        """Completed game_ids in ``league`` that have no boxscore rows yet
-        (newest first) -- the resumable work-list for the boxscore backfill."""
+        """Completed games without a valid feature-arrival envelope.
+
+        Legacy rows with unknown arrival remain queued so a fresh observation
+        can repair them without inventing historical timestamps.
+        """
         finals = ",".join("?" * len(_FINAL_STATUSES))
         sql = (
-            f"SELECT g.game_id FROM games g LEFT JOIN boxscores b ON b.game_id = g.game_id "
+            "SELECT g.game_id FROM games g LEFT JOIN boxscores b "
+            "ON b.game_id = g.game_id "
+            "AND julianday(b.source_available_at) IS NOT NULL "
+            "AND julianday(b.received_at) IS NOT NULL "
+            "AND julianday(b.source_available_at) >= julianday(g.start_time) "
+            "AND julianday(b.received_at) >= julianday(b.source_available_at) "
             f"WHERE g.league = ? AND g.status IN ({finals}) AND b.game_id IS NULL "
             f"GROUP BY g.game_id ORDER BY g.start_time DESC"
         )
@@ -343,66 +536,89 @@ class SportsHistoryStore:
         self, team: str, as_of: str, league: str, *,
         require_known_availability: bool = False,
     ) -> dict[str, Any] | None:
-        """Point-in-time SUM of a team's OWN boxscore stats over completed games
-        before ``as_of`` (any stat keys). ``{"sums": {...}, "games": n}`` or
-        None. Used where a team's row already encodes both sides (e.g. EPA)."""
+        """Point-in-time sums of strictly pre-decision team feature versions."""
         finals = ",".join("?" * len(_FINAL_STATUSES))
         availability_sql, availability_params = self._availability_sql(
-            as_of, require_known_availability
+            as_of, require_known_availability, table_alias="g",
         )
-        start_time_sql = ("julianday(g.start_time) < julianday(?)"
-                          if require_known_availability else "g.start_time < ?")
-        gids = [
-            r[0] for r in self.conn.execute(
-                f"""SELECT DISTINCT g.game_id FROM games g
-                    JOIN boxscores b ON b.game_id = g.game_id
+        feature_sql, feature_params = self._feature_availability_sql(
+            as_of, table_alias="b", start_time_sql="g.start_time",
+        )
+        rows = self.conn.execute(
+            f"""WITH eligible AS (
+                    SELECT b.game_id, b.stat, b.value
+                    FROM games g JOIN boxscores b ON b.game_id = g.game_id
                     WHERE b.team = ? AND b.player = '' AND g.league = ?
-                      AND {start_time_sql} AND g.status IN ({finals})
-                      {availability_sql}""",
-                (team, league, as_of, *_FINAL_STATUSES, *availability_params),
-            ).fetchall()
-        ]
-        if not gids:
+                      AND julianday(g.start_time) < julianday(?)
+                      AND g.status IN ({finals})
+                      {feature_sql}
+                      {availability_sql}
+                )
+                SELECT stat, SUM(value),
+                       (SELECT COUNT(DISTINCT game_id) FROM eligible)
+                FROM eligible GROUP BY stat""",
+            (
+                team, league, as_of, *_FINAL_STATUSES,
+                *feature_params, *availability_params,
+            ),
+        ).fetchall()
+        if not rows:
             return None
-        ph = ",".join("?" * len(gids))
-        sums = {s: v for s, v in self.conn.execute(
-            f"SELECT stat, SUM(value) FROM boxscores WHERE game_id IN ({ph}) AND team = ? "
-            f"AND player = '' GROUP BY stat", (*gids, team)).fetchall()}
-        return {"sums": sums, "games": len(gids)}
+        return {
+            "sums": {str(stat): value for stat, value, _games in rows},
+            "games": int(rows[0][2]),
+        }
 
     def four_factor_sums_before(
         self, team: str, as_of: str, league: str, *,
         require_known_availability: bool = False,
     ) -> dict[str, Any] | None:
-        """Point-in-time stat sums for a team's OFFENSE (own) and DEFENSE
-        (opponents' stats in the same games), over completed games before
-        ``as_of``. The seed for four-factors. None if no boxscores yet."""
+        """Strictly pre-decision own/opponent sums over fully paired games."""
         finals = ",".join("?" * len(_FINAL_STATUSES))
         availability_sql, availability_params = self._availability_sql(
-            as_of, require_known_availability
+            as_of, require_known_availability, table_alias="g",
         )
-        start_time_sql = ("julianday(g.start_time) < julianday(?)"
-                          if require_known_availability else "g.start_time < ?")
-        gids = [
-            r[0] for r in self.conn.execute(
-                f"""SELECT DISTINCT g.game_id FROM games g
-                    JOIN boxscores b ON b.game_id = g.game_id
-                    WHERE b.team = ? AND b.player = '' AND g.league = ?
-                      AND {start_time_sql} AND g.status IN ({finals})
-                      {availability_sql}""",
-                (team, league, as_of, *_FINAL_STATUSES, *availability_params),
-            ).fetchall()
-        ]
-        if not gids:
+        feature_sql, feature_params = self._feature_availability_sql(
+            as_of, table_alias="b", start_time_sql="g.start_time",
+        )
+        rows = self.conn.execute(
+            f"""WITH eligible_rows AS (
+                    SELECT b.game_id, b.team, b.stat, b.value
+                    FROM games g JOIN boxscores b ON b.game_id = g.game_id
+                    WHERE g.league = ?
+                      AND (g.home = ? OR g.away = ?)
+                      AND (b.team = g.home OR b.team = g.away)
+                      AND b.player = ''
+                      AND julianday(g.start_time) < julianday(?)
+                      AND g.status IN ({finals})
+                      {feature_sql}
+                      {availability_sql}
+                ),
+                eligible_games AS (
+                    SELECT game_id FROM eligible_rows
+                    GROUP BY game_id
+                    HAVING MAX(CASE WHEN team = ? THEN 1 ELSE 0 END) = 1
+                       AND MAX(CASE WHEN team != ? THEN 1 ELSE 0 END) = 1
+                )
+                SELECT CASE WHEN r.team = ? THEN 'off' ELSE 'def' END,
+                       r.stat, SUM(r.value),
+                       (SELECT COUNT(*) FROM eligible_games)
+                FROM eligible_rows r
+                JOIN eligible_games eg ON eg.game_id = r.game_id
+                GROUP BY CASE WHEN r.team = ? THEN 'off' ELSE 'def' END, r.stat""",
+            (
+                league, team, team, as_of, *_FINAL_STATUSES,
+                *feature_params, *availability_params,
+                team, team, team, team,
+            ),
+        ).fetchall()
+        if not rows:
             return None
-        ph = ",".join("?" * len(gids))
-        own = {s: v for s, v in self.conn.execute(
-            f"SELECT stat, SUM(value) FROM boxscores WHERE game_id IN ({ph}) AND team = ? "
-            f"AND player = '' GROUP BY stat", (*gids, team)).fetchall()}
-        opp = {s: v for s, v in self.conn.execute(
-            f"SELECT stat, SUM(value) FROM boxscores WHERE game_id IN ({ph}) AND team != ? "
-            f"AND player = '' GROUP BY stat", (*gids, team)).fetchall()}
-        return {"off": own, "def": opp, "games": len(gids)}
+        own = {str(stat): value for side, stat, value, _games in rows if side == "off"}
+        opp = {str(stat): value for side, stat, value, _games in rows if side == "def"}
+        if not own or not opp:
+            return None
+        return {"off": own, "def": opp, "games": int(rows[0][3])}
 
     def record_ingest(
         self, source: str, league: str | None, date_range: str | None, *,
@@ -562,23 +778,59 @@ class SportsHistoryStore:
 
     def claim_research_holdout(
         self, *, seal_key: str, league: str, holdout_season: int, model: str,
-        holdout_ids_hash: str, selection_ids_hash: str, consumed_at: str,
+        holdout_ids_hash: str, selection_ids_hash: str,
+        manifest_version: str, holdout_manifest_hash: str,
+        holdout_content_hash: str, holdout_outcomes_hash: str,
+        selection_manifest_hash: str, selection_content_hash: str,
+        selection_outcomes_hash: str, consumed_at: str,
     ) -> bool:
         """Atomically consume a sealed holdout once, with no live authority.
 
-        The append-only claim prevents repeated parameter fishing against the
-        same holdout identity. There is intentionally no delete/reset helper.
+        The permanent scope lock is ``(league, holdout_season, model)``. A
+        changed ID set, content row, or outcome therefore cannot mint a fresh
+        claim. V2 claims also bind the immutable selection/holdout manifests.
         """
+        hashes = (
+            seal_key,
+            holdout_ids_hash,
+            selection_ids_hash,
+            holdout_manifest_hash,
+            holdout_content_hash,
+            holdout_outcomes_hash,
+            selection_manifest_hash,
+            selection_content_hash,
+            selection_outcomes_hash,
+        )
+        if (
+            not str(manifest_version).strip()
+            or any(
+                len(str(value)) != 64
+                or any(ch not in "0123456789abcdef" for ch in str(value).lower())
+                for value in hashes
+            )
+        ):
+            raise ValueError("research holdout claims require complete SHA-256 manifests")
+        normalized_league = str(league).strip().lower()
+        normalized_model = str(model).strip().lower()
+        if not normalized_league or not normalized_model:
+            raise ValueError("research holdout league and model are required")
         try:
             self.conn.execute(
                 """INSERT INTO research_holdout_consumptions(
                        seal_key,league,holdout_season,model,holdout_ids_hash,
-                       selection_ids_hash,consumed_at,execution_authority,
-                       promotion_authority
-                   ) VALUES(?,?,?,?,?,?,?,0,0)""",
+                       selection_ids_hash,manifest_version,
+                       holdout_manifest_hash,holdout_content_hash,
+                       holdout_outcomes_hash,selection_manifest_hash,
+                       selection_content_hash,selection_outcomes_hash,
+                       consumed_at,execution_authority,promotion_authority
+                   ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,0,0)""",
                 (
-                    seal_key, league, int(holdout_season), model,
-                    holdout_ids_hash, selection_ids_hash, consumed_at,
+                    seal_key, normalized_league, int(holdout_season),
+                    normalized_model, holdout_ids_hash, selection_ids_hash,
+                    manifest_version, holdout_manifest_hash,
+                    holdout_content_hash, holdout_outcomes_hash,
+                    selection_manifest_hash, selection_content_hash,
+                    selection_outcomes_hash, consumed_at,
                 ),
             )
             self.conn.commit()
@@ -593,26 +845,69 @@ class SportsHistoryStore:
         ).fetchone()
         return None if row is None else dict(row)
 
+    def research_holdout_claims_for_scope(
+        self, *, league: str, holdout_season: int, model: str,
+    ) -> list[dict[str, Any]]:
+        """Every immutable claim for a scope, including preserved legacy conflicts."""
+        rows = self.conn.execute(
+            """SELECT * FROM research_holdout_consumptions
+               WHERE lower(trim(league)) = lower(trim(?))
+                 AND holdout_season = ?
+                 AND lower(trim(model)) = lower(trim(?))
+               ORDER BY consumed_at, seal_key""",
+            (str(league), int(holdout_season), str(model)),
+        ).fetchall()
+        return [dict(row) for row in rows]
+
     # ---- helpers ---------------------------------------------------------
     @staticmethod
     def _availability_sql(
         as_of: str, required: bool, *, prefix: str = " AND ",
+        table_alias: str = "",
     ) -> tuple[str, list[Any]]:
         if not required:
             return "", []
+        qualifier = f"{table_alias}." if table_alias else ""
+        result_available_at = f"{qualifier}result_available_at"
+        received_at = f"{qualifier}received_at"
+        provenance_quality = f"{qualifier}provenance_quality"
+        start_time = f"{qualifier}start_time"
         placeholders = ",".join("?" * len(EVALUATION_PROVENANCE_QUALITIES))
         clause = (
-            "result_available_at IS NOT NULL AND received_at IS NOT NULL "
-            f"AND provenance_quality IN ({placeholders}) "
-            "AND julianday(result_available_at) IS NOT NULL "
-            "AND julianday(received_at) IS NOT NULL "
-            "AND julianday(start_time) IS NOT NULL "
-            "AND julianday(result_available_at) >= julianday(start_time) "
-            "AND julianday(received_at) >= julianday(result_available_at) "
-            "AND julianday(result_available_at) < julianday(?) "
-            "AND julianday(received_at) < julianday(?)"
+            f"{result_available_at} IS NOT NULL AND {received_at} IS NOT NULL "
+            f"AND {provenance_quality} IN ({placeholders}) "
+            f"AND julianday({result_available_at}) IS NOT NULL "
+            f"AND julianday({received_at}) IS NOT NULL "
+            f"AND julianday({start_time}) IS NOT NULL "
+            f"AND julianday({result_available_at}) >= julianday({start_time}) "
+            f"AND julianday({received_at}) >= julianday({result_available_at}) "
+            f"AND julianday({result_available_at}) < julianday(?) "
+            f"AND julianday({received_at}) < julianday(?)"
         )
         return prefix + clause, [*sorted(EVALUATION_PROVENANCE_QUALITIES), as_of, as_of]
+
+    @staticmethod
+    def _feature_availability_sql(
+        as_of: str, *, prefix: str = " AND ", table_alias: str = "",
+        start_time_sql: str | None = None,
+    ) -> tuple[str, list[Any]]:
+        """SQL gate for a boxscore feature version's own arrival envelope."""
+        qualifier = f"{table_alias}." if table_alias else ""
+        source_available_at = f"{qualifier}source_available_at"
+        received_at = f"{qualifier}received_at"
+        clauses = [
+            f"julianday({source_available_at}) IS NOT NULL",
+            f"julianday({received_at}) IS NOT NULL",
+            f"julianday({received_at}) >= julianday({source_available_at})",
+            f"julianday({source_available_at}) < julianday(?)",
+            f"julianday({received_at}) < julianday(?)",
+        ]
+        if start_time_sql:
+            clauses.insert(
+                2,
+                f"julianday({source_available_at}) >= julianday({start_time_sql})",
+            )
+        return prefix + " AND ".join(clauses), [as_of, as_of]
 
     @staticmethod
     def _row(row: sqlite3.Row) -> dict[str, Any]:

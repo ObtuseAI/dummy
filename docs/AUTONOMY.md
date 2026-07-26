@@ -1,9 +1,8 @@
 # Dummy Autonomy Layer
 
 Shipped 2026-07-08. The predator loop: scan → signal → forecast → allocate →
-risk → execute → reconcile → learn. Operator surface is start/stop only;
-everything between is decided by the system inside the risk brain's survival
-constraints.
+risk → execute → reconcile → learn. The dashboard is observational only;
+operator ceremonies and process control stay outside its HTTP surface.
 
 ## Operator dashboard + alerts
 
@@ -11,13 +10,19 @@ constraints.
 python scripts/run_dummy_dashboard.py --port 8787   # open http://127.0.0.1:8787/
 ```
 
-Read-only page: liveness/heartbeat, live-canary gate + blockers, risk state,
+Loopback-only, read-only page: liveness/heartbeat, live-canary gate + blockers, risk state,
 per-source calibration scoreboard, recent cycles, bankroll curve, and alerts.
 Alerts (`autonomy/alerts.py`) fire once per episode on SELF_STOP, drawdown
 ladder deepening, evidence-gate-green, and cycle-error streaks — written to
 `runtime/autonomy/alerts.jsonl` and surfaced on the dashboard.
 
-Two API surfaces:
+`scripts/run_dummy_dashboard.py` → `autonomy.dashboard` is the only supported
+HTTP entrypoint. The former root `main.py`, `dashboard.backend`, WebSocket
+status adapter, and browser-facing operator mutation routes were retired rather
+than retained as compatibility shims. Operator and authority ceremonies remain
+explicit CLI workflows.
+
+Core API surfaces:
 
 - `GET /api/status` — fast precomputed snapshot. Reads only the fresh runtime
   JSON artifacts plus `watchdog_status.json`; it NEVER opens `ledger.db`.
@@ -25,7 +30,7 @@ Two API surfaces:
   seconds, cadence-derived threshold, `stale` flag) so stale data is visibly
   stale instead of rendering as healthy.
 - `GET /api/autonomy` — the full evidence report (includes a 1,000-resample
-  cluster bootstrap over the ledger). It is cached for 30 s and computed on a
+  cluster bootstrap over the ledger). It is cached for 120 s and computed on a
   background worker with a bounded request deadline
   (`DUMMY_DASHBOARD_STATE_DEADLINE_SECONDS`, default 20 s). A cold request
   that misses the deadline gets the last cached value marked
