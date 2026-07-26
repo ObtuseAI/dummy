@@ -468,6 +468,8 @@ def main() -> int:
     try:
         if not args.ledger.exists():
             raise InsufficientEvidence(f"ledger not found: {args.ledger}")
+        if _deadline():
+            raise InsufficientEvidence("run deadline reached before cycle started")
         summary = run_cycle(
             ledger_path=args.ledger,
             output_dir=args.output_dir,

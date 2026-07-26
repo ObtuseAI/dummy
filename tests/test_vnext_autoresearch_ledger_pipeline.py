@@ -557,13 +557,13 @@ def test_runner_deadline_defers_instead_of_overrunning(tmp_path: Path) -> None:
         "--ledger", str(ledger),
         "--output-dir", str(output),
         "--issued-at", (NOW + timedelta(days=20)).isoformat(),
-        "--max-seconds", "0.001",
+        "--max-seconds", "0.000000001",
     )
 
     assert result.returncode == 0
     status = _status(output)
     assert status["status"] == "DEFERRED_RUN_DEADLINE"
-    assert status["max_seconds"] == 0.001
+    assert status["max_seconds"] == 0.000000001
 
 
 def test_runner_preserves_last_success_across_a_later_skip(tmp_path: Path) -> None:
