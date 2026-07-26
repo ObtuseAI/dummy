@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 from fastapi.testclient import TestClient
 
 from autonomy.dashboard import build_app
@@ -32,9 +34,9 @@ def test_strategy_catalog_states_research_and_authority_truth():
 
 
 def test_harvester_paths_are_checkout_relative():
+    assert REPO_ROOT == Path(__file__).resolve().parents[1]
     assert ARTIFACTS == REPO_ROOT / "artifacts" / "repo_harvester"
     assert DUMMY_ARTIFACTS == REPO_ROOT / "artifacts" / "dummy"
-    assert "C:/src/engine/dummy" not in str(ARTIFACTS).replace("\\", "/")
 
 
 def test_every_current_adapter_target_is_dormant_and_dashboard_visible():

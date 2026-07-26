@@ -50,7 +50,7 @@ target-version = "py311"
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["dummy*", "core*", "kalshi*", "live_firewall*", "compliance*", "forecasting*", "strategies*", "risk*", "repo_harvester*", "services*", "adapters*", "proof*", "model_router*", "predator_mesh*", "calibration*", "autonomy*"]
+include = ["dummy*", "core*", "kalshi*", "live_firewall*", "compliance*", "forecasting*", "strategies*", "risk*", "repo_harvester*", "adapters*", "proof*", "model_router*", "predator_mesh*", "calibration*", "autonomy*"]
 
 [tool.setuptools.package-data]
 autonomy = ["dashboard_assets/vendor/lightweight-charts/5.2.0/*"]

@@ -4,6 +4,10 @@ secrets/
 __pycache__/
 *.pyc
 .pytest_cache/
+.coverage
+.coverage.*
+coverage.xml
+htmlcov/
 node_modules/
 dist/
 logs/*.jsonl

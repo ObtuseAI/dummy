@@ -178,11 +178,11 @@ allocation, promotion, amend, or cancel authority.
 | Execution/dashboard selection | 64 passed |
 | Sports point-in-time selection | 53 passed |
 | Full suite, no coverage instrumentation | 5,011 passed, 85 skipped |
-| CI-equivalent full suite + line coverage | 5,010 passed, 86 skipped, 216 warnings; **85.01659096034277%** over 62,082 statements |
+| Final CI-equivalent full suite + line coverage | 5,016 passed, 86 skipped, 215 warnings; **85.24%** over 62,033 statements |
 | Ruff / compileall / `git diff --check` | PASS |
 | Frozen dependency sync and consistency | 91 packages; PASS |
 | Vulnerability / license policy | 0 known vulnerabilities; 87 licenses inventoried; 20 direct policies PASS |
-| Package build | Wheel 2,233,737 bytes / 630 entries; sdist 2,783,284 bytes / 1,180 entries |
+| Package build | Wheel 2,231,650 bytes / 627 entries; sdist 2,784,195 bytes / 1,178 entries |
 | Retired paths in either package | 0 Android/mobile/APK, React frontend, Qt/PySide, archive, or `predator_mesh/vNN` |
 | Protected worktree authority/config changes | 0 across nine tracked protected files |
 

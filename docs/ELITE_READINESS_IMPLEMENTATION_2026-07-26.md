@@ -258,6 +258,17 @@ without widening authority:
 The detailed market, replay, mutation, and profitability disposition is in
 `docs/ASCENDANCY_EVIDENCE_MATRIX_2026-07-26.md`.
 
+Publication hardening also:
+
+- made the lazy `EvidencePath` concrete-path compatible on Python 3.11 while
+  preserving Python 3.12+ behavior;
+- pinned the vendored chart renderer, license, notice, and manifest as exact
+  bytes across Windows checkouts;
+- retained `execution/` only as a code-free constitutionally protected
+  namespace; and
+- removed the unused `services` package, including its mutable report writer
+  and root-level SQLite order-store duplicate.
+
 ## Validation
 
 Final-state locked-environment validation is recorded here rather than inferred
@@ -267,11 +278,9 @@ from individual focused suites:
 - Ruff, compileall, and `git diff --check`: **PASS**;
 - full pytest without instrumentation: **PASS**, 5,011 passed and 85 skipped;
 - CI-equivalent pytest and the unrounded 85% line-coverage gate: **PASS**,
-  5,010 passed, 86 skipped, 216 warnings, 85.01659096034277% across 62,082
-  statements; one environment-dependent test exchanged pass/skip status under
-  coverage instrumentation;
-- package build: **PASS**, a 2,233,737-byte wheel (630 entries) and
-  2,783,284-byte sdist (1,180 entries), with zero retired Android, archive,
+  5,016 passed, 86 skipped, 215 warnings, 85.24% across 62,033 statements;
+- package build: **PASS**, a 2,231,650-byte wheel (627 entries) and
+  2,784,195-byte sdist (1,178 entries), with zero retired Android, archive,
   React, Qt, or `predator_mesh/vNN` paths;
 - vendored JavaScript syntax/hash and dashboard evidence contracts: **PASS**,
   including 27 focused passes and one environment skip;
@@ -287,8 +296,8 @@ from individual focused suites:
 
 ## Operator next actions
 
-1. Review this diff before publication; it is intentionally not committed or
-   pushed by this implementation run.
+1. Preserve the protected-branch review and CI path for PR #186; do not bypass
+   the dependency audit or three-version Python matrix.
 2. Keep Dummy disarmed. Resolve the pre-existing live authority/config state
    only through the operator runbook.
 3. Install the supervised tasks, configure an approved critical-alert

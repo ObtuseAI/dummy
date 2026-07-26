@@ -52,6 +52,6 @@ jobs:
           uv run --frozen python -m pytest -q --timeout=120
           --cov=dummy --cov=core --cov=kalshi --cov=live_firewall
           --cov=compliance --cov=forecasting --cov=strategies --cov=risk
-          --cov=services --cov=adapters --cov=proof
+          --cov=adapters --cov=proof
           --cov=model_router --cov=predator_mesh --cov=calibration --cov=autonomy
           --cov-report=term --cov-fail-under=85
