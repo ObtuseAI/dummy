@@ -535,21 +535,17 @@ ceiling — changing it requires the registration ceremony, not an edit).
 
 ### Environment requirements
 
-- **Python 3.11 or newer** — the floor is real: `core/inherited_blunder/` imports
+- **Python 3.11 or newer** — the vendored support layer imports
   `typing.NotRequired`, which lands in 3.11. CI runs 3.11 · 3.12 · 3.14; the live
   workstation runs 3.14.
 - **Canonical checkout path `C:\src\engine\dummy`** — identity and artifact-path gates assert
   it, which is why CI mirrors its checkout there before running the suite.
-- **Sibling Blunder checkout at `C:\src\engine\obtuse\blunder`** — a *hard requirement for the
-  governance suite*, not for running Dummy. `core/inherited_blunder/` is a hash-pinned,
-  byte-identical copy of Blunder (pinned by `.blunder_source_manifest.json`, kept verbatim by
-  the `F401` exemption in `pyproject.toml`), and the separation tests re-hash the canonical
-  sibling checkout against that manifest. Without it — or without an
-  `artifacts/dummy/` directory — `tests/conftest.py` skips the tests listed in
-  `tests/workstation_only_tests.txt`, including every Blunder copy-integrity and separation
-  test. The suite still reports green; it simply stops proving the vendored copy is
-  unmodified. No runtime code imports the sibling checkout, so the paper runtime, the
-  dashboard, and the thin desktop notifier are unaffected by its absence.
+- **Optional upstream source-integrity checkout** — required only for the
+  workstation governance tests that re-hash the vendored support layer against
+  its pinned source manifest. Without that checkout—or without an
+  `artifacts/dummy/` directory—`tests/conftest.py` skips the entries in
+  `tests/workstation_only_tests.txt`. The public paper runtime, dashboard, and
+  thin desktop notifier remain self-contained and are unaffected by its absence.
 
 Start with the [operator index](docs/OPERATOR_START_HERE.md) and
 [shared state vocabulary](docs/OPERATOR_STATES.md). Deeper detail lives in
