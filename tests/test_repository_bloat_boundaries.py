@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import ast
+import os
 from pathlib import Path
 
 from adapters.promoted import PendingAdapter
@@ -11,6 +12,38 @@ from repo_harvester.promotion_engine import generate_promoted_adapter_modules
 from strategies.registry import STRATEGIES, STRATEGY_CATALOG
 
 ROOT = Path(__file__).resolve().parents[1]
+NON_SOURCE_DIRS = frozenset(
+    {
+        ".git",
+        ".hypothesis",
+        ".mypy_cache",
+        ".nox",
+        ".pytest_cache",
+        ".ruff_cache",
+        ".tox",
+        ".venv",
+        "__pycache__",
+        "build",
+        "dist",
+        "htmlcov",
+        "node_modules",
+        "site-packages",
+        "venv",
+    }
+)
+
+
+def _repository_python_files():
+    """Yield project Python files without descending into generated environments."""
+
+    for directory, child_directories, filenames in os.walk(ROOT, topdown=True):
+        child_directories[:] = sorted(
+            name for name in child_directories if name not in NON_SOURCE_DIRS
+        )
+        base = Path(directory)
+        for filename in sorted(filenames):
+            if filename.endswith(".py"):
+                yield base / filename
 
 
 def test_pending_adapter_candidates_use_one_inert_module():
@@ -57,9 +90,7 @@ def test_legacy_forecast_engine_path_cannot_be_imported():
     assert not hasattr(HybridForecastEngine, "forecast_opinion")
 
     offenders: list[str] = []
-    for path in ROOT.rglob("*.py"):
-        if ".git" in path.parts:
-            continue
+    for path in _repository_python_files():
         tree = ast.parse(path.read_text(encoding="utf-8"))
         for node in ast.walk(tree):
             if isinstance(node, ast.ImportFrom) and node.module == "forecasting.engine":
