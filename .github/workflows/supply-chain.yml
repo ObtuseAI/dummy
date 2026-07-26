@@ -42,10 +42,21 @@ jobs:
         run: uv sync --frozen --all-extras --python 3.12
       - name: Verify dependency consistency
         run: uv pip check --python .venv\Scripts\python.exe
+      - name: Export locked third-party audit set
+        # The editable Dummy root is intentionally not a PyPI distribution.
+        # Audit every frozen third-party dependency without asking PyPI to
+        # resolve the local public-source project itself.
+        run: >-
+          uv export --quiet
+          --frozen
+          --all-extras
+          --no-emit-project
+          --output-file dependency-audit-requirements.txt
       - name: Audit known vulnerabilities
         run: >-
           uv run --frozen python -m pip_audit
           --strict
+          --requirement dependency-audit-requirements.txt
           --desc on
           --format json
           --output dependency-audit.json
@@ -72,4 +83,5 @@ jobs:
           if-no-files-found: warn
           path: |
             dependency-audit.json
+            dependency-audit-requirements.txt
             dependency-licenses.json
