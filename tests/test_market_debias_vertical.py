@@ -181,6 +181,8 @@ def test_ledger_samples_carries_ticker(tmp_path):
 
     ledger = AutonomyLedger(tmp_path / "l.db")
     try:
+        observed = datetime.now(timezone.utc)
+        close = observed + timedelta(hours=1)
         ledger.record_signal(
             Signal(
                 source="market_prior",
@@ -189,14 +191,17 @@ def test_ledger_samples_carries_ticker(tmp_path):
                 uncertainty=0.1,
                 rationale="",
                 features={
-                    "close_time": (
-                        datetime.now(timezone.utc) + timedelta(hours=1)
-                    ).isoformat(),
+                    "close_time": close.isoformat(),
                     "market_status": "active",
                 },
+                created_at=observed.isoformat(),
             )
         )
-        ledger.record_settlement(_BTC, True)
+        ledger.record_settlement(
+            _BTC,
+            True,
+            settled_at=(close + timedelta(hours=1)).isoformat(),
+        )
         samples = ledger_samples(ledger)
         assert len(samples) == 1
         assert samples[0].probability_yes == 0.45

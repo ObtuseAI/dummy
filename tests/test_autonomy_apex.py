@@ -260,17 +260,26 @@ def test_backtest_bootstraps_scoped_weights(tmp_path, monkeypatch):
         ),
     )
     ledger = AutonomyLedger(tmp_path / "l.db")
+    observed_base = datetime.now(timezone.utc) - timedelta(days=1)
+    settled_base = datetime.now(timezone.utc) + timedelta(hours=1)
     # KXMLBGAME (SPORTS) as the second vertical: WEATHER is retired (Wave-82),
     # so a weather-scoped row would now be purged rather than bootstrapped.
     for i, (ticker, result) in enumerate([("KXBTCD-A", True), ("KXBTCD-B", False),
                                           ("KXMLBGAME-C", True),
                                           ("KXHIGHNY-D", True)]):
+        observed_at = (observed_base + timedelta(minutes=i)).isoformat()
         ledger.record_signal(Signal(source="market_prior", market_ticker=ticker,
-                                    probability_yes=0.5, uncertainty=0.1, rationale=""))
+                                    probability_yes=0.5, uncertainty=0.1, rationale="",
+                                    created_at=observed_at))
         ledger.record_signal(Signal(source="alpha", market_ticker=ticker,
                                     probability_yes=0.9 if result else 0.1,
-                                    uncertainty=0.1, rationale=""))
-        ledger.record_settlement(ticker, result)
+                                    uncertainty=0.1, rationale="",
+                                    created_at=observed_at))
+        ledger.record_settlement(
+            ticker,
+            result,
+            settled_at=(settled_base + timedelta(hours=i)).isoformat(),
+        )
     report = run_backtest(ledger, bootstrap_weights=True)
     assert report["recal_oos_gate"]["held_out_improvement_verified"] is True
     assert "alpha@CRYPTO" in report["derived_weights_by_vertical"]

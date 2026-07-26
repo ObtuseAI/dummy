@@ -413,7 +413,7 @@ async def run_debate(router: Any, market: MarketView, base_prob: float | None = 
     # Confidence is a model claim, not empirical residual variance. It is
     # persisted for later grading but has no path into ensemble precision.
     # Peer herding likewise cannot erase sealed round-one disagreement.
-    probability = sum(o.probability_yes for o in opinions) / len(opinions)
+    probability = math.fsum(o.probability_yes for o in opinions) / len(opinions)
     disagreement = _disagreement([o.probability_yes for o in opinions])
     uncertainty = min(
         0.5,
