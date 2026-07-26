@@ -105,6 +105,14 @@ class Forecast:
     model_probability_yes: float | None = None
     model_uncertainty: float | None = None
     model_sources: dict[str, float] | None = None
+    # A post-fusion reliability correction may reach the traded path only
+    # after its exact ``fused_forecast::cal`` scope clears the promotion gate.
+    # These fields preserve the raw number and content-bound evidence identity
+    # on every resulting decision; None means the raw fusion remains traded.
+    calibration_source: str | None = None
+    uncalibrated_probability_yes: float | None = None
+    calibration_scope: str | None = None
+    calibration_evidence_sha256: str | None = None
 
 
 @dataclass(frozen=True)

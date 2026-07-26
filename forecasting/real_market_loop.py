@@ -7,13 +7,11 @@ from decimal import Decimal
 from pathlib import Path
 from typing import Any, Iterable
 
-import httpx
-
 from core.evidence_dir import EvidencePath
 from core.ontology import Contract, Forecast, ForecastOpinion, Market, OrderBook, OrderBookLevel
 from core.logger import logger
 from forecasting.hybrid_engine import HYBRID_REVIEW_CALL_CAP, HybridForecastEngine
-from forecasting.engine import kalshi_fee_cents, signed_edge_after_fees
+from forecasting.fees import kalshi_fee_cents, signed_edge_after_fees
 from forecasting.model_probability_authority import (
     MODEL_PANEL_SOURCE,
     ModelProbabilityAuthorityDecision,
@@ -137,58 +135,6 @@ REVIEW_CONTENT_REQUIRED_KEYS: dict[str, set[str]] = {
     "thesis": {"thesis", "confidence"},
     "calibration": {"note"},
 }
-
-
-class RealMarketForecastLoop:
-    def __init__(
-        self,
-        hybrid_engine: HybridForecastEngine | None = None,
-        storage: CalibrationStorage | None = None,
-    ):
-        self.hybrid_engine = hybrid_engine or HybridForecastEngine()
-        self.storage = storage or CalibrationStorage()
-        self.credentials_present = False
-
-    async def run(self, contract_tickers: list[str] | None = None) -> dict[str, Any]:
-        reader: KalshiRealReadOnly | None = None
-        try:
-            reader = KalshiRealReadOnly()
-            self.credentials_present = True
-        except KalshiCredentialsMissing:
-            return {"source": "mock", "opinions": [], "reason": "kalshi_credentials_missing"}
-        normalizer = KalshiNormalizer()
-        tickers = contract_tickers or ["KXELONMARS-99"]
-        opinions: list[ForecastOpinion] = []
-        try:
-            for ticker in tickers:
-                if is_prediction_quarantined_target(ticker):
-                    continue
-                snapshot = await reader.get_full_snapshot(ticker)
-                normalized = normalizer.normalize_full_snapshot(snapshot, ticker)
-                market = normalized["markets"][0] if normalized["markets"] else None
-                if market and is_prediction_quarantined_target(
-                    market.ticker, category=market.category,
-                ):
-                    continue
-                orderbook = normalized["orderbook"]
-                opinion = await self.hybrid_engine.forecast_opinion(
-                    market_ticker=orderbook.market_ticker,
-                    contract_ticker=ticker,
-                    event_title=market.title if market else ticker,
-                    contract_title=ticker,
-                    orderbook=orderbook,
-                )
-                opinions.append(opinion)
-                self.storage.append_forecast(opinion)
-        except httpx.HTTPStatusError as exc:
-            if exc.response.status_code in (401, 403):
-                return {"source": "mock", "opinions": [], "reason": "kalshi_credentials_unauthorized"}
-            raise
-        finally:
-            if reader is not None:
-                await reader.close()
-
-        return {"source": "live", "opinions": [o.model_dump() for o in opinions], "count": len(opinions)}
 
 
 class RealMarketForecastLoopV2:

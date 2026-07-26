@@ -6,4 +6,5 @@
 ' ledger. No console window. Regular python.exe so stdout redirects to the log.
 Set shell = CreateObject("WScript.Shell")
 shell.CurrentDirectory = "C:\src\engine\dummy"
-shell.Run "cmd /c C:\Python314\python.exe scripts\run_negative_controls.py >> runtime\autonomy\negative_controls_stdout.log 2>&1", 0, False
+exitCode = shell.Run("cmd /c C:\Python314\python.exe scripts\run_negative_controls.py >> runtime\autonomy\negative_controls_stdout.log 2>&1", 0, True)
+WScript.Quit exitCode

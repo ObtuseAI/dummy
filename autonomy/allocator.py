@@ -10,6 +10,7 @@ from __future__ import annotations
 import uuid
 from datetime import datetime, timezone
 
+from autonomy.adverse_selection import MakerAdverseSelectionEvidence
 from autonomy.ontology import Decision, DecisionAction, Forecast, MarketView
 from autonomy.risk_brain import (
     STAGE_LIMITS,
@@ -18,7 +19,7 @@ from autonomy.risk_brain import (
     RiskState,
     kalshi_maker_fee_cents,
     kalshi_taker_fee_cents,
-    kelly_fraction_yes,
+    uncertainty_adjusted_kelly,
 )
 
 # Minimum fee-adjusted expected value per contract (cents) before we act.
@@ -76,11 +77,17 @@ class Allocator:
         min_ev_cents: float = MIN_EV_CENTS,
         performance_guard=None,
         execution_policy=None,
+        maker_adverse_selection_evidence: MakerAdverseSelectionEvidence | None = None,
+        require_maker_adverse_selection_evidence: bool = False,
     ):
         self.risk_brain = risk_brain
         self.min_ev_cents = min_ev_cents
         self.performance_guard = performance_guard
         self.execution_policy = execution_policy
+        self.maker_adverse_selection_evidence = maker_adverse_selection_evidence
+        self.require_maker_adverse_selection_evidence = bool(
+            require_maker_adverse_selection_evidence
+        )
 
     @property
     def _immediate_taker(self) -> bool:
@@ -116,6 +123,29 @@ class Allocator:
                group_open_count: int = 0, *,
                allocation_cap_cents: int | None = None) -> Decision:
         snapshot: dict = {}
+        if not self._immediate_taker:
+            evidence = self.maker_adverse_selection_evidence
+            if evidence is None and self.require_maker_adverse_selection_evidence:
+                return _abstain(
+                    market,
+                    forecast,
+                    "maker adverse-selection evidence unavailable or stale",
+                    snapshot,
+                )
+            if evidence is not None:
+                snapshot.update(
+                    {
+                        "maker_adverse_selection_haircut_cents": (
+                            evidence.haircut_cents
+                        ),
+                        "maker_adverse_selection_report_sha256": (
+                            evidence.source_report_sha256
+                        ),
+                        "maker_adverse_selection_generated_at": (
+                            evidence.generated_at
+                        ),
+                    }
+                )
         if self.performance_guard is not None:
             reason = self.performance_guard.reason_for(market, forecast)
             if reason:
@@ -159,28 +189,49 @@ class Allocator:
         # a YES-frame bet at probability (1 - q).
         candidates = []
         q = forecast.probability_yes
+        maker_haircut_cents = (
+            0.0
+            if self._immediate_taker
+            or self.maker_adverse_selection_evidence is None
+            else self.maker_adverse_selection_evidence.haircut_cents
+        )
         yes_price = self._entry_price(market.yes_bid, market.yes_ask, q * 100.0)
         max_price = CRYPTO_MAX_PRICE_CENTS if market.vertical.value == "CRYPTO" else MAX_PRICE_CENTS
         if yes_price is not None and yes_price <= max_price:
-            conservative_q = max(0.005, q - CONFIDENCE_HAIRCUT_SIGMAS * forecast.uncertainty)
+            conservative_q = max(
+                0.005,
+                q
+                - CONFIDENCE_HAIRCUT_SIGMAS * forecast.uncertainty
+                - maker_haircut_cents / 100.0,
+            )
             ev = (conservative_q * 100.0 - yes_price
                   - self._entry_fee(yes_price, market.ticker))
-            candidates.append(("yes", yes_price, conservative_q, ev))
+            candidates.append(("yes", yes_price, q, conservative_q, ev))
         no_fair = (1.0 - q) * 100.0
         no_price = self._entry_price(market.no_bid, market.no_ask, no_fair)
         if no_price is not None and no_price <= max_price:
             conservative_no = max(
-                0.005, (1.0 - q) - CONFIDENCE_HAIRCUT_SIGMAS * forecast.uncertainty
+                0.005,
+                (1.0 - q)
+                - CONFIDENCE_HAIRCUT_SIGMAS * forecast.uncertainty
+                - maker_haircut_cents / 100.0,
             )
             ev = (conservative_no * 100.0 - no_price
                   - self._entry_fee(no_price, market.ticker))
-            candidates.append(("no", no_price, conservative_no, ev))
+            candidates.append(("no", no_price, 1.0 - q, conservative_no, ev))
 
         if not candidates:
             entry_style = "taker" if self._immediate_taker else "maker"
             return _abstain(market, forecast, f"no viable {entry_style} price", snapshot)
-        side, price, win_prob, ev = max(candidates, key=lambda c: c[3])
-        kelly = kelly_fraction_yes(win_prob, price)
+        side, price, raw_win_prob, win_prob, ev = max(
+            candidates, key=lambda c: c[4]
+        )
+        kelly = uncertainty_adjusted_kelly(
+            max(0.005, raw_win_prob - maker_haircut_cents / 100.0),
+            forecast.uncertainty,
+            price,
+            haircut_sigmas=CONFIDENCE_HAIRCUT_SIGMAS,
+        )
         min_ev = max(self.min_ev_cents, CRYPTO_MIN_EV_CENTS) \
             if market.vertical.value == "CRYPTO" else self.min_ev_cents
         if self._immediate_taker:
@@ -210,7 +261,10 @@ class Allocator:
         )
         if not budget.allowed:
             return _abstain(
-                market, forecast, f"risk brain: {budget.reason}", budget.risk_snapshot,
+                market,
+                forecast,
+                f"risk brain: {budget.reason}",
+                {**budget.risk_snapshot, **snapshot},
                 side=side, price_cents=price, ev_cents=ev, kelly=kelly,
             )
         if budget.max_notional_cents < price:
@@ -218,7 +272,7 @@ class Allocator:
                 market, forecast,
                 f"risk brain: remaining budget {budget.max_notional_cents}c below one "
                 f"contract at {price}c",
-                budget.risk_snapshot, side=side, price_cents=price,
+                {**budget.risk_snapshot, **snapshot}, side=side, price_cents=price,
                 ev_cents=ev, kelly=kelly,
             )
         # The cross-candidate allocator (autonomy/candidate_allocation) may cap
@@ -233,7 +287,7 @@ class Allocator:
             return _abstain(
                 market, forecast,
                 f"allocation: granted {grantable}c below one contract at {price}c",
-                budget.risk_snapshot, side=side, price_cents=price,
+                {**budget.risk_snapshot, **snapshot}, side=side, price_cents=price,
                 ev_cents=ev, kelly=kelly,
             )
         count = grantable // price
@@ -249,5 +303,5 @@ class Allocator:
             kelly_fraction=round(kelly, 4),
             notional_cents=notional,
             forecast=forecast,
-            risk_snapshot=budget.risk_snapshot,
+            risk_snapshot={**budget.risk_snapshot, **snapshot},
         )

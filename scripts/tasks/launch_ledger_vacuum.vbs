@@ -1,7 +1,8 @@
-' Hidden launcher (Wave-48): weekly ledger VACUUM maintenance. The script skips
-' itself cheaply when the freelist is small (no runtime pause); when there is
-' enough to reclaim it briefly pauses the Dummy tasks, VACUUMs the ledger, and
-' re-enables them. No console window.
+' Hidden supervised launcher for the cooperative verified VACUUM. It never
+' disables tasks or kills processes. The Python runner requires the backup
+' manifest named by DUMMY_MAINTENANCE_BACKUP_MANIFEST and returns non-zero when
+' backup, lease, checkpoint, integrity, or free-space checks fail.
 Set shell = CreateObject("WScript.Shell")
 shell.CurrentDirectory = "C:\src\engine\dummy"
-shell.Run "cmd /c powershell -ExecutionPolicy Bypass -File scripts\run_dummy_ledger_vacuum.ps1 >> runtime\autonomy\vacuum_stdout.log 2>&1", 0, False
+exitCode = shell.Run("cmd /c C:\Python314\python.exe scripts\run_dummy_ledger_vacuum.py --backup-manifest ""%DUMMY_MAINTENANCE_BACKUP_MANIFEST%"" >> runtime\autonomy\vacuum_stdout.log 2>&1", 0, True)
+WScript.Quit exitCode

@@ -11,16 +11,16 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from predator_mesh import staged_gate_common as sgc
-from predator_mesh.v207.reports import build_cockpit_snapshot
+from predator_mesh.operator_status import build_activation_snapshot
 
 
 def main() -> dict:
-    snapshot = build_cockpit_snapshot()
+    snapshot = build_activation_snapshot()
     snapshot["generated_at"] = sgc.now_iso()
     snapshot["read_only"] = True
     snapshot["can_submit"] = False
     snapshot["can_write_approval_files"] = False
-    sgc.write_report("activation_cockpit_v207.json", snapshot)
+    sgc.write_report("activation_cockpit.json", snapshot)
     return snapshot
 
 

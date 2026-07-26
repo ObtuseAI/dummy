@@ -154,6 +154,19 @@ class Reconciler:
             "phantom_coverage_version": PHANTOM_COVERAGE_VERSION,
         }
 
+    def _claim_settlement(self, ticker: str, result_yes: bool) -> bool:
+        """Persist one settlement and return whether this worker owns grading.
+
+        ``AutonomyLedger.record_settlement_if_new`` makes the claim atomic
+        across processes.  Tiny ledger test doubles retain the legacy
+        ``record_settlement`` protocol and are treated as the sole writer.
+        """
+        claim = getattr(self.ledger, "record_settlement_if_new", None)
+        if callable(claim):
+            return bool(claim(ticker, result_yes))
+        self.ledger.record_settlement(ticker, result_yes)
+        return True
+
     # ------------------------------------------------------------------
     # Settlements (public data; drives the whole learning loop)
     # ------------------------------------------------------------------
@@ -168,8 +181,8 @@ class Reconciler:
             result = str(market.get("result", "")).lower()
             if result in ("yes", "no"):
                 result_yes = result == "yes"
-                self.ledger.record_settlement(ticker, result_yes)
-                settled.append((ticker, result_yes))
+                if self._claim_settlement(ticker, result_yes):
+                    settled.append((ticker, result_yes))
         return settled
 
     def reconcile_forecast_settlements(
@@ -256,8 +269,8 @@ class Reconciler:
                     result = str(market.get("result", "")).lower()
                     if result in ("yes", "no"):
                         result_yes = result == "yes"
-                        self.ledger.record_settlement(ticker, result_yes)
-                        settled.append((ticker, result_yes))
+                        if self._claim_settlement(ticker, result_yes):
+                            settled.append((ticker, result_yes))
                         unsettled.discard(ticker)
                 cursor = data.get("cursor") or None
                 if not cursor:

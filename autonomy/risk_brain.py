@@ -10,6 +10,7 @@ and an evidence-gated stage ladder so size is always earned, never assumed.
 from __future__ import annotations
 
 import json
+import math
 import os
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -74,6 +75,36 @@ def kelly_fraction_yes(probability: float, price_cents: int) -> float:
     if edge <= 0:
         return 0.0
     return max(0.0, min(1.0, edge / (100.0 - price_cents)))
+
+
+def uncertainty_adjusted_kelly(
+    probability: float,
+    uncertainty: float,
+    price_cents: int,
+    *,
+    haircut_sigmas: float = 0.5,
+) -> float:
+    """Full Kelly at a conservative probability inside the uncertainty band.
+
+    Invalid or non-finite evidence fails closed to zero. ``RiskBrain`` applies
+    quarter-Kelly and every existing stage, drawdown, market, group, and
+    absolute cap after this calculation.
+    """
+    try:
+        p = float(probability)
+        sigma = float(uncertainty)
+        haircut = float(haircut_sigmas)
+    except (TypeError, ValueError):
+        return 0.0
+    if (
+        not all(math.isfinite(value) for value in (p, sigma, haircut))
+        or not 0.0 <= p <= 1.0
+        or not 0.0 <= sigma <= 0.5
+        or haircut < 0.0
+    ):
+        return 0.0
+    conservative_probability = max(0.005, p - haircut * sigma)
+    return kelly_fraction_yes(conservative_probability, price_cents)
 
 
 @dataclass
@@ -297,6 +328,13 @@ class RiskBrain:
         remaining_market = max(0, market_budget - market_exposure_cents)
         remaining_group = max(0, group_budget - group_exposure_cents)
         kelly_budget = int(state.bankroll_cents * kelly * KELLY_FRACTION * multiplier)
+        snapshot.update(
+            {
+                "kelly_full_fraction": round(max(0.0, float(kelly)), 8),
+                "kelly_fractional_multiplier": KELLY_FRACTION,
+                "kelly_budget_cents": max(0, kelly_budget),
+            }
+        )
 
         notional = min(int(limits["order_abs_cents"]), remaining_total, remaining_market,
                        remaining_group, kelly_budget)

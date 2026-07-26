@@ -13,6 +13,7 @@ permission to trade.  Promotion remains a separate, human-reviewable process.
 """
 from __future__ import annotations
 
+import copy
 import hashlib
 import json
 import math
@@ -33,7 +34,7 @@ from typing import Any, Callable, Mapping, Sequence
 from autonomy.crypto_paper_twin import cohort_for_market, event_cluster
 from autonomy.ontology import MarketView, Signal, Vertical
 from autonomy.quote_quality import honest_implied_yes
-from autonomy.signals.crypto_indicators import CryptoDataHub
+from autonomy.signals.crypto_indicators import CryptoDataHub, _annualized_vol
 from autonomy.signals.crypto_spot import parse_crypto_ticker
 
 
@@ -74,6 +75,10 @@ AUTHORITY = {
 
 class PointInTimeViolation(ValueError):
     """Raised when an input was unavailable at the declared decision cutoff."""
+
+
+class MalformedCryptoContract(ValueError):
+    """Raised when a crypto target has no valid positive settlement boundary."""
 
 
 def _utc(value: datetime | str) -> datetime:
@@ -136,11 +141,133 @@ def deterministic_provenance_hash(value: Any) -> str:
     return hashlib.sha256(canonical_json(value).encode("utf-8")).hexdigest()
 
 
+def _positive_contract_value(value: Any, label: str) -> float:
+    if isinstance(value, bool):
+        raise MalformedCryptoContract(f"{label} must be a positive finite number")
+    try:
+        number = float(value)
+    except (TypeError, ValueError) as exc:
+        raise MalformedCryptoContract(
+            f"{label} must be a positive finite number"
+        ) from exc
+    if not math.isfinite(number) or number <= 0.0:
+        raise MalformedCryptoContract(f"{label} must be a positive finite number")
+    return number
+
+
+def validate_crypto_contract(
+    market: MarketView,
+    parsed: Mapping[str, Any] | None = None,
+) -> None:
+    """Fail closed when a crypto contract cannot identify valid strike geometry."""
+    target = parsed or parse_crypto_ticker(market.ticker)
+    if target is None:
+        raise MalformedCryptoContract("ticker does not encode a crypto target")
+    raw = market.raw if isinstance(market.raw, Mapping) else {}
+    strike_type = str(raw.get("strike_type") or "").strip().lower()
+    if strike_type in {"greater", "greater_or_equal"}:
+        _positive_contract_value(raw.get("floor_strike"), "floor_strike")
+        return
+    if strike_type == "less":
+        _positive_contract_value(raw.get("cap_strike"), "cap_strike")
+        return
+    if strike_type == "between":
+        floor = _positive_contract_value(raw.get("floor_strike"), "floor_strike")
+        cap = _positive_contract_value(raw.get("cap_strike"), "cap_strike")
+        if floor >= cap:
+            raise MalformedCryptoContract(
+                "between contract requires floor_strike < cap_strike"
+            )
+        return
+    if strike_type:
+        raise MalformedCryptoContract(f"unsupported strike_type: {strike_type}")
+    _positive_contract_value(target.get("strike"), "ticker strike")
+
+
+class _FrozenCycleStateHub:
+    """Cycle-scoped state facade used by every matrix-owned crypto source.
+
+    The matrix captures either supplied snapshots or one live hub snapshot per
+    asset, validates them, and only then binds this facade. It never delegates
+    ``state`` calls to the live hub, so a missing supplied asset cannot trigger
+    an accidental network fetch from a source.
+    """
+
+    def __init__(self) -> None:
+        self._states: dict[str, dict[str, Any]] = {}
+        self._bound = False
+
+    def clear(self) -> None:
+        self._states = {}
+        self._bound = False
+
+    def bind(self, states: Mapping[str, dict[str, Any]]) -> None:
+        self._states = {str(asset): state for asset, state in states.items()}
+        self._bound = True
+
+    def state(self, asset: str) -> dict[str, Any]:
+        if not self._bound:
+            raise RuntimeError("cycle state has not been bound")
+        try:
+            return self._states[str(asset)]
+        except KeyError as exc:
+            raise KeyError(
+                f"{asset} is absent from the frozen cycle state"
+            ) from exc
+
+    def flat_spot_and_vol(self, asset: str) -> tuple[float, float]:
+        state = self.state(asset)
+        volatility = _annualized_vol(
+            [float(value) for value in state["hourly_closes"]][-169:],
+            24 * 365,
+        )
+        if volatility is None:
+            raise ValueError("insufficient hourly volatility history")
+        return float(state["spot"]), volatility
+
+    def ewma_spot_and_vol(self, asset: str) -> tuple[float, float]:
+        state = self.state(asset)
+        closes = [float(value) for value in state["hourly_closes"]]
+        returns = [
+            math.log(closes[index] / closes[index - 1])
+            for index in range(1, len(closes))
+            if closes[index - 1] > 0
+        ]
+        if not returns:
+            raise ValueError("no hourly returns")
+        variance = returns[0] ** 2
+        for value in returns[1:]:
+            variance = 0.94 * variance + 0.06 * value * value
+        return float(state["spot"]), math.sqrt(variance) * math.sqrt(24 * 365)
+
+
 _STATE_TIME_FIELDS: tuple[tuple[str, float], ...] = (
+    ("received_at_s", 1.0),
     ("coinbase_hourly_at_s", 1.0),
     ("coinbase_minute_at_s", 1.0),
     ("dvol_at_ms", 1_000.0),
 )
+
+_CANDLE_STREAMS = (
+    "minute_ohlcv",
+    "five_minute_ohlcv",
+    "hourly_ohlcv",
+    "daily_ohlcv",
+)
+
+_CANDLE_TIME_FIELDS: tuple[tuple[str, float], ...] = (
+    ("at_s", 1.0),
+    ("open_time_s", 1.0),
+    ("close_time_s", 1.0),
+    ("received_at_s", 1.0),
+)
+
+_CANDLE_INTERVALS = {
+    "minute_ohlcv": 60,
+    "five_minute_ohlcv": 300,
+    "hourly_ohlcv": 3_600,
+    "daily_ohlcv": 86_400,
+}
 
 
 def _state_timestamps(state: Mapping[str, Any]) -> list[tuple[str, datetime]]:
@@ -154,18 +281,99 @@ def _state_timestamps(state: Mapping[str, Any]) -> list[tuple[str, datetime]]:
         except (TypeError, ValueError, OSError, OverflowError) as exc:
             raise PointInTimeViolation(f"invalid source timestamp: {key}") from exc
         timestamps.append((key, stamp))
-    for stream in ("minute_ohlcv", "hourly_ohlcv", "daily_ohlcv"):
+    for stream in _CANDLE_STREAMS:
         for index, row in enumerate(state.get(stream) or []):
-            if not isinstance(row, Mapping) or row.get("at_s") is None:
+            if not isinstance(row, Mapping):
                 continue
-            try:
-                stamp = datetime.fromtimestamp(float(row["at_s"]), timezone.utc)
-            except (TypeError, ValueError, OSError, OverflowError) as exc:
-                raise PointInTimeViolation(
-                    f"invalid source timestamp: {stream}[{index}].at_s"
-                ) from exc
-            timestamps.append((f"{stream}[{index}].at_s", stamp))
+            for field, divisor in _CANDLE_TIME_FIELDS:
+                value = row.get(field)
+                if value is None:
+                    continue
+                label = f"{stream}[{index}].{field}"
+                try:
+                    stamp = datetime.fromtimestamp(
+                        float(value) / divisor,
+                        timezone.utc,
+                    )
+                except (TypeError, ValueError, OSError, OverflowError) as exc:
+                    raise PointInTimeViolation(
+                        f"invalid source timestamp: {label}"
+                    ) from exc
+                timestamps.append((label, stamp))
     return timestamps
+
+
+def _validate_closed_candle_rows(state: Mapping[str, Any]) -> None:
+    """Prove every supplied row was closed before its recorded receipt."""
+    state_received_raw = state.get("received_at_s")
+    state_received = (
+        float(state_received_raw) if state_received_raw is not None else None
+    )
+    for stream, expected_interval in _CANDLE_INTERVALS.items():
+        previous_close: float | None = None
+        for index, row in enumerate(state.get(stream) or []):
+            label = f"{stream}[{index}]"
+            if not isinstance(row, Mapping):
+                raise PointInTimeViolation(f"{label} is not a candle mapping")
+            required = (
+                "at_s",
+                "open_time_s",
+                "close_time_s",
+                "received_at_s",
+                "interval_s",
+                "closed",
+            )
+            missing = [field for field in required if row.get(field) is None]
+            if missing:
+                raise PointInTimeViolation(
+                    f"{label} missing closed-candle fields: {','.join(missing)}"
+                )
+            if row.get("closed") is not True:
+                raise PointInTimeViolation(f"{label} is not a closed candle")
+            try:
+                at_s = float(row["at_s"])
+                open_s = float(row["open_time_s"])
+                close_s = float(row["close_time_s"])
+                received_s = float(row["received_at_s"])
+                interval_s = float(row["interval_s"])
+            except (TypeError, ValueError, OverflowError) as exc:
+                raise PointInTimeViolation(
+                    f"{label} has invalid closed-candle timestamps"
+                ) from exc
+            values = (at_s, open_s, close_s, received_s, interval_s)
+            if not all(math.isfinite(value) for value in values):
+                raise PointInTimeViolation(
+                    f"{label} has non-finite closed-candle timestamps"
+                )
+            if not math.isclose(at_s, open_s, abs_tol=1e-9):
+                raise PointInTimeViolation(
+                    f"{label}.at_s does not match open_time_s"
+                )
+            if not math.isclose(interval_s, expected_interval, abs_tol=1e-9):
+                raise PointInTimeViolation(
+                    f"{label}.interval_s does not match its stream"
+                )
+            if not math.isclose(
+                close_s - open_s,
+                expected_interval,
+                abs_tol=1e-9,
+            ):
+                raise PointInTimeViolation(
+                    f"{label} close_time_s does not match its interval"
+                )
+            if received_s < close_s:
+                raise PointInTimeViolation(
+                    f"{label} was received before candle close"
+                )
+            if state_received is not None and received_s > state_received:
+                raise PointInTimeViolation(
+                    f"{label} receipt follows the frozen state receipt"
+                )
+            if previous_close is not None and open_s < previous_close:
+                raise PointInTimeViolation(
+                    f"{label} overlaps or is out of chronological order"
+                )
+            previous_close = close_s
 
 
 def validate_point_in_time(
@@ -184,6 +392,7 @@ def validate_point_in_time(
     for label, stamp in _state_timestamps(state):
         if stamp > cutoff:
             raise PointInTimeViolation(f"future source observation: {label}")
+    _validate_closed_candle_rows(state)
 
 
 def state_provenance_manifest(
@@ -197,6 +406,7 @@ def state_provenance_manifest(
     for label, stamp in parsed_times:
         if stamp > cutoff:
             raise PointInTimeViolation(f"future source observation: {label}")
+    _validate_closed_candle_rows(state)
     source_times = {label: stamp.isoformat() for label, stamp in parsed_times}
     missing_timestamps: list[str] = []
     if state.get("book_imbalance") is not None:
@@ -213,7 +423,7 @@ def state_provenance_manifest(
         "hourly_source": state.get("hourly_source"),
         "row_counts": {
             key: len(state.get(key) or [])
-            for key in ("minute_ohlcv", "hourly_ohlcv", "daily_ohlcv")
+            for key in _CANDLE_STREAMS
         },
         "endpoints": (
             "coinbase_exchange_candles",
@@ -236,7 +446,7 @@ SOURCE_ENDPOINTS: dict[str, tuple[str, ...]] = {
 
 
 def build_registered_crypto_sources(
-    hub: CryptoDataHub | None = None,
+    hub: CryptoDataHub | _FrozenCycleStateHub | None = None,
     *,
     include_cross_venue: bool = True,
     include_reliability_wrappers: bool = True,
@@ -1300,12 +1510,128 @@ class CryptoHorizonEvidenceMatrix:
     ) -> None:
         self.store = store or CryptoHorizonEvidenceStore()
         self.hub = hub or CryptoDataHub()
-        self.sources = list(sources or build_registered_crypto_sources(self.hub))
+        self._cycle_state_hub = _FrozenCycleStateHub()
+        self._cycle_cutoff: datetime | None = None
+        self.sources = list(
+            sources
+            if sources is not None
+            else build_registered_crypto_sources(self._cycle_state_hub)
+        )
+        seen_sources: set[int] = set()
+        for source in self.sources:
+            self._bind_source_cycle_inputs(source, seen_sources)
+        self._requires_btc_dependency = any(
+            self._source_tree_contains(source, "crypto_btc_leadlag", set())
+            for source in self.sources
+        )
         self.now_fn = now_fn or (lambda: datetime.now(timezone.utc))
         self.monotonic_fn = monotonic_fn or time.monotonic
 
     def close(self) -> None:
         self.store.close()
+
+    def _bind_source_cycle_inputs(
+        self,
+        source: Any,
+        seen: set[int],
+    ) -> None:
+        """Route recognized state and time callbacks through cycle facades."""
+        identity = id(source)
+        if identity in seen:
+            return
+        seen.add(identity)
+        if hasattr(source, "fetch_state"):
+            source.fetch_state = self._cycle_state_hub.state
+        if hasattr(source, "_fetch_state"):
+            source._fetch_state = self._cycle_state_hub.state
+        source_name = str(getattr(source, "name", ""))
+        if hasattr(source, "hours_to_close"):
+            source.hours_to_close = self._cycle_hours_to_close
+        if hasattr(source, "fetch_spot_and_vol"):
+            if source_name == "crypto_ewma_t":
+                source.fetch_spot_and_vol = self._cycle_state_hub.ewma_spot_and_vol
+            elif source_name == "crypto_spot_vol":
+                source.fetch_spot_and_vol = self._cycle_state_hub.flat_spot_and_vol
+        if source_name in {"crypto_spot_vol", "crypto_ewma_t"}:
+            source._hours_to_close = self._cycle_hours_to_close
+            source.decision_time_fn = self._cycle_decision_time
+        if source_name == "market_debias":
+            source._market_context = self._cycle_market_debias_context
+        parent = getattr(source, "parent", None)
+        if parent is not None:
+            self._bind_source_cycle_inputs(parent, seen)
+
+    def _cycle_hours_to_close(self, market: MarketView) -> float:
+        """Compute every registered source horizon from the matrix cutoff."""
+        decision_time = self._cycle_decision_time()
+        close = _utc(market.close_time)
+        return max(
+            0.05,
+            (close - decision_time).total_seconds() / 3_600.0,
+        )
+
+    def _cycle_decision_time(self) -> datetime:
+        if self._cycle_cutoff is None:
+            raise PointInTimeViolation("cycle timing has not been bound")
+        return self._cycle_cutoff
+
+    def _cycle_market_debias_context(
+        self,
+        market: MarketView,
+    ) -> tuple[float, str, str] | None:
+        """Matrix-clock equivalent of MarketDebiasSignal._market_context."""
+        if self._cycle_cutoff is None:
+            return None
+        from autonomy.signals.market_debias import (
+            _exact_curve_scope,
+            _horizon_bucket,
+            _hours_to_expiry,
+            _parse_utc,
+        )
+        from autonomy.target_policy import is_prediction_quarantined_target
+
+        if is_prediction_quarantined_target(
+            market.ticker,
+            category=(market.raw or {}).get("category"),
+            vertical=market.vertical,
+        ):
+            return None
+        if str(market.status or "").strip().lower() not in {"active", "open"}:
+            return None
+        if market.fetched_at is not None:
+            fetched = _parse_utc(market.fetched_at)
+            if fetched is None or fetched > self._cycle_cutoff:
+                return None
+        hours = _hours_to_expiry(
+            market.close_time,
+            self._cycle_cutoff.isoformat(),
+        )
+        if hours is None:
+            return None
+        horizon = _horizon_bucket(hours)
+        exact_scope = _exact_curve_scope(market.ticker, horizon)
+        if exact_scope is None:
+            return None
+        return hours, horizon, exact_scope
+
+    @classmethod
+    def _source_tree_contains(
+        cls,
+        source: Any,
+        source_name: str,
+        seen: set[int],
+    ) -> bool:
+        identity = id(source)
+        if identity in seen:
+            return False
+        seen.add(identity)
+        if str(getattr(source, "name", "")) == source_name:
+            return True
+        parent = getattr(source, "parent", None)
+        return (
+            parent is not None
+            and cls._source_tree_contains(parent, source_name, seen)
+        )
 
     @staticmethod
     def _valid_signal(signal: Signal, market: MarketView) -> None:
@@ -1328,7 +1654,10 @@ class CryptoHorizonEvidenceMatrix:
         report_max_settled_rows: int | None = None,
     ) -> dict[str, Any]:
         started = self.now_fn().astimezone(timezone.utc)
-        selected: list[tuple[MarketView, str, str, str, str]] = []
+        explicit_cutoff = _utc(as_of) if as_of is not None else None
+        selected: list[
+            tuple[MarketView, str, str, str, str, str | None]
+        ] = []
         for market in markets:
             if market.vertical is not Vertical.CRYPTO:
                 continue
@@ -1341,12 +1670,148 @@ class CryptoHorizonEvidenceMatrix:
             cluster = event_cluster(
                 Vertical.CRYPTO, cohort.timeframe, asset, market.close_time
             )
+            contract_error: str | None = None
+            try:
+                validate_crypto_contract(market, parsed)
+            except MalformedCryptoContract as exc:
+                contract_error = str(exc)
             selected.append(
-                (market, asset, cohort.timeframe, contract_family, cluster)
+                (
+                    market,
+                    asset,
+                    cohort.timeframe,
+                    contract_family,
+                    cluster,
+                    contract_error,
+                )
             )
 
+        errors: list[str] = []
+        required_assets = {
+            asset
+            for _market, asset, _horizon, _family, _cluster, contract_error
+            in selected
+            if contract_error is None
+        }
+        dependency_assets = (
+            {"BTC"}
+            if self._requires_btc_dependency
+            and any(asset in {"ETH", "SOL"} for asset in required_assets)
+            else set()
+        )
+        capture_assets = required_assets | dependency_assets
+        supplied_mode = states is not None
+        supplied = (
+            {str(asset).upper(): state for asset, state in states.items()}
+            if states is not None
+            else {}
+        )
+
+        state_by_asset: dict[str, dict[str, Any]] = {}
+        state_errors: dict[str, str] = {}
+        state_manifests: dict[str, dict[str, Any]] = {}
+        live_reset_error: Exception | None = None
+        if capture_assets and not supplied_mode:
+            reset = getattr(self.hub, "clear", None)
+            if callable(reset):
+                try:
+                    reset()
+                except Exception as exc:
+                    live_reset_error = exc
+                    errors.append(
+                        f"state:hub:{type(exc).__name__}:{str(exc)[:120]}"
+                    )
+        for asset in sorted(capture_assets):
+            if supplied_mode and asset not in supplied:
+                if asset in required_assets:
+                    state_errors[asset] = "MissingSuppliedState"
+                    errors.append(
+                        f"state:{asset}:MissingSuppliedState:"
+                        "caller did not supply the required asset snapshot"
+                    )
+                continue
+            try:
+                if live_reset_error is not None:
+                    raise RuntimeError("live hub reset failed")
+                raw_state = (
+                    supplied[asset] if supplied_mode else self.hub.state(asset)
+                )
+                if not isinstance(raw_state, Mapping):
+                    raise TypeError("state snapshot must be a mapping")
+                snapshot = copy.deepcopy(dict(raw_state))
+                if not snapshot:
+                    raise ValueError("state snapshot is empty")
+                embedded_asset = snapshot.get("asset")
+                if (
+                    embedded_asset is not None
+                    and str(embedded_asset).upper() != asset
+                ):
+                    raise ValueError("state snapshot asset does not match key")
+                state_by_asset[asset] = snapshot
+            except Exception as exc:
+                state_errors[asset] = type(exc).__name__
+                errors.append(
+                    f"state:{asset}:{type(exc).__name__}:{str(exc)[:120]}"
+                )
+
+        # A live cycle's decision cutoff must follow its read-only state
+        # capture. An explicit replay cutoff remains fixed and rejects any
+        # snapshot that was unavailable then.
+        preflight_cutoff = (
+            explicit_cutoff
+            if explicit_cutoff is not None
+            else self.now_fn().astimezone(timezone.utc)
+        )
+        self._cycle_cutoff = preflight_cutoff
+        for asset, snapshot in list(state_by_asset.items()):
+            try:
+                state_manifests[asset] = state_provenance_manifest(
+                    asset,
+                    snapshot,
+                    preflight_cutoff,
+                )
+            except Exception as exc:
+                state_by_asset.pop(asset, None)
+                state_errors[asset] = type(exc).__name__
+                errors.append(
+                    f"state:{asset}:{type(exc).__name__}:{str(exc)[:120]}"
+                )
+
+        market_pit_errors: dict[str, str] = {}
+        eligible_selected: list[
+            tuple[MarketView, str, str, str, str, str | None]
+        ] = []
+        for item in selected:
+            market, asset, _horizon, _family, _cluster, contract_error = item
+            if contract_error is not None:
+                errors.append(
+                    f"contract:{market.ticker}:MalformedCryptoContract:"
+                    f"{contract_error[:120]}"
+                )
+                continue
+            if asset in state_errors:
+                market_pit_errors[market.ticker] = state_errors[asset]
+                errors.append(
+                    f"pit:{market.ticker}:{state_errors[asset]}:"
+                    "state unavailable or invalid"
+                )
+                continue
+            try:
+                validate_point_in_time(
+                    market,
+                    state_by_asset[asset],
+                    preflight_cutoff,
+                )
+            except Exception as exc:
+                market_pit_errors[market.ticker] = type(exc).__name__
+                errors.append(
+                    f"pit:{market.ticker}:{type(exc).__name__}:{str(exc)[:120]}"
+                )
+                continue
+            eligible_selected.append(item)
+
         hook_errors: dict[str, str] = {}
-        if selected:
+        if eligible_selected:
             for source in self.sources:
                 hook = getattr(source, "on_cycle_start", None)
                 if not callable(hook):
@@ -1358,20 +1823,69 @@ class CryptoHorizonEvidenceMatrix:
                         str(getattr(source, "name", type(source).__name__))
                     ] = type(exc).__name__
 
-        state_by_asset: dict[str, Mapping[str, Any]] = {}
-        state_errors: dict[str, str] = {}
-        supplied = dict(states or {})
-        for asset in sorted({item[1] for item in selected}):
-            try:
-                state_by_asset[asset] = supplied.get(asset) or self.hub.state(asset)
-            except Exception as exc:
-                state_errors[asset] = type(exc).__name__
+        # Source hooks clear their own caches (and may call ``clear`` on this
+        # facade). Bind only after all hooks so every provider sees the exact
+        # validated snapshot captured above.
+        self._cycle_state_hub.bind(state_by_asset)
+
+        mutated_assets: set[str] = set()
+        cycle_state_integrity_error: str | None = None
+
+        def detect_cycle_state_mutation() -> None:
+            nonlocal cycle_state_integrity_error
+            changed = {
+                asset
+                for asset, manifest in state_manifests.items()
+                if deterministic_provenance_hash(state_by_asset[asset])
+                != manifest["state_hash"]
+            }
+            for asset in sorted(changed - mutated_assets):
+                errors.append(
+                    f"state:{asset}:CycleStateMutation:"
+                    "a source mutated the frozen cycle snapshot"
+                )
+            if changed:
+                mutated_assets.update(changed)
+                cycle_state_integrity_error = "CycleStateMutation"
 
         generated: dict[tuple[str, str], tuple[str, Signal | None, str | None]] = {}
-        for market, asset, _horizon, _family, _cluster in selected:
-            for source in self.sources:
-                source_name = str(getattr(source, "name", type(source).__name__))
+        for source in self.sources:
+            source_name = str(getattr(source, "name", type(source).__name__))
+            # Check once at each provider boundary. A mutating provider may
+            # contaminate its own remaining calls, but all of that provider's
+            # outputs are quarantined; no subsequent provider consumes the
+            # altered snapshot.
+            detect_cycle_state_mutation()
+            for (
+                market,
+                asset,
+                _horizon,
+                _family,
+                _cluster,
+                contract_error,
+            ) in selected:
                 key = (market.ticker, source_name)
+                if contract_error is not None:
+                    generated[key] = (
+                        "CONTRACT_REJECTED",
+                        None,
+                        "MalformedCryptoContract",
+                    )
+                    continue
+                if market.ticker in market_pit_errors:
+                    generated[key] = (
+                        "PIT_REJECTED",
+                        None,
+                        market_pit_errors[market.ticker],
+                    )
+                    continue
+                if cycle_state_integrity_error is not None:
+                    generated[key] = (
+                        "PIT_REJECTED",
+                        None,
+                        cycle_state_integrity_error,
+                    )
+                    continue
                 if source_name in hook_errors:
                     generated[key] = ("SOURCE_HOOK_ERROR", None, hook_errors[source_name])
                     continue
@@ -1391,27 +1905,86 @@ class CryptoHorizonEvidenceMatrix:
                 except Exception as exc:
                     generated[key] = ("SOURCE_ERROR", None, type(exc).__name__)
 
-        cutoff = _utc(as_of) if as_of is not None else self.now_fn().astimezone(timezone.utc)
+        detect_cycle_state_mutation()
+        if mutated_assets:
+            for asset in sorted(mutated_assets):
+                state_errors[asset] = "CycleStateMutation"
+                state_manifests.pop(asset, None)
+
+        cutoff = (
+            explicit_cutoff
+            if explicit_cutoff is not None
+            else self.now_fn().astimezone(timezone.utc)
+        )
+        if explicit_cutoff is None:
+            for asset, snapshot in list(state_by_asset.items()):
+                if asset in mutated_assets:
+                    continue
+                try:
+                    state_manifests[asset] = state_provenance_manifest(
+                        asset,
+                        snapshot,
+                        cutoff,
+                    )
+                except Exception as exc:
+                    state_manifests.pop(asset, None)
+                    state_errors[asset] = type(exc).__name__
+                    errors.append(
+                        f"state:{asset}:{type(exc).__name__}:{str(exc)[:120]}"
+                    )
+            for (
+                market,
+                asset,
+                _horizon,
+                _family,
+                _cluster,
+                contract_error,
+            ) in eligible_selected:
+                if contract_error is not None:
+                    continue
+                if asset in state_errors:
+                    market_pit_errors[market.ticker] = state_errors[asset]
+                    continue
+                try:
+                    validate_point_in_time(
+                        market,
+                        state_by_asset[asset],
+                        cutoff,
+                    )
+                except Exception as exc:
+                    market_pit_errors[market.ticker] = type(exc).__name__
+                    errors.append(
+                        f"pit:{market.ticker}:{type(exc).__name__}:"
+                        f"{str(exc)[:120]}"
+                    )
+
         cycle_id = (
             f"crypto-matrix-{cutoff.strftime('%Y%m%dT%H%M%S')}-"
             f"{uuid.uuid4().hex[:8]}"
         )
         self.store.start_cycle(cycle_id, started.isoformat(), cutoff.isoformat())
-        errors: list[str] = []
-        state_manifests: dict[str, dict[str, Any]] = {}
-        for asset, state in state_by_asset.items():
-            try:
-                manifest = state_provenance_manifest(asset, state, cutoff)
-                state_manifests[asset] = manifest
-                self.store.record_snapshot(cycle_id, asset, cutoff.isoformat(), manifest)
-            except Exception as exc:
-                state_errors[asset] = type(exc).__name__
-                errors.append(f"state:{asset}:{type(exc).__name__}:{str(exc)[:120]}")
+        for asset, manifest in state_manifests.items():
+            self.store.record_snapshot(
+                cycle_id,
+                asset,
+                cutoff.isoformat(),
+                manifest,
+            )
 
         attempts_written = 0
         status_counts: Counter[str] = Counter()
-        for market, asset, horizon, contract_family, cluster in selected:
-            state = state_by_asset.get(asset) or {}
+        cycle_state_hashes = {
+            asset: manifest["state_hash"]
+            for asset, manifest in sorted(state_manifests.items())
+        }
+        for (
+            market,
+            asset,
+            horizon,
+            contract_family,
+            cluster,
+            contract_error,
+        ) in selected:
             market_probability = honest_implied_yes(market.yes_bid, market.yes_ask)
             market_snapshot = {
                 "ticker": market.ticker,
@@ -1427,18 +2000,9 @@ class CryptoHorizonEvidenceMatrix:
                 "fetched_at": market.fetched_at,
                 "raw": market.raw,
             }
-            pit_error: str | None = None
-            try:
-                if asset in state_errors:
-                    raise PointInTimeViolation(
-                        f"state unavailable or invalid: {state_errors[asset]}"
-                    )
-                validate_point_in_time(market, state, cutoff)
-            except Exception as exc:
-                pit_error = type(exc).__name__
-                errors.append(
-                    f"pit:{market.ticker}:{type(exc).__name__}:{str(exc)[:120]}"
-                )
+            pit_error = market_pit_errors.get(market.ticker)
+            if contract_error is None and cycle_state_integrity_error is not None:
+                pit_error = cycle_state_integrity_error
             for source in self.sources:
                 source_name = str(getattr(source, "name", type(source).__name__))
                 source_status, signal, source_error = generated[(market.ticker, source_name)]
@@ -1461,6 +2025,7 @@ class CryptoHorizonEvidenceMatrix:
                 provenance = {
                     "matrix_version": MATRIX_VERSION,
                     "as_of_at": cutoff.isoformat(),
+                    "source_time_cutoff": preflight_cutoff.isoformat(),
                     "received_at": cutoff.isoformat(),
                     "asset": asset,
                     "horizon": horizon,
@@ -1479,6 +2044,7 @@ class CryptoHorizonEvidenceMatrix:
                     "state_hash": (
                         state_manifests.get(asset, {}).get("state_hash")
                     ),
+                    "cycle_state_hashes": cycle_state_hashes,
                     "market_snapshot_hash": deterministic_provenance_hash(
                         market_snapshot
                     ),
@@ -1922,6 +2488,7 @@ __all__ = [
     "USE_PUBLIC_SETTLED_LISTING",
     "CryptoHorizonEvidenceMatrix",
     "CryptoHorizonEvidenceStore",
+    "MalformedCryptoContract",
     "PointInTimeViolation",
     "build_registered_crypto_sources",
     "canonical_json",
@@ -1931,6 +2498,7 @@ __all__ = [
     "headline_skill_display",
     "series_ticker_of",
     "state_provenance_manifest",
+    "validate_crypto_contract",
     "validate_point_in_time",
     "write_evidence_report",
 ]

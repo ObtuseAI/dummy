@@ -1,10 +1,12 @@
-from proof.ledger import write_proof, list_proofs
-from pathlib import Path
+from proof import ledger
 
 
-def test_write_proof():
-    before = set(list_proofs())
-    ref = write_proof("test", "pass", {"x": 1})
-    after = set(list_proofs())
+def test_write_proof(tmp_path, monkeypatch):
+    monkeypatch.setattr(ledger, "PROOF_DIR", tmp_path)
+
+    before = set(ledger.list_proofs())
+    ref = ledger.write_proof("test", "pass", {"x": 1})
+    after = set(ledger.list_proofs())
+
     assert ref in after - before
-    assert (Path("C:/src/engine/dummy/proof") / f"{ref}.json").exists()
+    assert (tmp_path / f"{ref}.json").exists()

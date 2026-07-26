@@ -97,15 +97,24 @@ def _claim_prospects(runtime: Path) -> list[dict[str, Any]]:
 
 
 def _repo_prospects() -> list[dict[str, Any]]:
-    registry = _load(Path("artifacts/repo_harvester/incorporation_registry.json"))
+    from repo_harvester.incorporation_registry import load_registry
+
+    registry = load_registry()
     prospects = []
     for entry in registry.get("pending_tests") or []:
         prospects.append({
             "name": str(entry.get("adapter_name") or entry.get("repo") or "?")[:80],
             "source_type": "harvested_repo",
-            "stage": "PROSPECT",
+            "stage": "DORMANT",
             "stars": 1,
-            "evidence": {"integration_status": entry.get("integration_status")},
+            "evidence": {
+                "lifecycle_status": entry.get("lifecycle_status", "DORMANT"),
+                "integration_status": entry.get("integration_status"),
+                "upstream_integration_verified": False,
+                "challenger_graded": False,
+                "prediction_authority": False,
+                "execution_authority": False,
+            },
         })
     for entry in registry.get("incorporated") or []:
         prospects.append({
@@ -165,7 +174,14 @@ def build_recruiting_board(*, runtime: Path = RUNTIME) -> dict[str, Any]:
         + _repo_prospects()
         + _challenger_prospects(runtime)
     )
-    stage_rank = {"STARTER": 0, "COMMITTED": 1, "EVALUATED": 2, "PROSPECT": 3, "CUT": 4}
+    stage_rank = {
+        "STARTER": 0,
+        "COMMITTED": 1,
+        "EVALUATED": 2,
+        "PROSPECT": 3,
+        "DORMANT": 4,
+        "CUT": 5,
+    }
     prospects.sort(key=lambda p: (stage_rank.get(p["stage"], 9), -p["stars"], p["name"]))
     by_stage: dict[str, int] = {}
     for prospect in prospects:

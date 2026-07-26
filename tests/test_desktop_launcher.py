@@ -6,6 +6,7 @@ def test_main_does_not_open_dead_board(monkeypatch):
     errors = []
     monkeypatch.setattr(launch_dummy, "ensure_server", lambda: False)
     monkeypatch.setattr(launch_dummy, "open_board", lambda: opened.append(True))
+    monkeypatch.setattr(launch_dummy, "start_notifier", lambda: opened.append("notifier"))
     monkeypatch.setattr(launch_dummy, "show_startup_error", lambda: errors.append(True))
 
     assert launch_dummy.main() == 1
@@ -17,6 +18,7 @@ def test_main_opens_ready_board(monkeypatch):
     opened = []
     monkeypatch.setattr(launch_dummy, "ensure_server", lambda: True)
     monkeypatch.setattr(launch_dummy, "open_board", lambda: opened.append(True))
+    monkeypatch.setattr(launch_dummy, "start_notifier", lambda: opened.append("notifier"))
 
     assert launch_dummy.main() == 0
-    assert opened == [True]
+    assert opened == [True, "notifier"]

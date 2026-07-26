@@ -8,11 +8,17 @@ from typing import Any
 
 from core.ontology import RepoVerdict
 from repo_harvester.adapter_planner import DATA_ONLY_CATEGORIES, MODEL_ZOO_CATEGORY
+from repo_harvester.lifecycle import (
+    DORMANT,
+    DORMANT_REASON,
+    DORMANT_TEST_STATUS,
+    dormant_adapter_record,
+)
 
-ARTIFACTS = Path("C:/src/engine/dummy/artifacts/repo_harvester")
+REPO_ROOT = Path(__file__).resolve().parents[1]
+ARTIFACTS = REPO_ROOT / "artifacts" / "repo_harvester"
 PLAN_PATH = ARTIFACTS / "adapter_plan_v3.json"
-PROMOTED_DIR = Path("C:/src/engine/dummy/adapters/promoted")
-DUMMY_ARTIFACTS = Path("C:/src/engine/dummy/artifacts/dummy")
+DUMMY_ARTIFACTS = REPO_ROOT / "artifacts" / "dummy"
 
 _FORBIDDEN_LIVE_ORDER_PATHS = [
     "create_order",
@@ -126,15 +132,18 @@ def build_promotion_records(path: Path | None = None) -> dict[str, Any]:
             "required_tests": _REQUIRED_TESTS,
             "permitted_dummy_interface": ["to_native_forecast"],
             "forbidden_live_order_paths": _FORBIDDEN_LIVE_ORDER_PATHS,
-            "integration_status": "pending",
-            "integration_kind": "scaffold_only",
-            "test_status": "pending_adapter_specific_tests",
+            "lifecycle_status": DORMANT,
+            "integration_status": DORMANT,
+            "integration_kind": "metadata_only",
+            "test_status": DORMANT_TEST_STATUS,
             "tests_passed": False,
             "structural_tests_are_capability_proof": False,
             "upstream_integration_verified": False,
+            "challenger_graded": False,
             "production_capability": False,
             "prediction_authority": False,
             "execution_authority": False,
+            "dormant_reason": DORMANT_REASON,
             "data_only": data_only,
             "passthrough_model_zoo": passthrough_model_zoo,
         }
@@ -154,97 +163,18 @@ def build_promotion_records(path: Path | None = None) -> dict[str, Any]:
     return records
 
 
-def _adapter_module_source(
-    adapter_name: str,
-    class_name: str,
-    *,
-    category: str | None,
-    data_only: bool,
-    passthrough_model_zoo: bool,
-) -> str:
-    return f'''from __future__ import annotations
-
-from adapters.base import DummyAdapter
-from core.ontology import Forecast
-
-
-class {class_name}(DummyAdapter):
-    """Non-authoritative research scaffold for {adapter_name}.
-
-    No source-specific upstream integration is implemented here. Structural
-    import tests cannot turn this shell into a tested model or production
-    capability, so it always abstains until replaced by a verified adapter.
-    """
-
-    name = {adapter_name!r}
-    CATEGORY = {category!r}
-    FORBIDDEN_PATHS = {_FORBIDDEN_LIVE_ORDER_PATHS!r}
-    INTEGRATION_STATUS = "scaffold_only"
-    TEST_STATUS = "pending_adapter_specific_tests"
-    UPSTREAM_INTEGRATION_VERIFIED = False
-    PRODUCTION_CAPABILITY = False
-    PREDICTION_AUTHORITY = False
-    EXECUTION_AUTHORITY = False
-    DATA_ONLY = {data_only!r}
-    PASSTHROUGH_MODEL_ZOO = {passthrough_model_zoo!r}
-
-    def to_native_forecast(self, raw) -> Forecast | None:
-        del raw
-        return None
-'''
-
-
 def generate_promoted_adapter_modules(records: dict[str, Any] | None = None) -> list[str]:
-    """Write one fail-closed research scaffold per ADAPTER_TARGET record."""
+    """Compatibility API that deliberately generates no source modules.
+
+    Unverified candidates stay as metadata in the incorporation registry.
+    A real integration must be implemented and reviewed explicitly rather than
+    manufactured as a forest of structurally identical no-op classes.
+    """
     if records is None:
         records = build_promotion_records()
-    PROMOTED_DIR.mkdir(parents=True, exist_ok=True)
-    written: list[str] = []
-    for record in records["adapter_targets"]:
-        adapter_name = record["adapter_name"]
-        class_name = record["class_name"]
-        module_name = record["module_name"]
-        module_path = PROMOTED_DIR / f"{module_name}.py"
-        module_path.write_text(
-            _adapter_module_source(
-                adapter_name,
-                class_name,
-                category=record.get("category"),
-                data_only=bool(record.get("data_only")),
-                passthrough_model_zoo=bool(record.get("passthrough_model_zoo")),
-            )
-        )
-        written.append(str(module_path))
-
-    # Refresh the package __init__.py so adapters.promoted exports the registry.
-    _write_promoted_init(records["adapter_targets"])
-    return written
-
-
-def _write_promoted_init(adapter_targets: list[dict[str, Any]]) -> None:
-    lines = [
-        "from __future__ import annotations",
-        "",
-        "# Generated modules are research scaffolds, not verified integrations.",
-        "PROMOTED_ADAPTER_NAMES: list[str] = []",
-        "PROMOTED_MODULES: dict[str, str] = {}",
-        "",
-        "PENDING_ADAPTER_NAMES: list[str] = [",
-    ]
-    for record in adapter_targets:
-        lines.append(f'    "{record["adapter_name"]}",')
-    lines.extend([
-        "]",
-        "",
-        "PENDING_MODULES: dict[str, str] = {",
-    ])
-    for record in adapter_targets:
-        lines.append(f'    "{record["adapter_name"]}": "{record["module_name"]}",')
-    lines.extend([
-        "}",
-        "",
-    ])
-    (PROMOTED_DIR / "__init__.py").write_text("\n".join(lines).rstrip() + "\n")
+    if not isinstance(records.get("adapter_targets"), list):
+        raise ValueError("adapter_targets must be a list")
+    return []
 
 
 def write_promotion_report(records: dict[str, Any], path: Path | None = None) -> Path:
@@ -262,7 +192,7 @@ def write_promotion_report(records: dict[str, Any], path: Path | None = None) ->
         "production_capability_count": 0,
         "prediction_authority_count": 0,
         "execution_authority_count": 0,
-        "status": "SCAFFOLDS_PENDING_ADAPTER_SPECIFIC_VERIFICATION",
+        "status": "ALL_ADAPTER_TARGETS_DORMANT",
         "forbidden_live_order_paths": _FORBIDDEN_LIVE_ORDER_PATHS,
         "records": records,
     }
@@ -297,17 +227,10 @@ def update_incorporation_registry(records: dict[str, Any]) -> Path:
             verified.append(existing)
             continue
         demoted.append(
-            {
-                **existing,
-                "tests_passed": False,
-                "test_status": "legacy_structural_claim_demoted",
-                "integration_status": "pending",
-                "integration_kind": "scaffold_only",
-                "upstream_integration_verified": False,
-                "production_capability": False,
-                "prediction_authority": False,
-                "execution_authority": False,
-            }
+            dormant_adapter_record(
+                existing,
+                reason="legacy_structural_claim_demoted_missing_verified_challenger_evidence",
+            )
         )
     registry["incorporated"] = verified
     verified_names = {
@@ -324,22 +247,16 @@ def update_incorporation_registry(records: dict[str, Any]) -> Path:
             pending_by_name.pop(adapter_name, None)
             continue
         previous = pending_by_name.get(adapter_name, {})
-        pending_by_name[adapter_name] = {
-            **previous,
-            "repo": record["repo"],
-            "adapter_name": adapter_name,
-            "category": record.get("category"),
-            "tests_passed": False,
-            "test_status": "pending_adapter_specific_tests",
-            "integration_status": "pending",
-            "integration_kind": "scaffold_only",
-            "upstream_integration_verified": False,
-            "production_capability": False,
-            "prediction_authority": False,
-            "execution_authority": False,
-            "data_only": bool(record.get("data_only")),
-            "passthrough_model_zoo": bool(record.get("passthrough_model_zoo")),
-        }
+        pending_by_name[adapter_name] = dormant_adapter_record(
+            {
+                **previous,
+                "repo": record["repo"],
+                "adapter_name": adapter_name,
+                "category": record.get("category"),
+                "data_only": bool(record.get("data_only")),
+                "passthrough_model_zoo": bool(record.get("passthrough_model_zoo")),
+            }
+        )
     registry["pending_tests"] = sorted(
         pending_by_name.values(), key=lambda entry: str(entry.get("adapter_name", ""))
     )
@@ -349,7 +266,7 @@ def update_incorporation_registry(records: dict[str, Any]) -> Path:
             "repo": record["repo"],
             "category": record.get("category"),
             "adapter_name": record.get("adapter_name"),
-            "review_status": "pending_dependency_review",
+            "review_status": DORMANT,
             "production_capability": False,
             "prediction_authority": False,
             "execution_authority": False,
@@ -363,12 +280,13 @@ def update_incorporation_registry(records: dict[str, Any]) -> Path:
 
     registry["synced_from"] = "adapter_plan_v3.json"
     registry["registry_status"] = (
-        "PENDING_VERIFICATION_FAIL_CLOSED"
+        "DORMANT_UNVERIFIED"
         if registry["pending_tests"]
         else "VERIFIED_INTEGRATIONS_ONLY"
     )
     registry["verified_integration_count"] = len(registry["incorporated"])
     registry["pending_adapter_count"] = len(registry["pending_tests"])
+    registry["dormant_adapter_count"] = len(registry["pending_tests"])
     registry["generated_at"] = datetime.now(timezone.utc).isoformat()
     save_registry(registry)
     return _registry_path()
@@ -379,6 +297,6 @@ if __name__ == "__main__":
     modules = generate_promoted_adapter_modules(recs)
     report_path = write_promotion_report(recs)
     registry_path = update_incorporation_registry(recs)
-    print(f"Wrote {len(modules)} pending adapter scaffolds")
+    print(f"Wrote {len(modules)} source modules; candidates remain DORMANT metadata")
     print(f"Report: {report_path}")
     print(f"Registry: {registry_path}")

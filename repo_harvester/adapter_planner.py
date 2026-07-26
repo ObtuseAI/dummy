@@ -1,5 +1,6 @@
 from datetime import datetime, timezone, timedelta
 from core.ontology import RepoVerdict
+from repo_harvester.lifecycle import DORMANT, DORMANT_REASON, DORMANT_TEST_STATUS
 from repo_harvester.retry_policy import PENDING_RETRY, PENDING_REVIEW
 
 PERMISSIVE_LICENSES = {
@@ -46,10 +47,16 @@ def generate_adapter_plan(repo_meta: dict, scan: dict) -> dict:
             "repo": full,
             "adapter_name": f"{name.replace('-', '_')}_adapter",
             "emits_native_types": False,
-            "integration_status": "pending",
-            "integration_kind": "scaffold_only",
+            "lifecycle_status": DORMANT,
+            "integration_status": DORMANT,
+            "integration_kind": "metadata_only",
             "upstream_integration_verified": False,
+            "challenger_graded": False,
+            "test_status": DORMANT_TEST_STATUS,
             "production_capability": False,
+            "prediction_authority": False,
+            "execution_authority": False,
+            "dormant_reason": DORMANT_REASON,
             "notes": f"Strategy hits: {len(scan['strategy_hits'])}, forecast hits: {len(scan['forecast_hits'])}, risk hits: {len(scan['risk_hits'])}",
         }] if verdict == RepoVerdict.ADAPTER_TARGET else []
     else:
@@ -189,13 +196,16 @@ def generate_adapter_plan_v3(repo_meta: dict, scan: dict, category: str | None =
             "adapter_name": f"{name.replace('-', '_')}_adapter",
             "plan_type": "ADAPTER_TARGET",
             "emits_native_types": False,
-            "integration_status": "pending",
-            "integration_kind": "scaffold_only",
+            "lifecycle_status": DORMANT,
+            "integration_status": DORMANT,
+            "integration_kind": "metadata_only",
             "upstream_integration_verified": False,
-            "test_status": "pending_adapter_specific_tests",
+            "challenger_graded": False,
+            "test_status": DORMANT_TEST_STATUS,
             "production_capability": False,
             "prediction_authority": False,
             "execution_authority": False,
+            "dormant_reason": DORMANT_REASON,
             "data_only": category in DATA_ONLY_CATEGORIES,
             "passthrough_model_zoo": category == MODEL_ZOO_CATEGORY,
             "notes": f"Wrap source logic into Dummy-native types. Detected categories: {', '.join(detected)}.",

@@ -35,6 +35,7 @@ from autonomy.signals.crypto_spot import (
     crypto_probability_uncertainty,
     parse_crypto_ticker,
 )
+from autonomy.taxonomy import horizon_bucket
 
 # Macro factors: (feature key, Yahoo symbol, signed coefficient, characteristic
 # 5-session move). The coefficient sign encodes crypto's correlation with the
@@ -73,7 +74,8 @@ MACRO_MAX_SHIFT_SIGMA = 0.35
 # ledger stamps it at record time from the immutable registrations file
 # (AutonomyLedger._stamp_forward_fingerprint), so a later re-implementation
 # of this module cannot silently inherit the old registration.
-PROMOTION_ELIGIBLE_SCOPE = "crypto_macro_regime|sol|15m_direction|15m"
+SUPPORTED_CONTRACT_HORIZONS = frozenset({"daily+", "weekly"})
+PROMOTION_ELIGIBLE_SCOPE = "crypto_macro_regime|sol|ladder|daily+"
 
 
 def macro_regime_score(changes: dict[str, float]) -> tuple[float, float, dict[str, float]]:
@@ -178,6 +180,14 @@ class CryptoMacroRegimeSignal:
         parsed = parse_crypto_ticker(market.ticker)
         if parsed is None:
             return None
+        hours = self.hours_to_close(market)
+        if hours <= 0:
+            return None
+        contract_horizon = horizon_bucket(market.ticker, hours)
+        # The inputs are five-session macro changes.  They have no defensible
+        # point-in-time mapping to a 15-minute or hourly crypto outcome.
+        if contract_horizon not in SUPPORTED_CONTRACT_HORIZONS:
+            return None
         score, coverage, components = macro_regime_score(self._macro())
         if coverage <= 0.0:
             return None  # no macro data -> abstain (non-destructive)
@@ -210,9 +220,6 @@ class CryptoMacroRegimeSignal:
         except (TypeError, ValueError):
             return None
         if annual_vol is None or annual_vol <= 0:
-            return None
-        hours = self.hours_to_close(market)
-        if hours <= 0:  # a just-closed market must abstain, never sqrt(negative)
             return None
         horizon_sigma = annual_vol * math.sqrt(hours / (24.0 * 365.0))
         if horizon_sigma <= 0:
@@ -264,6 +271,8 @@ class CryptoMacroRegimeSignal:
             "annual_vol_used": float(annual_vol),
             "horizon_log_return_sigma": horizon_sigma,
             "hours_to_close": hours,
+            "contract_horizon": contract_horizon,
+            "source_observation_horizon": "five_trading_sessions",
             "spot": spot,
             "probability_model_uncertainty": uncertainty,
         }

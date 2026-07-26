@@ -1,20 +1,18 @@
 #!/usr/bin/env python
-"""All-in-one Dummy launcher.
+"""Thin launcher for Dummy's canonical local operator board.
 
-Opens the elevated **Dummy Totalizator** command board (the live web UI served
-by the ``DummyDashboard`` task at http://127.0.0.1:8787) as a chromeless
-desktop-app window -- no browser chrome, its own taskbar entry, the branded
-icon on the shortcut. Ensures the board server is actually up first (nudges the
-scheduled task, waits briefly), so a single click always lands on the live UI.
+Opens the loopback-only web board served by the ``DummyDashboard`` task at
+http://127.0.0.1:8787 in a chromeless browser window. It also starts the
+single-instance, read-only outcome notifier.
 
-Run windowless via the desktop venv's ``pythonw.exe`` (stdlib only -- needs none
-of dummy's own deps). Console subprocesses use CREATE_NO_WINDOW so nothing
-flashes.
+Run windowless with the project Python ``pythonw.exe``. The retired PySide
+renderer and its private virtual environment are not required.
 """
 from __future__ import annotations
 
 import os
 import subprocess
+import sys
 import time
 import urllib.request
 from pathlib import Path
@@ -60,7 +58,7 @@ def show_startup_error() -> None:
     try:
         import ctypes
 
-        ctypes.windll.user32.MessageBoxW(0, message, "Dummy Tote", 0x10)
+        ctypes.windll.user32.MessageBoxW(0, message, "Dummy", 0x10)
     except Exception:  # noqa: BLE001 -- last-ditch user notification
         print(message)
 
@@ -80,11 +78,27 @@ def open_board() -> None:
     os.startfile(URL)  # last resort: default browser, normal tab
 
 
+def start_notifier() -> None:
+    """Start the bounded read-only notification worker without a console."""
+    subprocess.Popen(
+        [sys.executable, "-m", "desktop.notifier"],
+        cwd=REPO,
+        creationflags=_NO_WINDOW | _DETACHED,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+
+
 def main() -> int:
     if not ensure_server():
         show_startup_error()
         return 1
     open_board()
+    try:
+        start_notifier()
+    except OSError:
+        # The board remains useful if Windows notification services are absent.
+        pass
     return 0
 
 

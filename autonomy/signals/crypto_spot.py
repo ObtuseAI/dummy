@@ -128,8 +128,13 @@ def parse_crypto_ticker(ticker: str) -> dict[str, Any] | None:
 class CryptoSpotVolSignal:
     name = "crypto_spot_vol"
 
-    def __init__(self, fetch_spot_and_vol: Callable[[str], tuple[float, float]] | None = None):
+    def __init__(
+        self,
+        fetch_spot_and_vol: Callable[[str], tuple[float, float]] | None = None,
+        decision_time_fn: Callable[[], datetime] | None = None,
+    ):
         self.fetch_spot_and_vol = fetch_spot_and_vol or default_fetch_spot_and_vol
+        self.decision_time_fn = decision_time_fn
         self._cache: dict[str, tuple[float, float]] = {}
 
     def on_cycle_start(self) -> None:
@@ -146,9 +151,30 @@ class CryptoSpotVolSignal:
     def _hours_to_close(self, market: MarketView) -> float:
         try:
             close = datetime.fromisoformat(market.close_time.replace("Z", "+00:00"))
-            return max(0.05, (close - datetime.now(timezone.utc)).total_seconds() / 3600.0)
+            decision_time = (
+                self.decision_time_fn()
+                if self.decision_time_fn is not None
+                else datetime.now(timezone.utc)
+            )
+            if decision_time.tzinfo is None:
+                raise ValueError("decision time must include a timezone")
+            decision_time = decision_time.astimezone(timezone.utc)
+            return max(
+                0.05,
+                (close - decision_time).total_seconds() / 3600.0,
+            )
         except Exception:
             return 24.0
+
+    def _event_bump(self) -> float:
+        from autonomy.crypto_events import active_bump
+
+        if self.decision_time_fn is None:
+            return active_bump()
+        decision_time = self.decision_time_fn()
+        if decision_time.tzinfo is None:
+            raise ValueError("decision time must include a timezone")
+        return active_bump(decision_time.astimezone(timezone.utc))
 
     def generate(self, market: MarketView) -> Signal | None:
         parsed = parse_crypto_ticker(market.ticker)
@@ -197,10 +223,10 @@ class CryptoSpotVolSignal:
         if p_yes is None:
             return None
         p_yes = min(0.995, max(0.005, p_yes))
-        from autonomy.crypto_events import active_bump
-
         probability_uncertainty = crypto_probability_uncertainty(
-            p_yes, horizon_sigma, event_bump=active_bump(),
+            p_yes,
+            horizon_sigma,
+            event_bump=self._event_bump(),
         )
         return Signal(
             source=self.name,
@@ -241,8 +267,11 @@ class CryptoEwmaTailSignal(CryptoSpotVolSignal):
 
     name = "crypto_ewma_t"
 
-    def __init__(self, fetch_spot_and_vol=None):
-        super().__init__(fetch_spot_and_vol=fetch_spot_and_vol or ewma_spot_and_vol)
+    def __init__(self, fetch_spot_and_vol=None, decision_time_fn=None):
+        super().__init__(
+            fetch_spot_and_vol=fetch_spot_and_vol or ewma_spot_and_vol,
+            decision_time_fn=decision_time_fn,
+        )
 
     def generate(self, market: MarketView) -> Signal | None:
         parsed = parse_crypto_ticker(market.ticker)
@@ -278,10 +307,10 @@ class CryptoEwmaTailSignal(CryptoSpotVolSignal):
         else:
             p_yes = p_above(parsed["strike"])
         p_yes = min(0.995, max(0.005, p_yes))
-        from autonomy.crypto_events import active_bump
-
         probability_uncertainty = crypto_probability_uncertainty(
-            p_yes, horizon_sigma, event_bump=active_bump(),
+            p_yes,
+            horizon_sigma,
+            event_bump=self._event_bump(),
         )
         return Signal(
             source=self.name,

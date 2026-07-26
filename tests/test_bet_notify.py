@@ -1,9 +1,9 @@
-"""Wave-54: bet-event notifications for the Tote tray."""
+"""Read-only event collection for the lightweight desktop notifier."""
 from __future__ import annotations
 
 import sqlite3
 
-from desktop.dummy_tote import bet_notify
+from desktop import bet_notify
 
 
 def _ledger(tmp_path, rows):

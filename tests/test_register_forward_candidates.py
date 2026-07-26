@@ -18,8 +18,8 @@ ROOT = Path(__file__).resolve().parents[1]
 def test_candidates_are_the_audited_edge_scopes():
     scopes = [scope for scope, _module in CANDIDATES]
     assert scopes == [
-        "crypto_equities_flow|sol|15m_direction|15m",
-        "crypto_macro_regime|sol|15m_direction|15m",
+        "crypto_equities_flow|sol|ladder|daily+",
+        "crypto_macro_regime|sol|ladder|daily+",
         # Current market_debias emission shape: market_type is stamped as
         # "<type>@<horizon>", so the stale "market_debias|mlb|na|pre" literal
         # could never match a live emission's grading scope.

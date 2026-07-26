@@ -298,6 +298,18 @@ def test_brain_passes_snapshot_ts_to_executor(tmp_path, monkeypatch):
     # tested on its own; here a strong signal must reach the executor regardless
     # of whatever scopes live evidence has floored.
     monkeypatch.setattr("autonomy.no_edge_map.load_negative_scopes", lambda *a, **k: frozenset())
+    from autonomy.adverse_selection import MakerAdverseSelectionEvidence
+
+    monkeypatch.setattr(
+        "autonomy.adverse_selection.load_maker_adverse_selection_evidence",
+        lambda: MakerAdverseSelectionEvidence(
+            haircut_cents=0.0,
+            generated_at=datetime.now(timezone.utc).isoformat(),
+            source_report_sha256="a" * 64,
+            filled_clusters=1,
+            unfilled_clusters=1,
+        ),
+    )
     from autonomy.brain import PredatorBrain
     from autonomy.learner import Learner
     from autonomy.ledger import AutonomyLedger
@@ -755,6 +767,16 @@ def test_api_autonomy_still_serves_and_caches(tmp_path, monkeypatch):
     from fastapi.testclient import TestClient
 
     monkeypatch.setattr("autonomy.dashboard.RUNTIME_DIR", tmp_path)
+    monkeypatch.setattr(
+        "autonomy.paper_dashboard.scheduled_task_status",
+        lambda task_name: {
+            "task_name": task_name,
+            "supported": False,
+            "enabled": False,
+            "state": "TEST_ISOLATED",
+            "healthy": False,
+        },
+    )
     from autonomy.dashboard import build_app
 
     client = TestClient(build_app())

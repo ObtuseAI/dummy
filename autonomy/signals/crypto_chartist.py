@@ -14,6 +14,7 @@ disagreements for audit.
 """
 from __future__ import annotations
 
+import logging
 import math
 from typing import Any, Callable
 
@@ -24,6 +25,7 @@ from autonomy.signals.crypto_spot import parse_crypto_ticker
 CHARTIST_MAX_DRIFT_SIGMAS = 0.75
 CHARTIST_MIN_CONVICTION = 0.10
 CHARTIST_MAX_DISAGREEMENTS = 2
+LOGGER = logging.getLogger(__name__)
 
 
 def _normal_cdf(x: float) -> float:
@@ -60,9 +62,11 @@ class CryptoChartistSignal:
             hours_to_close = _hours_to_close
         self.hours_to_close = hours_to_close
         self._views_cache: dict[str, Any] = {}
+        self._diagnostics_cache: dict[str, dict[str, Any]] = {}
 
     def on_cycle_start(self) -> None:
         self._views_cache = {}
+        self._diagnostics_cache = {}
 
     def applicable(self, market: MarketView) -> bool:
         return (
@@ -72,14 +76,41 @@ class CryptoChartistSignal:
 
     def _exam(self, asset: str):
         if asset not in self._views_cache:
+            state: dict[str, Any] | None = None
             try:
                 state = self._fetch_state(asset)
                 views = build_views(state) if state else {}
-            except Exception:
+            except Exception as exc:
                 views = {}
+                self._diagnostics_cache[asset] = {
+                    "status": "UNAVAILABLE",
+                    "reason": "chartist_input_error",
+                    "error_type": type(exc).__name__,
+                }
+                LOGGER.warning(
+                    "crypto chartist abstained for %s: input error %s",
+                    asset,
+                    type(exc).__name__,
+                    exc_info=True,
+                )
+            else:
+                self._diagnostics_cache[asset] = {
+                    "status": "COMPLETE" if views else "PARTIAL",
+                    "reason": None if views else "no_timeframe_has_25_closed_bars",
+                    "available_timeframes": sorted(views),
+                    "stream_rows": {
+                        stream: len((state or {}).get(f"{stream}_ohlcv") or [])
+                        for stream in ("minute", "five_minute", "hourly", "daily")
+                    },
+                }
             self._views_cache[asset] = (
                 views, cross_examine(views) if views else None, state if views else None)
         return self._views_cache[asset]
+
+    def diagnostic_for(self, asset: str) -> dict[str, Any]:
+        """Return the structured reason for an emission or fail-closed abstention."""
+        self._exam(str(asset).upper())
+        return dict(self._diagnostics_cache.get(str(asset).upper(), {}))
 
     def generate(self, market: MarketView) -> Signal | None:
         parsed = parse_crypto_ticker(market.ticker)
@@ -129,6 +160,9 @@ class CryptoChartistSignal:
                 "chart_boosts": list(exam.boosts),
                 "chart_vetoes": list(exam.vetoes),
                 "chart_disagreements": list(exam.disagreements),
+                "chart_input_diagnostic": dict(
+                    self._diagnostics_cache.get(str(parsed["asset"]), {})
+                ),
                 "patterns": {
                     name: [
                         {"name": p.name, "dir": p.direction, "s": p.strength}

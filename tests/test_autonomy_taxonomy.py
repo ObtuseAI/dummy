@@ -189,7 +189,25 @@ def _crypto_signal(source, ticker, p, hours):
     )
 
 
-def test_backtest_separates_scopes_and_keeps_bare_source_aggregate(tmp_path):
+def test_backtest_separates_scopes_and_keeps_bare_source_aggregate(
+    tmp_path, monkeypatch,
+):
+    import autonomy.backtest as backtest
+
+    real_gate = backtest._recal_oos_gate
+    monkeypatch.setattr(
+        backtest,
+        "_recal_oos_gate",
+        lambda conn, signals, settlements, incumbent: real_gate(
+            conn,
+            signals,
+            settlements,
+            incumbent,
+            holdout_fraction=0.25,
+            min_holdout=1,
+            min_holdout_clusters=1,
+        ),
+    )
     ledger = AutonomyLedger(db_path=tmp_path / "l.db")
     try:
         # Same source + same market_type (ladder), two different horizons.
@@ -206,6 +224,7 @@ def test_backtest_separates_scopes_and_keeps_bare_source_aggregate(tmp_path):
             ledger.record_settlement(ticker, result)
 
         report = run_backtest(ledger, bootstrap_weights=True)
+        assert report["recal_oos_gate"]["held_out_improvement_verified"] is True
         scopes = report["sources_by_scope"]
         assert "crypto_spot_vol|btc|ladder|hourly" in scopes
         assert "crypto_spot_vol|eth|ladder|daily+" in scopes

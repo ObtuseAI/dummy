@@ -38,7 +38,10 @@ def _make_forecast():
         confidence_score=Decimal("0.8"),
         uncertainty_band=(Decimal("0.5"), Decimal("0.6")),
         expected_edge=Decimal("0.05"),
-        edge_after_fees=Decimal("0.04"),
+        # The firewall independently applies its half-sigma haircut and the
+        # current fee schedule. Keep this upstream claim no more optimistic
+        # than the 0.5c result after the maker schedule's taker-fee fallback.
+        edge_after_fees=Decimal("0.005"),
         freshness_score=Decimal("1.0"),
         liquidity_score=Decimal("0.8"),
         spread_score=Decimal("0.8"),

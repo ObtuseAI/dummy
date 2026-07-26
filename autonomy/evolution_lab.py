@@ -339,13 +339,49 @@ def summarize_trades(trades: Sequence[dict[str, Any]]) -> dict[str, Any]:
 def _temporal_folds(
     rows: Sequence[dict[str, Any]], requested: int = 5
 ) -> list[list[dict[str, Any]]]:
-    ordered = sorted(rows, key=lambda row: (_time(row["created_at"]), str(row["ticker"])))
-    count = min(requested, len(ordered))
-    if count == 0:
+    """Build ordered folds without splitting an event cluster or time block.
+
+    Each event cluster is treated as an indivisible interval from its earliest
+    to latest decision.  Overlapping intervals are merged into a single time
+    block before folds are assigned.  Consequently, no event cluster can leak
+    across folds and every completed fold ends strictly before the next starts.
+    """
+    if requested <= 0 or not rows:
         return []
+
+    clusters: dict[str, list[dict[str, Any]]] = {}
+    for row in rows:
+        clusters.setdefault(str(row["cluster"]), []).append(row)
+
+    intervals: list[tuple[datetime, datetime, str, list[dict[str, Any]]]] = []
+    for cluster, cluster_rows in clusters.items():
+        ordered_cluster = sorted(
+            cluster_rows,
+            key=lambda row: (_time(row["created_at"]), str(row["ticker"])),
+        )
+        intervals.append((
+            _time(ordered_cluster[0]["created_at"]),
+            _time(ordered_cluster[-1]["created_at"]),
+            cluster,
+            ordered_cluster,
+        ))
+    intervals.sort(key=lambda item: (item[0], item[1], item[2]))
+
+    time_blocks: list[dict[str, Any]] = []
+    for start, end, _cluster, cluster_rows in intervals:
+        if time_blocks and start <= time_blocks[-1]["end"]:
+            time_blocks[-1]["end"] = max(time_blocks[-1]["end"], end)
+            time_blocks[-1]["rows"].extend(cluster_rows)
+        else:
+            time_blocks.append({"start": start, "end": end, "rows": list(cluster_rows)})
+
+    count = min(requested, len(time_blocks))
     folds: list[list[dict[str, Any]]] = [[] for _ in range(count)]
-    for index, row in enumerate(ordered):
-        folds[min(count - 1, index * count // len(ordered))].append(row)
+    for index, block in enumerate(time_blocks):
+        fold = min(count - 1, index * count // len(time_blocks))
+        folds[fold].extend(block["rows"])
+    for fold in folds:
+        fold.sort(key=lambda row: (_time(row["created_at"]), str(row["ticker"])))
     return folds
 
 
@@ -707,7 +743,9 @@ def run_evolution_lab(
         scenario["name"]: [] for scenario in STRESS_SCENARIOS
     }
     archive_oos: dict[str, dict[str, Any]] = {}
-    selected: list[ResearchGenome] = []
+    training_leaders: list[ResearchGenome] = []
+    research_leader: ResearchGenome | None = None
+    research_leader_selection_fold: int | None = None
     history = list(folds[0]) if folds else []
     for fold_number, test_rows in enumerate(folds[1:], start=2):
         test_start = min(_time(row["created_at"]) for row in test_rows)
@@ -756,19 +794,30 @@ def run_evolution_lab(
             candidates,
             key=lambda item: _rank(item[1], item[0]),
         )
-        selected.append(leader)
+        training_leaders.append(leader)
+        if research_leader is None:
+            # Freeze one candidate before producing any OOS evidence attributed
+            # to it. Rolling training leaders remain diagnostic only; they may
+            # not donate later-fold outcomes to this candidate.
+            research_leader = leader
+            research_leader_selection_fold = fold_number
         scenario_results: dict[str, Any] = {}
         for scenario in challenger_oos:
-            challenger = genome_trades(purged_test, leader, scenario_name=scenario)
+            challenger = genome_trades(
+                purged_test, research_leader, scenario_name=scenario,
+            )
             incumbent = genome_trades(purged_test, INCUMBENT_GENOME, scenario_name=scenario)
             challenger_oos[scenario].extend(challenger)
             incumbent_oos[scenario].extend(incumbent)
             scenario_results[scenario] = summarize_trades(challenger)
         fold_reports.append({
             "fold": fold_number,
-            "selected_genome_id": leader.genome_id,
-            "selected_genome": asdict(leader),
-            "selected_complexity": _complexity(leader),
+            "selected_genome_id": research_leader.genome_id,
+            "selected_genome": asdict(research_leader),
+            "selected_complexity": _complexity(research_leader),
+            "candidate_identity_locked": True,
+            "candidate_selection_fold": research_leader_selection_fold,
+            "training_leader_genome_id": leader.genome_id,
             "training_rows": len(training),
             "training_result": training_summary,
             "test_rows": len(test_rows),
@@ -805,7 +854,8 @@ def run_evolution_lab(
         candidates_evaluated=len(current_archive_entries),
     )
 
-    research_leader = selected[-1] if selected else previous_active
+    if research_leader is None:
+        research_leader = previous_active
     baseline_summary = summarize_trades(challenger_oos["baseline"])
     incumbent_summary = summarize_trades(incumbent_oos["baseline"])
     advantage = _cluster_advantage_ci(
@@ -903,10 +953,11 @@ def run_evolution_lab(
         rotation_reason = "retired_failed_forward_epoch_after_diverse_evidence"
 
     leader_counts: dict[str, int] = {}
-    for genome in selected:
+    for genome in training_leaders:
         leader_counts[genome.genome_id] = leader_counts.get(genome.genome_id, 0) + 1
     dominant_share = (
-        max(leader_counts.values()) / len(selected) if selected else None
+        max(leader_counts.values()) / len(training_leaders)
+        if training_leaders else None
     )
     return {
         "lab_name": "DUMMY_EVOLUTION_LAB",
@@ -915,7 +966,7 @@ def run_evolution_lab(
             "READY_FOR_EXPLICIT_SHADOW_REVIEW"
             if forward_gate else "ACCUMULATING_FORWARD_EVIDENCE"
         ),
-        "method": "causal_nested_replay_mutation_stress_and_forward_ratchet",
+        "method": "causal_frozen_candidate_replay_mutation_stress_and_forward_ratchet",
         "evidence": {
             "fingerprint": fingerprint,
             "previous_fingerprint": previous_fingerprint,
@@ -934,6 +985,10 @@ def run_evolution_lab(
             "distinct_fold_leaders": len(leader_counts),
             "dominant_leader_share": round(dominant_share, 6)
             if dominant_share is not None else None,
+            "frozen_research_genome_id": (
+                research_leader.genome_id if fold_reports and research_leader else None
+            ),
+            "frozen_candidate_selection_fold": research_leader_selection_fold,
         },
         "quality_diversity_archive": {
             "version": "oos-research-niche-archive-v1",
@@ -970,8 +1025,20 @@ def run_evolution_lab(
         "research_leader": {
             "genome_id": research_leader.genome_id,
             "genome": asdict(research_leader),
+            "selection_fold": research_leader_selection_fold,
+            "selection_rule": "frozen_before_first_attributed_oos_fold",
         } if research_leader else None,
         "retrospective_out_of_sample": {
+            "candidate_genome_id": research_leader.genome_id if fold_reports else None,
+            "candidate_identity_locked": bool(
+                fold_reports
+                and research_leader
+                and all(
+                    fold["selected_genome_id"] == research_leader.genome_id
+                    for fold in fold_reports
+                )
+            ),
+            "selection_rule": "frozen_before_first_attributed_oos_fold",
             "challenger": baseline_summary,
             "incumbent": incumbent_summary,
             "paired_pnl_advantage_ci95": advantage,

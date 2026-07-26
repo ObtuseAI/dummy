@@ -39,6 +39,7 @@ from autonomy.signals.crypto_spot import (
     crypto_probability_uncertainty,
     parse_crypto_ticker,
 )
+from autonomy.taxonomy import horizon_bucket
 
 # (key, yahoo_symbol, coefficient, tanh scale). Coefficients are all positive
 # (every factor is crypto-long exposure); scale normalizes each instrument's
@@ -73,7 +74,8 @@ _ASSET_FACTOR_WEIGHT: dict[str, dict[str, float]] = {
 # ledger stamps it at record time from the immutable registrations file
 # (AutonomyLedger._stamp_forward_fingerprint), so a later re-implementation
 # of this module cannot silently inherit the old registration.
-PROMOTION_ELIGIBLE_SCOPE = "crypto_equities_flow|sol|15m_direction|15m"
+SUPPORTED_CONTRACT_HORIZONS = frozenset({"daily+", "weekly"})
+PROMOTION_ELIGIBLE_SCOPE = "crypto_equities_flow|sol|ladder|daily+"
 
 EQUITY_DAILY_DRIFT = 0.010      # max expected log-return over a day at score +/-1
 EQUITY_MAX_SHIFT_SIGMA = 0.35   # hard cap in horizon standard deviations
@@ -207,6 +209,14 @@ class CryptoEquitiesSignal:
         parsed = parse_crypto_ticker(market.ticker)
         if parsed is None:
             return None
+        hours = self.hours_to_close(market)
+        if hours <= 0:
+            return None
+        contract_horizon = horizon_bucket(market.ticker, hours)
+        # Daily equity/ETF closes and volume aggregates cannot support
+        # sub-daily crypto forecasts.  Abstain before fetching either feed.
+        if contract_horizon not in SUPPORTED_CONTRACT_HORIZONS:
+            return None
         asset = str(parsed["asset"])
         equity_state = self._equities()
         changes = dict(equity_state.get("changes") or {})
@@ -239,9 +249,6 @@ class CryptoEquitiesSignal:
         except (TypeError, ValueError):
             return None
         if annual_vol is None or annual_vol <= 0:
-            return None
-        hours = self.hours_to_close(market)
-        if hours <= 0:
             return None
         horizon_sigma = annual_vol * math.sqrt(hours / (24.0 * 365.0))
         if horizon_sigma <= 0:
@@ -313,6 +320,8 @@ class CryptoEquitiesSignal:
             "annual_vol_used": float(annual_vol),
             "horizon_log_return_sigma": horizon_sigma,
             "hours_to_close": hours,
+            "contract_horizon": contract_horizon,
+            "source_observation_horizon": "daily_equity_sessions",
             "spot": spot,
         }
         try:

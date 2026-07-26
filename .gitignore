@@ -29,6 +29,8 @@ data/*.db
 
 # test run artifacts
 full_test_suite.log
+dependency-audit.json
+dependency-licenses.json
 *.log
 !docs/**/*.log
 

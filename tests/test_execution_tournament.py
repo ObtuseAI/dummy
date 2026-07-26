@@ -12,15 +12,16 @@ from __future__ import annotations
 
 import json
 
+import autonomy.execution_tournament as execution_tournament
 from autonomy.execution_policy import ExecutionPolicy
 from autonomy.execution_tournament import (
     MIN_FILL_CLUSTERS,
     cohort_trades,
+    load_tournament_rows,
     summarize_tournament,
     tournament_report,
     write_report,
 )
-from autonomy.adverse_selection import load_execution_rows
 from autonomy.ledger import AutonomyLedger
 from autonomy.ontology import (
     Decision,
@@ -31,6 +32,7 @@ from autonomy.ontology import (
     TradeOutcome,
 )
 from autonomy.reconciler import settlement_pnl_cents
+from autonomy.fees import kalshi_taker_fee_cents
 
 T0 = "2026-06-01T00:00:00+00:00"
 T_FAST = "2026-06-01T00:00:30+00:00"  # 30s after submit (fast cross)
@@ -45,13 +47,33 @@ def _ticker(index: int) -> str:
 def _emit(
     ledger: AutonomyLedger, index: int, *, side: str, price: int, forecast_p: float,
     market_p: float, filled: bool, result_yes: bool, witness: str = T_SLOW,
+    spread_cents: int = 4,
 ) -> None:
     ticker = _ticker(index)
     did = f"d{index:04d}"
+    mid_cents = market_p * 100.0
+    yes_bid = int(round(mid_cents - spread_cents / 2.0))
+    yes_ask = int(round(mid_cents + spread_cents / 2.0))
     ledger.record_signal(Signal(
         source="market_prior", market_ticker=ticker, probability_yes=market_p,
         uncertainty=0.1, rationale="", created_at=T0,
+        features={
+            "mid": mid_cents,
+            "spread": spread_cents,
+            "yes_bid": yes_bid,
+            "yes_ask": yes_ask,
+            "no_bid": 100 - yes_ask,
+            "no_ask": 100 - yes_bid,
+        },
     ))
+    # This is a historical synthetic ledger. Bind receipt time to the synthetic
+    # decision clock so the production PIT guard sees the quote as available.
+    ledger._conn.execute(
+        "UPDATE signals SET ingested_at=? "
+        "WHERE source='market_prior' AND market_ticker=? AND created_at=?",
+        (T0, ticker, T0),
+    )
+    ledger._conn.commit()
     forecast = Forecast(
         market_ticker=ticker, probability_yes=forecast_p, uncertainty=0.1,
         sources_used={"market_prior": 1.0}, market_implied_yes=market_p,
@@ -109,7 +131,7 @@ def _tournament_ledger(tmp_path) -> AutonomyLedger:
         idx += 1
     for _ in range(6):
         _emit(ledger, idx, side="yes", price=54, forecast_p=0.60, market_p=0.55,
-              filled=True, result_yes=False, witness=T_SLOW)
+              filled=True, result_yes=False, witness=T_SLOW, spread_cents=0)
         idx += 1
     for _ in range(12):
         _emit(ledger, idx, side="yes", price=48, forecast_p=0.80, market_p=0.50,
@@ -134,7 +156,7 @@ def test_report_has_all_five_cohorts_control_first(tmp_path):
 def test_c0_reproduces_witnessed_maker_fills(tmp_path):
     ledger = _tournament_ledger(tmp_path)
     try:
-        rows = load_execution_rows(ledger._conn)
+        rows = load_tournament_rows(ledger._conn)
         control = next(
             c for c in tournament_report(ledger._conn)["cohorts"]
             if c["policy"]["cohort"] == "C0"
@@ -160,10 +182,75 @@ def test_taker_cohort_holds_full_actionable_surface(tmp_path):
     assert c1["fill_rate"] == 1.0
 
 
+def test_taker_uses_side_specific_displayed_ask_not_midpoint():
+    base = {
+        "cluster": "event",
+        "ticker": "KXTEST-26JUN01-A",
+        "forecast": 0.80,
+        "market": 0.50,
+        "result": 1,
+        "displayed_yes_ask_cents": 57,
+        "displayed_no_ask_cents": 63,
+        "displayed_ask_source": "fixture_displayed_book",
+    }
+    yes_trade = cohort_trades(
+        [{**base, "side": "yes"}],
+        ExecutionPolicy.taker_only(taker_min_ev_cents=0.0),
+    )[0]
+    no_trade = cohort_trades(
+        [{**base, "side": "no", "forecast": 0.20, "result": 0}],
+        ExecutionPolicy.taker_only(taker_min_ev_cents=0.0),
+    )[0]
+
+    assert yes_trade["price_cents"] == 57
+    assert no_trade["price_cents"] == 63
+    assert yes_trade["price_cents"] != round(base["market"] * 100)
+    assert no_trade["price_cents"] != round((1.0 - base["market"]) * 100)
+    assert yes_trade["cost_cents"] == (
+        57 + kalshi_taker_fee_cents(57, 1, base["ticker"])
+    )
+    assert no_trade["cost_cents"] == (
+        63 + kalshi_taker_fee_cents(63, 1, base["ticker"])
+    )
+    assert {
+        yes_trade["fill_provenance"],
+        no_trade["fill_provenance"],
+    } == {"modeled_displayed_ask"}
+    assert yes_trade["witnessed_broker_fill"] is False
+    assert no_trade["witnessed_broker_fill"] is False
+
+
+def test_taker_fails_closed_without_displayed_ask():
+    row = {
+        "cluster": "event",
+        "ticker": "KXTEST-26JUN01-A",
+        "side": "yes",
+        "forecast": 0.80,
+        "market": 0.50,
+        "result": 1,
+    }
+    assert cohort_trades(
+        [row],
+        ExecutionPolicy.taker_only(taker_min_ev_cents=0.0),
+    ) == []
+
+
+def test_pit_market_prior_features_recover_displayed_asks(tmp_path):
+    ledger = _tournament_ledger(tmp_path)
+    try:
+        rows = load_tournament_rows(ledger._conn)
+    finally:
+        ledger.close()
+    assert rows[0]["displayed_yes_ask_cents"] == 52
+    assert rows[0]["displayed_no_ask_cents"] == 52
+    assert rows[0]["displayed_ask_source"] == "market_prior_displayed_quote"
+    assert rows[6]["displayed_yes_ask_cents"] == 55
+
+
 def test_c3_censors_fast_and_divergent_fills(tmp_path):
     ledger = _tournament_ledger(tmp_path)
     try:
-        rows = load_execution_rows(ledger._conn)
+        rows = load_tournament_rows(ledger._conn)
     finally:
         ledger.close()
     c3 = ExecutionPolicy.adverse_guard_maker()
@@ -178,7 +265,7 @@ def test_c3_censors_fast_and_divergent_fills(tmp_path):
 def test_c4_keeps_in_window_maker_fills_and_crosses_the_rest(tmp_path):
     ledger = _tournament_ledger(tmp_path)
     try:
-        rows = load_execution_rows(ledger._conn)
+        rows = load_tournament_rows(ledger._conn)
     finally:
         ledger.close()
     trades = cohort_trades(rows, ExecutionPolicy.hybrid_patient_then_take())
@@ -222,6 +309,79 @@ def test_gate_and_ranking_and_switch_authority(tmp_path):
     assert report["policy_switch_authority"]["auto_switch"] is False
 
 
+def test_modeled_lanes_never_create_promotion_or_switch_readiness(
+    tmp_path, monkeypatch,
+):
+    monkeypatch.setattr(execution_tournament, "MIN_FILL_CLUSTERS", 1)
+    ledger = _tournament_ledger(tmp_path)
+    policies = (
+        ExecutionPolicy.taker_only(),
+        ExecutionPolicy.taker_walk_forward(),
+        ExecutionPolicy.hybrid_patient_then_take(),
+    )
+    try:
+        report = tournament_report(ledger._conn, policies)
+    finally:
+        ledger.close()
+
+    assert report["headline"]["descriptive_performance_leader"] in {
+        "C1", "C2", "C4",
+    }
+    assert report["headline"]["leading_cohort"] is None
+    assert report["headline"]["evidence_sufficient_for_promotion_review"] is False
+    assert report["headline"]["evidence_sufficient_for_policy_switch"] is False
+    assert report["policy_switch_authority"]["auto_switch"] is False
+    assert report["policy_switch_authority"][
+        "modeled_counterfactuals_count_toward_promotion_readiness"
+    ] is False
+
+    for cohort in report["cohorts"]:
+        assert cohort["sample_size_gate_met"] is True
+        assert cohort["gate_met"] is False
+        assert cohort["gate_status"] == (
+            "modeled_counterfactual_not_promotion_evidence"
+        )
+        assert cohort["evidence_class"] == "modeled_counterfactual"
+        assert cohort["witnessed_broker_fill_backing"] is False
+        assert cohort["counts_toward_policy_switch"] is False
+        assert cohort["counts_toward_promotion_readiness"] is False
+        assert cohort["promotion_review_eligible"] is False
+
+    for row in report["ranking"]:
+        assert row["evidence_class"] == "modeled_counterfactual"
+        assert row["gate_met"] is False
+        assert row["counts_toward_policy_switch"] is False
+        assert row["counts_toward_promotion_readiness"] is False
+        assert row["promotion_review_eligible"] is False
+
+
+def test_c3_observed_fill_censoring_is_not_promotion_readiness(
+    tmp_path, monkeypatch,
+):
+    monkeypatch.setattr(execution_tournament, "MIN_FILL_CLUSTERS", 1)
+    ledger = _tournament_ledger(tmp_path)
+    try:
+        report = tournament_report(
+            ledger._conn,
+            (ExecutionPolicy.adverse_guard_maker(),),
+        )
+    finally:
+        ledger.close()
+
+    c3 = report["cohorts"][0]
+    assert c3["sample_size_gate_met"] is True
+    assert c3["gate_met"] is False
+    assert c3["gate_status"] == (
+        "observed_fill_censoring_not_promotion_evidence"
+    )
+    assert c3["evidence_class"] == "observed_fill_censoring_counterfactual"
+    assert c3["witnessed_broker_fill_backing"] is False
+    assert c3["counts_toward_promotion_readiness"] is False
+    assert c3["promotion_review_eligible"] is False
+    assert report["headline"]["leading_cohort"] is None
+    assert report["headline"]["evidence_sufficient_for_promotion_review"] is False
+
+
 def test_pnl_difference_vs_control_is_cluster_level(tmp_path):
     ledger = _tournament_ledger(tmp_path)
     try:
@@ -248,6 +408,17 @@ def test_summarize_and_write_roundtrip(tmp_path):
     assert summary["report_name"] == "EXECUTION_POLICY_TOURNAMENT"
     assert summary["ranking"]
     assert "policy_switch_authority" in summary
+    modeled = {
+        row["cohort"]: row
+        for row in summary["ranking"]
+        if row["cohort"] in {"C1", "C2", "C4"}
+    }
+    assert set(modeled) == {"C1", "C2", "C4"}
+    assert all(
+        row["evidence_class"] == "modeled_counterfactual"
+        and row["counts_toward_promotion_readiness"] is False
+        for row in modeled.values()
+    )
     path = tmp_path / "execution_tournament.json"
     write_report(report, path)
     reloaded = json.loads(path.read_text(encoding="utf-8"))

@@ -2,9 +2,11 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 
+import autonomy.evolution_lab as evolution_lab
 from autonomy.evolution_lab import (
     INCUMBENT_GENOME,
     ResearchGenome,
+    _temporal_folds,
     candidate_population,
     run_evolution_lab,
     trace_replay_audit,
@@ -85,6 +87,102 @@ def test_evolution_lab_is_causal_stressed_and_has_no_production_authority():
         "capital_authority": False,
     }
     assert report["evidence_quarantine"]["counts_toward_canary"] is False
+
+
+def test_temporal_folds_keep_event_clusters_whole_and_time_blocks_ordered():
+    start = datetime(2025, 1, 1, tzinfo=timezone.utc)
+    rows = [
+        {"ticker": "A-1", "cluster": "A", "created_at": start},
+        {"ticker": "B-1", "cluster": "B", "created_at": start + timedelta(hours=1)},
+        {"ticker": "B-2", "cluster": "B", "created_at": start + timedelta(hours=2)},
+        {"ticker": "A-2", "cluster": "A", "created_at": start + timedelta(hours=3)},
+        {"ticker": "C-1", "cluster": "C", "created_at": start + timedelta(hours=4)},
+        {"ticker": "D-1", "cluster": "D", "created_at": start + timedelta(hours=5)},
+        {"ticker": "E-1", "cluster": "E", "created_at": start + timedelta(hours=6)},
+    ]
+
+    folds = _temporal_folds(rows, requested=3)
+    cluster_folds: dict[str, set[int]] = {}
+    for fold_number, fold in enumerate(folds):
+        for row in fold:
+            cluster_folds.setdefault(row["cluster"], set()).add(fold_number)
+
+    assert all(len(locations) == 1 for locations in cluster_folds.values())
+    for earlier, later in zip(folds, folds[1:]):
+        assert max(row["created_at"] for row in earlier) < min(
+            row["created_at"] for row in later
+        )
+
+
+def test_oos_results_remain_bound_to_one_frozen_genome_when_fold_leaders_change(
+    monkeypatch,
+):
+    first_leader = ResearchGenome(0.50, 5, 0.18, 65)
+    later_leader = ResearchGenome(1.20, 12, 0.30, 80)
+    monkeypatch.setattr(
+        evolution_lab,
+        "candidate_population",
+        lambda *_args, **_kwargs: (first_leader, later_leader),
+    )
+
+    def fake_genome_trades(rows, genome, *, scenario_name="baseline"):
+        trades = []
+        for row in rows:
+            pnl = int((row["candidate_pnl"] or {}).get(genome.genome_id, 0))
+            trades.append({
+                "ticker": row["ticker"],
+                "cluster": row["cluster"],
+                "created_at": row["created_at"],
+                "base_price_cents": 50,
+                "price_cents": 50,
+                "fee_cents": 0,
+                "pnl_cents": pnl,
+                "cost_cents": 50,
+                "won": pnl > 0,
+                "scenario": scenario_name,
+            })
+        return trades
+
+    monkeypatch.setattr(evolution_lab, "genome_trades", fake_genome_trades)
+    start = datetime(2025, 1, 1, tzinfo=timezone.utc)
+    rows = []
+    for index in range(150):
+        created_at = start + timedelta(hours=index * 2)
+        first_period = index < 30
+        rows.append({
+            "ticker": f"IDENTITY-{index:04d}",
+            "cluster": f"identity-{index:04d}",
+            "forecast": 0.75,
+            "market": 0.50,
+            "uncertainty": 0.10,
+            "result": 1,
+            "created_at": created_at,
+            "settled_at": created_at + timedelta(hours=1),
+            "candidate_pnl": {
+                first_leader.genome_id: 10 if first_period else -50,
+                later_leader.genome_id: -10 if first_period else 50,
+            },
+        })
+
+    report = run_evolution_lab(
+        rows,
+        as_of=datetime(2025, 3, 1, tzinfo=timezone.utc),
+        population_size=8,
+        bootstrap_simulations=200,
+    )
+
+    training_leaders = {
+        fold["training_leader_genome_id"] for fold in report["folds"]
+    }
+    attributed_candidates = {
+        fold["selected_genome_id"] for fold in report["folds"]
+    }
+    assert training_leaders == {first_leader.genome_id, later_leader.genome_id}
+    assert attributed_candidates == {first_leader.genome_id}
+    assert report["research_leader"]["genome_id"] == first_leader.genome_id
+    retrospective = report["retrospective_out_of_sample"]
+    assert retrospective["candidate_genome_id"] == first_leader.genome_id
+    assert retrospective["candidate_identity_locked"] is True
 
 
 def test_forward_ratchet_accumulates_only_later_decisions_and_generation_is_stable():

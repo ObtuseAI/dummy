@@ -7,7 +7,6 @@ from typing import Optional
 import pytest
 
 from core.ontology import Forecast, OrderBook, OrderBookLevel, TradeProposal
-from forecasting.engine import ForecastEngine
 from strategies.repo_derived import (
     CommoditiesEnergyStrategy,
     CryptoEventMarketStrategy,
@@ -220,15 +219,8 @@ def test_no_repo_derived_strategy_calls_live_order_endpoints():
 
 def test_repo_derived_strategies_use_only_trade_proposal_output():
     """Runtime proof: every repo-derived strategy returns TradeProposal or None."""
-    engine = ForecastEngine()
     book = _make_book()
-    forecast = engine.forecast(
-        book.market_ticker,
-        book.contract_ticker,
-        "Repo Derived Event",
-        "Yes",
-        book,
-    )
+    forecast = _make_forecast()
     for cls in REPO_DERIVED_CLASSES:
         proposal = cls().evaluate(forecast, book)
         assert proposal is None or isinstance(proposal, TradeProposal)

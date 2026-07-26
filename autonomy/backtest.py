@@ -21,7 +21,8 @@ from typing import Any
 from autonomy.capability_matrix import build_live_source_capability_matrix
 from autonomy.fees import kalshi_taker_fee_cents
 from autonomy.ledger import AutonomyLedger
-from autonomy.stats import mean_ci95
+from autonomy.sports_markets import spec_for
+from autonomy.stats import mean_ci95, one_sided_sign_test
 
 # Same shape as the live learner so bootstrapped weights are consistent.
 WEIGHT_FLOOR = 0.05
@@ -39,6 +40,20 @@ LIVE_SOURCE_EVIDENCE_MODE = "live_only_receipt_bounded_v1"
 # suite can redirect it; every recal pass under pytest was otherwise rewriting
 # the live runtime artifact.
 RECAL_OOS_DELTA_PATH = Path("runtime/autonomy/recal_oos_delta.json")
+RECAL_OOS_MIN_HOLDOUT_CLUSTERS = 20
+RECAL_OOS_BOOTSTRAP_SEED = "recal-oos-paired-event-cluster-v1"
+RECAL_OOS_BOOTSTRAP_METHOD = (
+    "paired_equal_event_cluster_brier_improvement_percentile_bootstrap_95_v1"
+)
+RECAL_OOS_CLUSTER_IDENTITY_METHOD = "autonomy.correlation.group_key_v1"
+RECAL_OOS_SPLIT_METHOD = (
+    "chronological_settlement_intervals_whole_event_cluster_time_blocks_v1"
+)
+RECAL_OOS_MIN_BOOTSTRAP_SAMPLES = 200
+RECAL_OOS_MAX_BOOTSTRAP_DRAWS = 2_000_000
+RECAL_OOS_MAX_HOLDOUT_CLUSTERS = (
+    RECAL_OOS_MAX_BOOTSTRAP_DRAWS // RECAL_OOS_MIN_BOOTSTRAP_SAMPLES
+)
 
 
 def _percentile(values: list[float], q: float) -> float | None:
@@ -195,6 +210,17 @@ class SourceScoreTracker:
         cluster_ci = _cluster_bootstrap_mean_ci(
             self.contested_edges_by_cluster, seed=f"source:{self.source}",
         )
+        cluster_means = [
+            sum(values) / len(values)
+            for values in self.contested_edges_by_cluster.values()
+            if values
+        ]
+        positive_sign_test = one_sided_sign_test(
+            cluster_means, alternative="greater"
+        )
+        negative_sign_test = one_sided_sign_test(
+            cluster_means, alternative="less"
+        )
         return {
             "source": self.source,
             "n": self.n,
@@ -214,6 +240,11 @@ class SourceScoreTracker:
             ),
             "contested_mean_brier_edge_ci95": cluster_ci,
             "contested_event_clusters": len(self.contested_edges_by_cluster),
+            "contested_edge_sign_test": {
+                "positive_edge": positive_sign_test,
+                "negative_edge": negative_sign_test,
+                "resampling_unit": "event_cluster_mean",
+            },
             "expected_calibration_error": (
                 round(calibration_error_sum / self.n, 6) if self.n else None
             ),
@@ -245,7 +276,11 @@ class SourceScoreTracker:
         if self.source == "market_prior":
             return max(WEIGHT_FLOOR, min(WEIGHT_CEILING, weight))
         if self.contested_n > 0:
-            confidence = min(1.0, self.contested_n / MIN_CONTESTED_N)
+            # Repeated markets from one event share a settlement driver. They
+            # may add calibration detail, but they cannot manufacture
+            # independent confidence for a trust promotion.
+            independent_clusters = len(self.contested_edges_by_cluster)
+            confidence = min(1.0, independent_clusters / MIN_CONTESTED_N)
             contested_rate = self.contested_beat / self.contested_n
             rate_weight = math.exp(2.5 * (contested_rate - 0.5) * confidence)
             mean_edge = self.contested_edge_sum / self.contested_n
@@ -340,39 +375,11 @@ def _evidence_disposition(
     }
 
 
-_SPORTS_LEAGUE_PREFIXES: tuple[tuple[str, str], ...] = (
-    ("KXNCAAMBGAME", "ncaamb"),
-    ("KXNCAAMBTOTAL", "ncaamb"),
-    ("KXNCAAFGAME", "ncaaf"),
-    ("KXNCAAFTOTAL", "ncaaf"),
-    ("KXWNBAGAME", "wnba"),
-    ("KXNBAGAME", "nba"),
-    ("KXNBATOTAL", "nba"),
-    ("KXNFLGAME", "nfl"),
-    ("KXNFLTOTAL", "nfl"),
-    ("KXNHLGAME", "nhl"),
-    ("KXNHLTOTAL", "nhl"),
-    ("KXMLB", "mlb"),
-)
-
-
 def _sports_dimensions(row: dict[str, Any]) -> dict[str, str] | None:
     ticker = str(row["ticker"]).upper()
-    league = next(
-        (label for prefix, label in _SPORTS_LEAGUE_PREFIXES if ticker.startswith(prefix)),
-        None,
-    )
-    if league is None:
+    spec = spec_for(ticker)
+    if spec is None:
         return None
-    series = ticker.split("-", 1)[0]
-    if "SPREAD" in series:
-        market_type = "spread"
-    elif "TOTAL" in series:
-        market_type = "total"
-    elif "RFI" in series:
-        market_type = "yrfi"
-    else:
-        market_type = "winner"
     sources = row.get("sources_used") or {}
     phase = "live" if any("live" in str(source) for source in sources) else "pre"
     market = float(row["market"])
@@ -383,8 +390,8 @@ def _sports_dimensions(row: dict[str, Any]) -> dict[str, str] | None:
     else:
         regime = "balanced_40_60"
     return {
-        "league": league,
-        "market_type": market_type,
+        "league": spec.league,
+        "market_type": spec.market_type,
         "phase": phase,
         "market_regime": regime,
     }
@@ -797,13 +804,19 @@ def _shadow_ttl_sensitivity_report(conn) -> dict[str, Any]:
 
 
 def _fill_conditioned_policy_report(conn) -> dict[str, Any]:
-    """Score forecasts only where the shadow maker policy witnessed a fill."""
+    """Score forecasts only where the shadow maker policy witnessed a fill.
+
+    The isolated ``chal-*`` lane records modeled displayed-ask fills. Those are
+    useful counterfactual research rows, but they are not witnessed maker fills
+    and cannot enter this operational cohort.
+    """
     rows = conn.execute(
         """
         SELECT d.market_ticker,d.probability_yes,d.market_implied_yes,d.created_at,
                s.result_yes,s.settled_at
         FROM decisions d JOIN settlements s USING(market_ticker)
         WHERE d.market_implied_yes IS NOT NULL
+          AND d.decision_id NOT LIKE 'chal-%'
           AND EXISTS (SELECT 1 FROM outcomes f
                       WHERE f.decision_id=d.decision_id AND f.fill_count>0)
         ORDER BY d.created_at,d.decision_id
@@ -1344,6 +1357,383 @@ def _score_source_evidence(
     return trackers, scoped_trackers, scope_trackers
 
 
+def _recal_cluster_atomic_partition(
+    settlements: dict[str, int],
+    settled_at: dict[str, str],
+    *,
+    holdout_fraction: float,
+    min_holdout: int,
+    min_holdout_clusters: int,
+) -> dict[str, Any]:
+    """Create a strict chronological split without dividing event clusters."""
+    from autonomy.correlation import group_key
+
+    target_holdout_markets = int(len(settlements) * holdout_fraction)
+    if target_holdout_markets < min_holdout:
+        return {
+            "status": "SKIPPED",
+            "reason": (
+                f"insufficient_holdout:{target_holdout_markets}<{min_holdout}"
+            ),
+            "holdout_markets": target_holdout_markets,
+            "minimum_holdout_required": min_holdout,
+        }
+
+    cluster_by_ticker: dict[str, str] = {}
+    settlement_time_by_ticker: dict[str, datetime] = {}
+    invalid_cluster_identities = 0
+    invalid_settlement_times = 0
+    for raw_ticker in settlements:
+        if (
+            not isinstance(raw_ticker, str)
+            or not raw_ticker.strip()
+            or raw_ticker != raw_ticker.strip()
+        ):
+            invalid_cluster_identities += 1
+            continue
+        try:
+            cluster = group_key(raw_ticker)
+        except Exception:  # noqa: BLE001 - malformed identity is evidence failure
+            invalid_cluster_identities += 1
+            continue
+        if (
+            not isinstance(cluster, str)
+            or not cluster.strip()
+            or ":" not in cluster
+            or not cluster.split(":", 1)[1]
+            or len(cluster) > 256
+        ):
+            invalid_cluster_identities += 1
+            continue
+        try:
+            stamp = datetime.fromisoformat(
+                str(settled_at.get(raw_ticker) or "").replace("Z", "+00:00")
+            )
+            if stamp.tzinfo is None:
+                raise ValueError("settlement timestamp must be timezone-aware")
+            stamp = stamp.astimezone(timezone.utc)
+        except (TypeError, ValueError):
+            invalid_settlement_times += 1
+            continue
+        cluster_by_ticker[raw_ticker] = cluster
+        settlement_time_by_ticker[raw_ticker] = stamp
+
+    if invalid_cluster_identities:
+        return {
+            "status": "INVALID",
+            "reason": "invalid_event_cluster_identity",
+            "invalid_event_cluster_identities": invalid_cluster_identities,
+        }
+    if invalid_settlement_times:
+        return {
+            "status": "INVALID",
+            "reason": "invalid_or_missing_settlement_timestamps",
+            "invalid_settlement_timestamps": invalid_settlement_times,
+        }
+
+    tickers_by_cluster: dict[str, list[str]] = {}
+    for ticker, cluster in cluster_by_ticker.items():
+        tickers_by_cluster.setdefault(cluster, []).append(ticker)
+    total_clusters = len(tickers_by_cluster)
+    if total_clusters <= min_holdout_clusters:
+        return {
+            "status": "SKIPPED",
+            "reason": (
+                "insufficient_event_clusters_for_train_holdout:"
+                f"{total_clusters}<={min_holdout_clusters}"
+            ),
+            "event_clusters": total_clusters,
+            "minimum_holdout_event_clusters": min_holdout_clusters,
+        }
+
+    intervals: list[dict[str, Any]] = []
+    for cluster, tickers in tickers_by_cluster.items():
+        stamps = [settlement_time_by_ticker[ticker] for ticker in tickers]
+        intervals.append({
+            "start": min(stamps),
+            "end": max(stamps),
+            "clusters": {cluster},
+            "tickers": set(tickers),
+        })
+    intervals.sort(
+        key=lambda row: (
+            row["start"],
+            row["end"],
+            min(row["clusters"]),
+        )
+    )
+
+    # If cluster settlement intervals overlap, no strict chronological cutoff
+    # can separate them. Merge the connected component into one indivisible
+    # time block instead of letting either side observe part of the cluster.
+    time_blocks: list[dict[str, Any]] = []
+    for interval in intervals:
+        if time_blocks and interval["start"] <= time_blocks[-1]["end"]:
+            block = time_blocks[-1]
+            block["end"] = max(block["end"], interval["end"])
+            block["clusters"].update(interval["clusters"])
+            block["tickers"].update(interval["tickers"])
+        else:
+            time_blocks.append({
+                "start": interval["start"],
+                "end": interval["end"],
+                "clusters": set(interval["clusters"]),
+                "tickers": set(interval["tickers"]),
+            })
+
+    selected_holdout_blocks: list[dict[str, Any]] = []
+    holdout_markets = 0
+    holdout_clusters = 0
+    for block in reversed(time_blocks):
+        if (
+            holdout_markets >= target_holdout_markets
+            and holdout_clusters >= min_holdout_clusters
+        ):
+            break
+        selected_holdout_blocks.append(block)
+        holdout_markets += len(block["tickers"])
+        holdout_clusters += len(block["clusters"])
+
+    if (
+        holdout_markets < target_holdout_markets
+        or holdout_clusters < min_holdout_clusters
+    ):
+        return {
+            "status": "SKIPPED",
+            "reason": "insufficient_cluster_atomic_holdout",
+            "holdout_markets": holdout_markets,
+            "minimum_holdout_required": min_holdout,
+            "holdout_event_clusters": holdout_clusters,
+            "minimum_holdout_event_clusters": min_holdout_clusters,
+        }
+    if len(selected_holdout_blocks) >= len(time_blocks):
+        return {
+            "status": "SKIPPED",
+            "reason": "no_strictly_earlier_cluster_atomic_training_partition",
+            "time_blocks": len(time_blocks),
+            "event_clusters": total_clusters,
+        }
+
+    holdout_tickers = set().union(
+        *(block["tickers"] for block in selected_holdout_blocks)
+    )
+    holdout_cluster_ids = set().union(
+        *(block["clusters"] for block in selected_holdout_blocks)
+    )
+    train_tickers = set(settlements) - holdout_tickers
+    train_cluster_ids = {
+        cluster_by_ticker[ticker] for ticker in train_tickers
+    }
+    train_latest = max(settlement_time_by_ticker[ticker] for ticker in train_tickers)
+    holdout_earliest = min(
+        settlement_time_by_ticker[ticker] for ticker in holdout_tickers
+    )
+    if (
+        train_cluster_ids & holdout_cluster_ids
+        or not train_latest < holdout_earliest
+    ):
+        return {
+            "status": "ERROR",
+            "reason": "cluster_atomic_chronology_invariant_failed",
+        }
+    return {
+        "status": "OK",
+        "train_tickers": sorted(train_tickers),
+        "holdout_tickers": sorted(holdout_tickers),
+        "cluster_by_ticker": cluster_by_ticker,
+        "train_event_clusters": len(train_cluster_ids),
+        "holdout_event_clusters": len(holdout_cluster_ids),
+        "event_clusters": total_clusters,
+        "time_blocks": len(time_blocks),
+        "target_holdout_markets": target_holdout_markets,
+        "train_latest_settlement": train_latest.isoformat(),
+        "holdout_earliest_settlement": holdout_earliest.isoformat(),
+    }
+
+
+def _recal_paired_cluster_improvement_ci(
+    improvements_by_cluster: dict[str, list[float]],
+) -> dict[str, Any] | None:
+    """Equal-cluster paired bootstrap of incumbent-minus-candidate Brier."""
+    cluster_means = [
+        sum(improvements_by_cluster[cluster])
+        / len(improvements_by_cluster[cluster])
+        for cluster in sorted(improvements_by_cluster)
+        if improvements_by_cluster[cluster]
+    ]
+    cluster_count = len(cluster_means)
+    if not cluster_means or cluster_count > RECAL_OOS_MAX_HOLDOUT_CLUSTERS:
+        return None
+    observed = sum(cluster_means) / cluster_count
+    if cluster_count == 1:
+        lower = upper = observed
+        resamples = 0
+    else:
+        resamples = max(
+            RECAL_OOS_MIN_BOOTSTRAP_SAMPLES,
+            min(
+                BOOTSTRAP_SAMPLES,
+                RECAL_OOS_MAX_BOOTSTRAP_DRAWS // cluster_count,
+            ),
+        )
+        rng = random.Random(RECAL_OOS_BOOTSTRAP_SEED)
+        samples = [
+            sum(
+                cluster_means[rng.randrange(cluster_count)]
+                for _ in range(cluster_count)
+            )
+            / cluster_count
+            for _ in range(resamples)
+        ]
+        lower = float(_percentile(samples, 0.025) or 0.0)
+        upper = float(_percentile(samples, 0.975) or 0.0)
+    return {
+        "mean": round(observed, 10),
+        "lower": round(lower, 10),
+        "upper": round(upper, 10),
+        "confidence": 0.95,
+        "method": RECAL_OOS_BOOTSTRAP_METHOD,
+        "resampling_unit": "equal_weight_event_cluster_mean",
+        "clusters": cluster_count,
+        "resamples": resamples,
+        "seed": RECAL_OOS_BOOTSTRAP_SEED,
+        "maximum_bootstrap_draws": RECAL_OOS_MAX_BOOTSTRAP_DRAWS,
+    }
+
+
+def _recal_oos_receipt(
+    status: str,
+    *,
+    reason: str | None = None,
+    adopted: bool = False,
+    **details: Any,
+) -> dict[str, Any]:
+    """Build a fail-closed, non-execution recalibration evidence receipt."""
+    receipt: dict[str, Any] = {
+        "status": status,
+        "adopted": bool(adopted),
+        "held_out_improvement_verified": bool(adopted and status == "OK"),
+        "evidence_mode": "held_out_research_challenger",
+        "authority": "weight_recalibration_only",
+        "execution_authority": False,
+        "capital_authority": False,
+    }
+    if reason:
+        receipt["reason"] = reason
+    receipt.update(details)
+    return receipt
+
+
+def _recal_oos_adoption_valid(receipt: dict[str, Any] | None) -> bool:
+    """Require a complete, self-consistent improvement receipt before writes."""
+    if (
+        not isinstance(receipt, dict)
+        or receipt.get("status") != "OK"
+        or receipt.get("adopted") is not True
+        or receipt.get("held_out_improvement_verified") is not True
+        or receipt.get("evidence_mode") != "held_out_research_challenger"
+        or receipt.get("authority") != "weight_recalibration_only"
+        or receipt.get("execution_authority") is not False
+        or receipt.get("capital_authority") is not False
+    ):
+        return False
+    try:
+        holdout_markets = int(receipt["holdout_markets"])
+        minimum_holdout = int(receipt["minimum_holdout_required"])
+        train_markets = int(receipt["train_markets"])
+        holdout_clusters = int(receipt["holdout_event_clusters"])
+        minimum_holdout_clusters = int(
+            receipt["minimum_holdout_event_clusters"]
+        )
+        train_clusters = int(receipt["train_event_clusters"])
+        partition_holdout_clusters = int(
+            receipt["partition_holdout_event_clusters"]
+        )
+        cluster_overlap_count = int(receipt["cluster_overlap_count"])
+        candidate_brier = float(receipt["candidate_holdout_brier"])
+        incumbent_brier = float(receipt["incumbent_holdout_brier"])
+        delta = float(receipt["oos_brier_delta"])
+        improvement = float(receipt["oos_brier_improvement"])
+        minimum_improvement = max(
+            0.0, float(receipt["minimum_improvement_required"])
+        )
+        interval = receipt["paired_cluster_brier_improvement_ci95"]
+        interval_mean = float(interval["mean"])
+        interval_lower = float(interval["lower"])
+        interval_upper = float(interval["upper"])
+        interval_clusters = int(interval["clusters"])
+        interval_resamples = int(interval["resamples"])
+        interval_confidence = float(interval["confidence"])
+        maximum_bootstrap_draws = int(interval["maximum_bootstrap_draws"])
+    except (KeyError, TypeError, ValueError):
+        return False
+    if (
+        minimum_holdout <= 0
+        or holdout_markets < minimum_holdout
+        or train_markets <= 0
+        or minimum_holdout_clusters <= 0
+        or holdout_clusters < minimum_holdout_clusters
+        or holdout_clusters > holdout_markets
+        or holdout_clusters > RECAL_OOS_MAX_HOLDOUT_CLUSTERS
+        or partition_holdout_clusters < holdout_clusters
+        or train_clusters <= 0
+        or cluster_overlap_count != 0
+        or interval_clusters != holdout_clusters
+        or receipt.get("cluster_identity_complete") is not True
+        or receipt.get("cluster_atomic_split") is not True
+        or receipt.get("cluster_identity_method")
+        != RECAL_OOS_CLUSTER_IDENTITY_METHOD
+        or receipt.get("split_method") != RECAL_OOS_SPLIT_METHOD
+        or not isinstance(interval, dict)
+        or interval.get("method") != RECAL_OOS_BOOTSTRAP_METHOD
+        or interval.get("resampling_unit") != "equal_weight_event_cluster_mean"
+        or interval.get("seed") != RECAL_OOS_BOOTSTRAP_SEED
+        or not math.isclose(interval_confidence, 0.95, abs_tol=1e-12)
+        or maximum_bootstrap_draws != RECAL_OOS_MAX_BOOTSTRAP_DRAWS
+        or (
+            holdout_clusters == 1
+            and interval_resamples != 0
+        )
+        or (
+            holdout_clusters > 1
+            and interval_resamples
+            != max(
+                RECAL_OOS_MIN_BOOTSTRAP_SAMPLES,
+                min(
+                    BOOTSTRAP_SAMPLES,
+                    RECAL_OOS_MAX_BOOTSTRAP_DRAWS // holdout_clusters,
+                ),
+            )
+        )
+        or not all(math.isfinite(value) for value in (
+            candidate_brier,
+            incumbent_brier,
+            delta,
+            improvement,
+            minimum_improvement,
+            interval_mean,
+            interval_lower,
+            interval_upper,
+        ))
+    ):
+        return False
+    return bool(
+        candidate_brier < incumbent_brier
+        and improvement > minimum_improvement
+        and interval_lower > minimum_improvement
+        and interval_upper >= interval_lower
+        and math.isclose(
+            delta, candidate_brier - incumbent_brier, abs_tol=1e-9,
+        )
+        and math.isclose(
+            improvement, incumbent_brier - candidate_brier, abs_tol=1e-9,
+        )
+        and math.isclose(
+            interval_mean, improvement, abs_tol=1e-9,
+        )
+    )
+
+
 def _recal_oos_gate(
     conn,
     signals_by_ticker: dict[str, list[dict[str, Any]]],
@@ -1352,6 +1742,7 @@ def _recal_oos_gate(
     *,
     holdout_fraction: float = 0.15,
     min_holdout: int = 500,
+    min_holdout_clusters: int = RECAL_OOS_MIN_HOLDOUT_CLUSTERS,
 ) -> dict[str, Any]:
     """Out-of-sample gate for the recalibration weight recipe (Wave-83).
 
@@ -1360,86 +1751,253 @@ def _recal_oos_gate(
     measuring whether that made forecasts better — "is the system improving?"
     was unanswerable from disk (2026-07-24 audit). This gate answers it every
     recal: derive candidate weights from the chronologically earliest
-    ``1 - holdout_fraction`` of settled markets, then score BOTH the candidate
-    recipe and the incumbent ledger weights on the untouched holdout tail with
-    the same trust-weighted ensemble mean. If the freshly derived recipe grades
-    worse than the weights already live, the overwrite is refused.
+    ``1 - holdout_fraction`` of settled event clusters, then score BOTH the
+    candidate recipe and the incumbent ledger weights on the untouched,
+    cluster-atomic holdout tail with the same trust-weighted ensemble mean.
+    Adoption additionally requires the deterministic paired event-cluster
+    bootstrap's 95% lower improvement bound to be positive.
 
     Approximation note: the holdout ensemble is a trust-weighted mean of each
     source's last pre-settlement probability — simpler than live fusion
     (no inverse-variance, no family de-dup) — but both weight vectors are
     scored through the IDENTICAL functional form, so the comparison of the
     vectors is fair even though the absolute Brier differs from production.
-    Clusters may straddle the time split; that leaks both ways equally.
+    This receipt can authorize only the bounded weight-recalibration write; it
+    grants no execution or capital authority.
     """
+    if (
+        not 0.0 < holdout_fraction < 1.0
+        or min_holdout <= 0
+        or min_holdout_clusters <= 0
+    ):
+        return _recal_oos_receipt(
+            "INVALID",
+            reason="invalid_holdout_configuration",
+        )
     settled_at: dict[str, str] = {
-        str(row[0]): str(row[1])
+        str(row[0]): str(row[1]) if row[1] is not None else ""
         for row in conn.execute("SELECT market_ticker, settled_at FROM settlements")
     }
-    ordered = sorted(settlements.keys(), key=lambda t: settled_at.get(t, ""))
-    n_holdout = int(len(ordered) * holdout_fraction)
-    if n_holdout < min_holdout:
-        return {
-            "status": "SKIPPED",
-            "reason": f"insufficient_holdout:{n_holdout}<{min_holdout}",
-            "adopted": True,
+    partition = _recal_cluster_atomic_partition(
+        settlements,
+        settled_at,
+        holdout_fraction=holdout_fraction,
+        min_holdout=min_holdout,
+        min_holdout_clusters=min_holdout_clusters,
+    )
+    if partition.get("status") != "OK":
+        details = {
+            key: value
+            for key, value in partition.items()
+            if key not in {"status", "reason"}
         }
-    train_tickers = ordered[:-n_holdout]
-    holdout_tickers = ordered[-n_holdout:]
+        return _recal_oos_receipt(
+            str(partition.get("status") or "ERROR"),
+            reason=str(partition.get("reason") or "cluster_partition_failed"),
+            **details,
+        )
+    train_tickers = list(partition["train_tickers"])
+    holdout_tickers = list(partition["holdout_tickers"])
+    cluster_by_ticker = dict(partition["cluster_by_ticker"])
 
     train_trackers, _scoped, _scope = _score_source_evidence(
         signals_by_ticker, {t: settlements[t] for t in train_tickers},
     )
     candidate = {s: t.derived_weight() for s, t in train_trackers.items()}
+    if not candidate:
+        return _recal_oos_receipt(
+            "SKIPPED",
+            reason="no_candidate_weights_from_training_evidence",
+            holdout_markets=len(holdout_tickers),
+            minimum_holdout_required=min_holdout,
+            train_markets=len(train_tickers),
+            holdout_event_clusters=partition["holdout_event_clusters"],
+            minimum_holdout_event_clusters=min_holdout_clusters,
+            train_event_clusters=partition["train_event_clusters"],
+        )
 
-    def _holdout_brier(weights: dict[str, float]) -> tuple[float | None, int]:
-        total = 0.0
-        n = 0
-        for ticker in holdout_tickers:
-            rows = signals_by_ticker.get(ticker, [])
-            if not rows:
-                continue
-            latest = {str(r["source"]): float(r["probability_yes"]) for r in rows}
-            weight_sum = 0.0
-            prob_sum = 0.0
-            for source, prob in latest.items():
-                w = float(weights.get(source, 1.0))
-                weight_sum += w
-                prob_sum += w * prob
-            if weight_sum <= 0.0:
-                continue
-            ensemble = min(0.995, max(0.005, prob_sum / weight_sum))
-            total += _brier(ensemble, settlements[ticker])
-            n += 1
-        return (total / n if n else None), n
+    def _ticker_brier(ticker: str, weights: dict[str, float]) -> float | None:
+        rows = signals_by_ticker.get(ticker, [])
+        if not rows:
+            return None
+        try:
+            latest = {
+                str(row["source"]): float(row["probability_yes"])
+                for row in rows
+            }
+        except (KeyError, TypeError, ValueError):
+            return None
+        if not latest or any(
+            not math.isfinite(probability)
+            or not 0.0 <= probability <= 1.0
+            for probability in latest.values()
+        ):
+            return None
+        weight_sum = 0.0
+        probability_sum = 0.0
+        for source, probability in latest.items():
+            try:
+                weight = float(weights.get(source, 1.0))
+            except (TypeError, ValueError):
+                return None
+            if not math.isfinite(weight) or weight < 0.0:
+                return None
+            weight_sum += weight
+            probability_sum += weight * probability
+        if weight_sum <= 0.0:
+            return None
+        ensemble = min(0.995, max(0.005, probability_sum / weight_sum))
+        return _brier(ensemble, settlements[ticker])
 
-    candidate_brier, scored_n = _holdout_brier(candidate)
-    incumbent_brier, _ = _holdout_brier(incumbent_weights)
-    if candidate_brier is None or incumbent_brier is None:
-        return {
-            "status": "SKIPPED",
-            "reason": "no_scorable_holdout_markets",
-            "adopted": True,
-        }
-    import os
+    candidate_briers_by_cluster: dict[str, list[float]] = {}
+    incumbent_briers_by_cluster: dict[str, list[float]] = {}
+    improvements_by_cluster: dict[str, list[float]] = {}
+    cohort_mismatches = 0
+    for ticker in holdout_tickers:
+        candidate_brier = _ticker_brier(ticker, candidate)
+        incumbent_brier = _ticker_brier(ticker, incumbent_weights)
+        if candidate_brier is None and incumbent_brier is None:
+            continue
+        if candidate_brier is None or incumbent_brier is None:
+            cohort_mismatches += 1
+            continue
+        cluster = cluster_by_ticker[ticker]
+        candidate_briers_by_cluster.setdefault(cluster, []).append(candidate_brier)
+        incumbent_briers_by_cluster.setdefault(cluster, []).append(incumbent_brier)
+        improvements_by_cluster.setdefault(cluster, []).append(
+            incumbent_brier - candidate_brier
+        )
 
-    try:
-        tolerance = float(os.environ.get("DUMMY_RECAL_OOS_TOLERANCE_BRIER", "0.0005"))
-    except (TypeError, ValueError):
-        tolerance = 0.0005
-    delta = candidate_brier - incumbent_brier
-    adopted = delta <= tolerance
-    return {
-        "status": "OK",
-        "adopted": adopted,
-        "holdout_markets": scored_n,
-        "holdout_fraction": holdout_fraction,
-        "train_markets": len(train_tickers),
-        "candidate_holdout_brier": round(candidate_brier, 6),
-        "incumbent_holdout_brier": round(incumbent_brier, 6),
-        "oos_brier_delta": round(delta, 6),
-        "tolerance": tolerance,
-    }
+    if cohort_mismatches:
+        return _recal_oos_receipt(
+            "SKIPPED",
+            reason="candidate_incumbent_holdout_cohort_mismatch",
+            candidate_incumbent_cohort_mismatches=cohort_mismatches,
+            minimum_holdout_required=min_holdout,
+            minimum_holdout_event_clusters=min_holdout_clusters,
+            train_markets=len(train_tickers),
+            train_event_clusters=partition["train_event_clusters"],
+        )
+    scored_n = sum(len(values) for values in improvements_by_cluster.values())
+    if not scored_n:
+        return _recal_oos_receipt(
+            "SKIPPED",
+            reason="no_scorable_holdout_markets",
+            holdout_markets=0,
+            minimum_holdout_required=min_holdout,
+            train_markets=len(train_tickers),
+        )
+    if scored_n < min_holdout:
+        return _recal_oos_receipt(
+            "SKIPPED",
+            reason=f"insufficient_scorable_holdout:{scored_n}<{min_holdout}",
+            holdout_markets=scored_n,
+            minimum_holdout_required=min_holdout,
+            train_markets=len(train_tickers),
+        )
+    scored_clusters = len(improvements_by_cluster)
+    if scored_clusters < min_holdout_clusters:
+        return _recal_oos_receipt(
+            "SKIPPED",
+            reason=(
+                "insufficient_scorable_holdout_event_clusters:"
+                f"{scored_clusters}<{min_holdout_clusters}"
+            ),
+            holdout_markets=scored_n,
+            minimum_holdout_required=min_holdout,
+            holdout_event_clusters=scored_clusters,
+            minimum_holdout_event_clusters=min_holdout_clusters,
+            train_markets=len(train_tickers),
+            train_event_clusters=partition["train_event_clusters"],
+        )
+
+    interval = _recal_paired_cluster_improvement_ci(improvements_by_cluster)
+    if interval is None:
+        return _recal_oos_receipt(
+            "ERROR",
+            reason="paired_cluster_bootstrap_resource_or_evidence_failure",
+            holdout_markets=scored_n,
+            minimum_holdout_required=min_holdout,
+            train_markets=len(train_tickers),
+            holdout_event_clusters=scored_clusters,
+            minimum_holdout_event_clusters=min_holdout_clusters,
+            train_event_clusters=partition["train_event_clusters"],
+        )
+
+    candidate_cluster_means = [
+        sum(candidate_briers_by_cluster[cluster])
+        / len(candidate_briers_by_cluster[cluster])
+        for cluster in sorted(candidate_briers_by_cluster)
+    ]
+    incumbent_cluster_means = [
+        sum(incumbent_briers_by_cluster[cluster])
+        / len(incumbent_briers_by_cluster[cluster])
+        for cluster in sorted(incumbent_briers_by_cluster)
+    ]
+    candidate_score = round(
+        sum(candidate_cluster_means) / scored_clusters, 10,
+    )
+    incumbent_score = round(
+        sum(incumbent_cluster_means) / scored_clusters, 10,
+    )
+    delta = round(candidate_score - incumbent_score, 10)
+    improvement = round(incumbent_score - candidate_score, 10)
+    minimum_improvement = 0.0
+    market_candidate_brier = (
+        sum(sum(values) for values in candidate_briers_by_cluster.values())
+        / scored_n
+    )
+    market_incumbent_brier = (
+        sum(sum(values) for values in incumbent_briers_by_cluster.values())
+        / scored_n
+    )
+    adopted = bool(
+        improvement > minimum_improvement
+        and float(interval["lower"]) > minimum_improvement
+    )
+    return _recal_oos_receipt(
+        "OK",
+        reason=(
+            None
+            if adopted
+            else "paired_cluster_improvement_lower_bound_not_positive"
+        ),
+        adopted=adopted,
+        holdout_markets=scored_n,
+        holdout_fraction=holdout_fraction,
+        minimum_holdout_required=min_holdout,
+        train_markets=len(train_tickers),
+        holdout_event_clusters=scored_clusters,
+        minimum_holdout_event_clusters=min_holdout_clusters,
+        train_event_clusters=partition["train_event_clusters"],
+        partition_holdout_event_clusters=partition["holdout_event_clusters"],
+        total_event_clusters=partition["event_clusters"],
+        cluster_identity_complete=True,
+        cluster_atomic_split=True,
+        cluster_overlap_count=0,
+        cluster_identity_method=RECAL_OOS_CLUSTER_IDENTITY_METHOD,
+        split_method=RECAL_OOS_SPLIT_METHOD,
+        split_time_blocks=partition["time_blocks"],
+        target_holdout_markets=partition["target_holdout_markets"],
+        train_latest_settlement=partition["train_latest_settlement"],
+        holdout_earliest_settlement=partition["holdout_earliest_settlement"],
+        candidate_holdout_brier=candidate_score,
+        incumbent_holdout_brier=incumbent_score,
+        oos_brier_delta=delta,
+        oos_brier_improvement=improvement,
+        minimum_improvement_required=minimum_improvement,
+        paired_cluster_brier_improvement_ci95=interval,
+        market_weighted_candidate_holdout_brier=round(
+            market_candidate_brier, 10,
+        ),
+        market_weighted_incumbent_holdout_brier=round(
+            market_incumbent_brier, 10,
+        ),
+        market_weighted_oos_brier_improvement=round(
+            market_incumbent_brier - market_candidate_brier, 10,
+        ),
+        tolerance=0.0,
+    )
 
 
 def _live_capability_signal_inventory(
@@ -1509,11 +2067,15 @@ def run_backtest(ledger: AutonomyLedger, bootstrap_weights: bool = False,
         signals_by_ticker, settlements,
     )
 
-    # Realized decision P&L (settled decisions only).
+    # Realized decision P&L (settled, non-modeled decisions only). The
+    # challenger lane deliberately writes synthetic displayed-ask fills under
+    # ``chal-*`` IDs; mixing those rows into this headline previously made
+    # modeled challenger P&L look like witnessed operating P&L.
     pnl_rows = conn.execute(
         """
         SELECT COALESCE(SUM(o.pnl_cents),0), COUNT(*) FROM outcomes o
         WHERE o.pnl_cents IS NOT NULL AND o.kind IN ('SETTLED_WIN','SETTLED_LOSS')
+          AND o.decision_id NOT LIKE 'chal-%'
           AND EXISTS (
               SELECT 1 FROM outcomes fill
               WHERE fill.decision_id = o.decision_id
@@ -1523,10 +2085,23 @@ def run_backtest(ledger: AutonomyLedger, bootstrap_weights: bool = False,
     ).fetchone()
     realized_pnl = int(pnl_rows[0])
     graded = int(pnl_rows[1])
+    modeled_pnl_rows = conn.execute(
+        """
+        SELECT COALESCE(SUM(o.pnl_cents),0), COUNT(*) FROM outcomes o
+        WHERE o.pnl_cents IS NOT NULL AND o.kind IN ('SETTLED_WIN','SETTLED_LOSS')
+          AND o.decision_id LIKE 'chal-%'
+          AND EXISTS (
+              SELECT 1 FROM outcomes fill
+              WHERE fill.decision_id = o.decision_id
+                AND fill.id < o.id AND fill.fill_count > 0
+          )
+        """
+    ).fetchone()
     unverified = int(conn.execute(
         """
         SELECT COUNT(*) FROM outcomes o
         WHERE o.pnl_cents IS NOT NULL AND o.kind IN ('SETTLED_WIN','SETTLED_LOSS')
+          AND o.decision_id NOT LIKE 'chal-%'
           AND NOT EXISTS (
               SELECT 1 FROM outcomes fill
               WHERE fill.decision_id = o.decision_id
@@ -1608,16 +2183,20 @@ def run_backtest(ledger: AutonomyLedger, bootstrap_weights: bool = False,
     # single-cycle jump bound is the online learner's guard, not this one.
     weights_rejected_reasons: list[str] = []
     oos_gate: dict[str, Any] | None = None
+    oos_adoption_valid = False
     if bootstrap_weights:
         from autonomy.learner import screen_weight_vector
 
         weights_rejected_reasons = screen_weight_vector(derived, None)
 
-        # Wave-83 out-of-sample gate: refuse to overwrite live trust with a
-        # freshly derived recipe that grades worse than the incumbent weights
-        # on a chronological holdout. Writes recal_oos_delta.json every
+        # Wave-83 out-of-sample gate: refuse to overwrite live trust unless a
+        # freshly derived recipe has a positive paired cluster-bootstrap lower
+        # improvement bound on a sufficiently large cluster-atomic holdout.
+        # Writes
+        # recal_oos_delta.json every
         # weight-writing pass so "is the recal improving forecasts?" is
-        # answerable from disk. DUMMY_RECAL_OOS_GATE=0 opts out.
+        # answerable from disk. DUMMY_RECAL_OOS_GATE=0 disables adoption, not
+        # evidence validation: an opt-out can never become a fail-open write.
         import os as _os
 
         if _os.environ.get("DUMMY_RECAL_OOS_GATE", "1") == "1":
@@ -1625,30 +2204,61 @@ def run_backtest(ledger: AutonomyLedger, bootstrap_weights: bool = False,
                 oos_gate = _recal_oos_gate(
                     conn, signals_by_ticker, settlements, ledger.all_weights(),
                 )
-            except Exception as exc:  # noqa: BLE001 - gate failure must not kill recal
-                oos_gate = {
-                    "status": "ERROR",
-                    "reason": f"{type(exc).__name__}: {exc}"[:300],
-                    "adopted": True,  # fail-open to legacy behavior, disclosed
-                }
-            if not oos_gate.get("adopted", True):
-                weights_rejected_reasons.append(
-                    f"oos_regression:{oos_gate.get('oos_brier_delta'):+.6f}"
+            except Exception as exc:  # noqa: BLE001 - block writes, keep report alive
+                oos_gate = _recal_oos_receipt(
+                    "ERROR",
+                    reason=f"{type(exc).__name__}: {exc}"[:300],
                 )
-            try:
-                oos_path = Path(RECAL_OOS_DELTA_PATH)
-                oos_path.parent.mkdir(parents=True, exist_ok=True)
-                payload = dict(oos_gate)
-                payload["at"] = datetime.now(timezone.utc).isoformat()
-                tmp = oos_path.with_suffix(".json.tmp")
-                tmp.write_text(
-                    json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8"
-                )
-                tmp.replace(oos_path)
-            except Exception:  # noqa: BLE001 - artifact write is best-effort
-                pass
+        else:
+            oos_gate = _recal_oos_receipt(
+                "DISABLED",
+                reason="DUMMY_RECAL_OOS_GATE_disabled_weight_adoption",
+            )
+
+        if not isinstance(oos_gate, dict):
+            oos_gate = _recal_oos_receipt(
+                "ERROR",
+                reason="invalid_recal_oos_receipt_type",
+            )
+        oos_adoption_valid = _recal_oos_adoption_valid(oos_gate)
+        if not oos_adoption_valid:
+            if isinstance(oos_gate, dict):
+                # Never trust a malformed or internally inconsistent positive
+                # receipt merely because it carried ``adopted: true``.
+                oos_gate["adopted"] = False
+                oos_gate["held_out_improvement_verified"] = False
+                if oos_gate.get("status") == "OK" and not oos_gate.get("reason"):
+                    oos_gate["reason"] = "invalid_or_non_improving_holdout_receipt"
+            status = str((oos_gate or {}).get("status") or "MISSING")
+            reason = str((oos_gate or {}).get("reason") or "no_valid_receipt")
+            delta = (oos_gate or {}).get("oos_brier_delta")
+            if (
+                status == "OK"
+                and isinstance(delta, (int, float))
+                and math.isfinite(float(delta))
+                and float(delta) >= 0.0
+            ):
+                rejection = f"oos_no_improvement:{float(delta):+.6f}"
+            else:
+                rejection = f"oos_evidence_unavailable:{status}:{reason}"[:300]
+            weights_rejected_reasons.append(rejection)
+        try:
+            oos_path = Path(RECAL_OOS_DELTA_PATH)
+            oos_path.parent.mkdir(parents=True, exist_ok=True)
+            payload = dict(oos_gate)
+            payload["at"] = datetime.now(timezone.utc).isoformat()
+            tmp = oos_path.with_suffix(".json.tmp")
+            tmp.write_text(
+                json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8"
+            )
+            tmp.replace(oos_path)
+        except Exception:  # noqa: BLE001 - artifact write is best-effort
+            pass
     weights_actually_written = bool(
-        bootstrap_weights and derived and not weights_rejected_reasons
+        bootstrap_weights
+        and derived
+        and oos_adoption_valid
+        and not weights_rejected_reasons
     )
     if weights_rejected_reasons:
         # Fail-closed: keep the ledger's previous weights, alert, log the
@@ -1681,12 +2291,22 @@ def run_backtest(ledger: AutonomyLedger, bootstrap_weights: bool = False,
             batch[f"scope:{scope}"] = round(tracker.derived_weight(), 3)
         ledger.update_weights(batch)
 
-    sources_by_scope = {s: {k: t.summary()[k] for k in
-                            ("n", "mean_brier", "contested_n",
-                             "contested_beat_rate", "contested_event_clusters",
-                             "contested_mean_brier_edge_ci95",
-                             "expected_calibration_error")}
-                        for s, t in scope_trackers.items()}
+    # ``summary`` performs an event-cluster bootstrap. The previous nested
+    # comprehension recomputed it once per selected field (seven times per
+    # scope); materialize each summary exactly once.
+    scope_summaries = {source: tracker.summary()
+                       for source, tracker in scope_trackers.items()}
+    sources_by_scope = {
+        source: {
+            key: summary[key]
+            for key in (
+                "n", "mean_brier", "contested_n", "contested_beat_rate",
+                "contested_event_clusters", "contested_mean_brier_edge_ci95",
+                "contested_edge_sign_test", "expected_calibration_error",
+            )
+        }
+        for source, summary in scope_summaries.items()
+    }
     capability_inventory = _live_capability_signal_inventory(conn, signals_by_ticker)
     live_source_capability_matrix = build_live_source_capability_matrix(
         capability_inventory,
@@ -1769,6 +2389,14 @@ def run_backtest(ledger: AutonomyLedger, bootstrap_weights: bool = False,
         "realized_decision_pnl_cents": realized_pnl,
         "graded_decisions": graded,
         "unverified_settlement_outcomes": unverified,
+        "modeled_challenger_lane": {
+            "settled_pnl_cents": int(modeled_pnl_rows[0]),
+            "graded_decisions": int(modeled_pnl_rows[1]),
+            "fill_semantics": "synthetic_displayed_ask_counterfactual",
+            "counts_toward_realized_pnl": False,
+            "counts_toward_fill_conditioned_policy": False,
+            "execution_authority": False,
+        },
         # ~11 full-ledger-scan diagnostic sub-reports (empty when
         # include_diagnostics=False -- the 6h weight recal skips them; the
         # adverse_selection + execution_tournament sub-reports are also emitted
@@ -1853,6 +2481,10 @@ def summarize_backtest(report: dict[str, Any]) -> dict[str, Any]:
         "realized_trade_statistics": report.get("realized_trade_statistics", {}),
         "tier_performance": report.get("tier_performance", {}),
         "realized_decision_pnl_cents": report.get("realized_decision_pnl_cents"),
+        # Synthetic challenger replays are useful research diagnostics, but
+        # must remain visibly separate from witnessed-fill realized P&L in the
+        # compact artifact consumed by dashboards and readiness gates.
+        "modeled_challenger_lane": report.get("modeled_challenger_lane", {}),
         "fill_conditioned_decision_policy": report.get(
             "fill_conditioned_decision_policy", {}
         ),

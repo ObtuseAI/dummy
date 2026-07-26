@@ -33,11 +33,14 @@ class _StubPromotion:
 
 
 def _forecaster() -> EnsembleForecaster:
-    f = EnsembleForecaster.__new__(EnsembleForecaster)
-    f.ledger = _StubLedger()
-    f.promotion = _StubPromotion()
-    f._negative_scopes = {}
-    return f
+    # Exercise the public constructor and make this unit fixture's evidence
+    # assumption explicit. Bypassing ``__init__`` omitted the no-edge trust
+    # disposition and no longer represents a constructible production object.
+    return EnsembleForecaster(
+        _StubLedger(),
+        promotion=_StubPromotion(),
+        negative_scopes=frozenset(),
+    )
 
 
 def _market(ticker: str = "KXMLBTOTAL-26JUL242010COLMIL-8") -> MarketView:

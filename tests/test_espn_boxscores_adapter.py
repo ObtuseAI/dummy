@@ -36,12 +36,20 @@ def test_ingests_missing_and_is_resumable(tmp_path):
                 _Box(gid, "BBB", {"fieldGoalsMade": 33, "fieldGoalsAttempted": 85})]
 
     res = ingest_boxscores(st, "wnba", fetch_summary=fake_fetch, parse=fake_parse,
-                           min_interval=0, sleep=lambda s: None)
+                           min_interval=0, sleep=lambda s: None,
+                           received_at="2025-06-10T00:00:00Z")
     assert res["games"] == 3 and res["rows"] == 12 and len(calls) == 3
+    envelope = st.conn.execute(
+        "SELECT DISTINCT source_available_at, received_at FROM boxscores",
+    ).fetchall()
+    assert [tuple(row) for row in envelope] == [
+        ("2025-06-10T00:00:00Z", "2025-06-10T00:00:00Z"),
+    ]
     # resumable: a second run fetches nothing (all games now have boxscores)
     calls.clear()
     res2 = ingest_boxscores(st, "wnba", fetch_summary=fake_fetch, parse=fake_parse,
-                            min_interval=0, sleep=lambda s: None)
+                            min_interval=0, sleep=lambda s: None,
+                            received_at="2025-06-11T00:00:00Z")
     assert res2["queued"] == 0 and calls == []
     st.close()
 

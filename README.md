@@ -9,7 +9,7 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/python-3.11%20%7C%203.12%20%7C%203.14-4b8bbe" alt="Python 3.11, 3.12, 3.14">
-  <img src="https://img.shields.io/badge/tests-7916%20passing-2ea44f" alt="7916 tests passing">
+  <img src="https://img.shields.io/badge/tests-4938%20passing-2ea44f" alt="4938 maintained tests passing">
   <img src="https://img.shields.io/badge/autonomous%20loops-45-3b7dd8" alt="45 autonomous loops">
   <img src="https://img.shields.io/badge/mode-SHADOW%20·%20paper-1f9d55" alt="Shadow paper mode">
   <img src="https://img.shields.io/badge/promotion%20to%20capital-human--gated-e0a100" alt="Human-gated">
@@ -17,14 +17,13 @@
 </p>
 
 <p align="center">
-  <img src="docs/assets/dummy-overview.png" alt="The Dummy Totalizator — live command board" width="900">
+  <img src="docs/assets/dummy-overview.png" alt="The Dummy loopback-only operator board" width="900">
 </p>
 
 <p align="center">
-  <em>The <strong>Dummy Totalizator</strong> — a live, read-only command board over the paper
-  runtime: paper account and ROI, a phosphor balance curve, and calibrated accuracy with
-  per-scope · per-bet-type improvement, all read straight from the runtime artifacts. Split-flap
-  counters flip on every re-price; a ⌘K palette jumps to any coin or league.</em>
+  <em>The <strong>Dummy operator board</strong> — a loopback-only, read-only view of persisted
+  account, authority, health, forecast, and grading artifacts. Split-flap counters update only
+  when evidence changes; a ⌘K palette jumps to any coin or league.</em>
 </p>
 
 <table align="center">
@@ -39,6 +38,12 @@
 </table>
 
 ---
+
+> **Current launch status: NO-GO.** The hardened code path is implemented, but
+> live operations still fail the retention/WAL/deadline gates and lack the
+> required elapsed backup, canary, grading, execution-policy, and kill-drill
+> evidence. See the
+> [elite-readiness implementation record](docs/ELITE_READINESS_IMPLEMENTATION_2026-07-26.md).
 
 Dummy watches public prediction markets, prices every one of them with a panel of
 competing models, and grades every forecast against reality the moment it settles.
@@ -93,26 +98,30 @@ capital until an explicit human promotion.
 
 ## The command board
 
-The **Dummy Totalizator** is a read-only web board served at `http://127.0.0.1:8787`
-(durable via the `DummyDashboard` scheduled task). It reads only the runtime artifacts the
-scheduled loops already write — it never touches the trading path — and turns the live paper
-runtime into a racetrack totalizator: pitch-green phosphor, split-flap lamps that flip on every
-re-price, a live ticker tape, a radial ROI gauge, and a ⌘K palette that jumps to any coin or league.
+The **Dummy operator board** is the one supported UI. It is served at
+`http://127.0.0.1:8787` by the `DummyDashboard` scheduled task and rejects non-loopback
+socket peers and Host headers. It reads persisted runtime artifacts, exposes GET-only routes,
+and has no scheduler, configuration, authority, risk, capital, or broker mutation endpoint.
 
-- **Overview** — paper account and ROI, the balance curve, and an Accuracy &amp; Improvement
-  panel that grades Brier, hit rate, and edge-vs-market, then tracks whether they are
-  *improving over time* — sliced overall, then per coin and league, then down to each **bet
-  type** (winner, total, spread, moneyline, prop, price-ladder, YRFI/NRFI, …).
+- **Overview** — cached live-account truth, explicit `LOCKED` / `ARMED / NO SESSION` /
+  `LIVE` authority state, health and freshness, and forecast-quality diagnostics kept
+  separate from realized execution evidence.
 - **Per-coin / per-league scopes** — one view each for BTC/ETH/SOL and every sports league:
   graded forecast quality, a hit-rate-and-Brier progression chart, model-vs-de-vigged-book
   comparison, live picks ranked by edge, accuracy by bet type, a day-by-day games breakdown,
   and today's settled calls marked correct or incorrect.
-- **Promotion, health, and switches** — every challenger scope closest to promotion first,
-  scheduler health, and per-vertical enable/disable controls that only pause paper loops —
-  they cannot reach live execution, credentials, risk, or capital.
+- **Crypto research charts** — locally rendered BTC/ETH/SOL candlesticks for
+  15m/1h/4h/1d/1w, deterministic indicators, pattern markers, artifact age,
+  and source provenance. The renderer is the vendored Apache-2.0 TradingView
+  Lightweight Charts library; data comes from a separately rights-reviewed
+  public API, never from TradingView scraping, cookies, widgets, or accounts.
+- **Promotion and health** — challenger evidence, blockers, scheduler observations, source
+  freshness, and local redacted model-connectivity witnesses. Refreshing the board never
+  contacts a broker or model provider.
 
-A companion native desktop board, the **Dummy Tote** (PySide6), renders the same artifacts as a
-true native app with a taskbar tray, bet notifications, and the allocation controls below.
+`desktop/launch_dummy.py` is an optional thin wrapper around the same URL. It starts a
+single-instance, read-only Windows outcome notifier; there is no second native renderer,
+Android app, Node/React client, tailnet listener, or PySide environment.
 
 ## Design
 
@@ -221,9 +230,10 @@ binds behind it; adding a candidate never raises an existing grant; and the weig
 never zero, because a scope that can never be allocated can never settle, never accrue
 evidence, and never earn its way up.
 
-Policy and a 0–100% throttle are operator-controlled from the Dummy Tote app
-(`configs/allocation.json`). The throttle can only *shrink* the pot — enlarging it past the
-sealed ceiling requires the operator caps ceremony, not a slider.
+Allocation policy remains an explicit configuration workflow in
+`configs/allocation.json`; it is intentionally absent from the read-only dashboard. The
+throttle can only *shrink* the pot — enlarging it past the sealed ceiling requires the
+operator caps ceremony, not a UI slider.
 
 ## The 45 loops
 
@@ -375,18 +385,19 @@ this actually observe, and when?* — and each is now a test.
 | Sports challenger analytics | 11, walk-forward graded |
 | LLM panel | 4 exact models, 7-call atomic, double-locked, daily USD cap |
 | Improvement waves shipped | 88 |
-| Tests | 7,916 passing |
+| Maintained tests | 4,938 passing · 86 skipped |
 | Capital at risk | $0 — paper, human-gated |
 
 ## Operator quickstart
 
 ```bash
+uv sync --frozen --all-extras                         # exact locked environment
 python scripts/run_dummy_autonomous.py start          # shadow paper session
 python scripts/run_dummy_dashboard.py --port 8787     # read-only command board
 python scripts/run_dummy_autonomous.py stop           # instant, unconditional
 python scripts/run_dummy_sports_history_backfill.py   # refresh the sports history lake
 python scripts/dummy_switches.py --show               # per-vertical paper switches
-bash scripts/verify_wave_clean.sh                     # the full CI gate (add --cov)
+uv run --frozen python -m pytest -q --timeout=120     # the full test gate
 ```
 
 Operator configuration lives in `configs/`: `switches.json` (per-vertical paper on/off),
@@ -409,12 +420,15 @@ ceiling — changing it requires the registration ceremony, not an edit).
   `tests/workstation_only_tests.txt`, including every Blunder copy-integrity and separation
   test. The suite still reports green; it simply stops proving the vendored copy is
   unmodified. No runtime code imports the sibling checkout, so the paper runtime, the
-  dashboard, and the desktop app are unaffected by its absence.
+  dashboard, and the thin desktop notifier are unaffected by its absence.
 
-Deeper detail lives in [`docs/`](docs/): [autonomy](docs/AUTONOMY.md),
+Start with the [operator index](docs/OPERATOR_START_HERE.md) and
+[shared state vocabulary](docs/OPERATOR_STATES.md). Deeper detail lives in
+[`docs/`](docs/): [autonomy](docs/AUTONOMY.md),
 [council of specialists](docs/AUTONOMY.md#council-of-specialists),
 [market-state routing](docs/MARKET_STATE_ROUTING.md), the
-[crypto paper twin](docs/CRYPTO_PAPER_TWIN.md), and design specs and corrections under
+[crypto paper twin](docs/CRYPTO_PAPER_TWIN.md),
+[Market Observer MCP](docs/MARKET_OBSERVER_MCP.md), and design specs and corrections under
 [`docs/superpowers/specs/`](docs/superpowers/specs/) and [`docs/corrections/`](docs/corrections/).
 
 <p align="center"><sub>Paper-first · evidence-gated · fail-closed · human-gated to capital.</sub></p>

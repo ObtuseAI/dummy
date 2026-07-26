@@ -7,6 +7,8 @@ import json
 from datetime import datetime, timezone
 
 from autonomy.market_pressure import (
+    Quote,
+    SideSeries,
     detect_dispersion,
     detect_steam,
     movement_series,
@@ -62,10 +64,22 @@ def test_read_archive_window_filters_props_and_started_games(tmp_path):
     now = datetime.now(timezone.utc).timestamp()
     commence_future = now + HOUR
     commence_past = now - 2 * HOUR
+    # Integer seconds round-trip through ISO without sub-microsecond drift.
+    at_commence = float(int(now - HOUR))
+    missing_commence = _event(
+        "missing", commence_future, {"dk": {"h2h": (-110, -110)}},
+    )
+    missing_commence.pop("commence_time")
     shard = tmp_path / "odds_2026-07.jsonl.gz"
     rows = [
         {"ts": now - HOUR, "key": "odds|baseball_mlb|h2h,totals,spreads|us",
          "payload": [_event("live", commence_past, {"dk": {"h2h": (-110, -110)}})]},
+        {"ts": at_commence, "key": "odds|baseball_mlb|h2h,totals,spreads|us",
+         "payload": [_event("at-commence", at_commence, {"dk": {"h2h": (-110, -110)}})]},
+        {"ts": now - HOUR, "key": "odds|baseball_mlb|h2h,totals,spreads|us",
+         "payload": [missing_commence]},
+        {"ts": now + 1.0, "key": "odds|baseball_mlb|h2h,totals,spreads|us",
+         "payload": [_event("future", commence_future, {"dk": {"h2h": (-110, -110)}})]},
         {"ts": now - HOUR, "key": "odds|baseball_mlb|h2h,totals,spreads|us",
          "payload": [_event("pre", commence_future, {"dk": {"h2h": (-110, -110)}})]},
         {"ts": now - HOUR, "key": "props|baseball_mlb|abc|batter_hits",
@@ -78,6 +92,40 @@ def test_read_archive_window_filters_props_and_started_games(tmp_path):
     ids = {ev["id"] for _ts, ev in got}
     assert ids == {"pre"}                                # live game + props filtered out
     assert _read is read_archive_window                  # re-exported symbol
+
+
+def test_movement_series_rechecks_pregame_timestamp_boundaries():
+    now = 1_000_000.0
+    valid = _event("valid", now + HOUR, {"dk": {"h2h": (-110, -110)}})
+    missing = _event("missing", now + HOUR, {"dk": {"h2h": (-110, -110)}})
+    missing.pop("commence_time")
+    snapshots = [
+        (now - HOUR, valid),
+        (now - HOUR, missing),
+        (now, _event("at-commence", now, {"dk": {"h2h": (-110, -110)}})),
+        (now + 1.0, _event("future", now + HOUR, {"dk": {"h2h": (-110, -110)}})),
+    ]
+
+    series = movement_series(snapshots, now=now)
+
+    assert {identity[0] for identity in series} == {"valid"}
+
+
+def test_velocity_uses_actual_elapsed_time_not_requested_lookback():
+    now = 1_000_000.0
+    series = SideSeries(
+        event_id="game",
+        book="book",
+        market="h2h",
+        side="HOME",
+        commence=now + HOUR,
+        quotes=[
+            Quote(ts=now - 600.0, price=None, point=None, devig_prob=0.40),
+            Quote(ts=now, price=None, point=None, devig_prob=0.50),
+        ],
+    )
+
+    assert abs(series.velocity(now, 6.0) - 0.6) < 1e-12
 
 
 def test_steam_fires_on_synchronized_move_with_originator():

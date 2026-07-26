@@ -55,6 +55,12 @@ from dummy.autoresearch.operational_ignition import (  # noqa: E402
     record_campaign_ignition_trial,
     write_ignition_report,
 )
+from dummy.autoresearch.research_coordinator import (  # noqa: E402
+    consume_intelligence_queue,
+)
+from dummy.autoresearch.research_plugins import (  # noqa: E402
+    intelligence_evidence_snapshot,
+)
 from dummy.genome import ForecastGenome  # noqa: E402
 from dummy.intelligence_lab import run_intelligence_research_cycle  # noqa: E402
 
@@ -295,6 +301,36 @@ def run_cycle(
         output_dir=output_dir / "intelligence_lab",
         observed_at=issued_at,
     )
+    control_dir = output_dir / "intelligence_lab"
+    control_report_path = control_dir / "research_control_plane_report.json"
+    try:
+        control_report = consume_intelligence_queue(
+            queue_path=control_dir / "research_queue.json",
+            journal_path=control_dir / "research_journal.sqlite3",
+            report_path=control_report_path,
+            evidence=intelligence_evidence_snapshot(
+                multi_cohort_report=multi,
+                forward_report=aggregate_forward,
+                ignition_report=ignition,
+                captured_at=issued_at,
+            ),
+            generated_at=issued_at,
+        )
+    except Exception as exc:  # noqa: BLE001 - forecast cycle remains fail-soft
+        control_report = {
+            "schema_version": 1,
+            "generated_at": issued_at.isoformat(),
+            "status": "ERROR",
+            "error_type": type(exc).__name__,
+            "negative_controls_passed": False,
+            "source_edits_applied": False,
+            "runtime_application": False,
+            "automatic_promotion": False,
+            "execution_authority": False,
+            "capital_authority": False,
+            "orders_placed": False,
+        }
+        _write_status(control_report_path, control_report)
     campaign = primary["campaign"]
     issuance = primary["issuance"]
     forward = primary["forward"]
@@ -323,6 +359,13 @@ def run_cycle(
                 + intelligence["cognitive_state"]["general_laws"]
             ),
             "highest_supported_level": intelligence["highest_supported_level"],
+            "control_plane_status": control_report["status"],
+            "control_plane_runs_created": int(
+                control_report.get("runs_created") or 0
+            ),
+            "control_plane_runs_reused": int(
+                control_report.get("runs_reused") or 0
+            ),
         },
         "orders_placed": False,
         "execution_authority": False,
@@ -350,6 +393,10 @@ def run_cycle(
             ),
             "intelligence_research_queue": str(
                 output_dir / "intelligence_lab" / "research_queue.json"
+            ),
+            "research_control_plane": str(control_report_path),
+            "research_journal": str(
+                output_dir / "intelligence_lab" / "research_journal.sqlite3"
             ),
         },
     }

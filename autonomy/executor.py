@@ -749,6 +749,13 @@ class Executor:
         )
         if isinstance(liquidity, dict):
             detail["executable_liquidity"] = dict(liquidity)
+        for key in (
+            "maker_adverse_selection_haircut_cents",
+            "maker_adverse_selection_report_sha256",
+            "maker_adverse_selection_generated_at",
+        ):
+            if key in decision.risk_snapshot:
+                detail[key] = decision.risk_snapshot[key]
         return detail
 
     def _apply_taker_policy(self, decision: Decision) -> "Decision | TradeOutcome":

@@ -36,7 +36,9 @@ def test_incorporate_only_adapter_targets():
     assert len(result["incorporated"]) == 0
     registry = load_registry()
     pending = next(e for e in registry["pending_tests"] if e["adapter_name"] == "y_adapter")
-    assert pending["test_status"] == "pending_adapter_specific_tests"
+    assert pending["lifecycle_status"] == "DORMANT"
+    assert pending["integration_status"] == "DORMANT"
+    assert pending["test_status"] == "DORMANT_UNVERIFIED"
     assert pending["production_capability"] is False
     assert pending["prediction_authority"] is False
 
@@ -59,7 +61,11 @@ def test_structural_scaffold_cannot_be_approved_into_production():
     assert "y_adapter" not in get_allowed_adapter_names()
     registry = load_registry()
     assert registry["incorporated"] == []
-    assert registry["pending_tests"][0]["test_status"] == "approval_refused_scaffold_only"
+    assert registry["pending_tests"][0]["test_status"] == "DORMANT_UNVERIFIED"
+    assert (
+        registry["pending_tests"][0]["last_verification_attempt_status"]
+        == "approval_refused_scaffold_only"
+    )
 
 
 def test_verified_upstream_adapter_requires_complete_evidence():
@@ -74,6 +80,10 @@ def test_verified_upstream_adapter_requires_complete_evidence():
         evidence={
             "adapter_specific_tests_passed": True,
             "upstream_integration_verified": True,
+            "upstream_revision": "a1b2c3d4",
+            "challenger_graded": True,
+            "challenger_grade_status": "PASSED",
+            "challenger_report_sha256": "c" * 64,
             "production_capability": True,
             "prediction_authority": True,
             "test_report_sha256": "b" * 64,
@@ -89,7 +99,9 @@ def test_require_tests_false_cannot_waive_governance():
     assert result["incorporated"] == []
     assert result["test_bypass_honored"] is False
     assert "y_adapter" not in get_allowed_adapter_names()
-    assert load_registry()["pending_tests"][0]["test_status"] == "test_waiver_refused"
+    entry = load_registry()["pending_tests"][0]
+    assert entry["test_status"] == "DORMANT_UNVERIFIED"
+    assert entry["last_verification_attempt_status"] == "test_waiver_refused"
 
 
 def test_legacy_boolean_test_claim_is_not_production_evidence():

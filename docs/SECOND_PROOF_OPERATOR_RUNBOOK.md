@@ -1,5 +1,10 @@
 # Second-Proof Operator Runbook (corrected sequence)
 
+> **SUPERSEDED — historical incident record only.** Do not use this ceremony
+> to operate Dummy. The supported current path and operator-only boundaries
+> are in [LIVE_DEPLOY_RUNBOOK.md](LIVE_DEPLOY_RUNBOOK.md). The canonical
+> dashboard is read-only and cannot perform any step in either runbook.
+
 Updated 2026-07-08 after the truth-layer audit. Read this before any live attempt.
 
 ## What actually happened on 2026-07-08

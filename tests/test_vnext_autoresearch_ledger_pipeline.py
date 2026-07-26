@@ -170,9 +170,51 @@ def test_real_ledger_compiler_is_read_only_chronological_and_candidate_independe
     )
 
 
-def test_replay_inherits_fill_only_for_the_exact_recorded_decision(tmp_path: Path) -> None:
+def test_ledger_compiler_rejects_demo_and_unknown_or_malformed_provenance(
+    tmp_path: Path,
+) -> None:
     path = tmp_path / "ledger.db"
     _ledger(path)
+    connection = sqlite3.connect(path)
+    old_ticker = "KXBTC15M-26JUL011200-00"
+    demo_ticker = "KXBTC15M-DEMO-26JUL011200-00"
+    connection.execute(
+        "UPDATE decisions SET market_ticker=? WHERE decision_id='decision-0-0'",
+        (demo_ticker,),
+    )
+    connection.execute(
+        "UPDATE settlements SET market_ticker=? WHERE market_ticker=?",
+        (demo_ticker, old_ticker),
+    )
+    connection.execute(
+        "UPDATE decisions SET sources_used=? WHERE decision_id='decision-0-1'",
+        (json.dumps({"unknown": 1.0}),),
+    )
+    connection.execute(
+        "UPDATE decisions SET sources_used=? WHERE decision_id='decision-0-2'",
+        (json.dumps({"market_prior": "not-a-number"}),),
+    )
+    connection.commit()
+    connection.close()
+
+    rows = load_ledger_evidence(path)
+
+    assert len(rows) == 21
+    assert all("DEMO" not in row.market_ticker for row in rows)
+    assert all("unknown" not in row.source_family_ids for row in rows)
+
+
+def test_replay_same_direction_different_price_does_not_inherit_fill(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "ledger.db"
+    _ledger(path)
+    connection = sqlite3.connect(path)
+    connection.execute(
+        "UPDATE decisions SET price_cents=49 WHERE decision_id='decision-0-0'"
+    )
+    connection.commit()
+    connection.close()
     rows = load_ledger_evidence(path, ticker_prefix="KXBTC15M")
     plan = build_ledger_partition_plan(rows, scope="crypto|btc|15m_direction|15m")
     base, candidate = _base_and_candidate()
@@ -183,12 +225,64 @@ def test_replay_inherits_fill_only_for_the_exact_recorded_decision(tmp_path: Pat
     )
     suite = materialize_task_suite(rows, plan=plan, policy=policy)
     filled = next(task for task in suite.tasks if task.incumbent_fill_verified)
-    assert filled.candidate_fill_verified is True
-    assert filled.candidate_pnl_cents == filled.incumbent_pnl_cents == 50
+    assert filled.candidate_probability is not None
+    assert filled.candidate_probability > filled.market_prior_probability
+    assert filled.candidate_fill_verified is False
+    assert filled.candidate_pnl_cents == 0
+    assert filled.incumbent_pnl_cents == 50
     assert filled.candidate_counterfactual_pnl_cents == 0
     complexity = measure_genome_complexity(base, candidate)
     assert complexity.changed_modules == 1
     assert complexity.added_dependencies == 0
+
+
+def test_replay_exact_action_price_and_positive_count_inherits_fill(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "ledger.db"
+    _ledger(path)
+    rows = load_ledger_evidence(path, ticker_prefix="KXBTC15M")
+    plan = build_ledger_partition_plan(rows, scope="crypto|btc|15m_direction|15m")
+    base, candidate = _base_and_candidate()
+    policy = GenomeReplayPolicy.from_genomes(
+        candidate=candidate,
+        base=base,
+        lineage_id="market-prior-anchored",
+    )
+
+    suite = materialize_task_suite(rows, plan=plan, policy=policy)
+
+    filled = next(task for task in suite.tasks if task.incumbent_fill_verified)
+    assert filled.candidate_fill_verified is True
+    assert filled.candidate_pnl_cents == filled.incumbent_pnl_cents == 50
+    assert filled.candidate_counterfactual_pnl_cents == 0
+
+
+def test_replay_nonpositive_recorded_count_never_inherits_fill(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "ledger.db"
+    _ledger(path)
+    connection = sqlite3.connect(path)
+    connection.execute(
+        "UPDATE decisions SET count=0 WHERE decision_id='decision-0-0'"
+    )
+    connection.commit()
+    connection.close()
+    rows = load_ledger_evidence(path, ticker_prefix="KXBTC15M")
+    plan = build_ledger_partition_plan(rows, scope="crypto|btc|15m_direction|15m")
+    base, candidate = _base_and_candidate()
+    policy = GenomeReplayPolicy.from_genomes(
+        candidate=candidate,
+        base=base,
+        lineage_id="market-prior-anchored",
+    )
+
+    suite = materialize_task_suite(rows, plan=plan, policy=policy)
+
+    filled = next(task for task in suite.tasks if task.incumbent_fill_verified)
+    assert filled.candidate_fill_verified is False
+    assert filled.candidate_pnl_cents == 0
 
 
 def test_loop1_campaign_explores_each_lineage_once_and_fails_closed(tmp_path: Path) -> None:

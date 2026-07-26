@@ -11,7 +11,8 @@ from repo_harvester.retry_policy import (
     run_with_bounded_retry,
 )
 
-OUT = Path("C:/src/engine/dummy/artifacts/repo_harvester")
+REPO_ROOT = Path(__file__).resolve().parents[1]
+OUT = REPO_ROOT / "artifacts" / "repo_harvester"
 OUT.mkdir(parents=True, exist_ok=True)
 
 SEM = asyncio.Semaphore(5)

@@ -200,7 +200,8 @@ def test_source_scan_creates_adapter_target():
     )
     assert plan["verdict"] == RepoVerdict.ADAPTER_TARGET.value
     assert plan["plans"][0]["emits_native_types"] is False
-    assert plan["plans"][0]["integration_status"] == "pending"
+    assert plan["plans"][0]["lifecycle_status"] == "DORMANT"
+    assert plan["plans"][0]["integration_status"] == "DORMANT"
     assert plan["plans"][0]["production_capability"] is False
 
 

@@ -185,15 +185,18 @@ def test_puck_line_home_and_away_cover_are_not_simply_complementary():
 
 def test_totals_ot_bump_increases_mass_just_above_a_tie_boundary():
     split = goal_split(0, 3.0, 3.0)
-    # Every tie total is even; pick threshold = tie_total + 0.5 so ONLY the
-    # OT/SO +1 bump can push mass across it (see module docstring's totals
-    # derivation) -- 3-3 (total 6) is the modal tie at lambda=3.0.
-    threshold = 6.5
     bumped_pmf = final_total_pmf(split)
     raw_pmf = split.total_pmf  # the zero-bump ("stays at reg total") baseline
-    bumped = total_over_probability(bumped_pmf, threshold)
-    raw = total_over_probability(raw_pmf, threshold)
-    assert bumped > raw
+    tie_mass = split.tie_total_pmf[6]
+
+    # Every tie total is even.  At the modal 3-3 cell, all mass must leave 6
+    # and arrive at 7; the contract never leaves a 30% unresolved remainder.
+    assert bumped_pmf[6] == pytest.approx(raw_pmf[6] - tie_mass)
+    assert bumped_pmf[7] == pytest.approx(raw_pmf[7] + tie_mass)
+    assert (
+        total_over_probability(bumped_pmf, 6.5)
+        - total_over_probability(raw_pmf, 6.5)
+    ) == pytest.approx(tie_mass)
 
 
 def test_totals_pmf_sums_to_one_after_the_ot_bump():
@@ -205,8 +208,8 @@ def test_totals_pmf_sums_to_one_after_the_ot_bump():
     assert sum(pmf) == pytest.approx(1.0, abs=1e-4)
 
 
-def test_ot_goal_pre_shootout_constant_is_the_documented_value():
-    assert OT_GOAL_PRE_SHOOTOUT == 0.70
+def test_ot_goal_credit_matches_settlement_rule():
+    assert OT_GOAL_PRE_SHOOTOUT == 1.0
 
 
 # ================================================================== goalie

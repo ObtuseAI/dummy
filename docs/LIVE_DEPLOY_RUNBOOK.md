@@ -49,11 +49,12 @@ gate. Nothing is required of the operator here: `build_brain(SessionMode.LIVE)`
 sets that mode itself (`autonomy/session.py:620`) as a consequence of building a
 live brain. It is an effect of arming, not a precondition for it.
 
-The surfaces that *do* gate on it — `execution/autonomous_path.py`,
-`execution/hybrid_path.py`, and the retired v4–v8 report scripts and routes
-under `archive/` — are not on this route. `autonomy/` imports neither execution
-module; the brain reaches the broker through `autonomy/executor.py` →
-`LiveBrokerFirewall`.
+The disconnected `execution/autonomous_path.py`,
+`execution/hybrid_path.py`, and versioned archive report surfaces that once
+gated on it were removed during the 2026-07-26 readiness consolidation. They
+were not on this route. Historical source remains recoverable from Git at
+`ef0d28c`; the maintained brain reaches the broker only through
+`autonomy/executor.py` → `LiveBrokerFirewall`.
 
 The gate the handoff was missing is the session in layer 2. Without it the
 executor routes to the shadow book no matter how open layer 1 is.

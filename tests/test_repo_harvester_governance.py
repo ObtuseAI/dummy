@@ -484,9 +484,8 @@ def test_registry_states_incorporation_status_in_plain_words() -> None:
 
     assert registry["verified_integration_count"] == 0
     assert registry["pending_adapter_count"] == 2
+    assert registry["dormant_adapter_count"] == 2
+    assert registry["registry_status"] == "DORMANT_UNVERIFIED"
     assert registry["incorporation_summary"].startswith(
-        "0 of 2 planned adapters are incorporated"
-    )
-    assert "pending adapter-specific upstream verification" in (
-        registry["incorporation_summary"]
+        "0 verified challenger adapters; 2 dormant unverified adapters"
     )

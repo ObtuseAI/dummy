@@ -23,10 +23,13 @@ def test_aggregate_epa_offense_and_defense():
     assert bal["def_epa"] == 1.0 and bal["def_plays"] == 2.0      # BAL allowed KC's EPA
 
 
-def _epa_box(gid, team, off_per, off_n, def_per, def_n):
-    return {"game_id": gid, "team": team,
-            "stats": {"off_epa": off_per * off_n, "off_plays": off_n,
-                      "def_epa": def_per * def_n, "def_plays": def_n}}
+def _epa_box(gid, team, off_per, off_n, def_per, def_n, *, available_at=None):
+    row = {"game_id": gid, "team": team,
+           "stats": {"off_epa": off_per * off_n, "off_plays": off_n,
+                     "def_epa": def_per * def_n, "def_plays": def_n}}
+    if available_at is not None:
+        row.update(source_available_at=available_at, received_at=available_at)
+    return row
 
 
 def _seed(tmp_path):
@@ -39,8 +42,11 @@ def _seed(tmp_path):
                         "result_available_at": f"2025-09-{i + 1:02d}T03:00:00Z",
                         "received_at": f"2025-09-{i + 1:02d}T03:05:00Z",
                         "provenance_quality": "source_reported"})
-        st.record_team_boxscores([_epa_box(gid, "AAA", 0.15, 65, -0.05, 63),
-                                  _epa_box(gid, "BBB", 0.00, 62, 0.10, 66)])
+        available_at = f"2025-09-{i + 1:02d}T03:05:00Z"
+        st.record_team_boxscores([
+            _epa_box(gid, "AAA", 0.15, 65, -0.05, 63, available_at=available_at),
+            _epa_box(gid, "BBB", 0.00, 62, 0.10, 66, available_at=available_at),
+        ])
     return st
 
 
@@ -61,8 +67,37 @@ def test_ingest_nflfastr_epa_no_network(tmp_path):
                     "start_time": "2024-09-05T00:00:00Z", "home": "KC", "away": "BAL",
                     "home_score": 27, "away_score": 20, "status": "final", "source": "t"})
     csv = "game_id,posteam,defteam,epa\n2024_01_BAL_KC,KC,BAL,0.5\n2024_01_BAL_KC,BAL,KC,-0.2\n"
-    res = ingest_nflfastr_epa(st, [2024], fetch=lambda s: csv)
+    res = ingest_nflfastr_epa(
+        st, [2024], fetch=lambda s: csv, received_at="2024-09-06T00:00:00Z",
+    )
     assert res["team_games"] == 2 and res["rows"] > 0
     sums = st.team_stat_sums_before("KC", "2024-12-01T00:00:00Z", "nfl")
     assert sums and sums["sums"]["off_epa"] == 0.5
+    st.close()
+
+
+def test_team_stat_sums_exclude_late_and_unknown_feature_arrivals(tmp_path):
+    st = SportsHistoryStore(tmp_path / "h.db")
+    st.upsert_game({
+        "game_id": "g", "league": "nfl", "season": 2025,
+        "start_time": "2025-09-01T00:00:00Z", "home": "AAA", "away": "BBB",
+        "home_score": 21, "away_score": 14, "status": "final",
+    })
+    # Legacy/unknown arrival evidence is quarantined, even though as_of looks old.
+    st.record_team_boxscores([{
+        "game_id": "g", "team": "AAA", "stats": {"off_plays": 60},
+        "as_of": "2025-09-01T03:00:00Z",
+    }])
+    assert st.team_stat_sums_before("AAA", "2025-09-10T00:00:00Z", "nfl") is None
+    assert st.game_ids_missing_boxscores("nfl") == ["g"]
+
+    # A correction observed after the decision cannot travel back into it.
+    st.record_team_boxscores([{
+        "game_id": "g", "team": "AAA", "stats": {"off_plays": 61},
+        "source_available_at": "2025-09-12T00:00:00Z",
+        "received_at": "2025-09-12T00:01:00Z",
+    }])
+    assert st.team_stat_sums_before("AAA", "2025-09-10T00:00:00Z", "nfl") is None
+    later = st.team_stat_sums_before("AAA", "2025-09-13T00:00:00Z", "nfl")
+    assert later == {"sums": {"off_plays": 61.0}, "games": 1}
     st.close()

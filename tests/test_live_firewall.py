@@ -66,12 +66,12 @@ def _make_forecast():
         event_title="Event",
         contract_title="Yes",
         market_implied_probability=Decimal("0.5"),
-        dummy_probability=Decimal("0.55"),
-        probability_delta=Decimal("0.05"),
+        dummy_probability=Decimal("0.60"),
+        probability_delta=Decimal("0.10"),
         confidence_score=Decimal("0.7"),
-        uncertainty_band=(Decimal("0.5"), Decimal("0.6")),
-        expected_edge=Decimal("0.015"),
-        edge_after_fees=Decimal("0.010"),
+        uncertainty_band=(Decimal("0.56"), Decimal("0.64")),
+        expected_edge=Decimal("0.08"),
+        edge_after_fees=Decimal("0.06"),
         freshness_score=Decimal("1.0"),
         liquidity_score=Decimal("0.8"),
         spread_score=Decimal("0.8"),
@@ -340,6 +340,49 @@ async def test_low_edge_blocked():
 
 
 @pytest.mark.asyncio
+async def test_positive_claim_cannot_override_nonpositive_conservative_net_ev():
+    state_module.STATE.set_mode(AccountMode.AUTONOMOUS_LIVE_CAPPED)
+    os.environ["KALSHI_API_KEY_ID"] = "test"
+    caps = load_caps()
+    caps.allowed_markets = ["MARKET"]
+    forecast = _make_forecast().model_copy(
+        update={
+            "dummy_probability": Decimal("0.51"),
+            "uncertainty_band": (Decimal("0.47"), Decimal("0.55")),
+            "expected_edge": Decimal("0.05"),
+            "edge_after_fees": Decimal("0.01"),
+        }
+    )
+    with patch("live_firewall.firewall.load_caps", return_value=caps):
+        verdict = await LiveBrokerFirewall(None, ExposureTracker()).evaluate(
+            _make_request(forecast=forecast),
+            _make_book(),
+            forecast,
+        )
+    assert verdict.allow is False
+    assert verdict.rejected_by == "net_ev"
+
+
+@pytest.mark.asyncio
+async def test_claimed_net_edge_cannot_exceed_firewall_recomputation():
+    state_module.STATE.set_mode(AccountMode.AUTONOMOUS_LIVE_CAPPED)
+    os.environ["KALSHI_API_KEY_ID"] = "test"
+    caps = load_caps()
+    caps.allowed_markets = ["MARKET"]
+    forecast = _make_forecast().model_copy(
+        update={"edge_after_fees": Decimal("0.20")}
+    )
+    with patch("live_firewall.firewall.load_caps", return_value=caps):
+        verdict = await LiveBrokerFirewall(None, ExposureTracker()).evaluate(
+            _make_request(forecast=forecast),
+            _make_book(),
+            forecast,
+        )
+    assert verdict.allow is False
+    assert verdict.rejected_by == "net_ev_binding"
+
+
+@pytest.mark.asyncio
 async def test_missing_proof_reference_blocked():
     state_module.STATE.set_mode(AccountMode.AUTONOMOUS_LIVE_CAPPED)
     os.environ["KALSHI_API_KEY_ID"] = "test"
@@ -568,7 +611,7 @@ async def test_fees_remove_edge_blocked():
     with patch("live_firewall.firewall.load_caps", return_value=caps):
         fw = LiveBrokerFirewall(None, ExposureTracker())
         v = await fw.evaluate(_make_request(), _make_book(), f)
-        assert not v.allow and v.rejected_by == "edge"
+        assert not v.allow and v.rejected_by == "net_ev"
 
 
 @pytest.mark.asyncio

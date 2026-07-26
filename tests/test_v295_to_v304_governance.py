@@ -3,25 +3,36 @@ from __future__ import annotations
 from pathlib import Path
 
 from predator_mesh import staged_gate_common as sgc
-from predator_mesh.v296.reports import armable_authority
-from predator_mesh.v297.reports import ready_seal
-from predator_mesh.v298.reports import full_authority_arm
-from archive.report_scripts.generate_v295_reports import generate_all_v295_reports_for_tests
-from archive.report_scripts.generate_v296_reports import generate_all_v296_reports_for_tests
-from archive.report_scripts.generate_v297_reports import generate_all_v297_reports_for_tests
-from archive.report_scripts.generate_v298_reports import generate_all_v298_reports_for_tests
-from archive.report_scripts.generate_v299_reports import generate_all_v299_reports_for_tests
-from archive.report_scripts.generate_v300_reports import generate_all_v300_reports_for_tests
-from archive.report_scripts.generate_v301_reports import generate_all_v301_reports_for_tests
-from archive.report_scripts.generate_v302_reports import generate_all_v302_reports_for_tests
-from archive.report_scripts.generate_v303_reports import generate_all_v303_reports_for_tests
-from archive.report_scripts.generate_v304_reports import generate_all_v304_reports_for_tests
+from predator_mesh.operator_proof_stages.command_seal import ready_seal
+from predator_mesh.operator_proof_stages.execute_once import full_authority_arm
+from predator_mesh.report_runtime import generate_all_v295_reports_for_tests
+from predator_mesh.report_runtime import generate_all_v296_reports_for_tests
+from predator_mesh.operator_proof_workflows import generate_command_seal_reports_for_tests as generate_all_v297_reports_for_tests
+from predator_mesh.operator_proof_workflows import generate_execute_once_reports_for_tests as generate_all_v298_reports_for_tests
+from predator_mesh.report_runtime import generate_all_v299_reports_for_tests
+from predator_mesh.operator_proof_workflows import generate_reconcile_reports_for_tests as generate_all_v300_reports_for_tests
+from predator_mesh.operator_proof_workflows import generate_post_proof_reports_for_tests as generate_all_v301_reports_for_tests
+from predator_mesh.report_runtime import generate_all_v302_reports_for_tests
+from predator_mesh.operator_proof_workflows import generate_starvation_reports_for_tests as generate_all_v303_reports_for_tests
+from predator_mesh.report_runtime import generate_all_v304_reports_for_tests
 from tests.staged_gate_test_helpers import assert_staged_safe
 
 ROOT = Path(sgc.ROOT)
 
 ATTEMPT = {"proof_id": "P1", "proof_target": "FIRST_REAL_PILOT_PROOF", "order_attempt_id": "A1", "idempotency_key": "K1", "timestamp": "2026-07-06T21:00:00Z", "attempt_status": "FILLED", "proof_lock": True, "adapter_response_shape": "accepted"}
 PROOF = {"fill_state": "FILLED", "slippage_bucket": "low"}
+
+
+def armable_authority() -> dict[str, bool]:
+    """Complete test-only fork packet; never grants execution authority."""
+
+    return {
+        "import_ok": True,
+        "authority_present": True,
+        "caps_ok": True,
+        "adapter_ok": True,
+        "env_gate": True,
+    }
 
 
 def _safe(report: dict) -> None:

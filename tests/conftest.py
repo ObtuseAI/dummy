@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import functools
 import os
 import sys
 from pathlib import Path
@@ -9,10 +10,6 @@ import pytest
 
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent
 os.environ.setdefault("PYTHONPATH", str(_PROJECT_ROOT))
-# Historical dashboard endpoint tests exercise the explicit archive surface.
-# Production imports omit all V3-V304 routers unless this exact test/dev mode
-# is selected before dashboard.backend.main is imported.
-os.environ.setdefault("DUMMY_DASHBOARD_ARCHIVE_SURFACE", "test-only")
 
 # The staged-gate governance tests validate this workstation, not just the
 # codebase: they assert historical report evidence under artifacts/dummy
@@ -41,6 +38,7 @@ _WORKSTATION_ONLY = set(
     .read_text(encoding="utf-8")
     .split()
 )
+_DEFAULT_AUTONOMY_LEDGER_PATH = Path("runtime/autonomy/ledger.db")
 
 
 def pytest_collection_modifyitems(config, items):
@@ -55,6 +53,71 @@ def pytest_collection_modifyitems(config, items):
     for item in items:
         if Path(str(item.fspath)).name in _WORKSTATION_ONLY:
             item.add_marker(marker)
+
+
+@pytest.fixture(scope="session")
+def _trusted_empty_no_edge_map(tmp_path_factory):
+    """One fresh trusted-empty map outside every test's asserted workspace.
+
+    Ordinary forecaster tests need an explicit trusted-empty assumption now
+    that missing exclusion evidence fails closed. Creating that artifact below
+    each function's ``tmp_path`` polluted read-only assertions and pre-created
+    ``runtime/autonomy`` before fixtures that deliberately own that directory.
+    A session-scoped isolated artifact keeps the assumption explicit without
+    adding per-test filesystem side effects.
+    """
+
+    from autonomy import no_edge_map
+
+    path = tmp_path_factory.mktemp("dummy-no-edge-map") / "no_edge_map.json"
+    no_edge_map.write_no_edge_map(
+        no_edge_map.build_no_edge_map({"sources_by_scope": {}}),
+        path,
+    )
+    return path
+
+
+@pytest.fixture(autouse=True)
+def _isolated_autonomy_ledger_default(monkeypatch, tmp_path):
+    """Keep default ``AutonomyLedger`` construction off the live ledger.
+
+    The production constructor intentionally defaults to a repo-relative path.
+    On the canonical checkout that path traverses the ``runtime/autonomy``
+    junction into the multi-gigabyte production ledger.  A test that
+    indirectly calls ``AutonomyLedger()`` must therefore get an isolated
+    database even when it imports the class before this fixture runs.
+
+    Patch the class method (rather than the module binding) so pre-imported
+    aliases are covered.  ``functools.wraps`` preserves the production
+    constructor's inspectable path contract, and explicit temporary paths pass
+    through unchanged.
+    """
+
+    from autonomy.ledger import AutonomyLedger
+
+    original_init = AutonomyLedger.__init__
+    isolated_default = tmp_path / _DEFAULT_AUTONOMY_LEDGER_PATH
+    project_default = (_PROJECT_ROOT / _DEFAULT_AUTONOMY_LEDGER_PATH).resolve()
+
+    @functools.wraps(original_init)
+    def guarded_init(
+        self,
+        db_path: Path | str = _DEFAULT_AUTONOMY_LEDGER_PATH,
+    ):
+        requested = Path(db_path)
+        is_default_contract = requested == _DEFAULT_AUTONOMY_LEDGER_PATH
+        try:
+            is_project_default = requested.resolve() == project_default
+        except OSError:
+            is_project_default = False
+        safe_path = (
+            isolated_default
+            if is_default_contract or is_project_default
+            else requested
+        )
+        return original_init(self, db_path=safe_path)
+
+    monkeypatch.setattr(AutonomyLedger, "__init__", guarded_init)
 
 
 @pytest.fixture(autouse=True)
@@ -101,52 +164,8 @@ def model_network_capability():
     )
 
 
-@pytest.fixture
-def isolated_report_artifacts(monkeypatch, tmp_path):
-    """Point every loaded report generator's ``ARTIFACTS`` at a tmp directory.
-
-    Opt-in, deliberately NOT autouse.  The workstation-only governance tests
-    legitimately *read* historical milestone evidence out of the real
-    artifacts/dummy tree (250 reads from these very modules in one subset run),
-    so a blanket redirect would break them.  This fixture exists for the tests
-    that *write*: an orchestrator test would patch only the top module's
-    ``ARTIFACTS`` while the sub-generators it calls kept their own module-level
-    constant and wrote live governance evidence anyway.
-
-    Returns the tmp directory so a test can assert on what was written.
-    """
-    real = _PROJECT_ROOT / "artifacts" / "dummy"
-    target = tmp_path / "artifacts" / "dummy"
-    target.mkdir(parents=True, exist_ok=True)
-    # The V8 orchestrator imports its sub-generators lazily, inside main(), so
-    # they are not necessarily in sys.modules yet when this fixture runs.
-    # Import them up front; they are exactly the modules that used to escape a
-    # test's isolation and write live evidence.
-    import importlib
-
-    for name in (
-        "generate_v8_reports",
-        "generate_v8_firewall_reports",
-        "generate_v8_identity_reports",
-        "generate_v8_kalshi_reports",
-        "generate_v8_model_provider_reports",
-        "generate_v8_rehearsal_reports",
-    ):
-        importlib.import_module(f"archive.report_scripts.{name}")
-    for module in list(sys.modules.values()):
-        if module is None:
-            continue
-        try:
-            artifacts = getattr(module, "ARTIFACTS")
-        except (AttributeError, RuntimeError):
-            continue
-        if isinstance(artifacts, Path) and Path(artifacts) == real:
-            monkeypatch.setattr(module, "ARTIFACTS", type(artifacts)(target))
-    return target
-
-
 @pytest.fixture(autouse=True)
-def _isolated_evidence_root(monkeypatch, tmp_path):
+def _isolated_evidence_root(monkeypatch, tmp_path, _trusted_empty_no_edge_map):
     """Route second-proof evidence dirs to tmp so tests never write into the
     real artifacts/dummy tree (which preserves real proof evidence)."""
     monkeypatch.setenv("DUMMY_EVIDENCE_ROOT", str(tmp_path / "evidence"))
@@ -224,6 +243,13 @@ def _isolated_evidence_root(monkeypatch, tmp_path):
     from autonomy.market_pressure.splits import service as _splits
 
     _runtime_autonomy = tmp_path / "runtime" / "autonomy"
+    # Fusion distinguishes a trusted empty no-edge map from missing exclusion
+    # evidence. Ordinary unit tests share a fresh, schema-valid artifact kept
+    # outside their asserted tmp workspaces; fail-closed tests override this
+    # path with missing, stale, or malformed fixtures explicitly.
+    from autonomy import no_edge_map as _no_edge_map
+
+    monkeypatch.setattr(_no_edge_map, "MAP_PATH", _trusted_empty_no_edge_map)
     for _module, _attr, _leaf in (
         (_backtest, "RECAL_OOS_DELTA_PATH", "recal_oos_delta.json"),
         (_exit_advisor, "EXIT_ARTIFACT_PATH", "exit_advisories.json"),

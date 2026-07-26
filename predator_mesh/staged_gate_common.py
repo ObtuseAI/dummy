@@ -1,4 +1,4 @@
-"""Shared helpers for the DUMMY V60-V65 staged, locked, non-executing gate chain.
+"""Shared helpers for retained staged, locked, non-executing report contracts.
 
 Every stage in this chain is fail-closed and non-executing: no live trading, no live order
 submission, no market orders, no live-submit enablement, no caps modification, no account/private
@@ -18,99 +18,6 @@ from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
 ARTIFACTS = ROOT / "artifacts" / "dummy"
-
-# Distinct future approval phrases. This bundle produces design/preflight/gate-ready reports only;
-# it never treats these phrases as authority to execute, submit, enable live-submit, or modify caps.
-LOCAL_REHEARSAL_DESIGN_PHRASE = "I approve Dummy to design local-only rehearsal validation artifacts with no broker payloads, no order submission, no live trading, no live-submit enablement, and no caps modification"
-LIVE_CANARY_PHRASE = "I approve Dummy to arm a single tiny live limit-order canary through LiveBrokerFirewall only, with caps unchanged unless separately approved, no market orders, and immediate fail-closed rollback"
-# V70 submit-authorizing phrase (distinct from the V65 arm-only phrase). Never inferred from a prompt.
-V70_LIVE_CANARY_SUBMIT_PHRASE = "I approve Dummy to arm and submit one tiny live limit-order canary through LiveBrokerFirewall only, with no market orders, caps unchanged unless separately approved, live-submit already operator-enabled, and immediate fail-closed rollback"
-V70_LIVE_CANARY_SCOPE = "one_tiny_live_limit_order_canary_via_firewall_only"
-V70_LIVE_CANARY_APPROVAL_FILE = ROOT / "runtime" / "approvals" / "dummy_v70_live_canary_approval.json"
-V70_REQUIRED_APPROVAL_FIELDS = [
-    "exact_phrase",
-    "operator",
-    "timestamp",
-    "reason",
-    "scope",
-    "expiration",
-    "max_one_order_acknowledgment",
-    "limit_only_acknowledgment",
-    "no_market_order_acknowledgment",
-    "firewall_only_acknowledgment",
-    "rollback_acknowledgment",
-    "live_submit_operator_enabled_acknowledgment",
-    "caps_unchanged_acknowledgment",
-]
-V70_ACK_REQUIREMENTS = (
-    ("max_one_order_acknowledgment", "one order"),
-    ("limit_only_acknowledgment", "limit only"),
-    ("no_market_order_acknowledgment", "no market order"),
-    ("firewall_only_acknowledgment", "firewall only"),
-    ("rollback_acknowledgment", "rollback"),
-    ("live_submit_operator_enabled_acknowledgment", "live-submit already operator-enabled"),
-    ("caps_unchanged_acknowledgment", "caps unchanged"),
-)
-
-# V81 second-canary submit phrase (distinct from first-canary phrase).
-V81_SECOND_CANARY_SUBMIT_PHRASE = "I approve Dummy to arm and submit one second tiny live limit-order canary through LiveBrokerFirewall only, after first-canary reconcile passes, with no market orders, caps unchanged unless separately approved, live-submit already operator-enabled, and immediate fail-closed rollback"
-V81_SECOND_CANARY_SCOPE = "one_second_tiny_live_limit_order_canary_via_firewall_only"
-V81_REQUIRED_APPROVAL_FIELDS = [
-    "exact_phrase",
-    "operator",
-    "timestamp",
-    "reason",
-    "scope",
-    "expiration",
-    "max_one_order_acknowledgment",
-    "limit_only_acknowledgment",
-    "no_market_order_acknowledgment",
-    "firewall_only_acknowledgment",
-    "rollback_acknowledgment",
-    "first_canary_reconcile_passed_acknowledgment",
-    "live_submit_operator_enabled_acknowledgment",
-    "caps_unchanged_acknowledgment",
-]
-V81_ACK_REQUIREMENTS = (
-    ("max_one_order_acknowledgment", "one order"),
-    ("limit_only_acknowledgment", "limit only"),
-    ("no_market_order_acknowledgment", "no market order"),
-    ("firewall_only_acknowledgment", "firewall only"),
-    ("rollback_acknowledgment", "rollback"),
-    ("first_canary_reconcile_passed_acknowledgment", "first-canary reconcile passed"),
-    ("live_submit_operator_enabled_acknowledgment", "live-submit already operator-enabled"),
-    ("caps_unchanged_acknowledgment", "caps unchanged"),
-)
-
-# Micro-campaign gate preparation phrase (never authorizes automatic live orders).
-MICRO_CAMPAIGN_PHRASE = "I approve Dummy to prepare a controlled micro-campaign gate only, with no automatic live orders, no market orders, caps unchanged unless separately approved, and all submits requiring separate per-order approval"
-MICRO_CAMPAIGN_SCOPE = "controlled_micro_campaign_gate_preparation_only"
-
-# Per-order campaign submit phrase (same exact phrase per order; each order has its own approval file).
-CAMPAIGN_PER_ORDER_PHRASE = "I approve Dummy to submit one tiny live limit-order campaign order through LiveBrokerFirewall only, with no market orders, no automatic repeat orders, caps unchanged unless separately approved, live-submit already operator-enabled, and immediate fail-closed rollback"
-CAMPAIGN_PER_ORDER_SCOPE = "one_tiny_live_limit_order_campaign_order_via_firewall_only"
-CAMPAIGN_PER_ORDER_FIELDS = [
-    "exact_phrase",
-    "operator",
-    "timestamp",
-    "reason",
-    "scope",
-    "expiration",
-    "no_market_order_acknowledgment",
-    "no_automatic_repeat_acknowledgment",
-    "caps_unchanged_acknowledgment",
-    "live_submit_operator_enabled_acknowledgment",
-    "rollback_acknowledgment",
-    "firewall_only_acknowledgment",
-]
-CAMPAIGN_PER_ORDER_ACKS = (
-    ("no_market_order_acknowledgment", "no market order"),
-    ("no_automatic_repeat_acknowledgment", "no automatic repeat"),
-    ("caps_unchanged_acknowledgment", "caps unchanged"),
-    ("live_submit_operator_enabled_acknowledgment", "live-submit already operator-enabled"),
-    ("rollback_acknowledgment", "rollback"),
-    ("firewall_only_acknowledgment", "firewall only"),
-)
 
 # Scale-step review phrase (never authorizes an automatic capital increase or live order).
 SCALE_STEP_PHRASE = "I approve Dummy to review scale step 1 only, with no automatic capital increase, no automatic live orders, caps unchanged unless separately approved, and all future size increases requiring separate approval"
@@ -209,11 +116,6 @@ LIMITED_AUTONOMY_GATE_FIELDS = ["exact_phrase", "operator", "timestamp", "reason
 
 # Dedicated operator approval files (Dummy never creates or writes these).
 BROKER_READONLY_APPROVAL_FILE = ROOT / "runtime" / "approvals" / "dummy_broker_readonly_approval.json"
-V81_SECOND_CANARY_APPROVAL_FILE = ROOT / "runtime" / "approvals" / "dummy_v81_second_canary_approval.json"
-MICRO_CAMPAIGN_APPROVAL_FILE = ROOT / "runtime" / "approvals" / "dummy_micro_campaign_approval.json"
-CAMPAIGN_ORDER_1_APPROVAL_FILE = ROOT / "runtime" / "approvals" / "dummy_campaign_order_1_approval.json"
-CAMPAIGN_ORDER_2_APPROVAL_FILE = ROOT / "runtime" / "approvals" / "dummy_campaign_order_2_approval.json"
-CAMPAIGN_ORDER_3_APPROVAL_FILE = ROOT / "runtime" / "approvals" / "dummy_campaign_order_3_approval.json"
 SCALE_STEP_1_APPROVAL_FILE = ROOT / "runtime" / "approvals" / "dummy_scale_step_1_approval.json"
 CONTROLLED_SESSION_APPROVAL_FILE = ROOT / "runtime" / "approvals" / "dummy_controlled_session_canary_approval.json"
 AUTONOMY_REVIEW_APPROVAL_FILE = ROOT / "runtime" / "approvals" / "dummy_autonomy_review_approval.json"
@@ -224,42 +126,6 @@ PRODUCTION_PILOT_REPEAT_APPROVAL_FILE = ROOT / "runtime" / "approvals" / "dummy_
 CONTROLLED_OPERATION_APPROVAL_FILE = ROOT / "runtime" / "approvals" / "dummy_controlled_operation_approval.json"
 LIMITED_AUTONOMY_DRYRUN_APPROVAL_FILE = ROOT / "runtime" / "approvals" / "dummy_limited_autonomy_dryrun_approval.json"
 LIMITED_AUTONOMY_GATE_APPROVAL_FILE = ROOT / "runtime" / "approvals" / "dummy_limited_autonomy_gate_approval.json"
-
-
-def campaign_order_submit(context_label: str, *, approval_input, approval_path, campaign_approved, prereq_ok, live_submit_operator_enabled, caps_config_present, firewall_adapter, order_shape):
-    """Shared per-order campaign submit evaluation. Submits ONLY through an injected firewall adapter
-    when every prerequisite passes. Returns (checklist, all_pass, validation, submit_result, idem_key).
-    """
-    resolution = resolve_packet(approval_path, approval_input)
-    validation = validate_packet(
-        resolution,
-        required_phrase=CAMPAIGN_PER_ORDER_PHRASE,
-        required_fields=CAMPAIGN_PER_ORDER_FIELDS,
-        required_scope=CAMPAIGN_PER_ORDER_SCOPE,
-        ack_requirements=CAMPAIGN_PER_ORDER_ACKS,
-    )
-    checklist = {
-        "prerequisite_gate_pass": bool(prereq_ok),
-        "campaign_approval_valid": bool(campaign_approved),
-        "order_approval_valid": bool(validation["accepted"]),
-        "live_submit_operator_enabled": bool(live_submit_operator_enabled),
-        "caps_within_limit_unchanged": bool(caps_config_present),
-        "candidate_limit_only": True,
-        "no_market_order_rule": True,
-        "kill_switch": True,
-        "rollback": True,
-        "idempotency": True,
-        "liquidity_slippage": True,
-        "no_direct_broker_bypass": True,
-        "no_private_data_leakage": True,
-        "firewall_adapter_present": firewall_adapter is not None,
-    }
-    all_pass = all(checklist.values())
-    idem_key = sha256_bytes((str(validation["approval_hash"]) + "|" + context_label).encode("utf-8"))[:32] if validation["accepted"] else ""
-    submit_result = None
-    if all_pass and firewall_adapter is not None:
-        submit_result = firewall_adapter.submit({**order_shape, "idempotency_key": idem_key})
-    return {"resolution": resolution, "validation": validation, "checklist": checklist, "all_pass": all_pass, "idempotency_key": idem_key, "submit_result": submit_result}
 
 
 def session_canary_submit(context_label: str, *, approval_input, approval_path, session_governor_ready, live_submit_operator_enabled, caps_config_present, per_order_mode, firewall_adapter, order_shape, max_session_orders=1):
@@ -534,7 +400,7 @@ def validate_packet(
 
 def safe_base(milestone: str, workstream: str, verdict: str = "PASS") -> dict[str, Any]:
     """Comprehensive fail-closed safety flags shared by every staged-gate report."""
-    from predator_mesh.v31.probes import CAPS_HASH, LIVE_SUBMIT_HASH
+    from predator_mesh.authority_contracts import CAPS_HASH, LIVE_SUBMIT_HASH
 
     base: dict[str, Any] = {
         "generated_at": now_iso(),

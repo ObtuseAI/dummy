@@ -6,6 +6,7 @@ import pytest
 
 from autonomy.sports.mlb_pa_sim import (
     LEAGUE,
+    MAX_EXTRA_INNINGS,
     RELIEVER_K_PCT,
     TTO_PENALTY_PER_TIME,
     GameResult,
@@ -225,6 +226,29 @@ def test_half_inning_all_outs_scores_zero():
     assert cursor == 3  # exactly three batters retired
 
 
+def test_half_inning_respects_known_outs():
+    outs_only = {"k": 0.0, "bb": 0.0, "hbp": 0.0, "single": 0.0,
+                 "double": 0.0, "triple": 0.0, "hr": 0.0, "out": 1.0}
+    runs, cursor = simulate_half_inning(
+        0, lambda i: outs_only, _random.Random(1), start_outs=2,
+    )
+    assert runs == 0
+    assert cursor == 1  # only the final out remains
+
+
+def test_half_inning_walkoff_stops_after_winning_run():
+    home_runs_only = {"k": 0.0, "bb": 0.0, "hbp": 0.0, "single": 0.0,
+                      "double": 0.0, "triple": 0.0, "hr": 1.0, "out": 0.0}
+    runs, cursor = simulate_half_inning(
+        0,
+        lambda i: home_runs_only,
+        _random.Random(1),
+        stop_after_runs=1,
+    )
+    assert runs == 1
+    assert cursor == 1  # no fabricated plate appearances after the walkoff
+
+
 def _context(*, home_batter_iso, away_batter_iso):
     home_lineup = tuple(LineupSlot(i + 1, 100 + i, bats="R") for i in range(9))
     away_lineup = tuple(LineupSlot(i + 1, 200 + i, bats="R") for i in range(9))
@@ -263,6 +287,99 @@ def test_simulate_one_game_is_deterministic():
     a = simulate_one_game(ctx, _random.Random(5))
     b = simulate_one_game(ctx, _random.Random(5))
     assert a == b
+
+
+def test_simulate_one_game_skips_bottom_ninth_when_home_leads(monkeypatch):
+    calls: list[int | None] = []
+
+    def fake_half(start_cursor, pa_fn, rng, *, start_outs=0, stop_after_runs=None):
+        del pa_fn, rng, start_outs
+        call_index = len(calls)
+        calls.append(stop_after_runs)
+        runs = 1 if call_index == 1 else 0  # home scores in the bottom of the first
+        return runs, start_cursor + 3
+
+    monkeypatch.setattr(
+        "autonomy.sports.mlb_pa_sim.simulate_half_inning", fake_half,
+    )
+    result = simulate_one_game(
+        _context(home_batter_iso=0.15, away_batter_iso=0.15),
+        _random.Random(1),
+    )
+
+    assert (result.home_runs, result.away_runs) == (1, 0)
+    assert len(calls) == 17  # eight full innings plus the top of the ninth
+
+
+def test_simulate_one_game_bottom_ninth_walkoff(monkeypatch):
+    calls: list[int | None] = []
+
+    def fake_half(start_cursor, pa_fn, rng, *, start_outs=0, stop_after_runs=None):
+        del pa_fn, rng, start_outs
+        call_index = len(calls)
+        calls.append(stop_after_runs)
+        if call_index == 16:  # away scores once in the top of the ninth
+            runs = 1
+        elif call_index == 17:  # home scores twice, then the game must stop
+            runs = 2
+        else:
+            runs = 0
+        return runs, start_cursor + 3
+
+    monkeypatch.setattr(
+        "autonomy.sports.mlb_pa_sim.simulate_half_inning", fake_half,
+    )
+    result = simulate_one_game(
+        _context(home_batter_iso=0.15, away_batter_iso=0.15),
+        _random.Random(1),
+    )
+
+    assert (result.home_runs, result.away_runs) == (2, 1)
+    assert len(calls) == 18
+    assert calls[-1] == 2  # two runs were required to walk off
+
+
+def test_simulate_one_game_uses_extra_innings_until_resolution(monkeypatch):
+    calls: list[int | None] = []
+
+    def fake_half(start_cursor, pa_fn, rng, *, start_outs=0, stop_after_runs=None):
+        del pa_fn, rng, start_outs
+        call_index = len(calls)
+        calls.append(stop_after_runs)
+        runs = 1 if call_index == 21 else 0  # home walks off in the 11th
+        return runs, start_cursor + 3
+
+    monkeypatch.setattr(
+        "autonomy.sports.mlb_pa_sim.simulate_half_inning", fake_half,
+    )
+    result = simulate_one_game(
+        _context(home_batter_iso=0.15, away_batter_iso=0.15),
+        _random.Random(1),
+    )
+
+    assert (result.home_runs, result.away_runs) == (1, 0)
+    assert len(calls) == 22  # regulation plus two complete extra innings
+
+
+def test_simulate_one_game_extra_inning_cap_leaves_tie_unfabricated(monkeypatch):
+    calls = 0
+
+    def fake_half(start_cursor, pa_fn, rng, *, start_outs=0, stop_after_runs=None):
+        nonlocal calls
+        del pa_fn, rng, start_outs, stop_after_runs
+        calls += 1
+        return 0, start_cursor + 3
+
+    monkeypatch.setattr(
+        "autonomy.sports.mlb_pa_sim.simulate_half_inning", fake_half,
+    )
+    result = simulate_one_game(
+        _context(home_batter_iso=0.15, away_batter_iso=0.15),
+        _random.Random(1),
+    )
+
+    assert (result.home_runs, result.away_runs) == (0, 0)
+    assert calls == 18 + 2 * MAX_EXTRA_INNINGS
 
 
 def test_stronger_lineup_scores_more_on_average():

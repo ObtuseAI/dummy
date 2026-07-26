@@ -37,7 +37,8 @@ from repo_harvester.retry_policy import (
     run_with_bounded_retry,
 )
 
-OUT = Path("C:/src/engine/dummy/artifacts/repo_harvester")
+REPO_ROOT = Path(__file__).resolve().parents[1]
+OUT = REPO_ROOT / "artifacts" / "repo_harvester"
 CACHE = OUT / "source_scan_cache_v1"
 CACHE.mkdir(parents=True, exist_ok=True)
 OUT.mkdir(parents=True, exist_ok=True)

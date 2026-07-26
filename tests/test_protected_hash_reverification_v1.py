@@ -1,41 +1,48 @@
 from __future__ import annotations
 
-from core.caps_authority import CAPS_CONFIG_INTACT_STATES
-from predator_mesh.v31.probes import CAPS_HASH, LIVE_SUBMIT_HASH
-from tests.v35_test_helpers import (
-    CAPS_INTACT_REPORT_STATUSES,
-    assert_current_test_report,
-)
+import hashlib
+from pathlib import Path
+
+from core.caps_authority import CAPS_CONFIG_INTACT_STATES, evaluate_caps_authority
+from predator_mesh.authority_contracts import CAPS_HASH, LIVE_SUBMIT_HASH
+from predator_mesh.staged_gate_common import safe_base
+
+ROOT = Path(__file__).resolve().parents[1]
 
 
-def test_protected_hash_reverification_v1_contract() -> None:
-    report = assert_current_test_report(__file__)
-    assert report["live_submit_hash"] == LIVE_SUBMIT_HASH
-    assert report["caps_hash"] == CAPS_HASH
-    assert report["live_submit_enabled"] is False
-    assert report["caps_config_integrity_valid"] is True
+def _sha256(path: Path) -> str:
+    return hashlib.sha256(path.read_bytes()).hexdigest().upper()
+
+
+def test_protected_hashes_match_the_current_tracked_files() -> None:
+    assert _sha256(ROOT / "configs" / "live_submit.json") == LIVE_SUBMIT_HASH
+    assert _sha256(ROOT / "configs" / "caps.json") == CAPS_HASH
+
+
+def test_caps_integrity_never_self_grants_execution_authority() -> None:
+    status = evaluate_caps_authority()
+    assert status.current_caps_sha256 == CAPS_HASH
+    assert status.config_integrity_valid is True
     # Caps config must be INTACT. Whether an operator has registered is their
     # prerogative and moves this between the two intact states; pinning
     # REVIEW_REQUIRED asserted they had not exercised a sanctioned path, which
     # turned red the moment they did. CONFIG_INTEGRITY_BLOCKED still fails
     # here, so tamper detection is unchanged.
-    assert report["caps_authority_state"] in CAPS_CONFIG_INTACT_STATES
-    assert isinstance(report["caps_authority_registration_valid"], bool)
-    assert report["legacy_caps_authority_invalidated"] is True
+    assert status.state in CAPS_CONFIG_INTACT_STATES
+    assert isinstance(status.authority_registration_valid, bool)
+    assert status.legacy_authority_invalidated is True
     # The invariant that actually matters, true in either intact state.
-    assert report["execution_authority"] is False
-    assert report["execution_bridge_present"] is False
+    assert status.execution_authority is False
 
 
-def test_live_submit_still_disabled_and_unchanged() -> None:
-    from tests.v35_test_helpers import assert_v35_report_named
+def test_stable_report_base_never_self_grants_authority() -> None:
+    report = safe_base(
+        "STABLE_CONTRACT_TEST",
+        "protected hash and authority invariant",
+        "PASS",
+    )
 
-    ls = assert_v35_report_named("live_submit_hash_check_v1_report.json")
-    assert ls["unchanged"] is True
-    caps = assert_v35_report_named("caps_hash_check_v1_report.json")
-    assert caps["unchanged"] is True
-    assert caps["caps_hash_check_v1_status"] in CAPS_INTACT_REPORT_STATUSES
-    assert isinstance(caps["caps_authority_registration_valid"], bool)
-    assert caps["execution_authority"] is False
-    enabled = assert_v35_report_named("live_submit_enabled_check_v1_report.json")
-    assert enabled["live_submit_enabled"] is False
+    assert report["live_trading_enabled"] is False
+    assert report["live_order_submitted"] is False
+    assert report["broker_submit_call_made"] is False
+    assert report["approval_file_write_attempted"] is False

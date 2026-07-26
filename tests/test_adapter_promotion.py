@@ -5,11 +5,12 @@ import inspect
 import os
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
+from pathlib import Path
 from unittest.mock import patch
 
 import pytest
 
-from adapters.base import DummyAdapter
+from adapters.promoted import PendingAdapter
 from core import state as state_module
 from core.config_loader import load_caps
 from core.ontology import (
@@ -27,14 +28,16 @@ from live_firewall.firewall import (
     LiveBrokerFirewall,
     mark_adapter_rejected,
 )
-from repo_harvester.promotion_engine import build_promotion_records
+from repo_harvester.promotion_engine import (
+    build_promotion_records,
+    generate_promoted_adapter_modules,
+)
 
-PROMOTED_RECORDS = build_promotion_records()["adapter_targets"]
+PENDING_RECORDS = build_promotion_records()["adapter_targets"]
 
 
 @pytest.fixture(autouse=True)
 def reset_state():
-    """Reset global state and firewall rejection set before every test."""
     fresh = DummyState()
     state_module.STATE = fresh
     import live_firewall.firewall as firewall_module
@@ -98,14 +101,52 @@ def _make_request(adapter_name: str) -> LiveOrderRequest:
     return LiveOrderRequest(
         **request_fields,
         model_influence_attestation=build_model_influence_attestation(
-            forecast,
-            request_fields,
+            forecast, request_fields
         ),
     )
 
 
-def _forbidden_call_hits(source: str) -> list[str]:
-    """Static AST check for forbidden live-order function calls or imports."""
+def test_pending_candidates_are_metadata_not_generated_modules():
+    package_dir = Path(inspect.getfile(PendingAdapter)).parent
+
+    assert PENDING_RECORDS
+    assert generate_promoted_adapter_modules(
+        {"adapter_targets": PENDING_RECORDS}
+    ) == []
+    assert all(record["production_capability"] is False for record in PENDING_RECORDS)
+    assert all(record["prediction_authority"] is False for record in PENDING_RECORDS)
+    assert all(record["execution_authority"] is False for record in PENDING_RECORDS)
+    assert all(
+        not (package_dir / f"{record['module_name']}.py").exists()
+        for record in PENDING_RECORDS
+    )
+
+
+@pytest.mark.parametrize(
+    "record", PENDING_RECORDS, ids=lambda record: record["adapter_name"]
+)
+def test_one_inert_adapter_represents_all_pending_candidates(record):
+    adapter = PendingAdapter.from_record(record)
+
+    assert adapter.name == record["adapter_name"]
+    assert adapter.to_native_forecast({"book": _make_book()}) is None
+    assert adapter.LIFECYCLE_STATUS == "DORMANT"
+    assert adapter.INTEGRATION_STATUS == "DORMANT"
+    assert adapter.TEST_STATUS == "DORMANT_UNVERIFIED"
+    assert adapter.UPSTREAM_INTEGRATION_VERIFIED is False
+    assert adapter.PRODUCTION_CAPABILITY is False
+    assert adapter.PREDICTION_AUTHORITY is False
+    assert adapter.EXECUTION_AUTHORITY is False
+    assert not hasattr(adapter, "create_order")
+    assert not hasattr(adapter, "submit_order")
+
+
+def test_pending_adapter_source_has_no_secret_or_order_path():
+    from live_firewall.firewall import _check_secret_redaction
+
+    source = inspect.getsource(PendingAdapter)
+    assert _check_secret_redaction(source)
+
     forbidden_calls = {
         "create_order",
         "cancel_order",
@@ -114,145 +155,34 @@ def _forbidden_call_hits(source: str) -> list[str]:
         "delete_order",
         "place_order",
     }
-    forbidden_modules = {
-        "kalshi.client",
-        "polymarket",
-        "pykalshi",
+    tree = ast.parse(source)
+    calls = {
+        node.func.id
+        if isinstance(node.func, ast.Name)
+        else node.func.attr
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, (ast.Name, ast.Attribute))
     }
-    hits: list[str] = []
-    try:
-        tree = ast.parse(source)
-    except SyntaxError as exc:
-        return [f"syntax_error:{exc}"]
-    for node in ast.walk(tree):
-        if isinstance(node, ast.Call):
-            name = ""
-            if isinstance(node.func, ast.Name):
-                name = node.func.id
-            elif isinstance(node.func, ast.Attribute):
-                name = node.func.attr
-            if name in forbidden_calls:
-                hits.append(name)
-        elif isinstance(node, (ast.Import, ast.ImportFrom)):
-            module = getattr(node, "module", "") or ""
-            for alias in node.names:
-                full = f"{module}.{alias.name}" if module else alias.name
-                if any(forbidden in full.lower() for forbidden in forbidden_modules):
-                    hits.append(full)
-    return hits
-
-@pytest.mark.parametrize("record", PROMOTED_RECORDS, ids=lambda r: r["adapter_name"])
-def test_import(record):
-    module = __import__(f"adapters.promoted.{record['module_name']}", fromlist=[record["class_name"]])
-    cls = getattr(module, record["class_name"])
-    assert issubclass(cls, DummyAdapter)
-    assert cls().name == record["adapter_name"]
+    assert not calls.intersection(forbidden_calls)
 
 
-@pytest.mark.parametrize("record", PROMOTED_RECORDS, ids=lambda r: r["adapter_name"])
-def test_scaffold_abstains_without_upstream_integration(record):
-    module = __import__(f"adapters.promoted.{record['module_name']}", fromlist=[record["class_name"]])
-    cls = getattr(module, record["class_name"])
-    adapter = cls()
-    raw = {
-        "market": "MARKET",
-        "contract": "MARKET-YES",
-        "event": "Test Event",
-        "title": "Yes",
-        "book": _make_book(),
-    }
-    forecast = adapter.to_native_forecast(raw)
-    assert forecast is None
-    assert adapter.INTEGRATION_STATUS == "scaffold_only"
-    assert adapter.UPSTREAM_INTEGRATION_VERIFIED is False
-    assert adapter.PRODUCTION_CAPABILITY is False
-    assert adapter.PREDICTION_AUTHORITY is False
-    assert adapter.EXECUTION_AUTHORITY is False
-
-
-@pytest.mark.parametrize("record", PROMOTED_RECORDS, ids=lambda r: r["adapter_name"])
-def test_missing_orderbook_abstains_instead_of_fabricating(record):
-    module = __import__(f"adapters.promoted.{record['module_name']}", fromlist=[record["class_name"]])
-    cls = getattr(module, record["class_name"])
-    result = cls().to_native_forecast(
-        {"market": "MARKET", "contract": "MARKET-YES", "event": "Test", "title": "Yes"}
-    )
-    assert result is None
-
-
-@pytest.mark.parametrize(
-    "record",
-    [r for r in PROMOTED_RECORDS if r["passthrough_model_zoo"]],
-    ids=lambda r: r["adapter_name"],
-)
-def test_model_zoo_shell_never_claims_tested_capability(record):
-    module = __import__(f"adapters.promoted.{record['module_name']}", fromlist=[record["class_name"]])
-    adapter = getattr(module, record["class_name"])()
-    assert adapter.PASSTHROUGH_MODEL_ZOO is True
-    assert adapter.TEST_STATUS == "pending_adapter_specific_tests"
-    assert adapter.PRODUCTION_CAPABILITY is False
-
-
-@pytest.mark.parametrize(
-    "record",
-    [r for r in PROMOTED_RECORDS if r["data_only"]],
-    ids=lambda r: r["adapter_name"],
-)
-def test_weather_and_commodities_remain_data_only(record):
-    module = __import__(f"adapters.promoted.{record['module_name']}", fromlist=[record["class_name"]])
-    adapter = getattr(module, record["class_name"])()
-    assert adapter.DATA_ONLY is True
-    assert adapter.to_native_forecast({"book": _make_book()}) is None
-    assert adapter.PREDICTION_AUTHORITY is False
-
-
-@pytest.mark.parametrize("record", PROMOTED_RECORDS, ids=lambda r: r["adapter_name"])
-def test_no_secret_leak(record):
-    from live_firewall.firewall import _check_secret_redaction
-
-    module = __import__(f"adapters.promoted.{record['module_name']}", fromlist=[record["class_name"]])
-    source = inspect.getsource(module)
-    assert _check_secret_redaction(source), f"Secret risk detected in {record['adapter_name']}"
-
-
-@pytest.mark.parametrize("record", PROMOTED_RECORDS, ids=lambda r: r["adapter_name"])
-def test_no_direct_order_path(record):
-    module = __import__(f"adapters.promoted.{record['module_name']}", fromlist=[record["class_name"]])
-    source = inspect.getsource(module)
-    hits = _forbidden_call_hits(source)
-    assert not hits, f"Forbidden live-order path in {record['adapter_name']}: {hits}"
-
-
-@pytest.mark.parametrize("record", PROMOTED_RECORDS, ids=lambda r: r["adapter_name"])
-def test_firewall_routing(record):
-    module = __import__(f"adapters.promoted.{record['module_name']}", fromlist=[record["class_name"]])
-    cls = getattr(module, record["class_name"])
-    adapter = cls()
-    raw = {
-        "market": "MARKET",
-        "contract": "MARKET-YES",
-        "event": "Test Event",
-        "title": "Yes",
-        "book": _make_book(),
-    }
-    forecast = adapter.to_native_forecast(raw)
-    assert forecast is None
-    # Adapters must not expose broker client methods.
-    assert not hasattr(adapter, "create_order")
-    assert not hasattr(adapter, "submit_order")
-
-
-@pytest.mark.parametrize("record", PROMOTED_RECORDS, ids=lambda r: r["adapter_name"])
 @pytest.mark.asyncio
-async def test_rejected_repo_isolation(record):
-    mark_adapter_rejected(record["adapter_name"])
+async def test_pending_adapter_identity_remains_firewall_rejected():
+    record = PENDING_RECORDS[0]
+    adapter = PendingAdapter.from_record(record)
+    assert adapter.to_native_forecast({"book": _make_book()}) is None
+
+    mark_adapter_rejected(adapter.name)
     os.environ["KALSHI_API_KEY_ID"] = "test"
     state_module.STATE.set_mode(AccountMode.AUTONOMOUS_LIVE_CAPPED)
-
     caps = load_caps()
     caps.allowed_markets = ["MARKET"]
+
     with patch("live_firewall.firewall.load_caps", return_value=caps):
-        fw = LiveBrokerFirewall(None, ExposureTracker())
-        verdict = await fw.evaluate(_make_request(record["adapter_name"]), _make_book(), _make_forecast())
-        assert not verdict.allow
-        assert verdict.rejected_by == "repo_bypass"
+        verdict = await LiveBrokerFirewall(
+            None, ExposureTracker()
+        ).evaluate(_make_request(adapter.name), _make_book(), _make_forecast())
+
+    assert verdict.allow is False
+    assert verdict.rejected_by == "repo_bypass"

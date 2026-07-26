@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 
 import autonomy.alerts as alerts
-from autonomy.dashboard import assemble_dashboard_state
+from autonomy.dashboard import assemble_dashboard_state, assemble_status_snapshot
 
 
 def _wire_alert_paths(monkeypatch, tmp_path):
@@ -137,10 +137,74 @@ def test_dashboard_state_assembles_from_artifacts(tmp_path):
     assert state["simulation_training"]["forecast_status"] == "HOLD"
 
 
+def test_status_snapshot_exposes_bounded_local_health_evidence(monkeypatch, tmp_path):
+    monkeypatch.setattr(
+        "autonomy.dashboard._dashboard_watchdog_status",
+        lambda _runtime_dir, _now_epoch: {
+            "healthy": True,
+            "tasks": [],
+            "stale_tasks": [],
+            "source": "test_read_only",
+        },
+    )
+    cycles = [
+        {
+            "at": f"2026-07-25T00:{index:02d}:00Z",
+            "status": "CYCLE_OK",
+            "markets_scanned": index,
+            "signals_generated": index + 1,
+            "signals_rejected": index % 2,
+            "decisions_made": index,
+            "abstained": index // 2,
+        }
+        for index in range(13)
+    ]
+    alert_rows = [
+        {
+            "at": f"2026-07-25T01:{index:02d}:00Z",
+            "kind": "SIGNAL_QUALITY_REJECTION",
+            "severity": "warning",
+            "message": f"rejection episode {index}",
+        }
+        for index in range(23)
+    ]
+    (tmp_path / "cycles.jsonl").write_text(
+        "\n".join(json.dumps(row) for row in cycles) + "\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "alerts.jsonl").write_text(
+        "\n".join(json.dumps(row) for row in alert_rows) + "\n",
+        encoding="utf-8",
+    )
+
+    state = assemble_status_snapshot(runtime_dir=tmp_path)
+
+    assert state["source"] == "status_snapshot"
+    assert state["ledger_touched"] is False
+    assert [row["markets_scanned"] for row in state["recent_cycles"]] == list(
+        range(3, 13)
+    )
+    assert [row["message"] for row in state["alerts"]] == [
+        f"rejection episode {index}" for index in range(3, 23)
+    ]
+    assert state["watchdog"]["healthy"] is True
+    assert not (tmp_path / "ledger.db").exists()
+
+
 def test_dashboard_app_serves(tmp_path, monkeypatch):
     from fastapi.testclient import TestClient
 
     monkeypatch.setattr("autonomy.dashboard.RUNTIME_DIR", tmp_path)
+    monkeypatch.setattr(
+        "autonomy.paper_dashboard.scheduled_task_status",
+        lambda task_name: {
+            "task_name": task_name,
+            "supported": False,
+            "enabled": False,
+            "state": "TEST_ISOLATED",
+            "healthy": False,
+        },
+    )
     from autonomy.dashboard import build_app
 
     client = TestClient(build_app())

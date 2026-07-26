@@ -11,7 +11,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from predator_mesh import staged_gate_common as sgc
-from predator_mesh.v208.reports import resolve_authority
+from predator_mesh.operator_status import resolve_authority
 
 
 def main() -> dict:
@@ -19,7 +19,7 @@ def main() -> dict:
     resolved["generated_at"] = sgc.now_iso()
     resolved["live_orders"] = 0
     resolved["real_broker_contacted"] = False
-    sgc.write_report("authority_resolver_v208.json", resolved)
+    sgc.write_report("authority_resolver.json", resolved)
     return resolved
 
 

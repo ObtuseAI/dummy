@@ -112,9 +112,21 @@ def _signal_write_chunk() -> int:
 
 
 LEDGER_SIGNAL_WRITE_CHUNK = _signal_write_chunk()
+
+
+def _ledger_wal_autocheckpoint_pages() -> int:
+    try:
+        value = int(os.environ.get("DUMMY_LEDGER_WAL_AUTOCHECKPOINT_PAGES", "1000"))
+    except (TypeError, ValueError):
+        return 1000
+    return value if value > 0 else 1000
+
+
+LEDGER_WAL_AUTOCHECKPOINT_PAGES = _ledger_wal_autocheckpoint_pages()
 # A ledger past this size is flagged for operator maintenance (checkpoint /
 # retention archival / VACUUM). The live ledger crossed 9 GiB before this guard.
 LEDGER_BLOAT_WARN_BYTES = 8 * 1024 ** 3
+
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS decisions (
@@ -241,6 +253,8 @@ CREATE INDEX IF NOT EXISTS idx_signals_source_created ON signals(source, created
 CREATE INDEX IF NOT EXISTS idx_signal_rejections_created ON signal_rejections(rejected_at);
 CREATE INDEX IF NOT EXISTS idx_decisions_market ON decisions(market_ticker);
 CREATE INDEX IF NOT EXISTS idx_decisions_created ON decisions(created_at);
+CREATE INDEX IF NOT EXISTS idx_settlements_settled_at ON settlements(settled_at);
+CREATE INDEX IF NOT EXISTS idx_settlements_settled_jd ON settlements(julianday(settled_at));
 CREATE INDEX IF NOT EXISTS idx_external_observations_source_time
     ON external_observations(source, observed_at);
 """
@@ -248,6 +262,13 @@ CREATE INDEX IF NOT EXISTS idx_external_observations_source_time
 
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
+
+
+def _path_size(path: Path) -> int:
+    try:
+        return int(path.stat().st_size)
+    except OSError:
+        return 0
 
 
 def _canonical_tier_score(value: Any) -> float | None:
@@ -317,6 +338,8 @@ def ledger_health_probe(
         "bloat_warn": False,
         "bloat_warn_bytes": int(LEDGER_BLOAT_WARN_BYTES),
         "probe_error": None,
+        "wal_size_bytes": 0,
+        "shm_size_bytes": 0,
     }
     if not path.exists():
         return info
@@ -325,6 +348,9 @@ def ledger_health_probe(
         info["size_bytes"] = int(size)
         info["size_gib"] = round(size / 1024 ** 3, 3)
         info["bloat_warn"] = size >= LEDGER_BLOAT_WARN_BYTES
+        for suffix, key in (("-wal", "wal_size_bytes"), ("-shm", "shm_size_bytes")):
+            sidecar = Path(f"{path}{suffix}")
+            info[key] = _path_size(sidecar)
     except OSError as exc:
         info["probe_error"] = f"stat:{exc}"
         return info
@@ -343,6 +369,61 @@ def ledger_health_probe(
     except sqlite3.Error as exc:
         info["probe_error"] = f"{type(exc).__name__}:{exc}"
     return info
+
+
+def checkpoint_ledger_wal(
+    db_path: Path | str = Path("runtime/autonomy/ledger.db"),
+    *,
+    busy_timeout_s: float = 0.25,
+) -> dict[str, Any]:
+    """Attempt one non-blocking PASSIVE checkpoint while the daemon is idle.
+
+    PASSIVE never waits for readers and does not require an exclusive lock.
+    Busy or missing databases are reported as data; they do not raise into the
+    cycle wrapper.
+    """
+    path = Path(db_path)
+    result: dict[str, Any] = {
+        "status": "NOT_RUN",
+        "busy": None,
+        "log_pages": None,
+        "checkpointed_pages": None,
+        "error": None,
+    }
+    if not path.exists():
+        result["status"] = "MISSING"
+        return result
+    try:
+        from autonomy.maintenance import maintenance_active
+
+        holder = maintenance_active(path)
+        if holder is not None:
+            result["status"] = "MAINTENANCE_ACTIVE"
+            return result
+        connection = sqlite3.connect(
+            f"file:{path.resolve().as_posix()}?mode=rw",
+            uri=True,
+            timeout=max(0.01, float(busy_timeout_s)),
+        )
+        try:
+            connection.execute(
+                f"PRAGMA busy_timeout={int(max(0.01, float(busy_timeout_s)) * 1000)}"
+            )
+            busy, log_pages, checkpointed = connection.execute(
+                "PRAGMA wal_checkpoint(PASSIVE)"
+            ).fetchone()
+            result.update({
+                "status": "BUSY" if int(busy) else "OK",
+                "busy": int(busy),
+                "log_pages": int(log_pages),
+                "checkpointed_pages": int(checkpointed),
+            })
+        finally:
+            connection.close()
+    except sqlite3.Error as exc:
+        result["status"] = "ERROR"
+        result["error"] = f"{type(exc).__name__}:{str(exc)[:200]}"
+    return result
 
 
 class AutonomyLedger:
@@ -411,6 +492,9 @@ class AutonomyLedger:
                 self._conn.execute(f"PRAGMA cache_size=-{cache_mb * 1024}")  # negative => KiB
             if sync in ("OFF", "NORMAL", "FULL", "EXTRA"):
                 self._conn.execute(f"PRAGMA synchronous={sync}")
+            self._conn.execute(
+                f"PRAGMA wal_autocheckpoint={LEDGER_WAL_AUTOCHECKPOINT_PAGES}"
+            )
             self._conn.execute("PRAGMA temp_store=MEMORY")
             if mmap_mb > 0:
                 self._conn.execute(f"PRAGMA mmap_size={mmap_mb * 1024 * 1024}")
@@ -501,8 +585,13 @@ class AutonomyLedger:
             "signal_drop_episodes": int(self._signal_drop_episodes),
             "last_signal_drop": dict(self._last_signal_drop),
             "bloat_warn": size >= LEDGER_BLOAT_WARN_BYTES,
+            "wal_size_bytes": _path_size(Path(f"{self.db_path}-wal")),
+            "shm_size_bytes": _path_size(Path(f"{self.db_path}-shm")),
         }
-        for pragma in ("freelist_count", "page_size", "journal_mode", "busy_timeout"):
+        for pragma in (
+            "freelist_count", "page_size", "journal_mode", "busy_timeout",
+            "wal_autocheckpoint",
+        ):
             try:
                 info[pragma] = self._conn.execute(f"PRAGMA {pragma}").fetchone()[0]
             except Exception:
@@ -1167,6 +1256,23 @@ class AutonomyLedger:
         source: str | None = None,
         evidence: dict[str, Any] | None = None,
     ) -> None:
+        self.record_settlement_if_new(
+            market_ticker,
+            result_yes,
+            settled_at=settled_at,
+            source=source,
+            evidence=evidence,
+        )
+
+    def record_settlement_if_new(
+        self,
+        market_ticker: str,
+        result_yes: bool,
+        *,
+        settled_at: str | None = None,
+        source: str | None = None,
+        evidence: dict[str, Any] | None = None,
+    ) -> bool:
         """Record one immutable canonical settlement fact.
 
         An exact replay is a no-op rather than a physical row replacement.
@@ -1175,6 +1281,11 @@ class AutonomyLedger:
         or evidence packet is rejected.  This preserves compatibility with the
         legacy two-argument callers without allowing them to mutate richer
         canonical evidence written by a provenance-aware caller.
+
+        Returns ``True`` only for the connection that atomically inserted the
+        settlement.  Grading workers use that claim to ensure one outcome can
+        update trust weights at most once even when a daemon sweep and a
+        supervised backlog worker overlap.
         """
         ticker = str(market_ticker)
         result = 1 if result_yes else 0
@@ -1195,43 +1306,86 @@ class AutonomyLedger:
             )
         )
 
-        existing = self._conn.execute(
-            "SELECT s.result_yes,s.settled_at,COALESCE(p.source,''),"
-            " COALESCE(p.evidence,'{}') FROM settlements s"
-            " LEFT JOIN settlement_provenance p USING(market_ticker)"
-            " WHERE s.market_ticker=?",
-            (ticker,),
-        ).fetchone()
-        if existing is not None:
-            candidate = (
-                result,
-                str(existing[1]) if settled_at is None else str(settled_at),
-                str(existing[2]) if source is None else source,
-                str(existing[3]) if evidence_json is None else evidence_json,
-            )
-            if tuple(existing) != candidate:
-                raise ValueError(f"settlement record is immutable for {ticker}")
-            return
+        def _claim() -> bool:
+            nested = self._conn.in_transaction
+            savepoint = "dummy_settlement_claim"
+            if nested:
+                # Fixture builders and batch graders often have caller-owned
+                # writes pending. A savepoint composes the settlement claim
+                # with that transaction without committing or rolling back
+                # unrelated work. An existing write transaction already owns
+                # SQLite's writer lock, so the check+insert remains atomic
+                # against other connections.
+                self._conn.execute(f"SAVEPOINT {savepoint}")
+                # Also upgrade an explicitly opened DEFERRED transaction that
+                # has not written yet. The no-op UPDATE changes no rows but
+                # acquires the writer reservation before the existence read.
+                self._conn.execute(
+                    "UPDATE settlements SET result_yes=result_yes WHERE 0"
+                )
+            else:
+                # Standalone calls acquire the writer lock before checking
+                # existence, so two independent graders cannot both claim.
+                self._conn.execute("BEGIN IMMEDIATE")
+            try:
+                existing = self._conn.execute(
+                    "SELECT s.result_yes,s.settled_at,COALESCE(p.source,''),"
+                    " COALESCE(p.evidence,'{}') FROM settlements s"
+                    " LEFT JOIN settlement_provenance p USING(market_ticker)"
+                    " WHERE s.market_ticker=?",
+                    (ticker,),
+                ).fetchone()
+                if existing is not None:
+                    candidate = (
+                        result,
+                        str(existing[1]) if settled_at is None else str(settled_at),
+                        str(existing[2]) if source is None else source,
+                        str(existing[3]) if evidence_json is None else evidence_json,
+                    )
+                    if tuple(existing) != candidate:
+                        raise ValueError(
+                            f"settlement record is immutable for {ticker}"
+                        )
+                    if nested:
+                        self._conn.execute(f"RELEASE SAVEPOINT {savepoint}")
+                    else:
+                        self._conn.commit()
+                    return False
 
-        self._conn.execute(
-            "INSERT INTO settlements(market_ticker,result_yes,settled_at)"
-            " VALUES (?,?,?)",
-            (
-                ticker,
-                result,
-                str(settled_at) if settled_at is not None else _now(),
-            ),
-        )
-        self._conn.execute(
-            "INSERT INTO settlement_provenance(market_ticker,source,evidence)"
-            " VALUES (?,?,?)",
-            (
-                ticker,
-                source or "",
-                evidence_json if evidence_json is not None else "{}",
-            ),
-        )
-        self._retry_on_locked(self._conn.commit)
+                self._conn.execute(
+                    "INSERT INTO settlements(market_ticker,result_yes,settled_at)"
+                    " VALUES (?,?,?)",
+                    (
+                        ticker,
+                        result,
+                        str(settled_at) if settled_at is not None else _now(),
+                    ),
+                )
+                self._conn.execute(
+                    "INSERT INTO settlement_provenance(market_ticker,source,evidence)"
+                    " VALUES (?,?,?)",
+                    (
+                        ticker,
+                        source or "",
+                        evidence_json if evidence_json is not None else "{}",
+                    ),
+                )
+                if nested:
+                    self._conn.execute(f"RELEASE SAVEPOINT {savepoint}")
+                else:
+                    self._conn.commit()
+                return True
+            except Exception:
+                if nested:
+                    # Roll back only this claim. Caller-owned setup writes and
+                    # the outer transaction remain intact.
+                    self._conn.execute(f"ROLLBACK TO SAVEPOINT {savepoint}")
+                    self._conn.execute(f"RELEASE SAVEPOINT {savepoint}")
+                else:
+                    self._conn.rollback()
+                raise
+
+        return bool(self._retry_on_locked(_claim))
 
     def record_bankroll(self, bankroll_cents: int, open_exposure_cents: int, stage: int) -> None:
         self._conn.execute(
@@ -1325,8 +1479,9 @@ class AutonomyLedger:
         Scoped rows use the key convention 'source@VERTICAL'. A source can be
         an authority on crypto and a fish on weather; fusion should know.
         """
+        scoped_key = f"{source}@{vertical}"
         row = self._conn.execute(
-            "SELECT weight FROM source_trust WHERE source=?", (f"{source}@{vertical}",)
+            "SELECT weight FROM source_trust WHERE source=?", (scoped_key,)
         ).fetchone()
         if row:
             return float(row[0])
@@ -1347,9 +1502,10 @@ class AutonomyLedger:
         """
         from autonomy.taxonomy import scope_weight_key
 
+        exact_key = scope_weight_key(source, ticker, features or {})
         row = self._conn.execute(
             "SELECT weight FROM source_trust WHERE source=?",
-            (scope_weight_key(source, ticker, features or {}),),
+            (exact_key,),
         ).fetchone()
         if row:
             return float(row[0])

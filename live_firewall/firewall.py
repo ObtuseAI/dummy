@@ -25,6 +25,7 @@ from autonomy.target_policy import (
     is_equity_index_target,
     is_prediction_quarantined_target,
 )
+from autonomy.fees import kalshi_maker_fee_cents, kalshi_taker_fee_cents
 from forecasting.model_influence_attestation import (
     verify_model_influence_attestation,
 )
@@ -468,6 +469,105 @@ class LiveBrokerFirewall:
             rejected_by="model_influence_authority",
         )
 
+    @staticmethod
+    def _net_ev_verdict(
+        req: LiveOrderRequest,
+        forecast: Forecast,
+        caps: Any,
+    ) -> FirewallVerdict:
+        """Recompute conservative, side-specific EV at the final limit.
+
+        Upstream forecast fields are claims, not authority.  The central
+        firewall independently binds probability uncertainty, side, limit
+        price, current fee schedule, and operator minimum edge.  It may reject
+        an upstream decision but can never increase its size or edge.
+        """
+        try:
+            point = Decimal(forecast.dummy_probability)
+            lower = Decimal(forecast.uncertainty_band[0])
+            upper = Decimal(forecast.uncertainty_band[1])
+            claimed_gross = Decimal(forecast.expected_edge)
+            claimed_net = Decimal(forecast.edge_after_fees)
+        except (ArithmeticError, TypeError, ValueError, IndexError):
+            return FirewallVerdict(
+                allow=False,
+                reason="Forecast edge evidence is malformed",
+                rejected_by="net_ev",
+            )
+        values = (point, lower, upper, claimed_gross, claimed_net)
+        if (
+            any(not value.is_finite() for value in values)
+            or not Decimal(0) <= lower <= point <= upper <= Decimal(1)
+            or claimed_gross <= 0
+            or claimed_net <= 0
+        ):
+            return FirewallVerdict(
+                allow=False,
+                reason="Forecast edge evidence is invalid or non-positive",
+                rejected_by="net_ev",
+            )
+
+        # Match the allocator's documented half-sigma confidence haircut:
+        # halfway from the point estimate to the adverse uncertainty bound.
+        probability_side = (
+            (point + lower) / Decimal(2)
+            if req.side == "yes"
+            else Decimal(1) - (point + upper) / Decimal(2)
+        )
+        fee_total = (
+            kalshi_maker_fee_cents(
+                req.price_cents,
+                req.size,
+                req.market_ticker,
+            )
+            if req.liquidity_role == "maker"
+            else kalshi_taker_fee_cents(
+                req.price_cents,
+                req.size,
+                req.market_ticker,
+            )
+        )
+        fee_per_contract = Decimal(fee_total) / Decimal(req.size)
+        net_ev_cents = (
+            probability_side * Decimal(100)
+            - Decimal(req.price_cents)
+            - fee_per_contract
+        )
+        minimum_cents = Decimal(int(caps.min_edge_bps)) / Decimal(100)
+        minimum_probability_edge = (
+            Decimal(int(caps.min_edge_bps)) / Decimal(10000)
+        )
+        if claimed_gross < minimum_probability_edge:
+            return FirewallVerdict(
+                allow=False,
+                reason="Expected edge below threshold",
+                rejected_by="net_ev",
+            )
+        if net_ev_cents <= 0:
+            return FirewallVerdict(
+                allow=False,
+                reason="Conservative side-specific net EV is non-positive",
+                rejected_by="net_ev",
+            )
+        if net_ev_cents < minimum_cents:
+            return FirewallVerdict(
+                allow=False,
+                reason="Conservative side-specific net EV is below threshold",
+                rejected_by="net_ev",
+            )
+        # The claim may be more conservative than the recomputation, never more
+        # optimistic. One hundredth of a cent absorbs serialized rounding.
+        if claimed_net * Decimal(100) > net_ev_cents + Decimal("0.01"):
+            return FirewallVerdict(
+                allow=False,
+                reason="Claimed edge after fees exceeds firewall recomputation",
+                rejected_by="net_ev_binding",
+            )
+        return FirewallVerdict(
+            allow=True,
+            reason="Conservative side-specific net EV verified",
+        )
+
     async def evaluate(self, req: LiveOrderRequest, orderbook: OrderBook, forecast: Forecast) -> FirewallVerdict:
         caps = load_caps()
         def fail(by: str, reason: str) -> FirewallVerdict:
@@ -582,10 +682,12 @@ class LiveBrokerFirewall:
                     "executable_depth",
                     "Fresh side-specific depth cannot execute the taker request",
                 )
-        if forecast.edge_after_fees <= 0:
-            return fail("edge", "Fees remove expected edge")
-        if forecast.expected_edge < Decimal(caps.min_edge_bps) / Decimal(10000):
-            return fail("edge", "Expected edge below threshold")
+        net_ev_verdict = self._net_ev_verdict(req, forecast, caps)
+        if not net_ev_verdict.allow:
+            return fail(
+                net_ev_verdict.rejected_by or "net_ev",
+                net_ev_verdict.reason,
+            )
         if not req.strategy_proof_reference or not req.forecast_proof_reference:
             return fail("proof", "Missing proof reference")
         order_value = req.price_cents * req.size

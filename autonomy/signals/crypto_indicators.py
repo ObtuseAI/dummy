@@ -7,6 +7,8 @@ later point-in-time evidence justifies an explicit promotion.
 """
 from __future__ import annotations
 
+import hashlib
+import json
 import math
 import time
 from datetime import datetime, timezone
@@ -22,6 +24,81 @@ from autonomy.signals.crypto_spot import (
 )
 
 _KRAKEN_PAIRS = {"BTC": "XXBTZUSD", "ETH": "XETHZUSD", "SOL": "SOLUSD"}
+
+
+def _closed_candle_rows(
+    rows: list[list[float]],
+    interval_s: int,
+    received_at_s: float,
+) -> list[list[float]]:
+    """Keep only provider bars that had fully elapsed when received."""
+    closed: list[list[float]] = []
+    for row in rows:
+        if not isinstance(row, list) or len(row) < 6:
+            continue
+        try:
+            open_time_s = int(row[0])
+            numeric = [float(value) for value in row[1:6]]
+        except (TypeError, ValueError):
+            continue
+        if (
+            not all(math.isfinite(value) for value in numeric)
+            or open_time_s + interval_s > received_at_s
+        ):
+            continue
+        closed.append(row)
+    return closed
+
+
+def _row_sha256(row: list[float]) -> str:
+    payload = json.dumps(
+        row,
+        sort_keys=True,
+        separators=(",", ":"),
+        allow_nan=False,
+    )
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+
+def _ohlcv_records(
+    rows: list[list[float]],
+    *,
+    asset: str,
+    venue: str,
+    timeframe: str,
+    interval_s: int,
+    received_at_s: float,
+) -> list[dict[str, Any]]:
+    """Attach explicit point-in-time and source identity to hub candle rows."""
+    source = (
+        "kraken-public-ohlc-v1"
+        if venue == "kraken"
+        else "coinbase-public-candles-v1"
+    )
+    return [
+        {
+            "asset": asset,
+            "venue": venue,
+            "timeframe": timeframe,
+            "interval_s": interval_s,
+            "at_s": int(row[0]),  # compatibility alias for historical consumers
+            "open_time_s": int(row[0]),
+            "close_time_s": int(row[0]) + interval_s,
+            "received_at_s": float(received_at_s),
+            # Neither public endpoint supplies a separate observation time;
+            # never relabel an inferred bar close as provider-observed.
+            "provider_observed_at_s": None,
+            "low": float(row[1]),
+            "high": float(row[2]),
+            "open": float(row[3]),
+            "close": float(row[4]),
+            "volume": float(row[5]),
+            "closed": True,
+            "source": source,
+            "raw_sha256": _row_sha256(row),
+        }
+        for row in rows
+    ]
 
 
 def _annualized_vol(closes: list[float], periods_per_year: int) -> float | None:
@@ -196,18 +273,29 @@ class CryptoDataHub:
         crypto signal abstains for the cycle.
         """
         try:
-            hourly = self._candle_rows(client, product, 3600)
-            if len(hourly) >= 48 and now_s - int(hourly[-1][0]) <= 3 * 3600:
+            hourly = _closed_candle_rows(
+                self._candle_rows(client, product, 3600),
+                3600,
+                now_s,
+            )
+            if (
+                len(hourly) >= 48
+                and now_s - (int(hourly[-1][0]) + 3600) <= 3 * 3600
+            ):
                 return hourly, "coinbase"
         except Exception:
             pass
         try:
-            hourly = self._kraken_hourly_rows(client, asset)
+            hourly = _closed_candle_rows(
+                self._kraken_hourly_rows(client, asset),
+                3600,
+                now_s,
+            )
         except Exception:
             raise ValueError("insufficient hourly crypto history") from None
         if len(hourly) < 48:
             raise ValueError("insufficient hourly crypto history")
-        if now_s - int(hourly[-1][0]) > 3 * 3600:
+        if now_s - (int(hourly[-1][0]) + 3600) > 3 * 3600:
             raise ValueError("stale hourly crypto history")
         return hourly, "kraken"
 
@@ -222,12 +310,31 @@ class CryptoDataHub:
             hourly, hourly_source = self._fresh_hourly(client, product, asset, now_s)
             hourly_at_s = int(hourly[-1][0])
             try:
-                minute = self._candle_rows(client, product, 60)
-                if minute and now_s - int(minute[-1][0]) > 10 * 60:
+                minute = _closed_candle_rows(
+                    self._candle_rows(client, product, 60),
+                    60,
+                    now_s,
+                )
+                if minute and now_s - (int(minute[-1][0]) + 60) > 10 * 60:
                     minute = []
             except Exception:
                 minute = []
             minute_at_s = int(minute[-1][0]) if minute else None
+            # Native 5m candles provide enough public history for the 15m
+            # chartist rung (300 x 1m only yields 20 complete 15m bars).
+            try:
+                five_minute = _closed_candle_rows(
+                    self._candle_rows(client, product, 300),
+                    300,
+                    now_s,
+                )
+                if (
+                    five_minute
+                    and now_s - (int(five_minute[-1][0]) + 300) > 20 * 60
+                ):
+                    five_minute = []
+            except Exception:
+                five_minute = []
             coinbase_spot = float((minute or hourly)[-1][4])
             # Under Kraken hourly failover with no fresh Coinbase minute data,
             # that value is a Kraken close -- honest telemetry reports no
@@ -238,8 +345,12 @@ class CryptoDataHub:
             # support/resistance and trend channels); best-effort, and an
             # empty list simply drops the 1d timeframe from structure.
             try:
-                daily = self._candle_rows(client, product, 86400)
-                if daily and now_s - int(daily[-1][0]) > 3 * 86400:
+                daily = _closed_candle_rows(
+                    self._candle_rows(client, product, 86400),
+                    86400,
+                    now_s,
+                )
+                if daily and now_s - (int(daily[-1][0]) + 86400) > 3 * 86400:
                     daily = []
             except Exception:
                 daily = []
@@ -312,8 +423,26 @@ class CryptoDataHub:
             10_000.0 * abs(coinbase_spot / kraken_spot - 1.0)
             if coinbase_spot_genuine and kraken_spot and kraken_spot > 0 else None
         )
+        received_at_s = float(self.now_s())
+        realized_vol_60m = (
+            _annualized_vol(
+                [float(row[4]) for row in minute][-61:],
+                60 * 24 * 365,
+            )
+            if len(minute) >= 61
+            else None
+        )
+        realized_vol_7d = (
+            _annualized_vol(
+                [float(row[4]) for row in hourly][-169:],
+                24 * 365,
+            )
+            if len(hourly) >= 25
+            else None
+        )
         state = {
             "asset": asset,
+            "received_at_s": received_at_s,
             "spot": spot,
             "coinbase_spot": coinbase_spot if coinbase_spot_genuine else None,
             "kraken_spot": kraken_spot,
@@ -322,30 +451,39 @@ class CryptoDataHub:
             "hourly_closes": [float(row[4]) for row in hourly],
             "daily_closes": [float(row[4]) for row in daily],
             "minute_closes": [float(row[4]) for row in minute],
+            "five_minute_closes": [float(row[4]) for row in five_minute],
             "minute_volumes": [float(row[5]) for row in minute],
+            "realized_vol_60m_annualized": realized_vol_60m,
+            "realized_vol_7d_annualized": realized_vol_7d,
             # Preserve complete public candle rows for independently graded
             # technical challengers without triggering a second network fetch.
-            "minute_ohlcv": [
-                {"at_s": int(row[0]), "low": float(row[1]), "high": float(row[2]),
-                 "open": float(row[3]), "close": float(row[4]), "volume": float(row[5])}
-                for row in minute
-            ],
-            "hourly_ohlcv": [
-                {"at_s": int(row[0]), "low": float(row[1]), "high": float(row[2]),
-                 "open": float(row[3]), "close": float(row[4]), "volume": float(row[5])}
-                for row in hourly
-            ],
-            "daily_ohlcv": [
-                {"at_s": int(row[0]), "low": float(row[1]), "high": float(row[2]),
-                 "open": float(row[3]), "close": float(row[4]), "volume": float(row[5])}
-                for row in daily
-            ],
+            "minute_ohlcv": _ohlcv_records(
+                minute, asset=asset, venue="coinbase", timeframe="1m",
+                interval_s=60, received_at_s=received_at_s,
+            ),
+            "five_minute_ohlcv": _ohlcv_records(
+                five_minute, asset=asset, venue="coinbase", timeframe="5m",
+                interval_s=300, received_at_s=received_at_s,
+            ),
+            "hourly_ohlcv": _ohlcv_records(
+                hourly, asset=asset, venue=hourly_source, timeframe="1h",
+                interval_s=3600, received_at_s=received_at_s,
+            ),
+            "daily_ohlcv": _ohlcv_records(
+                daily, asset=asset, venue="coinbase", timeframe="1d",
+                interval_s=86400, received_at_s=received_at_s,
+            ),
             "book_imbalance": book_imbalance,
             "microprice_basis_bps": microprice_basis_bps,
             "dvol": dvol,
             "dvol_at_ms": dvol_at,
             "coinbase_hourly_at_s": hourly_at_s,
             "coinbase_minute_at_s": minute_at_s,
+            "hourly_venue": hourly_source,
+            "hourly_close_time_s": hourly_at_s + 3600,
+            "minute_close_time_s": (
+                minute_at_s + 60 if minute_at_s is not None else None
+            ),
             "coinbase_hourly_age_s": max(0.0, now_s - hourly_at_s),
             "coinbase_minute_age_s": (
                 max(0.0, now_s - minute_at_s) if minute_at_s is not None else None

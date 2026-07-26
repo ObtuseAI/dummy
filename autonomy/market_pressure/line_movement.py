@@ -113,18 +113,42 @@ class SideSeries:
     def recent_move(self, now: float, window_hours: float) -> float | None:
         """Signed move over the last ``window_hours`` (earliest in-window
         value -> latest)."""
+        if self.commence is None or window_hours <= 0.0:
+            return None
         cutoff = now - window_hours * 3600.0
-        in_window = [q for q in self.quotes if q.ts >= cutoff and self.primary_value(q) is not None]
+        in_window = [
+            q
+            for q in self.quotes
+            if cutoff <= q.ts <= now
+            and q.ts < self.commence
+            and self.primary_value(q) is not None
+        ]
         if len(in_window) < 2:
             return None
         return self.primary_value(in_window[-1]) - self.primary_value(in_window[0])  # type: ignore[operator]
 
     def velocity(self, now: float, window_hours: float) -> float | None:
-        """Primary-quantity change per hour over the window (0 if flat)."""
-        move = self.recent_move(now, window_hours)
-        if move is None:
+        """Primary-quantity change per actual elapsed hour (0 if flat)."""
+        if self.commence is None or window_hours <= 0.0:
             return None
-        return move / window_hours
+        cutoff = now - window_hours * 3600.0
+        in_window = [
+            q
+            for q in self.quotes
+            if cutoff <= q.ts <= now
+            and q.ts < self.commence
+            and self.primary_value(q) is not None
+        ]
+        if len(in_window) < 2:
+            return None
+        elapsed_hours = (in_window[-1].ts - in_window[0].ts) / 3600.0
+        if elapsed_hours <= 0.0:
+            return None
+        first = self.primary_value(in_window[0])
+        last = self.primary_value(in_window[-1])
+        if first is None or last is None:
+            return None
+        return (last - first) / elapsed_hours
 
     def total_travel(self) -> float:
         """Sum of absolute step-to-step moves -- distinguishes a line that
@@ -177,8 +201,10 @@ def read_archive_window(
 
     Only ``odds|<sport>|...`` records (the multi-book slate snapshots) are
     read; ``props|`` and ``sports`` records are skipped. Events are kept only
-    while still PRE-commence at the snapshot instant. FAIL-OPEN: any read
-    error yields fewer rows, never an exception."""
+    while still PRE-commence at the snapshot instant. Snapshot time provenance
+    fails closed: future rows and rows with a missing or non-pregame commence
+    relationship are discarded. Shard read errors yield fewer rows, never an
+    exception."""
     directory = Path(
         archive_dir if archive_dir is not None
         else os.environ.get("DUMMY_ODDS_ARCHIVE_DIR")
@@ -195,7 +221,12 @@ def read_archive_window(
             if not key.startswith("odds|"):
                 continue
             ts = record.get("ts")
-            if not isinstance(ts, (int, float)) or ts < cutoff:
+            if (
+                isinstance(ts, bool)
+                or not isinstance(ts, (int, float))
+                or ts < cutoff
+                or ts > reference
+            ):
                 continue
             payload = record.get("payload")
             if not isinstance(payload, list):
@@ -207,7 +238,7 @@ def read_archive_window(
                     continue
                 commence = _parse_iso(event.get("commence_time"))
                 # Pre-commence snapshots only -- a started game's book is live.
-                if commence is not None and ts > commence:
+                if commence is None or ts >= commence:
                     continue
                 out.append((float(ts), event))
     out.sort(key=lambda pair: pair[0])
@@ -237,21 +268,32 @@ def movement_series(
     snapshots: list[tuple[float, dict[str, Any]]],
     *,
     markets: Iterable[str] = ("h2h", "totals", "spreads"),
+    now: float | None = None,
 ) -> dict[tuple[str, str, str, str], SideSeries]:
     """Pure transform: (ts, event) snapshots -> per (event, book, market,
     side) :class:`SideSeries`, quotes time-ordered and de-duplicated by
-    instant. ``snapshots`` is assumed already filtered/sorted by
-    :func:`read_archive_window` but the transform tolerates any order."""
+    instant. The transform independently rechecks the pregame and future-time
+    boundaries so bypassing :func:`read_archive_window` cannot introduce
+    look-ahead evidence."""
     wanted = set(markets)
     series: dict[tuple[str, str, str, str], SideSeries] = {}
     seen_ts: dict[tuple[str, str, str, str], set[float]] = {}
+    reference = now if now is not None else datetime.now(timezone.utc).timestamp()
 
     ordered = sorted(snapshots, key=lambda pair: pair[0])
     for ts, event in ordered:
+        if (
+            isinstance(ts, bool)
+            or not isinstance(ts, (int, float))
+            or ts > reference
+        ):
+            continue
         event_id = str(event.get("id") or "")
         if not event_id:
             continue
         commence = _parse_iso(event.get("commence_time"))
+        if commence is None or ts >= commence:
+            continue
         for book in event.get("bookmakers", []) or []:
             if not isinstance(book, dict):
                 continue

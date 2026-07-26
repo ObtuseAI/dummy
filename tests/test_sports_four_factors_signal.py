@@ -42,8 +42,14 @@ def _store(tmp_path):
         st.upsert_game({"game_id": gid, "league": "wnba", "season": 2025,
                         "start_time": f"2025-06-0{i + 1}T00:00:00Z", "home": "AAA", "away": "BBB",
                         "home_score": 88, "away_score": 74, "status": "final", "source": "t"})
-        st.record_team_boxscores([{"game_id": gid, "team": "AAA", "stats": _GOOD},
-                                  {"game_id": gid, "team": "BBB", "stats": _POOR}])
+        st.record_team_boxscores([
+            {"game_id": gid, "team": "AAA", "stats": _GOOD,
+             "source_available_at": "2025-06-07T00:00:00Z",
+             "received_at": "2025-06-07T00:00:00Z"},
+            {"game_id": gid, "team": "BBB", "stats": _POOR,
+             "source_available_at": "2025-06-07T00:00:00Z",
+             "received_at": "2025-06-07T00:00:00Z"},
+        ])
     return st
 
 

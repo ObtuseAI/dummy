@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import math
+import re
 import sqlite3
 from dataclasses import dataclass
 from datetime import datetime
@@ -23,6 +24,11 @@ from .models import (
     utc,
 )
 
+_NON_PRODUCTION_IDENTITY = re.compile(
+    r"(?:^|[-_])(demo|fixture|synthetic|fake|test|mock|unknown)(?:[-_]|$)",
+    re.IGNORECASE,
+)
+
 
 def _market_type(ticker: str) -> str:
     series = ticker.upper().split("-", 1)[0]
@@ -39,6 +45,47 @@ def _market_type(ticker: str) -> str:
     if series.startswith(("KXBTC", "KXETH", "KXSOL")):
         return "price_ladder"
     return "other"
+
+
+def _production_source_families(
+    ticker: str,
+    raw_sources: object,
+) -> tuple[str, ...]:
+    """Return validated production source families or an empty rejection.
+
+    Ledger autoresearch is a production-evidence compiler, not a fixture
+    loader.  A caller omitting ``ticker_prefix`` must not accidentally widen
+    the sample to demo rows, synthetic sources, malformed weights, or unknown
+    provenance.  Tests that need synthetic tasks construct ``ResearchTask``
+    objects directly instead of laundering fixtures through this path.
+    """
+
+    normalized_ticker = str(ticker).strip().upper()
+    if (
+        not normalized_ticker.startswith("KX")
+        or _NON_PRODUCTION_IDENTITY.search(normalized_ticker)
+        or not isinstance(raw_sources, dict)
+        or not raw_sources
+    ):
+        return ()
+
+    families: list[str] = []
+    positive_weight = False
+    for raw_family, raw_weight in raw_sources.items():
+        family = str(raw_family).strip()
+        if not family or _NON_PRODUCTION_IDENTITY.search(family):
+            return ()
+        try:
+            weight = float(raw_weight)
+        except (TypeError, ValueError):
+            return ()
+        if not math.isfinite(weight) or weight < 0.0:
+            return ()
+        positive_weight = positive_weight or weight > 0.0
+        families.append(family)
+    if not positive_weight:
+        return ()
+    return tuple(sorted(set(families)))
 
 
 def _market_regime(value: float) -> str:
@@ -354,13 +401,15 @@ def load_ledger_evidence(
             if not isinstance(raw_sources, dict) or not raw_sources:
                 continue
             ticker = str(record["market_ticker"])
+            sources = _production_source_families(ticker, raw_sources)
+            if not sources:
+                continue
             snapshot = _decision_signal_snapshot(
                 connection,
                 ticker=ticker,
                 decision_at=decision_at,
             )
             component = snapshot["component"]
-            sources = tuple(sorted(str(key) for key in raw_sources if str(key)))
             action = str(record["action"])
             abstain_reason = str(record["abstain_reason"] or "")
             forced = any("forced" in source.lower() for source in sources) or (

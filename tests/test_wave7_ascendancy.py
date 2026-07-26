@@ -211,11 +211,17 @@ def test_sealed_holdout_crash_consumes_budget(tmp_path):
 
 # ---- no-edge map --------------------------------------------------------------
 
-def _scope(clusters, lower, upper, mean=None):
+def _scope(clusters, lower, upper, mean=None, positive_p=0.001):
     return {"contested_event_clusters": clusters,
             "contested_mean_brier_edge_ci95": {
                 "lower": lower, "upper": upper,
-                "mean": mean if mean is not None else (lower + upper) / 2}}
+                "mean": mean if mean is not None else (lower + upper) / 2},
+            "contested_edge_sign_test": {
+                "positive_edge": {
+                    "p_value": positive_p,
+                    "method": "exact_one_sided_dependency_cluster_sign_test",
+                }
+            }}
 
 
 def test_classify_scope_states():
@@ -238,6 +244,36 @@ def test_build_no_edge_map_shapes():
                              "significantly_negative": 1, "insufficient_evidence": 1}
     assert out["significantly_negative"][0]["scope"] == "dead|x|y|z"
     assert out["insufficient_evidence_scopes"] == ["thin|x|y|z"]
+    assert out["multiple_testing"]["complete_family"] is True
+    assert out["edge"][0]["familywise_confirmed"] is True
+
+
+def test_no_edge_map_rejects_pointwise_edge_that_fails_family_control():
+    report = {"sources_by_scope": {
+        "marginal|x|y|z": _scope(100, 0.001, 0.01, positive_p=0.03),
+        "null|x|y|z": _scope(100, -0.01, 0.01, positive_p=0.40),
+    }}
+    out = build_no_edge_map(report)
+    assert out["counts"]["edge"] == 0
+    assert out["insufficient_evidence_scopes"] == ["marginal|x|y|z"]
+    unconfirmed = out["multiple_testing"]["unconfirmed_pointwise_positive_scopes"]
+    assert unconfirmed[0]["adjusted_p_value"] == pytest.approx(0.06)
+
+
+def test_no_edge_map_incomplete_test_family_fails_positive_claim_closed():
+    report = {"sources_by_scope": {
+        "has-test|x|y|z": _scope(100, 0.01, 0.03, positive_p=0.0001),
+        "legacy|x|y|z": {
+            "contested_event_clusters": 100,
+            "contested_mean_brier_edge_ci95": {
+                "lower": -0.01, "upper": 0.01, "mean": 0.0,
+            },
+        },
+    }}
+    out = build_no_edge_map(report)
+    assert out["multiple_testing"]["complete_family"] is False
+    assert out["counts"]["edge"] == 0
+    assert out["insufficient_evidence_scopes"] == ["has-test|x|y|z"]
 
 
 # ---- conservative advantage ---------------------------------------------------

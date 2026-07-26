@@ -320,7 +320,7 @@ def test_dashboard_index_serves_redesigned_page():
     import autonomy.dashboard as dash
 
     body = TestClient(dash.build_app()).get("/").text
-    assert "totalizator" in body            # the redesigned shell
+    assert "operator board" in body
     assert "/api/overview" in body and "/api/scopes" in body
 
 

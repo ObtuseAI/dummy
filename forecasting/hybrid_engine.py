@@ -1,11 +1,8 @@
 from __future__ import annotations
 import asyncio
 import json
-from datetime import datetime, timedelta, timezone
-from decimal import Decimal
 from typing import Any
-from core.ontology import Contract, Forecast, ForecastOpinion, Market, MarketThesis, OrderBook
-from forecasting.engine import ForecastEngine
+from core.ontology import Contract, Forecast, Market, OrderBook
 from model_router.router import ModelRouter
 from model_router.tasks import ModelTask
 
@@ -13,84 +10,16 @@ HYBRID_REVIEW_CALL_CAP = 7
 
 
 class HybridForecastEngine:
-    def __init__(self, base_engine: ForecastEngine | None = None, router: ModelRouter | None = None):
-        self.base_engine = base_engine or ForecastEngine()
+    """Model-review router for an already-built maintained V2 forecast.
+
+    This class deliberately does not construct forecasts. The retired V1
+    ``ForecastEngine`` was a parallel deterministic stack with fabricated
+    constants. ``RealMarketForecastLoopV2`` owns current snapshot scoring and
+    passes its evidence-bound base forecast into :meth:`hybrid_review`.
+    """
+
+    def __init__(self, router: ModelRouter | None = None):
         self.router = router or ModelRouter()
-
-    async def forecast_opinion(
-        self,
-        market_ticker: str,
-        contract_ticker: str,
-        event_title: str,
-        contract_title: str,
-        orderbook: OrderBook,
-    ) -> ForecastOpinion:
-        base = self.base_engine.forecast(market_ticker, contract_ticker, event_title, contract_title, orderbook)
-        prompt = self._build_forecast_prompt(base, orderbook)
-        envelope = await self.router.call(
-            ModelTask.FORECAST_OPINION,
-            prompt,
-            context={"market_ticker": market_ticker, "contract_ticker": contract_ticker},
-        )
-        return self._parse_opinion(envelope.content, base)
-
-    def _build_forecast_prompt(self, base: Forecast, orderbook: OrderBook) -> str:
-        return (
-            f"Market: {base.market_ticker}\n"
-            f"Contract: {base.contract_ticker}\n"
-            f"Market-implied probability: {base.market_implied_probability}\n"
-            f"Dummy base probability: {base.dummy_probability}\n"
-            f"Edge after fees: {base.edge_after_fees}\n"
-            f"Orderbook best bid/ask: {orderbook.bids[-1].price if orderbook.bids else None} / {orderbook.asks[0].price if orderbook.asks else None}\n"
-            "Return a JSON object with keys: dummy_probability, confidence_score, uncertainty_band [low, high], reasoning, no_trade_reason (optional), calibration_notes (list)."
-        )
-
-    def _parse_opinion(self, content: str, base: Forecast) -> ForecastOpinion:
-        try:
-            data = json.loads(content)
-        except Exception:
-            data = {}
-        dummy_prob = Decimal(str(data.get("dummy_probability", base.dummy_probability)))
-        confidence = Decimal(str(data.get("confidence_score", base.confidence_score)))
-        band = data.get("uncertainty_band") or [float(max(Decimal("0"), dummy_prob - Decimal("0.05"))), float(min(Decimal("1"), dummy_prob + Decimal("0.05")))]
-        return ForecastOpinion(
-            market_ticker=base.market_ticker,
-            contract_ticker=base.contract_ticker,
-            forecast_reference=base.proof_reference,
-            market_implied_probability=base.market_implied_probability,
-            dummy_probability=dummy_prob,
-            probability_delta=(dummy_prob - base.market_implied_probability).quantize(Decimal("0.0001")),
-            confidence_score=confidence,
-            uncertainty_band=(Decimal(str(band[0])), Decimal(str(band[1]))),
-            model_summary="hybrid_router",
-            reasoning=str(data.get("reasoning", "no model reasoning")),
-            no_trade_reason=data.get("no_trade_reason"),
-            calibration_notes=data.get("calibration_notes", []),
-            timestamp=datetime.now(timezone.utc),
-            expiration=datetime.now(timezone.utc) + timedelta(hours=1),
-            proof_reference=f"hybrid_forecast_{base.market_ticker}_{datetime.now(timezone.utc).isoformat()}",
-        )
-
-    async def market_thesis(self, market_ticker: str, contract_ticker: str, context: dict[str, Any]) -> MarketThesis:
-        prompt = (
-            f"Write a concise market thesis for {market_ticker}/{contract_ticker}. "
-            f"Context: {context}. Return STRICT JSON with keys thesis (string), "
-            "confidence (0..1), bullish_signals (list), and bearish_signals (list)."
-        )
-        envelope = await self.router.call(ModelTask.MARKET_THESIS, prompt, context=context)
-        try:
-            data = json.loads(envelope.content)
-        except Exception:
-            data = {}
-        return MarketThesis(
-            market_ticker=market_ticker,
-            contract_ticker=contract_ticker,
-            thesis=data.get("thesis", "no thesis"),
-            bullish_signals=data.get("bullish_signals", []),
-            bearish_signals=data.get("bearish_signals", []),
-            source=envelope.decision.provider_name,
-            timestamp=datetime.now(timezone.utc),
-        )
 
     @staticmethod
     def _safe_json(content: str) -> dict[str, Any]:

@@ -187,31 +187,49 @@ def test_fails_closed_without_equity_data_or_hub_state():
     assert not no_equities.applicable(mlb)
 
 
-def test_promotion_eligible_stamped_for_registered_sol_15m_scope_only():
-    # Forward-registered candidate scope: crypto_equities_flow|sol|15m_direction|15m.
+def test_subdaily_equity_flow_abstains_before_fetching_slow_sources():
+    calls = {"equities": 0, "hub": 0}
+
+    def equities():
+        calls["equities"] += 1
+        return _equity_state(0.05)
+
+    def hub(_asset):
+        calls["hub"] += 1
+        return _hub_state()
+
+    signal = CryptoEquitiesSignal(
+        fetch_state=hub,
+        fetch_equities=equities,
+        hours_to_close=lambda _market: 0.25,
+    )
+    assert signal.generate(
+        _market(ticker="KXSOL15M-26JUL241200-00")
+    ) is None
+    assert calls == {"equities": 0, "hub": 0}
+
+
+def test_promotion_eligible_stamped_for_registered_sol_daily_scope_only():
     from autonomy.signals.crypto_equities import PROMOTION_ELIGIBLE_SCOPE
 
-    assert PROMOTION_ELIGIBLE_SCOPE == "crypto_equities_flow|sol|15m_direction|15m"
+    assert PROMOTION_ELIGIBLE_SCOPE == "crypto_equities_flow|sol|ladder|daily+"
     signal = _signal(_equity_state(0.05), _hub_state())
     sol = signal.generate(
-        _market(ticker="KXSOL15M-26JUL241200-00", strike_type="greater",
+        _market(ticker="KXSOLD-26JUL0917-T71000", strike_type="greater",
                 floor_strike=71_000.0)
     )
     assert sol is not None
     assert sol.features["promotion_eligible"] is True
 
-    # Same source, different subject (btc 15m): no opt-in stamp at all.
     btc = signal.generate(
-        _market(ticker="KXBTC15M-26JUL241200-00", strike_type="greater",
+        _market(ticker="KXBTCD-26JUL0917-T71000", strike_type="greater",
                 floor_strike=71_000.0)
     )
     assert btc is not None
     assert "promotion_eligible" not in btc.features
 
-    # Registered subject on the daily ladder family: no opt-in stamp.
-    daily = signal.generate(
-        _market(ticker="KXSOLD-26JUL0917-T71000", strike_type="greater",
+    short = signal.generate(
+        _market(ticker="KXSOL15M-26JUL241200-00", strike_type="greater",
                 floor_strike=71_000.0)
     )
-    assert daily is not None
-    assert "promotion_eligible" not in daily.features
+    assert short is None

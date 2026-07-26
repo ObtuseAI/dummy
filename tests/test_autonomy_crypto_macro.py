@@ -160,56 +160,43 @@ def test_abstains_on_non_numeric_dvol_no_throw():
     assert sig.generate(_crypto_market()) is None
 
 
-def test_short_horizon_drift_follows_sqrt_hours_law():
-    # The at-the-money shift (in horizon-sigma units) grows as sqrt(hours), so a
-    # 24h contract shifts ~sqrt(24/0.25)=9.8x as far off center as a 15-min one.
-    # Assert the actual scaling law, not merely the direction.
-    import math
-
+def test_slow_macro_feed_abstains_on_subdaily_contracts():
     macro = {"sp500": 0.03, "dxy": -0.02, "vix": -0.15}
     market = _crypto_market()
-    long = CryptoMacroRegimeSignal(
+    daily = CryptoMacroRegimeSignal(
         fetch_state=_state, fetch_macro=lambda: macro, hours_to_close=lambda m: 24.0,
     ).generate(market)
-    short = CryptoMacroRegimeSignal(
+    hourly = CryptoMacroRegimeSignal(
         fetch_state=_state, fetch_macro=lambda: macro, hours_to_close=lambda m: 0.25,
     ).generate(market)
-    shift_long = long.features["shift_in_horizon_sigma"]
-    shift_short = short.features["shift_in_horizon_sigma"]
-    assert shift_short > 0 and shift_long > 0
-    ratio = shift_long / shift_short
-    assert abs(ratio - math.sqrt(24.0 / 0.25)) < 0.2  # ~9.8, the sqrt(hours) law
-    assert abs(long.probability_yes - 0.5) > abs(short.probability_yes - 0.5)
+    assert daily is not None
+    assert daily.features["contract_horizon"] == "daily+"
+    assert daily.features["source_observation_horizon"] == "five_trading_sessions"
+    assert hourly is None
 
 
-def test_promotion_eligible_stamped_for_registered_sol_15m_scope_only():
-    # Forward-registered candidate scope: crypto_macro_regime|sol|15m_direction|15m.
+def test_promotion_eligible_stamped_for_registered_sol_daily_scope_only():
     from autonomy.signals.crypto_macro import PROMOTION_ELIGIBLE_SCOPE
 
-    assert PROMOTION_ELIGIBLE_SCOPE == "crypto_macro_regime|sol|15m_direction|15m"
+    assert PROMOTION_ELIGIBLE_SCOPE == "crypto_macro_regime|sol|ladder|daily+"
     sig = CryptoMacroRegimeSignal(
         fetch_state=lambda _asset: {"spot": 150.0, "dvol": 60.0},
         fetch_macro=lambda: {"sp500": 0.03, "dxy": -0.02},
-        hours_to_close=lambda m: 0.25,
+        hours_to_close=lambda m: 24.0,
     )
-    sol = sig.generate(
-        _crypto_market(ticker="KXSOL15M-26JUL241200-00", floor=150.0)
+    daily_sol = sig.generate(
+        _crypto_market(ticker="KXSOLD-26JUL0917-T150", floor=150.0)
     )
-    assert sol is not None
-    assert sol.features["promotion_eligible"] is True
+    assert daily_sol is not None
+    assert daily_sol.features["promotion_eligible"] is True
 
-    # Same source, different subject (btc): no opt-in stamp at all.
     btc = sig.generate(
-        _crypto_market(ticker="KXBTC15M-26JUL241200-00", floor=150.0)
+        _crypto_market(ticker="KXBTCD-26JUL0917-T150", floor=150.0)
     )
     assert btc is not None
     assert "promotion_eligible" not in btc.features
 
-    # Same subject, different contract family/horizon: no opt-in stamp.
-    daily = CryptoMacroRegimeSignal(
-        fetch_state=lambda _asset: {"spot": 150.0, "dvol": 60.0},
-        fetch_macro=lambda: {"sp500": 0.03, "dxy": -0.02},
-        hours_to_close=lambda m: 12.0,
-    ).generate(_crypto_market(ticker="KXSOLD-26JUL0917-T150", floor=150.0))
-    assert daily is not None
-    assert "promotion_eligible" not in daily.features
+    short = sig.generate(
+        _crypto_market(ticker="KXSOL15M-26JUL241200-00", floor=150.0)
+    )
+    assert short is None

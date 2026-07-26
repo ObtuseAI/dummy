@@ -42,18 +42,12 @@ regulation-tie total before any OT/SO adjustment), and (b) a shootout also
 adds exactly +1 to the total (credited to the winner), matching the brief's
 "SO = 1-goal margin" assumption for the SPREAD side.
 
-DISCREPANCY vs the brief's totals formula: the brief specifies
-``reg_total + Bernoulli(OT_GOAL_PRE_SHOOTOUT)·1`` on tie mass (i.e. only a
-~70% chance of the +1 bump, modeling "OT ends it before a shootout is
-needed"). The probed settlement text above shows the REAL rule always adds
-+1 on a regulation tie (whether decided in OT or via the shootout-credited
-goal) -- i.e. the true probability of the totals bump is 100%, not 70%.
-OT_GOAL_PRE_SHOOTOUT=0.70 is implemented here EXACTLY as the brief specifies
-(this task's instructions call these "exact values" to ship verbatim, and
-frame the constant as "auditable" -- a propose-then-promote tuning candidate,
-not an independently-fit settlement fact), with this discrepancy on record
-for whoever tunes it next: the honest prior, given the settlement text, is
-that OT_GOAL_PRE_SHOOTOUT should converge toward 1.0, not 0.70.
+SETTLEMENT CONTRACT vs the brief's earlier totals formula: the brief proposed
+``reg_total + Bernoulli(0.70)·1`` on tie mass, but the probed settlement text
+above shows the real rule always adds +1 on a regulation tie (whether decided
+in OT or via the shootout-credited goal).  This is contract math, not a
+calibration target: `final_total_pmf` therefore moves 100% of regulation-tie
+mass to total+1.
 
 PROBE 2 (build-time, 2026-07-12) -- probable starting goalies. Fetched
 ``.../hockey/nhl/scoreboard?dates=20260112`` (in-season date; NHL is
@@ -145,8 +139,10 @@ COLD_WEIGHT_CAP = 0.85
 # -- OT / shootout branch ----------------------------------------------------
 OT_STRENGTH_TILT = 0.30         # brief's exact constant
 
-# -- totals OT bump (see module docstring's DISCREPANCY note) ---------------
-OT_GOAL_PRE_SHOOTOUT = 0.70     # brief's exact constant, shipped verbatim
+# -- totals final-score credit (see module docstring's settlement contract) --
+# Compatibility name retained for existing imports.  This is fixed contract
+# semantics, not a propose-and-promote parameter.
+OT_GOAL_PRE_SHOOTOUT = 1.0
 
 # -- goalie layer -------------------------------------------------------------
 GOALIE_PRIOR_SAVE_PCT = 0.905          # league-average NHL save %
@@ -253,7 +249,7 @@ class RegulationSplit:
     loss.
     `tie_total_pmf`: total -> probability, the SUBSET of `total_pmf`'s mass
     that came from a tied cell (this is exactly the mass `final_total_pmf`
-    reallocates by OT_GOAL_PRE_SHOOTOUT).
+    reallocates to total+1).
     """
     reg_win: float
     reg_tie: float
@@ -361,13 +357,12 @@ def away_cover_probability(split: RegulationSplit, threshold: float) -> float:
 
 
 def final_total_pmf(split: RegulationSplit) -> list[float]:
-    """Regulation total PMF with the OT/shootout bump applied to TIE mass
-    only: OT_GOAL_PRE_SHOOTOUT of each tied cell's probability moves from its
-    raw total to total+1 (an OT/SO-decided game always scores exactly one
-    more goal against the settlement total -- see the module docstring); the
-    remaining (1-OT_GOAL_PRE_SHOOTOUT) share stays at the raw regulation
-    total (brief's literal Bernoulli(0.7) formula, shipped verbatim -- see
-    the DISCREPANCY note above about the real settlement rule).
+    """Regulation total PMF with the final OT/shootout goal credited.
+
+    Every regulation tie receives exactly one additional settlement goal:
+    either the OT winner or the shootout-credit goal.  Move all tied-cell
+    probability from its raw total to total+1; never leave unresolved tie
+    mass at the regulation total.
     """
     pmf = list(split.total_pmf)
     last_index = len(pmf) - 1

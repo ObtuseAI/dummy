@@ -1171,6 +1171,11 @@ class TeamSportsIntelligenceSignal:
             )
         if game is None:
             return None
+        # WNBA has no score/period/clock-conditioned live model yet.  Do not
+        # relabel its pregame TeamScoreModel output as an in-play forecast:
+        # abstain until a dedicated live branch can prove those inputs.
+        if parsed.sport == "wnba" and game.status == "in":
+            return None
         # WS-6: player availability (HARD margin-shift + SOFT/rookie
         # uncertainty widen) computed once per game, before market-type
         # branching, so NFL/NCAAF can bake the HARD delta straight into

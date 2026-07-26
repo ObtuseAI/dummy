@@ -8,12 +8,15 @@ import json
 import pytest
 
 from autonomy.ontology import MarketView, Signal, Vertical
+from autonomy.promotion import PromotionRegistry
 from autonomy.reliability import (
     CalibratedSignal,
     ReliabilityMaps,
     _pav_isotonic,
     apply_reliability,
     fit_maps_from_rows,
+    build_reliability_artifact,
+    calibrated_challenger_gate_valid,
     fit_reliability_map,
 )
 
@@ -128,7 +131,15 @@ class _Parent:
 
 def _maps_file(tmp_path, mapping):
     path = tmp_path / "reliability_maps.json"
-    path.write_text(json.dumps({"maps": mapping}), encoding="utf-8")
+    path.write_text(
+        json.dumps(
+            build_reliability_artifact(
+                mapping,
+                generated_at="2026-07-26T00:00:00+00:00",
+            )
+        ),
+        encoding="utf-8",
+    )
     return ReliabilityMaps(path)
 
 
@@ -150,6 +161,70 @@ def test_wrapper_recalibrates_and_preserves_features(tmp_path):
     assert out.features["calibrated_from"] == "crypto_spot_vol"
     assert out.features["raw_probability_yes"] == 0.9
     assert out.features["foo"] == "bar"                # parent features preserved
+    assert calibrated_challenger_gate_valid(out.source, out.features) is True
+
+
+def test_legacy_or_tampered_map_artifact_fails_closed(tmp_path):
+    mapping = {
+        "crypto_spot_vol|btc|ladder|daily+": [[0.6, 0.55], [0.9, 0.75]]
+    }
+    legacy = tmp_path / "legacy.json"
+    legacy.write_text(json.dumps({"maps": mapping}), encoding="utf-8")
+    assert ReliabilityMaps(legacy).scopes() == []
+
+    tampered = build_reliability_artifact(
+        mapping,
+        generated_at="2026-07-26T00:00:00+00:00",
+    )
+    tampered["maps"]["crypto_spot_vol|btc|ladder|daily+"][0][1] = 0.99
+    tampered_path = tmp_path / "tampered.json"
+    tampered_path.write_text(json.dumps(tampered), encoding="utf-8")
+    assert ReliabilityMaps(tampered_path).scopes() == []
+
+
+def test_promoted_calibrated_scope_still_requires_content_bound_gate(tmp_path):
+    promotions = tmp_path / "promotions.json"
+    promotions.write_text(
+        json.dumps(
+            {
+                "promotions": [
+                    {
+                        "source": "crypto_spot_vol::cal",
+                        "subject": "btc",
+                        "market_type": "ladder",
+                        "horizon": "daily+",
+                    }
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+    demotions = tmp_path / "demotions.json"
+    demotions.write_text('{"demotions":[]}', encoding="utf-8")
+    registry = PromotionRegistry(promotions, demotions)
+    ticker = "KXBTCD-26JUL0917-T70000"
+    scope = "crypto_spot_vol::cal|btc|ladder|daily+"
+    base = {
+        "challenger_only": True,
+        "hours_to_close": 26.0,
+        "calibrated_scope": scope,
+    }
+    assert registry.is_promoted_signal(
+        "crypto_spot_vol::cal", ticker, base
+    ) is False
+    gated = {
+        **base,
+        "calibration_gate": {
+            "version": "calibrated-challenger-gate-v1",
+            "scope": scope,
+            "maps_sha256": "a" * 64,
+            "cluster_isolated_holdout": True,
+            "strict_brier_improvement": True,
+        },
+    }
+    assert registry.is_promoted_signal(
+        "crypto_spot_vol::cal", ticker, gated
+    ) is True
 
 
 def test_wrapper_abstains_without_a_map_or_uncurated_source(tmp_path):

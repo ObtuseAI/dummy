@@ -11,7 +11,6 @@ from typing import Any, Callable
 
 
 PAPER_TASK_NAME = "DummyCryptoPaperTwin"
-PAPER_CONTROL_HEADER = "paper-twin-scheduler-v1"
 CommandRunner = Callable[..., subprocess.CompletedProcess[str]]
 
 # The dashboard runs headless under pythonw.exe, which has no console. A child
@@ -103,7 +102,14 @@ def scheduled_task_status(
         payload = json.loads(completed.stdout.strip())
         if not isinstance(payload, dict):
             raise ValueError("scheduled task query returned invalid JSON")
-    except (OSError, RuntimeError, TypeError, ValueError, json.JSONDecodeError) as exc:
+    except (
+        OSError,
+        RuntimeError,
+        TypeError,
+        ValueError,
+        json.JSONDecodeError,
+        subprocess.SubprocessError,
+    ) as exc:
         return {
             "task_name": task_name,
             "supported": True,

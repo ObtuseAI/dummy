@@ -1,0 +1,60 @@
+{
+  "jobs": [
+    {
+      "argv": [
+        "{python}",
+        "scripts/run_dummy_ledger_retention.py",
+        "--apply"
+      ],
+      "artifact_contract": [
+        "runtime/autonomy/ledger_retention_stdout.log"
+      ],
+      "cadence": "daily 08:10 local",
+      "cwd": ".",
+      "enabled": true,
+      "lock_group": "ledger-maintenance",
+      "name": "ledger-retention",
+      "ownership": "legacy",
+      "privilege": "maintenance",
+      "timeout_seconds": 7200
+    },
+    {
+      "argv": [
+        "{python}",
+        "scripts/run_dummy_signal_prune.py",
+        "--apply",
+        "--settled-before-days",
+        "2"
+      ],
+      "artifact_contract": [
+        "runtime/autonomy/signal_prune_stdout.log"
+      ],
+      "cadence": "daily 08:40 local",
+      "cwd": ".",
+      "enabled": true,
+      "lock_group": "ledger-maintenance",
+      "name": "signal-prune",
+      "ownership": "legacy",
+      "privilege": "maintenance",
+      "timeout_seconds": 7200
+    },
+    {
+      "argv": [
+        "{python}",
+        "scripts/run_dummy_grading_worker.py"
+      ],
+      "artifact_contract": [
+        "runtime/autonomy/grading_worker_latest.json"
+      ],
+      "cadence": "operator-selected during staged migration",
+      "cwd": ".",
+      "enabled": true,
+      "lock_group": "grading-worker",
+      "name": "grading-worker",
+      "ownership": "registry",
+      "privilege": "standard",
+      "timeout_seconds": 1800
+    }
+  ],
+  "version": 1
+}

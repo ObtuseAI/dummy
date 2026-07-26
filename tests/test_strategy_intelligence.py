@@ -1,10 +1,16 @@
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 
 import pytest
 
-from core.ontology import ComplianceVerdict, EdgeEstimate, OrderBook, OrderBookLevel, TradeProposal
-from forecasting.engine import ForecastEngine
+from core.ontology import (
+    ComplianceVerdict,
+    EdgeEstimate,
+    Forecast,
+    OrderBook,
+    OrderBookLevel,
+    TradeProposal,
+)
 from strategies.intelligence import StrategyIntelligence
 from strategies.scan import StrategyScanner
 
@@ -20,7 +26,32 @@ def make_book():
 
 
 def make_forecast():
-    return ForecastEngine().forecast("MKT", "MKT-YES", "Event", "Yes", make_book())
+    now = datetime.now(timezone.utc)
+    return Forecast(
+        market_ticker="MKT",
+        contract_ticker="MKT-YES",
+        event_title="Event",
+        contract_title="Yes",
+        market_implied_probability=Decimal("0.5"),
+        dummy_probability=Decimal("0.55"),
+        probability_delta=Decimal("0.05"),
+        confidence_score=Decimal("0.7"),
+        uncertainty_band=(Decimal("0.5"), Decimal("0.6")),
+        expected_edge=Decimal("0.05"),
+        edge_after_fees=Decimal("0.03"),
+        freshness_score=Decimal("1"),
+        liquidity_score=Decimal("0.8"),
+        spread_score=Decimal("0.8"),
+        orderbook_depth_score=Decimal("0.8"),
+        settlement_risk_score=Decimal("0.2"),
+        source_summary="test_evidence",
+        model_summary="test_forecast_factory",
+        calibration_notes="test",
+        timestamp=now,
+        expiration=now + timedelta(hours=1),
+        strategy_references=[],
+        proof_reference="test-forecast",
+    )
 
 
 class AlwaysPropose:

@@ -646,12 +646,13 @@ class PredatorBrain:
 
     # ------------------------------------------------------------------
 
-    async def _adjudicate_top_k(self, forecaster, scored: list, report: CycleReport) -> None:
-        """Run the LLM debate on the top-K edge markets and re-fuse in place.
+    async def _adjudicate_top_k(self, scored: list, report: CycleReport) -> None:
+        """Run the LLM debate on top-K markets and record gradeable observations.
 
         The local-CLI voices (claude/codex) join only the top-K_cli markets'
         panels, so plugging Claude in costs a few personal-subscription calls a
-        cycle, not one per market."""
+        cycle, not one per market. Model opinions remain observational and do
+        not trigger a second ensemble fusion without exact-scope authority."""
         from autonomy.debate import run_debate
 
         cli_top_k = _debate_cli_top_k()
@@ -704,7 +705,7 @@ class PredatorBrain:
         # Run the panels concurrently (I/O-bound LLM calls); the CLI cap keeps
         # local-subscription voices on the top-K_cli markets only.
         results = await asyncio.gather(*[_debate_one(idx) for idx in range(k)])
-        # Record + re-fuse sequentially: these mutate shared ledger/scored state.
+        # Record sequentially because ledger writes mutate shared state.
         for idx, result in enumerate(results):
             if result is None:
                 continue
@@ -765,13 +766,10 @@ class PredatorBrain:
                 report.signals_rejected += 1
                 continue
             report.signals_generated += 1
-            refused = forecaster.fuse(market, list(signals) + [debate_signal])
-            if refused is not None:
-                scored[idx] = (market, refused, list(signals) + [debate_signal])
-                report.notes.append(
-                    f"debate:observed:{debate_signal.source}:"
-                    f"{market.ticker}:{result.probability_yes:.2f}"
-                )
+            report.notes.append(
+                f"debate:recorded_only:{debate_signal.source}:"
+                f"{market.ticker}:{result.probability_yes:.2f}"
+            )
 
     async def run_cycle(self) -> CycleReport:
         cycle_t0 = time.perf_counter()
@@ -840,10 +838,13 @@ class PredatorBrain:
         self._sync_live_exposure(live_order_updates)
         # Snapshot trust before settlements so a pathological recalibration
         # (e.g. every crypto source pinned at the ceiling) can be reverted.
+        forecaster_weights: dict[str, float] | None
         try:
             pre_settlement_weights = self.ledger.all_weights()
+            forecaster_weights = pre_settlement_weights
         except Exception:
             pre_settlement_weights = {}
+            forecaster_weights = None
         self._apply_settlements(state, report)
         self._apply_phantom_settlements(report)
         guard_weights = getattr(self.learner, "guard_cycle_weights", None)
@@ -917,16 +918,33 @@ class PredatorBrain:
         state = self.risk_brain.maybe_promote(state)
         report.stage = int(state.stage)
 
-        forecaster = EnsembleForecaster(self.ledger)
+        # One coherent cycle-start trust snapshot eliminates the signal-gen
+        # N+1 (exact -> vertical -> global SQL lookups for every signal).
+        # Settlement updates become visible on the next cycle, avoiding a
+        # mixture of pre/post-settlement weights within one scan.
+        forecaster = EnsembleForecaster(self.ledger, weights=forecaster_weights)
         scored: list[tuple[MarketView, Any, list[Any]]] = []
         _t = time.perf_counter()
+        signal_batches: list[tuple[MarketView, list[Any]]] = []
+        cycle_signals: list[Any] = []
         for market in markets:
             signals = list(self.registry.signals_for(market))
             if not signals:
                 continue
-            accepted_mask = self.ledger.record_signals(signals)
+            signal_batches.append((market, signals))
+            cycle_signals.extend(signals)
+
+        accepted_mask = (
+            self.ledger.record_signals(cycle_signals) if cycle_signals else []
+        )
+        accepted_offset = 0
+        for market, signals in signal_batches:
+            market_mask = accepted_mask[
+                accepted_offset : accepted_offset + len(signals)
+            ]
+            accepted_offset += len(signals)
             accepted_signals = [
-                signal for signal, accepted in zip(signals, accepted_mask) if accepted
+                signal for signal, accepted in zip(signals, market_mask) if accepted
             ]
             report.signals_generated += len(accepted_signals)
             report.signals_rejected += len(signals) - len(accepted_signals)
@@ -943,11 +961,10 @@ class PredatorBrain:
         # edge parked for five days; sqrt damping keeps big slow edges alive.
         scored.sort(key=lambda t: edge_velocity(t[0], t[1]), reverse=True)
 
-        # LLM panel adjudicates only the top-K edge markets, then re-fuse.
+        # The LLM panel records observational evidence for the top-K edge markets.
         _t = time.perf_counter()
         if self.router is not None and scored:
-            await self._adjudicate_top_k(forecaster, scored, report)
-            scored.sort(key=lambda t: edge_velocity(t[0], t[1]), reverse=True)
+            await self._adjudicate_top_k(scored, report)
             # Real spend/health telemetry per voice (observational): the
             # tracker aggregates provider-reported cost and counts fallback
             # failures without ever changing the roster contract.
@@ -961,33 +978,36 @@ class PredatorBrain:
                 pass
         report.phase_seconds["debate"] = round(time.perf_counter() - _t, 2)
 
-        # One immutable v2 classification is shared by signals, board rows,
-        # and decisions.  This prevents the UI and performance ledger from
-        # assigning different tiers to the same point-in-time forecast.
+        # Preserve a classification of the RAW fused output for its own
+        # head-to-head calibration evidence rows. A separately promoted
+        # post-fusion correction, if one exists, gets a fresh traded-path
+        # classification below.
         from autonomy.tier_policy import assign_cycle_tiers
 
-        cycle_tiers = assign_cycle_tiers([(m, f) for m, f, _s in scored])
+        raw_cycle_tiers = assign_cycle_tiers([(m, f) for m, f, _s in scored])
 
-        # Wave-14 (picks-first directive): persist the FINAL post-debate fused
-        # probability for every scored market as its own ledger row, so pick
+        # Wave-14 (picks-first directive): persist the FINAL quantitative fused
+        # probability after recording debate observations, so pick
         # accuracy and calibration are measured on everything the machine
         # opines on -- not just the handful it trades. Never feeds back into
         # fusion (fusion consumes registry signals, not ledger rows) and never
         # blocks the cycle.
         from autonomy.picks import (
+            apply_promoted_fused_calibration,
             build_calibrated_fused_signal,
             build_fused_signal,
-            load_fused_maps,
+            load_fused_calibration_evidence,
         )
 
         # Wave-17: nightly reliability maps for the fused output (empty until
         # enough Wave-14 rows settle -- the shadow calibration self-activates
         # as evidence accrues, no switch to flip).
         try:
-            fused_maps = load_fused_maps()
+            fused_calibration = load_fused_calibration_evidence()
         except Exception:
-            fused_maps = {}
+            fused_calibration = None
         _t = time.perf_counter()
+        pick_signals: list[Any] = []
         for market, forecast, _signals in scored:
             try:
                 # Ledger mode is an evidence-provenance axis accepting only
@@ -995,17 +1015,66 @@ class PredatorBrain:
                 # per-source signals above) under the default, session mode
                 # notwithstanding. Passing mode=self.mode.value ("shadow")
                 # silently rejected 24k fused rows as invalid_mode.
-                tier_assessment = cycle_tiers.get(market.ticker)
-                self.ledger.record_signal(
+                tier_assessment = raw_cycle_tiers.get(market.ticker)
+                pick_signals.append(
                     build_fused_signal(market.ticker, forecast, tier_assessment)
                 )
+            except Exception:
+                continue
+            try:
                 calibrated = build_calibrated_fused_signal(
-                    market.ticker, forecast, fused_maps, tier_assessment)
+                    market.ticker,
+                    forecast,
+                    {} if fused_calibration is None else fused_calibration.maps,
+                    tier_assessment,
+                    maps_sha256=(
+                        None
+                        if fused_calibration is None
+                        else fused_calibration.maps_sha256
+                    ),
+                )
                 if calibrated is not None:
-                    self.ledger.record_signal(calibrated)
+                    pick_signals.append(calibrated)
+            except Exception:
+                pass
+        if pick_signals:
+            try:
+                self.ledger.record_signals(pick_signals)
             except Exception:
                 pass
         report.phase_seconds["picks_record"] = round(time.perf_counter() - _t, 2)
+
+        # A fitted map remains a shadow. It may change the traded number only
+        # when the exact fused_forecast::cal scope is active in the existing
+        # promotion registry, whose calibration receipt gate is fail-closed.
+        promoted_calibrations = 0
+        calibrated_scored = []
+        for market, forecast, signals in scored:
+            calibrated_forecast = apply_promoted_fused_calibration(
+                market.ticker,
+                forecast,
+                fused_calibration,
+                forecaster.promotion,
+                raw_cycle_tiers.get(market.ticker),
+            )
+            if calibrated_forecast is not forecast:
+                promoted_calibrations += 1
+            calibrated_scored.append((market, calibrated_forecast, signals))
+        scored = calibrated_scored
+        if promoted_calibrations:
+            scored.sort(key=lambda t: edge_velocity(t[0], t[1]), reverse=True)
+        report.notes.append(
+            f"promoted_fused_calibrations={promoted_calibrations}"
+        )
+
+        # One immutable v2 classification is shared by the final traded
+        # forecast, board row, and decision.
+        cycle_tiers = (
+            assign_cycle_tiers([(m, f) for m, f, _s in scored])
+            if promoted_calibrations
+            else raw_cycle_tiers
+        )
+
         # Wave-15: publish the bet board straight from this cycle's in-memory
         # scores (titles included, ledger untouched -- the dashboard reads the
         # artifact, never contends with this process's write lock).
@@ -1057,11 +1126,32 @@ class PredatorBrain:
             pass
 
         from autonomy.correlation import group_key
+        from autonomy.adverse_selection import (
+            load_maker_adverse_selection_evidence,
+        )
 
+        try:
+            maker_adverse_selection = load_maker_adverse_selection_evidence()
+        except Exception:
+            maker_adverse_selection = None
+        if maker_adverse_selection is None:
+            report.notes.append(
+                "maker_adverse_selection="
+                "BLOCKED_MISSING_STALE_OR_MALFORMED_EVIDENCE"
+            )
+        else:
+            report.notes.append(
+                "maker_adverse_selection_haircut_cents="
+                f"{maker_adverse_selection.haircut_cents:.6f};"
+                "report_sha256="
+                f"{maker_adverse_selection.source_report_sha256}"
+            )
         allocator = Allocator(
             self.risk_brain,
             performance_guard=self.performance_guard,
             execution_policy=getattr(self.executor, "execution_policy", None),
+            maker_adverse_selection_evidence=maker_adverse_selection,
+            require_maker_adverse_selection_evidence=True,
         )
         # In-cycle group accumulation so successive orders on one correlated
         # cluster see each other, not just prior-cycle open positions.

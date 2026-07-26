@@ -1,67 +1,10 @@
 """Ensure no live Kalshi order is submitted without explicit operator approval."""
 
 import json
-import os
 import re
 from pathlib import Path
-from unittest.mock import patch
 
-import pytest
-
-from core import state as state_module
-from core.config_loader import load_caps
-from core.ontology import AccountMode
-from execution.hybrid_path import HybridLiveCapRehearsalV2
-
-
-ROOT = Path("C:/src/engine/dummy")
-
-
-@pytest.fixture(autouse=True)
-def reset_state():
-    fresh = state_module.DummyState()
-    state_module.STATE = fresh
-    import live_firewall.firewall as firewall_module
-
-    firewall_module.STATE = fresh
-    firewall_module.REJECTED_ADAPTERS.clear()
-    original_key = os.environ.get("KALSHI_API_KEY_ID")
-    private_names = (
-        "KALSHI_API_PRIVATE_KEY_PEM",
-        "KALSHI_API_PRIVATE_KEY_PEM_PATH",
-        "KALSHI_API_PRIVATE_KEY",
-    )
-    original_private = {name: os.environ.pop(name, None) for name in private_names}
-    os.environ["KALSHI_API_KEY_ID"] = "test"
-    try:
-        yield
-    finally:
-        firewall_module.REJECTED_ADAPTERS.clear()
-        if original_key is None:
-            os.environ.pop("KALSHI_API_KEY_ID", None)
-        else:
-            os.environ["KALSHI_API_KEY_ID"] = original_key
-        for name, value in original_private.items():
-            if value is not None:
-                os.environ[name] = value
-
-
-@pytest.mark.asyncio
-async def test_v2_rehearsal_does_not_submit_without_operator_approval():
-    state_module.STATE.set_mode(AccountMode.AUTONOMOUS_LIVE_CAPPED)
-    caps = load_caps()
-    caps.allowed_markets = ["BTC-ABOVE-100K"]
-    with patch("live_firewall.firewall.load_caps", return_value=caps), patch(
-        "execution.hybrid_path.load_caps", return_value=caps
-    ):
-        rehearsal = HybridLiveCapRehearsalV2()
-        result = await rehearsal.rehearse("BTC-ABOVE-100K", "BTC-ABOVE-100K-YES")
-
-    assert result["status"] == "no_trade"
-    assert result["rejected_by"] == "market_data_source"
-    assert "Non-live market data" in result["reason"]
-    assert result["live_submitted"] is False
-    assert "order_result" not in result
+ROOT = Path(__file__).resolve().parent.parent
 
 
 def test_live_submit_config_is_disabled_by_default():

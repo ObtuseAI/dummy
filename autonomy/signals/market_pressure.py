@@ -72,7 +72,7 @@ class MarketPressureSignal:
             now=self._now,
             lookback_hours=ARCHIVE_LOOKBACK_HOURS,
         )
-        self._series = movement_series(snapshots)
+        self._series = movement_series(snapshots, now=self._now)
         # Latest event dict per (sport, event_id) for team-name matching.
         latest: dict[str, dict[str, tuple[float, dict[str, Any]]]] = {}
         for ts, event in snapshots:

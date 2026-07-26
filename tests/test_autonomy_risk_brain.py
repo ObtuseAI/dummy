@@ -18,6 +18,7 @@ from autonomy.risk_brain import (
     RiskStatePersistenceError,
     kalshi_taker_fee_cents,
     kelly_fraction_yes,
+    uncertainty_adjusted_kelly,
 )
 
 
@@ -38,6 +39,14 @@ def test_kelly_positive_and_bounded():
     k = kelly_fraction_yes(0.60, 50)
     assert 0.0 < k <= 1.0
     assert abs(k - (10.0 / 50.0)) < 1e-9  # (60-50)/(100-50)
+
+
+def test_uncertainty_adjusted_kelly_is_monotone_and_fails_closed():
+    certain = uncertainty_adjusted_kelly(0.65, 0.0, 50)
+    uncertain = uncertainty_adjusted_kelly(0.65, 0.20, 50)
+    too_uncertain = uncertainty_adjusted_kelly(0.65, float("nan"), 50)
+    assert 0.0 < uncertain < certain
+    assert too_uncertain == 0.0
 
 
 def test_fee_formula_matches_kalshi_shape():
