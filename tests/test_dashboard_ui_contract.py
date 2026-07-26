@@ -231,3 +231,145 @@ def test_model_arsenal_is_primary_read_only_and_authority_separated():
     assert "background_panel_ready" in body
     assert "fetch('/api/model-arsenal'" not in body
     assert ".map(get)" in body
+
+
+def test_organism_cleanup_removes_dead_ui_and_matches_poll_cadence():
+    body = DASHBOARD_HTML
+
+    assert "function areaChart(" not in body
+    assert "function pickBoardCard(" not in body
+    assert "function pickRows(" not in body
+    assert "every 20 min" not in body
+    assert "every 20 seconds" in body
+
+
+def test_gl_engine_has_real_webgl2_shaders_and_tiered_fallbacks():
+    body = DASHBOARD_HTML
+
+    assert (
+        '<div id="scene" role="img" '
+        'aria-label="Live map of Dummy scopes, signals, and engine health">'
+    ) in body
+    assert '<canvas id="gl" aria-hidden="true"></canvas>' in body
+    assert '<canvas id="fx" aria-hidden="true"' in body
+    assert "const GL_TIER={STATIC:0,CANVAS2D:1,WEBGL:2,WEBGL_BLOOM:3}" in body
+    assert "function bootGL(" in body
+    assert "getContext('webgl2'" in body
+    assert "getContext('webgl'" in body
+    assert "function glslFor(" in body
+    assert "#version 300 es" in body
+    assert "webglcontextlost" in body
+    assert "function probeTier(" in body
+    assert "function drawOnce(" in body
+    assert "function startFx2D(" in body
+    assert "function drawFxOrganism(" in body
+    assert "document.body.dataset.sceneTier" in body
+    assert "visibilitychange" in body
+
+
+def test_scene_model_binds_only_real_polled_fields():
+    body = DASHBOARD_HTML
+
+    assert "function sceneModel()" in body
+    segment = body.split("function sceneModel()", 1)[1].split(
+        "// ambient dust", 1
+    )[0]
+    assert "fetch(" not in segment
+    assert "Math.random" not in segment
+    assert "contested_n" in segment
+    assert "brier_edge" in segment
+    assert "active_sources" in segment
+    assert "sports_model_seed" in segment
+    assert "function makeDust(" in body
+    assert "function glBuild(" in body
+    assert "byScope" in body
+
+
+def test_event_bridge_emits_only_from_polled_diffs():
+    body = DASHBOARD_HTML
+
+    assert "// ---------- EVENTS ----------" in body
+    assert "const EV={map:{}}" in body
+    assert "function watchSnapshot()" in body
+    assert "function watchDiff(" in body
+    assert "prevWatch" in body
+    segment = body.split("function watchDiff(", 1)[1].split(
+        "// pulses:", 1
+    )[0]
+    assert "fetch(" not in segment
+    assert "EV.emit('scope:changed'" in segment
+    assert "EV.emit('freshness:changed'" in segment
+    assert "watchDiff(watchSnapshot())" in body
+    assert "function glPulse(" in body
+    assert "EV.on('scope:changed'" in body
+    assert "glSetMood" in body
+
+
+def test_camera_flies_to_route_targets_and_respects_reduced_motion():
+    body = DASHBOARD_HTML
+
+    assert "function flyTo(" in body
+    assert "function scopePreset(" in body
+    assert "function syncCameraToRoute(" in body
+    assert "CAM_PRESETS" in body
+    segment = body.split("function flyTo(", 1)[1].split(
+        "\nfunction scopePreset(", 1
+    )[0]
+    assert "REDUCE" in segment
+    render_segment = body.split("function render(", 1)[1].split(
+        "\nfunction kpi(", 1
+    )[0]
+    assert "syncCameraToRoute(" in render_segment
+
+
+def test_organism_layout_keeps_truth_and_navigation_accessible():
+    body = DASHBOARD_HTML
+
+    assert "/* ---------- organism layout ---------- */" in body
+    assert ".opsbar{position:sticky;top:12px" in body
+    assert "@media(min-width:921px)" in body
+    assert ".side{width:78px" in body
+    assert ".side:hover,.side:focus-within{width:264px}" in body
+    assert '<div class="dockband">' in body
+
+
+def test_scope_views_dock_without_dropping_existing_panels():
+    body = DASHBOARD_HTML
+
+    assert "function scopeViewInner(" in body
+    assert (
+        "function scopeView(vert,label){return "
+        '\'<div class="dock">\'+scopeViewInner(vert,label)+\'</div>\';}'
+    ) in body
+    assert ".dock{margin-left:" in body
+    for function_call in (
+        "dailyGuideCard(label)",
+        "tierPerformanceCard(label)",
+        "cryptoHorizonCard(label)",
+        "accuracyBars(s)",
+        "picksTable(sc.picks)",
+        "betTypeCard(sc.bet_types)",
+        "settledTodayCard(sc)",
+    ):
+        assert function_call in body
+
+
+def test_palette_themes_recolor_the_scene_without_changing_poll_contract():
+    body = DASHBOARD_HTML
+
+    theme_segment = body.split("function setTheme(a)", 1)[1].split(
+        "\n(function()", 1
+    )[0]
+    assert "glBuild(sceneModel())" in theme_segment
+    assert "GT.model=sceneModel()" in theme_segment
+    assert "'Theme: '+a" in body
+    assert "r.action" in body
+    assert "A requires at least 4% edge after the quoted ask" in body
+    assert (
+        "Promise.allSettled(['/api/overview','/api/scopes','/api/status',"
+        "'/api/walk_forward','/api/bet_board','/api/model-arsenal',"
+        "'/api/tier-performance'].map(get))"
+    ) in body
+    assert "results.slice(0,6)" in body
+    assert "results[6]" in body
+    assert "setInterval(poll,20000)" in body

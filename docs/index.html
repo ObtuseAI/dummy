@@ -3,8 +3,12 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Dummy — evidence-gated prediction intelligence</title>
-<meta name="description" content="An autonomous, evidence-gated prediction-market organism for crypto and sports. Fail-closed, paper-first, human-gated to capital.">
+<meta name="theme-color" content="#111c16">
+<title>Dummy — the evidence-gated intelligence loop</title>
+<meta name="description" content="Explore Dummy's 45-loop prediction intelligence system: point-in-time evidence, competing forecasts, calibration, constrained allocation, and fail-closed human authority.">
+<meta property="og:title" content="Dummy — the evidence-gated intelligence loop">
+<meta property="og:description" content="A detailed visual showcase of Dummy's intelligence stack, autonomous loop fleet, read-only operator board, and proof boundaries.">
+<meta property="og:type" content="website">
 <style>
   :root{
     --board:#111c16; --felt:#17251c; --felt-2:#1d3025; --deep:#0d160f;
@@ -25,6 +29,10 @@
   }
   a{color:var(--amber);text-decoration:none}
   a:hover{text-decoration:underline}
+  a:focus-visible{outline:2px solid var(--amber);outline-offset:4px}
+  .skip{position:fixed;left:16px;top:-80px;z-index:100;background:var(--amber);color:#20180a;
+    padding:10px 14px;font-family:var(--display);font-weight:700}
+  .skip:focus{top:16px}
   .wrap{max-width:1120px;margin:0 auto;padding:0 24px}
   .eyebrow{font-family:var(--display);letter-spacing:.32em;text-transform:uppercase;
     font-size:12px;color:var(--brass);font-weight:600}
@@ -75,6 +83,7 @@
   .lamps .n{font-family:var(--display);font-weight:700;font-size:34px;color:var(--amber);line-height:1}
   .lamps .l{font-family:var(--display);text-transform:uppercase;letter-spacing:.16em;
     font-size:11px;color:var(--muted);margin-top:8px}
+  .snapshot{margin:14px 0 0;color:var(--muted);font-size:12px;text-align:center}
 
   /* Grid cards */
   .grid{display:grid;grid-template-columns:repeat(2,1fr);gap:18px;margin-top:26px}
@@ -84,6 +93,47 @@
   .card ul{margin:10px 0 0;padding-left:18px;color:#c4ccc2}
   .card li{margin:5px 0}
   .card .tag{font-family:var(--mono);font-size:12px;color:var(--muted)}
+  .card .io{display:grid;grid-template-columns:88px 1fr;gap:8px;margin-top:14px;padding-top:12px;
+    border-top:1px solid var(--line);font-size:13px}
+  .card .io b{font-family:var(--display);font-size:10px;letter-spacing:.14em;
+    text-transform:uppercase;color:var(--brass)}
+  .card .io span{color:#c4ccc2}
+  .refusal{margin-top:12px;padding:9px 11px;border-left:2px solid var(--clay);
+    background:rgba(201,106,92,.07);font-size:12.5px;color:#d2bbb4}
+  .int-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-top:26px}
+  .int-card{position:relative;overflow:hidden;background:var(--felt);border:1px solid var(--line);
+    padding:22px;border-radius:4px}
+  .int-card::after{content:attr(data-step);position:absolute;right:12px;top:-10px;
+    font-family:var(--display);font-size:72px;font-weight:700;color:rgba(242,182,60,.055)}
+  .int-card h3{position:relative;color:var(--amber)}
+  .int-card p{position:relative;margin:0;font-size:14px}
+
+  /* System diagrams */
+  .diagram{margin:34px 0 0;background:linear-gradient(145deg,var(--deep),#132019);
+    border:1px solid var(--brass-2);border-radius:5px;overflow:hidden;
+    box-shadow:0 24px 70px rgba(0,0,0,.28)}
+  .diagram figcaption{display:flex;align-items:flex-start;justify-content:space-between;gap:24px;
+    padding:22px 24px;border-bottom:1px solid var(--line);background:rgba(29,48,37,.55)}
+  .diagram figcaption strong{display:block;font-family:var(--display);text-transform:uppercase;
+    letter-spacing:.08em;font-size:16px;color:var(--chalk)}
+  .diagram figcaption span{display:block;margin-top:4px;color:var(--muted);font-size:13px}
+  .diagram .key{flex:0 0 auto;font-family:var(--mono);font-size:11px;color:var(--amber);
+    border:1px solid var(--brass-2);padding:7px 9px;text-transform:uppercase;letter-spacing:.08em}
+  .diagram-scroll{overflow-x:auto;padding:18px;scrollbar-color:var(--brass-2) var(--deep)}
+  .diagram svg{display:block;width:100%;min-width:780px;height:auto}
+  .diagram .wire{fill:none;stroke:#526151;stroke-width:2}
+  .diagram .wire.hot{stroke:var(--amber);stroke-width:2.5}
+  .diagram .wire.return{stroke:var(--turf);stroke-dasharray:7 6}
+  .diagram .node{fill:#1b2b21;stroke:#455545;stroke-width:1.5}
+  .diagram .node.hot{fill:#243522;stroke:var(--amber)}
+  .diagram .node.safe{fill:#251f1b;stroke:var(--clay)}
+  .diagram .hub{fill:#202b1d;stroke:var(--amber);stroke-width:2}
+  .diagram .count{fill:var(--amber);font:700 26px var(--display)}
+  .diagram .label{fill:var(--chalk);font:700 16px var(--display);letter-spacing:.04em}
+  .diagram .small{fill:var(--muted);font:12px var(--mono)}
+  .diagram .micro{fill:var(--brass);font:10px var(--mono);letter-spacing:.08em}
+  .diagram .truth{fill:var(--turf);font:700 12px var(--mono)}
+  .diagram .deny{fill:#df8b7e;font:700 11px var(--mono)}
 
   /* Loop */
   .loop{display:flex;flex-wrap:wrap;gap:10px;margin-top:24px;font-family:var(--display);
@@ -91,6 +141,27 @@
   .loop span{background:var(--felt-2);border:1px solid var(--line);border-left:3px solid var(--amber);
     padding:12px 16px;color:var(--chalk);flex:1;min-width:120px;text-align:center}
   .loop b{color:var(--brass);margin:0 2px}
+  .pipeline{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-top:26px}
+  .phase{background:var(--felt);border:1px solid var(--line);border-top:2px solid var(--brass-2);
+    padding:18px;border-radius:4px;min-height:186px}
+  .phase .num{font-family:var(--mono);font-size:11px;color:var(--brass)}
+  .phase h3{color:var(--amber);margin-top:6px}
+  .phase p{font-size:13px;margin:7px 0}
+  .phase .out{font-family:var(--mono);font-size:11.5px;color:var(--turf);
+    border-top:1px solid var(--line);padding-top:9px;margin-top:10px}
+  .fleet-note{margin-top:22px;padding:18px 20px;background:var(--deep);
+    border:1px solid var(--brass-2);border-radius:4px;color:#cdd6cb}
+  .taskline{font-family:var(--mono);font-size:12px;color:var(--muted);overflow-wrap:anywhere}
+
+  /* Proof ladder */
+  .proof-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:1px;background:var(--line);
+    border:1px solid var(--line);border-radius:4px;overflow:hidden;margin-top:26px}
+  .proof{background:var(--felt);padding:23px 20px;min-height:210px}
+  .proof .ordinal{font-family:var(--mono);font-size:11px;color:var(--brass)}
+  .proof h3{color:var(--amber);margin-top:7px}
+  .proof p{font-size:13px}
+  .proof .cannot{font-size:12px;color:#d2bbb4;border-top:1px solid var(--line);
+    padding-top:10px;margin-top:12px}
 
   /* Gallery */
   .gal{display:grid;grid-template-columns:repeat(2,1fr);gap:18px;margin-top:26px}
@@ -98,6 +169,9 @@
   .shot img{width:100%;display:block;border-radius:2px}
   .shot .c{font-size:13px;color:var(--muted);padding:10px 6px 4px}
   .shot .c b{color:var(--chalk);font-family:var(--display);letter-spacing:.04em;text-transform:uppercase;font-size:12px}
+  .shot.wide{grid-column:1/-1;padding:11px}
+  .shot.wide .c{display:flex;justify-content:space-between;gap:24px;align-items:baseline}
+  .shot.wide .c span{max-width:760px;text-align:right}
 
   /* Safety */
   .safety{background:var(--felt);border:1px solid var(--line);border-left:4px solid var(--clay);
@@ -109,62 +183,224 @@
   .disc{max-width:760px;margin:14px auto 0;font-size:12.5px;color:var(--brass)}
 
   @media(max-width:760px){
-    .grid,.gal{grid-template-columns:1fr}
+    .grid,.gal,.int-grid{grid-template-columns:1fr}
+    .pipeline,.proof-grid{grid-template-columns:repeat(2,1fr)}
     .lamps{grid-template-columns:repeat(2,1fr)}
     .top nav{display:none}
     .safety ul{columns:1}
+    .diagram figcaption,.shot.wide .c{display:block}
+    .diagram .key{display:inline-block;margin-top:12px}
+    .shot.wide .c span{display:block;text-align:left;margin-top:5px}
   }
+  @media(max-width:520px){.pipeline,.proof-grid{grid-template-columns:1fr}}
   @media(prefers-reduced-motion:reduce){html{scroll-behavior:auto}}
 </style>
 </head>
 <body>
 
+<a class="skip" href="#main">Skip to the intelligence showcase</a>
 <header class="top">
   <div class="wrap">
-    <div class="brand">DUMMY&nbsp;BOARD<small>EVIDENCE ONLY</small></div>
-    <nav>
-      <a href="#arsenal">Arsenal</a>
-      <a href="#loop">The loop</a>
+    <div class="brand">DUMMY<small>EVIDENCE INTELLIGENCE</small></div>
+    <nav aria-label="Showcase sections">
+      <a href="#intelligence">Intelligence</a>
+      <a href="#loop">Cycle</a>
       <a href="#alloc">Allocation</a>
-      <a href="#loops">The 45 loops</a>
+      <a href="#loops">Fleet</a>
       <a href="#board">Board</a>
-      <a href="#safety">Safety</a>
+      <a href="#proof">Proof</a>
       <a href="https://github.com/ObtuseAI/dummy">Repo</a>
     </nav>
-    <span class="lamp">LIVE · SHADOW</span>
+    <span class="lamp">SHADOW · READ ONLY</span>
   </div>
 </header>
 
+<main id="main">
 <div class="hero wrap">
-  <div class="eyebrow">Autonomous prediction-market intelligence</div>
-  <h1>DUMMY <span class="tote">BOARD</span></h1>
+  <div class="eyebrow">The evidence-gated intelligence loop</div>
+  <h1>DUMMY <span class="tote">THINKS</span></h1>
   <p class="lede">
-    An evidence-gated organism for crypto &amp; sports prediction markets. It
-    gathers point-in-time public evidence, calibrates competing forecasts, earns
-    every source its trust from settled outcomes, and explains and records each
-    paper decision in an auditable ledger.
+    Forty-five independent loops turn point-in-time public evidence into competing
+    probabilities, force disagreement into the open, learn only from settled outcomes,
+    and keep research intelligence structurally separate from authority over capital.
   </p>
   <div class="cta">
-    <a class="btn primary" href="https://github.com/ObtuseAI/dummy">View the repository</a>
-    <a class="btn" href="#board">See the board</a>
+    <a class="btn primary" href="#intelligence">Explore the intelligence</a>
+    <a class="btn" href="https://github.com/ObtuseAI/dummy#design">Read the architecture</a>
   </div>
   <div class="board-frame">
     <img src="assets/dummy-overview.png" alt="The Dummy loopback-only operator board">
   </div>
-  <div class="cap">The Dummy operator board — a read-only view of persisted runtime truth.</div>
+  <div class="cap">The Organism visualizes persisted evidence. The DOM truth ribbon remains
+    authoritative; the page is loopback-only, GET-only, and incapable of placing an order.</div>
 </div>
 
 <section id="stats" style="border-top:none;padding-top:8px">
   <div class="wrap">
     <div class="lamps">
-      <div class="cell"><div class="n">4,500</div><div class="l">markets priced</div></div>
       <div class="cell"><div class="n">46</div><div class="l">competing sources</div></div>
       <div class="cell"><div class="n">45</div><div class="l">autonomous loops</div></div>
-      <div class="cell"><div class="n">162,915</div><div class="l">games in the lake</div></div>
-      <div class="cell"><div class="n">7,916</div><div class="l">tests green</div></div>
-      <div class="cell"><div class="n">88</div><div class="l">improvement waves</div></div>
-      <div class="cell"><div class="n">0</div><div class="l">auto capital</div></div>
+      <div class="cell"><div class="n">8</div><div class="l">cycle phases</div></div>
+      <div class="cell"><div class="n">11</div><div class="l">sports challengers</div></div>
+      <div class="cell"><div class="n">7</div><div class="l">sports leagues</div></div>
+      <div class="cell"><div class="n">3</div><div class="l">crypto scopes</div></div>
+      <div class="cell"><div class="n">4</div><div class="l">LLM roles</div></div>
+      <div class="cell"><div class="n">0</div><div class="l">automatic authority</div></div>
     </div>
+    <p class="snapshot">Capability counts describe registered repository components, not
+      profitability, deployment readiness, or permission to trade. Current launch status remains
+      <strong>NO-GO</strong> until every external evidence gate is satisfied.</p>
+  </div>
+</section>
+
+<section id="intelligence">
+  <div class="wrap">
+    <div class="eyebrow">Intelligence is a system property</div>
+    <h2>Six capabilities. One inspectable memory.</h2>
+    <p>Dummy does not call one model “the intelligence.” Its intelligence comes from
+      preserving provenance, making probabilistic claims before outcomes are known,
+      recording dissent, grading every eligible claim, and constraining what learned
+      confidence is allowed to change.</p>
+    <div class="int-grid">
+      <article class="int-card" data-step="01">
+        <h3>Perception</h3>
+        <p>Timestamped market, venue, macro, weather, roster, schedule, and game-state
+          observations enter with source, freshness, and market identity attached.</p>
+        <div class="refusal">Stale, missing, or ambiguous evidence becomes an abstention—not a synthetic fact.</div>
+      </article>
+      <article class="int-card" data-step="02">
+        <h3>Probabilistic reasoning</h3>
+        <p>Market anchors, statistical kernels, simulations, specialists, and quarantined
+          language-model roles emit schema-bound probabilities at explicit horizons.</p>
+        <div class="refusal">Model confidence and fluent prose are not treated as calibration.</div>
+      </article>
+      <article class="int-card" data-step="03">
+        <h3>Dissent</h3>
+        <p>Every source keeps its identity. The market, specialist panels, power ratings,
+          and challengers can disagree without their evidence being flattened away.</p>
+        <div class="refusal">Consensus is not manufactured by hiding the minority forecast.</div>
+      </article>
+      <article class="int-card" data-step="04">
+        <h3>Memory</h3>
+        <p>Observations, forecasts, settlements, corrections, calibration, promotion
+          dossiers, and execution witnesses are retained as separate evidence layers.</p>
+        <div class="refusal">A narrative report cannot overwrite a transport witness or settled outcome.</div>
+      </article>
+      <article class="int-card" data-step="05">
+        <h3>Metacognition</h3>
+        <p>Self-scouting, film-room reconstruction, ablation, drift checks, walk-forward
+          replay, and fragility tests ask where the organism is wrong and why.</p>
+        <div class="refusal">Thin samples, hindsight, and correlated events cannot masquerade as durable skill.</div>
+      </article>
+      <article class="int-card" data-step="06">
+        <h3>Constrained action</h3>
+        <p>Allocation, risk, caps, freshness, session, and firewall gates form a monotone
+          chain: each stage can shrink a proposal; none can expand upstream authority.</p>
+        <div class="refusal">Research success, paper results, and model votes cannot authorize capital.</div>
+      </article>
+    </div>
+    <figure class="diagram" id="capability-diagram">
+      <figcaption>
+        <div>
+          <strong>Capability map — intelligence with inspectable feedback</strong>
+          <span>Each capability reads or writes the same auditable evidence memory while
+            keeping its own contract, uncertainty, and refusal boundary.</span>
+        </div>
+        <div class="key">solid = forward evidence · dashed = learning</div>
+      </figcaption>
+      <div class="diagram-scroll">
+        <svg viewBox="0 0 1000 600" role="img" aria-labelledby="cap-title cap-desc">
+          <title id="cap-title">Dummy intelligence capability diagram</title>
+          <desc id="cap-desc">Six capabilities form a feedback loop around an auditable
+            evidence ledger: perception, probabilistic reasoning, dissent, constrained
+            action, metacognition, and memory. None grants live authority.</desc>
+          <defs>
+            <marker id="cap-arrow" viewBox="0 0 10 10" refX="9" refY="5"
+              markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+              <path d="M 0 0 L 10 5 L 0 10 z" fill="#f2b63c"/>
+            </marker>
+            <marker id="learn-arrow" viewBox="0 0 10 10" refX="9" refY="5"
+              markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+              <path d="M 0 0 L 10 5 L 0 10 z" fill="#7ea979"/>
+            </marker>
+          </defs>
+
+          <path class="wire hot" marker-end="url(#cap-arrow)"
+            d="M300 157 C335 105 350 95 380 95"/>
+          <path class="wire hot" marker-end="url(#cap-arrow)"
+            d="M620 95 C650 95 670 108 700 157"/>
+          <path class="wire hot" marker-end="url(#cap-arrow)"
+            d="M820 220 L820 380"/>
+          <path class="wire return" marker-end="url(#learn-arrow)"
+            d="M700 433 C665 485 650 505 620 505"/>
+          <path class="wire return" marker-end="url(#learn-arrow)"
+            d="M380 505 C345 505 330 486 300 433"/>
+          <path class="wire return" marker-end="url(#learn-arrow)"
+            d="M180 380 L180 220"/>
+
+          <path class="wire" d="M300 180 L380 265"/>
+          <path class="wire" d="M500 150 L500 235"/>
+          <path class="wire" d="M700 180 L620 265"/>
+          <path class="wire" d="M700 420 L620 340"/>
+          <path class="wire" d="M500 450 L500 365"/>
+          <path class="wire" d="M300 420 L380 340"/>
+
+          <g>
+            <rect class="node" x="60" y="110" width="240" height="110" rx="8"/>
+            <text class="micro" x="82" y="137">01 · OBSERVE</text>
+            <text class="label" x="82" y="166">PERCEPTION</text>
+            <text class="small" x="82" y="190">provenance · freshness · identity</text>
+            <text class="truth" x="82" y="208">missing → abstain</text>
+          </g>
+          <g>
+            <rect class="node hot" x="380" y="40" width="240" height="110" rx="8"/>
+            <text class="micro" x="402" y="67">02 · PREDICT</text>
+            <text class="label" x="402" y="96">PROBABILISTIC REASONING</text>
+            <text class="small" x="402" y="120">models · simulations · horizons</text>
+            <text class="truth" x="402" y="138">schema-bound forecasts</text>
+          </g>
+          <g>
+            <rect class="node" x="700" y="110" width="240" height="110" rx="8"/>
+            <text class="micro" x="722" y="137">03 · CHALLENGE</text>
+            <text class="label" x="722" y="166">DISSENT</text>
+            <text class="small" x="722" y="190">market · specialists · challengers</text>
+            <text class="truth" x="722" y="208">identity stays visible</text>
+          </g>
+          <g>
+            <rect class="node safe" x="700" y="380" width="240" height="110" rx="8"/>
+            <text class="micro" x="722" y="407">06 · BOUND</text>
+            <text class="label" x="722" y="436">CONSTRAINED ACTION</text>
+            <text class="small" x="722" y="460">allocation · risk · firewall</text>
+            <text class="deny" x="722" y="478">cannot mint authority</text>
+          </g>
+          <g>
+            <rect class="node" x="380" y="450" width="240" height="110" rx="8"/>
+            <text class="micro" x="402" y="477">05 · QUESTION</text>
+            <text class="label" x="402" y="506">METACOGNITION</text>
+            <text class="small" x="402" y="530">self-scout · ablation · fragility</text>
+            <text class="truth" x="402" y="548">thin evidence stays thin</text>
+          </g>
+          <g>
+            <rect class="node" x="60" y="380" width="240" height="110" rx="8"/>
+            <text class="micro" x="82" y="407">04 · REMEMBER</text>
+            <text class="label" x="82" y="436">MEMORY</text>
+            <text class="small" x="82" y="460">claims · outcomes · corrections</text>
+            <text class="truth" x="82" y="478">append-only evidence layers</text>
+          </g>
+
+          <g>
+            <rect class="hub" x="380" y="235" width="240" height="130" rx="14"/>
+            <text class="micro" x="500" y="267" text-anchor="middle">SHARED TRUTH PLANE</text>
+            <text class="label" x="500" y="300" text-anchor="middle">AUDITABLE EVIDENCE</text>
+            <text class="label" x="500" y="324" text-anchor="middle">LEDGER</text>
+            <text class="small" x="500" y="348" text-anchor="middle">point-in-time · settled · correctable</text>
+          </g>
+          <text class="deny" x="500" y="590" text-anchor="middle">
+            INTELLIGENCE MAY RECOMMEND · ONLY OPERATOR AUTHORITY MAY PERMIT
+          </text>
+        </svg>
+      </div>
+    </figure>
   </div>
 </section>
 
@@ -202,7 +438,7 @@
           <li>Two-stage promotion ladder — challengers earn their place from settled evidence</li>
           <li>Evolution lab: quality-diversity archive, true crossover, jitter-fragility verdicts</li>
           <li>Self-scout, film room, recruiting board, matchup lens, top-threat, development tracker</li>
-          <li>Fusion ablation, property-invariant sweeps, chaos drills; sharp/sheep splits armed live</li>
+          <li>Fusion ablation, property-invariant sweeps, chaos drills, and sharp/sheep diagnostics retained as evidence</li>
         </ul>
       </div>
       <div class="card">
@@ -220,13 +456,68 @@
 
 <section id="loop">
   <div class="wrap">
-    <div class="eyebrow">How it runs</div>
-    <h2>The loop</h2>
-    <p>Public evidence flows one direction. Competing forecasts are fused by earned trust, sized by risk gates, and only a hardened firewall reaches the market. Reconciled outcomes feed the calibration that closes the loop.</p>
+    <div class="eyebrow">The cognition cycle</div>
+    <h2>Eight phases, each with a contract</h2>
+    <p>Public evidence flows in one direction. Each phase produces a bounded artifact for the
+      next one, so a failure can be located, replayed, and explained without pretending the
+      entire organism is one indivisible model.</p>
     <div class="loop">
       <span>Scan</span><b>→</b><span>Signal</span><b>→</b><span>Fuse</span><b>→</b><span>Allocate</span><b>→</b><span>Risk</span><b>→</b><span>Execute</span><b>→</b><span>Reconcile</span><b>→</b><span>Learn</span>
     </div>
-    <p>Candidates are ranked by <strong>capital velocity</strong> — edge per √hour-to-settlement, because a 3¢ edge settling in an hour compounds faster than a 5¢ edge parked for five days. Every stage can only ever <em>reduce</em> what the stage before it proposed: fusion cannot outvote calibration, allocation cannot exceed the pot, risk cannot exceed the allocation, and the firewall cannot exceed the sealed caps. No later stage can grant more than an earlier one allowed.</p>
+    <div class="pipeline">
+      <article class="phase">
+        <div class="num">01 / OBSERVE</div><h3>Scan</h3>
+        <p>Discover supported markets and attach point-in-time public context, venue state,
+          freshness, and provenance.</p>
+        <div class="out">output → normalized observations</div>
+      </article>
+      <article class="phase">
+        <div class="num">02 / PREDICT</div><h3>Signal</h3>
+        <p>Run every eligible source at the correct asset, league, market type, and horizon;
+          preserve abstentions and reasons.</p>
+        <div class="out">output → attributed probabilities</div>
+      </article>
+      <article class="phase">
+        <div class="num">03 / CALIBRATE</div><h3>Fuse</h3>
+        <p>Debias each opinion and combine it by earned, scope-specific trust while retaining
+          the market as a standing anchor.</p>
+        <div class="out">output → contested consensus</div>
+      </article>
+      <article class="phase">
+        <div class="num">04 / PRIORITIZE</div><h3>Allocate</h3>
+        <p>Rank evidence-adjusted edge by settlement velocity and divide one bounded pot
+          across candidates that can actually be held.</p>
+        <div class="out">output → capped candidate grants</div>
+      </article>
+      <article class="phase">
+        <div class="num">05 / CONSTRAIN</div><h3>Risk</h3>
+        <p>Apply stage, drawdown, correlation-cluster, bankroll, liquidity, price, and
+          time-to-live gates.</p>
+        <div class="out">output → reduced order intent</div>
+      </article>
+      <article class="phase">
+        <div class="num">06 / FIREWALL</div><h3>Execute</h3>
+        <p>Shadow by default. Any controlled live proof still requires explicit authority,
+          an active session, sealed caps, fresh state, and LIMIT-only transport.</p>
+        <div class="out">output → paper receipt or transport witness</div>
+      </article>
+      <article class="phase">
+        <div class="num">07 / TRUTH</div><h3>Reconcile</h3>
+        <p>Match orders, fills, cancellations, market settlement, and account evidence
+          without promoting local gate blocks into broker claims.</p>
+        <div class="out">output → outcome-linked evidence</div>
+      </article>
+      <article class="phase">
+        <div class="num">08 / ADAPT</div><h3>Learn</h3>
+        <p>Brier-score all eligible forecasts, refresh calibration, inspect failures, tune
+          challengers, and append the next promotion evidence.</p>
+        <div class="out">output → forward-only trust</div>
+      </article>
+    </div>
+    <p class="fleet-note"><strong>The monotone rule:</strong> fusion cannot outvote
+      calibration, allocation cannot exceed the candidate pot, risk cannot exceed the
+      allocation, and the firewall cannot exceed sealed caps. Intelligence may recommend;
+      only explicit operator authority may permit.</p>
   </div>
 </section>
 
@@ -238,7 +529,7 @@
     <div class="grid">
       <div class="card">
         <h3>Three split policies</h3>
-        <span class="tag">operator-selectable, live</span>
+        <span class="tag">explicit configuration workflow</span>
         <ul>
           <li><strong>kelly_prorata</strong> (default) — each ask scaled by weight; apportioned to fit only when the pot is oversubscribed. Thin nights deliberately deploy less than the cap</li>
           <li><strong>proportional</strong> — share of the pot by weight, clamped to the ask</li>
@@ -278,36 +569,188 @@
 
 <section id="loops">
   <div class="wrap">
-    <div class="eyebrow">Always on</div>
-    <h2>The 45 loops</h2>
-    <p>Dummy is not a program you run. It is 45 independent scheduled loops that survive reboots, pick up merged code on their next fire, and are individually watched. Nothing is a daemon — each runs as the operator, so a crash costs one fire, not the system.</p>
+    <div class="eyebrow">The autonomous fleet</div>
+    <h2>45 loops, isolated by responsibility</h2>
+    <p>Dummy is not one immortal process. Its intelligence is distributed across independent
+      Windows scheduled tasks that survive reboots, pick up merged code on their next fire,
+      and are individually observed. One slow report, broken feed, or league backfill cannot
+      hold the cognition cycle hostage.</p>
     <div class="grid">
       <div class="card">
         <h3>Cadence — the heartbeat</h3>
         <span class="tag">8 loops</span>
         <ul><li>The brain cycle, live poller, sports board refresh, mispricing monitor, crypto paper twin, the vNext shadow organism, the USE sidecar, and account snapshots</li></ul>
+        <p class="taskline">Predator · LivePoller · SportsBoard · Mispricing · CryptoTwin · vNext · USE · AccountSnapshot</p>
       </div>
       <div class="card">
         <h3>Learning &amp; self-improvement</h3>
         <span class="tag">10 loops</span>
         <ul><li>Weight recalibration split into a fast weight-only core and heavy diagnostics, so a slow report can never stall a cycle — plus the tuner, strategy miner, autoresearch lab, simulation trainers, and crypto horizon evidence</li></ul>
+        <p class="taskline">Weights · Backtest · Tune · SelfImprove · StrategyMiner · Autoresearch · Simulation</p>
       </div>
       <div class="card">
         <h3>Sports data &amp; grading</h3>
         <span class="tag">18 loops · per league</span>
         <ul><li>History backfill and event-purged walk-forward grading for all seven leagues, box-score ingest for three, and NFL EPA — each league on its own schedule so one outage cannot stall the rest</li></ul>
+        <p class="taskline">Lake × 7 · WalkForward × 7 · BoxScore × 3 · NFL EPA</p>
       </div>
       <div class="card">
         <h3>Health &amp; durability</h3>
         <span class="tag">5 loops</span>
         <ul><li>A fleet-wide watchdog that grades the other tasks rather than its own exit code, a five-minute self-heal loop, readiness reporting, and a snapshot writer so the board never holds a ledger lock</li></ul>
+        <p class="taskline">Watchdog · Healer · Readiness · Dashboard · DashboardSnapshot</p>
       </div>
       <div class="card">
         <h3>Bounded footprint</h3>
         <span class="tag">4 loops</span>
         <ul><li>Ledger retention, pruning, a self-skipping vacuum, and log rotation on an explicit allowlist — state, audit and full-history tapes are never blind-truncated</li></ul>
+        <p class="taskline">Retention · Prune · Vacuum · LogRotation</p>
+      </div>
+      <div class="card">
+        <h3>Why independent loops matter</h3>
+        <span class="tag">fault containment is intelligence infrastructure</span>
+        <ul>
+          <li>Each cadence has its own timeout, evidence artifact, and next retry</li>
+          <li>The watchdog evaluates the fleet instead of trusting its own exit status</li>
+          <li>Read-heavy diagnostics cannot stall price formation or hold the ledger open</li>
+          <li>Recovery resumes from persisted artifacts rather than hidden process memory</li>
+        </ul>
       </div>
     </div>
+    <figure class="diagram" id="loop-fleet-diagram">
+      <figcaption>
+        <div>
+          <strong>Loop fleet map — 45 isolated jobs, one evidence plane</strong>
+          <span>Five responsibility bands run on independent cadences and publish bounded
+            artifacts. The board observes those artifacts; it is not a control path.</span>
+        </div>
+        <div class="key">8 + 10 + 18 + 5 + 4 = 45</div>
+      </figcaption>
+      <div class="diagram-scroll">
+        <svg viewBox="0 0 1000 680" role="img" aria-labelledby="fleet-title fleet-desc">
+          <title id="fleet-title">Dummy 45-loop fleet diagram</title>
+          <desc id="fleet-desc">Forty-five independent scheduled loops are divided into
+            heartbeat, learning, sports data and grading, health and durability, and bounded
+            footprint groups. They exchange persisted artifacts through an evidence plane
+            observed by a read-only dashboard.</desc>
+          <defs>
+            <marker id="fleet-arrow" viewBox="0 0 10 10" refX="9" refY="5"
+              markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+              <path d="M 0 0 L 10 5 L 0 10 z" fill="#f2b63c"/>
+            </marker>
+            <marker id="fleet-read" viewBox="0 0 10 10" refX="9" refY="5"
+              markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+              <path d="M 0 0 L 10 5 L 0 10 z" fill="#7ea979"/>
+            </marker>
+          </defs>
+
+          <path class="wire hot" marker-end="url(#fleet-arrow)" d="M300 90 L390 130"/>
+          <path class="wire hot" marker-end="url(#fleet-arrow)" d="M300 190 L390 220"/>
+          <path class="wire hot" marker-end="url(#fleet-arrow)" d="M300 290 L390 310"/>
+          <path class="wire hot" marker-end="url(#fleet-arrow)" d="M300 390 L390 400"/>
+          <path class="wire hot" marker-end="url(#fleet-arrow)" d="M300 490 L390 490"/>
+
+          <path class="wire" marker-end="url(#fleet-arrow)" d="M610 130 L700 90"/>
+          <path class="wire" marker-end="url(#fleet-arrow)" d="M610 220 L700 190"/>
+          <path class="wire" marker-end="url(#fleet-arrow)" d="M610 310 L700 290"/>
+          <path class="wire" marker-end="url(#fleet-arrow)" d="M610 400 L700 390"/>
+          <path class="wire" marker-end="url(#fleet-arrow)" d="M610 490 L700 490"/>
+          <path class="wire return" marker-end="url(#fleet-read)" d="M610 525 C650 560 665 590 700 600"/>
+
+          <g>
+            <rect class="node hot" x="30" y="50" width="270" height="80" rx="8"/>
+            <text class="count" x="52" y="85">8</text>
+            <text class="label" x="100" y="82">HEARTBEAT</text>
+            <text class="small" x="100" y="105">price · poll · refresh · snapshot</text>
+          </g>
+          <g>
+            <rect class="node" x="30" y="150" width="270" height="80" rx="8"/>
+            <text class="count" x="52" y="185">10</text>
+            <text class="label" x="100" y="182">LEARNING</text>
+            <text class="small" x="100" y="205">recalibrate · tune · research · simulate</text>
+          </g>
+          <g>
+            <rect class="node" x="30" y="250" width="270" height="80" rx="8"/>
+            <text class="count" x="52" y="285">18</text>
+            <text class="label" x="100" y="282">SPORTS DATA + GRADING</text>
+            <text class="small" x="100" y="305">lake × 7 · walk-forward × 7 · box · EPA</text>
+          </g>
+          <g>
+            <rect class="node" x="30" y="350" width="270" height="80" rx="8"/>
+            <text class="count" x="52" y="385">5</text>
+            <text class="label" x="100" y="382">HEALTH + DURABILITY</text>
+            <text class="small" x="100" y="405">watch · heal · report · serve · snapshot</text>
+          </g>
+          <g>
+            <rect class="node" x="30" y="450" width="270" height="80" rx="8"/>
+            <text class="count" x="52" y="485">4</text>
+            <text class="label" x="100" y="482">BOUNDED FOOTPRINT</text>
+            <text class="small" x="100" y="505">retain · prune · vacuum · rotate</text>
+          </g>
+
+          <g>
+            <rect class="hub" x="390" y="60" width="220" height="490" rx="14"/>
+            <text class="micro" x="500" y="95" text-anchor="middle">PERSISTED COORDINATION</text>
+            <text class="label" x="500" y="125" text-anchor="middle">EVIDENCE PLANE</text>
+            <line x1="420" y1="150" x2="580" y2="150" stroke="#455545"/>
+            <text class="truth" x="500" y="190" text-anchor="middle">observations</text>
+            <text class="truth" x="500" y="235" text-anchor="middle">attributed forecasts</text>
+            <text class="truth" x="500" y="280" text-anchor="middle">cycle receipts</text>
+            <text class="truth" x="500" y="325" text-anchor="middle">settlements + calibration</text>
+            <text class="truth" x="500" y="370" text-anchor="middle">promotion dossiers</text>
+            <text class="truth" x="500" y="415" text-anchor="middle">health + freshness</text>
+            <text class="truth" x="500" y="460" text-anchor="middle">audit + corrections</text>
+            <line x1="420" y1="485" x2="580" y2="485" stroke="#455545"/>
+            <text class="count" x="500" y="525" text-anchor="middle">45</text>
+            <text class="micro" x="500" y="542" text-anchor="middle">INDEPENDENT RETRY BOUNDARIES</text>
+          </g>
+
+          <g>
+            <rect class="node" x="700" y="50" width="270" height="80" rx="8"/>
+            <text class="label" x="722" y="82">MARKETS + BOARD</text>
+            <text class="small" x="722" y="105">fresh candidates · ranked scopes</text>
+          </g>
+          <g>
+            <rect class="node" x="700" y="150" width="270" height="80" rx="8"/>
+            <text class="label" x="722" y="182">TRUST + CHALLENGERS</text>
+            <text class="small" x="722" y="205">forward evidence · ablation · tuning</text>
+          </g>
+          <g>
+            <rect class="node" x="700" y="250" width="270" height="80" rx="8"/>
+            <text class="label" x="722" y="282">POINT-IN-TIME LAKES</text>
+            <text class="small" x="722" y="305">league-isolated history + replay</text>
+          </g>
+          <g>
+            <rect class="node" x="700" y="350" width="270" height="80" rx="8"/>
+            <text class="label" x="722" y="382">READINESS TRUTH</text>
+            <text class="small" x="722" y="405">fleet state · blockers · snapshots</text>
+          </g>
+          <g>
+            <rect class="node" x="700" y="450" width="270" height="80" rx="8"/>
+            <text class="label" x="722" y="482">BOUNDED STORAGE</text>
+            <text class="small" x="722" y="505">hot path shrinks · audit stays intact</text>
+          </g>
+
+          <g>
+            <rect class="node hot" x="700" y="565" width="270" height="80" rx="8"/>
+            <text class="micro" x="722" y="590">READ-ONLY OBSERVER</text>
+            <text class="label" x="722" y="618">THE ORGANISM</text>
+            <text class="truth" x="722" y="636">GET-only · no control edge</text>
+          </g>
+          <g>
+            <rect class="node safe" x="30" y="565" width="270" height="80" rx="8"/>
+            <text class="micro" x="52" y="590">SEPARATE AUTHORITY PLANE</text>
+            <text class="label" x="52" y="618">EXECUTION FIREWALL</text>
+            <text class="deny" x="52" y="636">no scheduler can self-authorize</text>
+          </g>
+          <path class="wire" stroke-dasharray="3 7" d="M300 605 L700 605"/>
+          <text class="micro" x="500" y="625" text-anchor="middle">NO DASHBOARD OR LOOP CONTROL PATH</text>
+        </svg>
+      </div>
+    </figure>
+    <p class="fleet-note">The fleet can improve models, weights, calibration, and candidate
+      selection. It cannot rewrite truth rules, lower promotion evidence, widen sealed caps,
+      mint an operator signature, or grant itself a live session.</p>
   </div>
 </section>
 
@@ -315,10 +758,77 @@
   <div class="wrap">
     <div class="eyebrow">The command board</div>
     <h2>One hardened view over persisted runtime truth</h2>
-    <p>The <strong>Dummy operator board</strong> is a loopback-only, read-only web board at <code>127.0.0.1:8787</code>. It reads persisted artifacts and exposes no scheduler, configuration, authority, capital, or broker mutation endpoint. Split-flap values change only when evidence changes, and a ⌘K palette jumps to any coin or league.</p>
+    <p>The <strong>Dummy operator board</strong> is a loopback-only, read-only web board at
+      <code>127.0.0.1:8787</code>. It reads persisted artifacts and exposes no scheduler,
+      configuration, authority, capital, model-provider, or broker mutation endpoint.
+      Split-flap values change only when evidence changes, and a ⌘K palette jumps to any
+      coin, league, model role, or saved theme.</p>
+    <div class="grid">
+      <div class="card">
+        <h3>The Organism</h3>
+        <span class="tag">data-bound neural field · progressive enhancement</span>
+        <ul>
+          <li>The four-model arsenal forms the cortex; sources and scopes orbit by tier</li>
+          <li>Pulses appear only when persisted evidence changes, never as fake activity</li>
+          <li>WebGL2, WebGL1, Canvas 2D, and static fallbacks preserve the same truth</li>
+          <li>Reduced motion stops animation without hiding evidence</li>
+        </ul>
+      </div>
+      <div class="card">
+        <h3>Truth before spectacle</h3>
+        <span class="tag">accessible DOM remains authoritative</span>
+        <ul>
+          <li>Sticky status ribbon separates account freshness, authority, board, and system health</li>
+          <li>Forecast diagnostics are labelled as probability quality—not trading profit</li>
+          <li>Stored model witnesses are redacted and never refreshed by opening the page</li>
+          <li>Responsive scope docks retain keyboard and touch navigation</li>
+        </ul>
+      </div>
+    </div>
     <div class="gal">
+      <div class="shot wide">
+        <img src="assets/dummy-overview.png" alt="Updated Dummy Overview showing the Organism, truth ribbon, account state, and evidence diagnostics">
+        <div class="c"><b>Overview · current Organism build</b><span>Updated UI capture —
+          sticky execution truth, cached account state, system health, forecast diagnostics,
+          and the data-bound neural field in one loopback-only operator surface.</span></div>
+      </div>
       <div class="shot"><img src="assets/dummy-sports-scope.png" alt="Sports scope"><div class="c"><b>Per-league scope</b> — graded forecast quality, model vs book, live picks by edge, accuracy by bet type, and a day-by-day games breakdown</div></div>
       <div class="shot"><img src="assets/dummy-crypto-scope.png" alt="Crypto scope"><div class="c"><b>Per-coin scope</b> — the model beating the closing line, accuracy by bet type, every priced market by category, and today's settled calls</div></div>
+    </div>
+  </div>
+</section>
+
+<section id="proof">
+  <div class="wrap">
+    <div class="eyebrow">The evidence ladder</div>
+    <h2>What the organism knows—and what that knowledge cannot do</h2>
+    <p>Dummy keeps four layers deliberately separate. Moving upward requires new evidence;
+      no lower layer is allowed to imply the layer above it.</p>
+    <div class="proof-grid">
+      <article class="proof">
+        <div class="ordinal">LAYER 01</div><h3>Forecast</h3>
+        <p>A timestamped probability from an identified source, scope, market type, and
+          horizon—made before the outcome.</p>
+        <div class="cannot">Cannot prove calibration, edge, profitability, or authority.</div>
+      </article>
+      <article class="proof">
+        <div class="ordinal">LAYER 02</div><h3>Settled evidence</h3>
+        <p>Outcome-linked Brier, log-loss, closing-line, sample-size, and event-cluster
+          evidence produced by forward grading.</p>
+        <div class="cannot">Cannot bypass uncertainty bounds, replication, or promotion review.</div>
+      </article>
+      <article class="proof">
+        <div class="ordinal">LAYER 03</div><h3>Promotion</h3>
+        <p>A bounded dossier showing a challenger met preregistered evidence gates for a
+          defined role and scope.</p>
+        <div class="cannot">Cannot create broker credentials, sealed caps, or a live session.</div>
+      </article>
+      <article class="proof">
+        <div class="ordinal">LAYER 04</div><h3>Authority</h3>
+        <p>An explicit, operator-held, time-bounded control contract checked again at the
+          central execution firewall.</p>
+        <div class="cannot">Cannot be manufactured by code, UI state, paper results, or model consensus.</div>
+      </article>
     </div>
   </div>
 </section>
@@ -344,11 +854,15 @@
   </div>
 </section>
 
+</main>
 <footer>
   <div class="wrap">
     <div class="brand" style="font-size:16px">DUMMY&nbsp;BOARD</div>
     <p><a href="https://github.com/ObtuseAI/dummy">github.com/ObtuseAI/dummy</a></p>
-    <p class="disc">Private research system. Not investment advice. Nothing here executes trades or moves capital without explicit operator authorization. Dashboards are read-only observers of a paper runtime.</p>
+    <p class="disc">Private research system. Not investment advice. The current launch
+      verdict is NO-GO. Nothing here executes trades or moves capital without explicit,
+      separately validated operator authorization. Dashboards are read-only observers of
+      persisted runtime artifacts.</p>
   </div>
 </footer>
 
