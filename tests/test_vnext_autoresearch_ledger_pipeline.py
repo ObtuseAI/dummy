@@ -549,21 +549,31 @@ def test_runner_is_fail_soft_when_the_ledger_is_missing(tmp_path: Path) -> None:
 
 
 def test_runner_deadline_defers_instead_of_overrunning(tmp_path: Path) -> None:
+    from importlib import util as _util
+
     ledger = tmp_path / "ledger.db"
     _ledger(ledger)
     output = tmp_path / "autoresearch"
+    spec = _util.spec_from_file_location("dummy_autoresearch_runner_deadline", RUNNER)
+    module = _util.module_from_spec(spec)
+    assert spec.loader is not None
+    spec.loader.exec_module(module)
+    ticks = iter((0.0, 1.0))
 
-    result = _run_runner(
+    result = module.main(
+        [
         "--ledger", str(ledger),
         "--output-dir", str(output),
         "--issued-at", (NOW + timedelta(days=20)).isoformat(),
-        "--max-seconds", "0.000000001",
+        "--max-seconds", "0.001",
+        ],
+        monotonic_fn=lambda: next(ticks, 1.0),
     )
 
-    assert result.returncode == 0
+    assert result == 0
     status = _status(output)
     assert status["status"] == "DEFERRED_RUN_DEADLINE"
-    assert status["max_seconds"] == 0.000000001
+    assert status["max_seconds"] == 0.001
 
 
 def test_runner_preserves_last_success_across_a_later_skip(tmp_path: Path) -> None:

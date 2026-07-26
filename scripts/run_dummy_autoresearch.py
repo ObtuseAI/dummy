@@ -33,7 +33,7 @@ from datetime import datetime, timezone
 import json
 import sys
 from pathlib import Path
-from typing import Callable
+from typing import Callable, Sequence
 
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
@@ -402,7 +402,11 @@ def run_cycle(
     }
 
 
-def main() -> int:
+def main(
+    argv: Sequence[str] | None = None,
+    *,
+    monotonic_fn: Callable[[], float] = time.monotonic,
+) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--ledger",
@@ -437,11 +441,11 @@ def main() -> int:
         default=DEFAULT_MAX_TRIAL_LINES,
         help="tail cap for the append-only ignition trial ledger; 0 disables",
     )
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
     if args.status_path is None:
         args.status_path = default_status_path(args.output_dir)
 
-    started = time.monotonic()
+    started = monotonic_fn()
     started_at = datetime.now(timezone.utc)
     status: dict[str, object] = {
         "schema_version": 1,
@@ -463,7 +467,7 @@ def main() -> int:
     def _deadline() -> bool:
         if args.max_seconds <= 0:
             return False
-        return (time.monotonic() - started) >= args.max_seconds
+        return (monotonic_fn() - started) >= args.max_seconds
 
     try:
         if not args.ledger.exists():
@@ -488,7 +492,7 @@ def main() -> int:
                 else "SKIPPED_INSUFFICIENT_EVIDENCE"
             ),
             "generated_at": finished.isoformat(),
-            "duration_seconds": round(time.monotonic() - started, 3),
+            "duration_seconds": round(monotonic_fn() - started, 3),
             "detail": str(exc),
         })
         _write_status(args.status_path, status)
@@ -501,7 +505,7 @@ def main() -> int:
         status.update({
             "status": "ERROR",
             "generated_at": finished.isoformat(),
-            "duration_seconds": round(time.monotonic() - started, 3),
+            "duration_seconds": round(monotonic_fn() - started, 3),
             "error_type": type(exc).__name__,
             "error": str(exc)[:2000],
             "traceback_tail": "".join(
@@ -520,7 +524,7 @@ def main() -> int:
         "status": "OK",
         "generated_at": finished.isoformat(),
         "last_success_at": finished.isoformat(),
-        "duration_seconds": round(time.monotonic() - started, 3),
+        "duration_seconds": round(monotonic_fn() - started, 3),
         "evidence_rows": summary.get("evidence_rows"),
         "multi_cohort": summary.get("multi_cohort"),
         "forward_observations_issued": summary.get("forward_observations_issued"),
