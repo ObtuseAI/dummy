@@ -10,6 +10,7 @@
 <p align="center">
   <img src="https://img.shields.io/badge/python-3.11%20%7C%203.12%20%7C%203.14-4b8bbe" alt="Python 3.11, 3.12, 3.14">
   <img src="https://img.shields.io/badge/tests-5k%2B%20collected-2ea44f" alt="More than 5,000 maintained tests collected">
+  <img src="https://img.shields.io/badge/release-v1.0.0-d4a72c" alt="Public release v1.0.0">
   <img src="https://img.shields.io/badge/autonomous%20loops-45-3b7dd8" alt="45 autonomous loops">
   <img src="https://img.shields.io/badge/mode-SHADOW%20·%20paper-1f9d55" alt="Shadow paper mode">
   <img src="https://img.shields.io/badge/promotion%20to%20capital-human--gated-e0a100" alt="Human-gated">
@@ -40,6 +41,13 @@
   </tr>
 </table>
 
+<p align="center">
+  <a href="docs/assets/dummy-crypto-charts.png"><img src="docs/assets/dummy-crypto-charts.png" alt="Crypto Research Charts synthetic release demonstration" width="900"></a><br>
+  <em>The actual artifact-only <strong>Crypto Research Charts</strong> UI, exercised with a
+  visibly labeled synthetic release fixture—not market data or market evidence. The same
+  renderer accepts immutable, rights-reviewed BTC/ETH/SOL candle bundles in operation.</em>
+</p>
+
 ---
 
 > **Current launch status: NO-GO.** The hardened code path is implemented, but
@@ -47,6 +55,11 @@
 > required elapsed backup, canary, grading, execution-policy, and kill-drill
 > evidence. See the
 > [elite-readiness implementation record](docs/ELITE_READINESS_IMPLEMENTATION_2026-07-26.md).
+
+> **Public-source, not open source.** Version 1.0.0 is published for inspection,
+> security review, and architectural evaluation under the
+> [Dummy Public Source License](LICENSE). Public visibility grants no trading,
+> broker, credential, provider, capital, deployment, or execution authority.
 
 Dummy watches public prediction markets, prices every one of them with a panel of
 competing models, and grades every forecast against reality the moment it settles.
@@ -56,6 +69,7 @@ human is the only path from evidence to a real order.
 
 **Contents** — [What it prices](#what-it-prices) ·
 [Intelligence loop](#the-intelligence-loop) · [Command board](#the-command-board) ·
+[Capability catalog](#capability-catalog) · [Crypto lane](#crypto-intelligence-lane) ·
 [Design](#design) · [The cycle](#the-cycle) · [Capital allocation](#capital-allocation) ·
 [The 45 loops](#the-45-loops) · [The organization](#the-organization-around-the-models) ·
 [Recursive improvement](#recursive-improvement) · [Safety](#safety--governance) ·
@@ -132,6 +146,66 @@ Six capabilities emerge from that loop:
 
 The [visual showcase](docs/index.html) walks through this stack, the eight cycle phases,
 the 45 scheduled loops, the operator board, and the proof boundary in one page.
+
+## Capability catalog
+
+The public release exposes one consolidated map so an ability cannot disappear inside a
+subsystem name:
+
+| ability family | what is implemented | inspect it |
+|---|---|---|
+| Market perception | allowlisted discovery, public context, identity normalization, provenance, freshness, deduplication, and explicit abstention | observation ledger · source health |
+| Crypto observation &amp; charts | BTC/ETH/SOL closed candles for 15m/1h/4h/1d/1w; RSI, EMA trend, ATR, MACD/ATR, Bollinger %B, stochastic, OBV, volume, breakout/fakeout, and candlestick markers | Board → Crypto Charts · Market Observer MCP |
+| Crypto paper &amp; horizon loops | independent asset × timeframe × strategy paper lanes and forward horizon evidence | `DummyCryptoPaperTwin` · `DummyCryptoHorizonEvidence` |
+| Sports intelligence | seven league surfaces; history and play-by-play lakes; power ratings; live and pregame models; comeback, props, officiating, travel, and scoring context | Board → league scopes · sports lake reports |
+| Forecasting &amp; simulation | market anchors, statistical kernels, vertical specialists, scoring distributions, scenario simulation, and attributed probabilities | forecast ledger · scope diagnostics |
+| Council &amp; model routing | four exact schema-bound LLM roles, vertical specialists, preserved dissent, redacted proof, and paid-call gates | Board → Model Arsenal |
+| Calibration &amp; fusion | Brier, log loss, ECE/MCE, debiasing, contested-market scoring, uncertainty intervals, and scope trust | calibration and tier-performance artifacts |
+| Walk-forward evaluation | temporal folds, event-cluster bootstrap, fees, liquidity, CLV, partial fills, negative controls, and no-look-ahead checks | backtest and challenger reports |
+| Portfolio construction | evidence-adjusted edge, settlement velocity, correlation-aware candidate splitting, stage ladder, and quarter-Kelly sizing | candidate-allocation receipts |
+| Risk &amp; execution firewall | drawdown, cluster, price, liquidity, TTL, session, credential, sealed-cap, proof-lock, and LIMIT-only enforcement | typed gate results · transport witnesses |
+| Settlement &amp; audit memory | orders, fills, cancels, outcomes, corrections, account snapshots, and promotion dossiers retained as separate layers | append-only ledger and correction records |
+| Autoresearch &amp; evolution | strategy mining, tuning, quality-diversity search, crossover, ablation, chaos, and fragility testing | research campaign artifacts |
+| Metacognition | self-scout, film room, recruiting, matchup lens, top threat, no-edge map, and development tracking | organization reports |
+| Fleet reliability | watchdog, healer, readiness, snapshots, retention, pruning, vacuum, and allowlisted log rotation | task and durability artifacts |
+| Operator experience | Overview, scoped crypto/sports diagnostics, Crypto Charts, Model Arsenal, glossary, command palette, themes, and desktop outcome notifier | loopback-only Board |
+| Read-only integration | Market Observer MCP tools for candles, snapshots, indicators, patterns, charts, network status, and source health | `python -m autonomy.market_observer` |
+
+The standalone [capability map](docs/assets/dummy-capability-map.svg) and
+[45-loop fleet map](docs/assets/dummy-loop-fleet.svg) are ordinary accessible SVG assets;
+they do not require JavaScript or a diagram renderer.
+
+## Crypto intelligence lane
+
+Crypto is not a footnote inside the general fleet:
+
+- **`DummyCryptoPaperTwin` — every 5 minutes.** Runs independent BTC, ETH, and SOL
+  paper cohorts across 15m, 1h, 1d, and 1w horizons, with asset × timeframe × strategy
+  evidence, isolated lane quarantine, and `execution_authority=false`.
+- **`DummyCryptoHorizonEvidence` — every 10 minutes.** Builds forward horizon matrices,
+  settles eligible observations, and measures whether each cohort has enough time-consistent
+  evidence to remain a challenger.
+- **Shared crypto loops.** `DummyShadowPredator`, `DummyMispricingMonitor`'s crypto-fast
+  pass, weight recalibration, backtests, autoresearch, allocation, risk, and dashboard
+  snapshots retain the crypto asset and horizon instead of merging them into sports evidence.
+- **Crypto Research Charts.** The read-only Board renders immutable Market Observer bundles
+  with the vendored Apache-2.0 Lightweight Charts renderer. The provider supplies closed
+  public candles; all indicators and patterns are deterministic local facts.
+
+The two dedicated crypto tasks are already included in the 45-loop total. Charts are
+observations, paper entries are hypothetical decisions, and neither can create promotion or
+live authority.
+
+To exercise the real chart renderer without a provider or third-party market data, generate
+an explicitly labeled synthetic display fixture:
+
+```powershell
+python scripts/generate_dummy_crypto_chart_demo.py --asset BTC --timeframe 1h
+python scripts/run_dummy_dashboard.py
+```
+
+The generated artifact says `SYNTHETIC DEMO - NOT MARKET DATA OR MARKET EVIDENCE`; every
+forecast, execution, allocation, promotion, and trading authority remains false.
 
 ## The command board
 

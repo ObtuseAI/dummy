@@ -1,0 +1,163 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 780" role="img" aria-labelledby="title desc">
+  <title id="title">Dummy capability map</title>
+  <desc id="desc">Twelve major capabilities flow from observation through probabilistic reasoning and learning to constrained action and read-only operator visibility.</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#0d160f"/>
+      <stop offset="1" stop-color="#17251c"/>
+    </linearGradient>
+    <filter id="glow" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur stdDeviation="5" result="blur"/>
+      <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M0 0 10 5 0 10Z" fill="#f2b63c"/>
+    </marker>
+    <style>
+      .eyebrow{font:600 12px "Cascadia Mono",Consolas,monospace;letter-spacing:2px;fill:#7d7150}
+      .title{font:700 34px Bahnschrift,"Arial Narrow",sans-serif;letter-spacing:1px;fill:#e9e2ce}
+      .subtitle{font:15px "Segoe UI",sans-serif;fill:#93a394}
+      .column{fill:#111c16;stroke:#2c3d31;stroke-width:1.5}
+      .column-hot{fill:#18271d;stroke:#7d7150;stroke-width:1.5}
+      .node{fill:#1d3025;stroke:#455545;stroke-width:1.5}
+      .node-crypto{fill:#1c302d;stroke:#42bfc7;stroke-width:2}
+      .node-safe{fill:#2a211d;stroke:#c96a5c;stroke-width:1.5}
+      .node-title{font:700 15px Bahnschrift,"Arial Narrow",sans-serif;letter-spacing:.5px;fill:#e9e2ce}
+      .node-copy{font:11px "Cascadia Mono",Consolas,monospace;fill:#93a394}
+      .node-proof{font:700 10px "Cascadia Mono",Consolas,monospace;fill:#7ea979}
+      .node-deny{font:700 10px "Cascadia Mono",Consolas,monospace;fill:#df8b7e}
+      .step{font:700 11px "Cascadia Mono",Consolas,monospace;letter-spacing:1.5px;fill:#f2b63c}
+      .wire{fill:none;stroke:#526151;stroke-width:2}
+      .wire-hot{fill:none;stroke:#f2b63c;stroke-width:2.5;marker-end:url(#arrow)}
+      .boundary{fill:#171b17;stroke:#c96a5c;stroke-width:1.5;stroke-dasharray:8 6}
+      .boundary-title{font:700 12px "Cascadia Mono",Consolas,monospace;letter-spacing:1px;fill:#df8b7e}
+      .boundary-copy{font:12px "Segoe UI",sans-serif;fill:#c4aaa4}
+    </style>
+  </defs>
+
+  <rect width="1200" height="780" rx="16" fill="url(#bg)"/>
+  <text class="eyebrow" x="60" y="48">DUMMY · PUBLIC RELEASE SYSTEM MAP</text>
+  <text class="title" x="60" y="88">Every ability. One evidence-gated intelligence system.</text>
+  <text class="subtitle" x="60" y="118">Facts move left to right. Settled outcomes flow back. No capability can manufacture authority.</text>
+
+  <path class="wire-hot" d="M290 420H330"/>
+  <path class="wire-hot" d="M570 420H610"/>
+  <path class="wire-hot" d="M850 420H890"/>
+  <path class="wire" d="M1010 650C1010 710 190 710 190 650" stroke-dasharray="7 6"/>
+  <text class="node-proof" x="600" y="728" text-anchor="middle">SETTLED OUTCOMES · BRIER · CLV · CORRECTIONS · FORWARD-ONLY TRUST</text>
+
+  <g>
+    <rect class="column" x="40" y="145" width="250" height="515" rx="12"/>
+    <text class="step" x="62" y="178">01 · OBSERVE</text>
+    <g transform="translate(60 200)">
+      <rect class="node" width="210" height="118" rx="8"/>
+      <text class="node-title" x="18" y="30">MARKET PERCEPTION</text>
+      <text class="node-copy" x="18" y="54">quotes · macro · weather</text>
+      <text class="node-copy" x="18" y="72">rosters · schedules · provenance</text>
+      <text class="node-proof" x="18" y="98">stale / missing → abstain</text>
+    </g>
+    <g transform="translate(60 332)">
+      <rect class="node-crypto" width="210" height="138" rx="8"/>
+      <text class="node-title" x="18" y="30">CRYPTO DATA + CHARTS</text>
+      <text class="node-copy" x="18" y="54">BTC · ETH · SOL</text>
+      <text class="node-copy" x="18" y="72">15m · 1h · 4h · 1d · 1w</text>
+      <text class="node-copy" x="18" y="90">candles · indicators · patterns</text>
+      <text class="node-proof" x="18" y="116">public read-only observations</text>
+    </g>
+    <g transform="translate(60 484)">
+      <rect class="node" width="210" height="138" rx="8"/>
+      <text class="node-title" x="18" y="30">SPORTS KNOWLEDGE</text>
+      <text class="node-copy" x="18" y="54">7 leagues · history lake</text>
+      <text class="node-copy" x="18" y="72">play-by-play · box scores · EPA</text>
+      <text class="node-copy" x="18" y="90">comeback matrices · props</text>
+      <text class="node-proof" x="18" y="116">point-in-time ingest</text>
+    </g>
+  </g>
+
+  <g>
+    <rect class="column-hot" x="330" y="145" width="240" height="515" rx="12"/>
+    <text class="step" x="352" y="178">02 · REASON</text>
+    <g transform="translate(350 200)">
+      <rect class="node" width="200" height="118" rx="8"/>
+      <text class="node-title" x="18" y="30">FORECAST + SIMULATE</text>
+      <text class="node-copy" x="18" y="54">anchors · specialists · kernels</text>
+      <text class="node-copy" x="18" y="72">power ratings · distributions</text>
+      <text class="node-proof" x="18" y="98">schema-bound probabilities</text>
+    </g>
+    <g transform="translate(350 332)">
+      <rect class="node" width="200" height="138" rx="8"/>
+      <text class="node-title" x="18" y="30">COUNCIL + DISSENT</text>
+      <text class="node-copy" x="18" y="54">4 routed LLM roles</text>
+      <text class="node-copy" x="18" y="72">vertical specialists · market anchor</text>
+      <text class="node-copy" x="18" y="90">minority forecasts preserved</text>
+      <text class="node-proof" x="18" y="116">zero automatic influence</text>
+    </g>
+    <g transform="translate(350 484)">
+      <rect class="node" width="200" height="138" rx="8"/>
+      <text class="node-title" x="18" y="30">CALIBRATE + FUSE</text>
+      <text class="node-copy" x="18" y="54">debias · Brier · log loss</text>
+      <text class="node-copy" x="18" y="72">scope trust · uncertainty</text>
+      <text class="node-copy" x="18" y="90">contested forecasts only</text>
+      <text class="node-proof" x="18" y="116">earned weight, never reputation</text>
+    </g>
+  </g>
+
+  <g>
+    <rect class="column" x="610" y="145" width="240" height="515" rx="12"/>
+    <text class="step" x="632" y="178">03 · LEARN</text>
+    <g transform="translate(630 200)">
+      <rect class="node" width="200" height="118" rx="8"/>
+      <text class="node-title" x="18" y="30">WALK-FORWARD PROOF</text>
+      <text class="node-copy" x="18" y="54">temporal folds · cluster bootstrap</text>
+      <text class="node-copy" x="18" y="72">fees · fills · closing line</text>
+      <text class="node-proof" x="18" y="98">predict before update</text>
+    </g>
+    <g transform="translate(630 332)">
+      <rect class="node" width="200" height="138" rx="8"/>
+      <text class="node-title" x="18" y="30">AUTORESEARCH</text>
+      <text class="node-copy" x="18" y="54">strategy mining · tuner</text>
+      <text class="node-copy" x="18" y="72">quality-diversity evolution</text>
+      <text class="node-copy" x="18" y="90">ablation · chaos · fragility</text>
+      <text class="node-proof" x="18" y="116">challengers stay observational</text>
+    </g>
+    <g transform="translate(630 484)">
+      <rect class="node" width="200" height="138" rx="8"/>
+      <text class="node-title" x="18" y="30">METACOGNITION</text>
+      <text class="node-copy" x="18" y="54">self-scout · film room</text>
+      <text class="node-copy" x="18" y="72">drift · top threat · recruiting</text>
+      <text class="node-copy" x="18" y="90">development tracker</text>
+      <text class="node-proof" x="18" y="116">thin evidence stays thin</text>
+    </g>
+  </g>
+
+  <g>
+    <rect class="column" x="890" y="145" width="270" height="515" rx="12"/>
+    <text class="step" x="912" y="178">04 · BOUND + EXPLAIN</text>
+    <g transform="translate(910 200)">
+      <rect class="node" width="230" height="118" rx="8"/>
+      <text class="node-title" x="18" y="30">ALLOCATE + GOVERN RISK</text>
+      <text class="node-copy" x="18" y="54">candidate pot · quarter-Kelly</text>
+      <text class="node-copy" x="18" y="72">drawdown · clusters · liquidity</text>
+      <text class="node-proof" x="18" y="98">every stage can only shrink</text>
+    </g>
+    <g transform="translate(910 332)">
+      <rect class="node-safe" width="230" height="138" rx="8"/>
+      <text class="node-title" x="18" y="30">FIREWALL + AUTHORITY</text>
+      <text class="node-copy" x="18" y="54">LIMIT-only · sealed caps</text>
+      <text class="node-copy" x="18" y="72">fresh state · session · proof lock</text>
+      <text class="node-copy" x="18" y="90">transport-witnessed outcomes</text>
+      <text class="node-deny" x="18" y="116">code cannot self-authorize</text>
+    </g>
+    <g transform="translate(910 484)">
+      <rect class="node" width="230" height="138" rx="8"/>
+      <text class="node-title" x="18" y="30">BOARD + OBSERVER MCP</text>
+      <text class="node-copy" x="18" y="54">Overview · scopes · crypto charts</text>
+      <text class="node-copy" x="18" y="72">Model Arsenal · evidence glossary</text>
+      <text class="node-copy" x="18" y="90">health · freshness · provenance</text>
+      <text class="node-proof" x="18" y="116">loopback-only · GET-only</text>
+    </g>
+  </g>
+
+  <rect class="boundary" x="330" y="742" width="530" height="25" rx="12"/>
+  <text class="boundary-title" x="595" y="759" text-anchor="middle">RESEARCH INTELLIGENCE ≠ PROFITABILITY ≠ LIVE AUTHORITY</text>
+</svg>

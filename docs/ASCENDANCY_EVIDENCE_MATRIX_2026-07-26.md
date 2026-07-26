@@ -2,7 +2,7 @@
 
 **Snapshot:** 2026-07-26T07:38:15Z
 **Base commit:** `ef0d28cd8d536c9350b05eb5ec30d979b16513bd`
-**Worktree:** `C:\Users\chris\.codex\worktrees\dummy-elite-readiness`
+**Worktree:** `C:\Users\<operator>\.codex\worktrees\dummy-elite-readiness`
 **Authority:** research, simulation, observation, and validation only
 
 ## Verdict

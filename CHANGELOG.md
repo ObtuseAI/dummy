@@ -5,9 +5,18 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [1.0.0] - 2026-07-26
 
 ### Added
+- Public-release showcase with standalone capability and 45-loop fleet maps,
+  a complete cross-surface ability catalog, refreshed operator-board imagery,
+  and a first-class crypto intelligence lane.
+- Dedicated presentation of `DummyCryptoPaperTwin` (5-minute) and
+  `DummyCryptoHorizonEvidence` (10-minute), plus the shared crypto research,
+  calibration, risk, and reliability loops.
+- Offline synthetic crypto-chart fixture generator for exercising the real
+  artifact-only chart renderer without a provider or redistributed market
+  data. Demo artifacts are visibly labeled as non-evidence and authority-free.
 - Rights-reviewed, provider-neutral BTC/ETH/SOL Market Observer MCP with
   content-addressed closed-candle evidence, indicators, candlestick patterns,
   rate/circuit/single-run guards, and a GET-only dashboard chart surface.
@@ -56,6 +65,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   hash-pinned registries; historical source remains in Git.
 
 ### Security
+- Reconciled the repository license and security policy with public-source
+  visibility while retaining an all-rights-reserved, non-open-source posture.
 - Research subprocesses inherit no parent environment variables and cannot
   access execution, credentials, network, capital, or promotion authority.
 - Dashboard peer/Host validation, restrictive browser headers, public-source

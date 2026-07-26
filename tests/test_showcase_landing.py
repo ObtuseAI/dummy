@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from html.parser import HTMLParser
 from pathlib import Path
+from xml.etree import ElementTree
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -112,3 +113,54 @@ def test_landing_contains_accessible_diagrams_and_current_ui_gallery() -> None:
     assert "assets/dummy-sports-scope.png" in landing
     assert "assets/dummy-crypto-scope.png" in landing
     assert "Updated UI capture" in landing
+
+
+def test_standalone_system_maps_are_accessible_and_prominent() -> None:
+    landing = LANDING.read_text(encoding="utf-8")
+    assets = (
+        ROOT / "docs" / "assets" / "dummy-capability-map.svg",
+        ROOT / "docs" / "assets" / "dummy-loop-fleet.svg",
+    )
+
+    assert landing.index('id="maps"') < landing.index('id="intelligence"')
+    for asset in assets:
+        root = ElementTree.parse(asset).getroot()
+        assert root.attrib["role"] == "img"
+        assert root.attrib["aria-labelledby"] == "title desc"
+        assert root.find("{http://www.w3.org/2000/svg}title") is not None
+        assert root.find("{http://www.w3.org/2000/svg}desc") is not None
+        assert f"assets/{asset.name}" in landing
+
+
+def test_crypto_charts_and_loops_are_first_class_release_capabilities() -> None:
+    readme = README.read_text(encoding="utf-8")
+    landing = LANDING.read_text(encoding="utf-8")
+
+    for document in (readme, landing):
+        assert "DummyCryptoPaperTwin" in document
+        assert "DummyCryptoHorizonEvidence" in document
+        assert "Crypto Research Charts" in document
+        assert "BTC" in document and "ETH" in document and "SOL" in document
+        assert "15m" in document and "1h" in document and "1d" in document
+    assert 'id="capabilities"' in landing
+    assert 'id="crypto"' in landing
+    assert "assets/dummy-crypto-charts.png" in landing
+    assert (ROOT / "docs" / "assets" / "dummy-crypto-charts.png").is_file()
+    assert "assets/dummy-capabilities-board.png" in landing
+    assert (ROOT / "docs" / "assets" / "dummy-capabilities-board.png").is_file()
+    assert "2</div><div class=\"l\">dedicated crypto loops" in landing
+
+
+def test_public_release_metadata_and_policies_are_consistent() -> None:
+    project = (ROOT / "pyproject.toml").read_text(encoding="utf-8")
+    changelog = (ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
+    license_text = (ROOT / "LICENSE").read_text(encoding="utf-8")
+    security = (ROOT / "SECURITY.md").read_text(encoding="utf-8")
+
+    assert 'version = "1.0.0"' in project
+    assert "## [1.0.0] - 2026-07-26" in changelog
+    assert "Dummy Public Source License 1.0" in license_text
+    assert "not an open-source distribution" in license_text
+    assert "must remain strictly proprietary and private" not in license_text
+    assert "public-source" in security
+    assert "private repository" not in security

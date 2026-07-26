@@ -1,10 +1,15 @@
 # Security policy
 
-Dummy is a private repository in the ObtuseAI GitHub organization. It is
-evidence-gated prediction-market intelligence and trading research. Its live
-execution paths are fail-closed, evidence-gated, and subject to explicit
-operator authorization (see the README safety invariants). Access to this
-repository does not grant any use, distribution, or execution authority.
+Dummy is a public-source, evidence-gated prediction-market intelligence and
+trading-research system. Its live execution paths are fail-closed,
+evidence-gated, and subject to explicit operator authorization (see the README
+safety invariants). Public visibility does not grant use, distribution,
+credential, broker, capital, or execution authority.
+
+## Supported versions
+
+Security fixes are applied to the current `1.0.x` release line. Historical
+snapshots are retained for auditability and are not separately supported.
 
 ## Reporting a vulnerability
 
@@ -19,10 +24,10 @@ coordination on remediation and disclosure timing.
 
 ## Disclosure
 
-This is a private, proprietary repository. Suspected or confirmed
-vulnerabilities must not be publicly disclosed. Coordinated remediation is
-handled privately by the organization owner; no public advisory is published
-for this private repository.
+Do not publish a suspected or confirmed vulnerability before coordinated
+review. Remediation and disclosure timing are handled privately with the
+organization owner; a public GitHub advisory may follow after a fix is
+available.
 
 ## Safety posture
 

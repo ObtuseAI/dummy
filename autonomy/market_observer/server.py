@@ -21,7 +21,7 @@ from autonomy.market_observer.runtime import SingleRunLock
 from autonomy.market_observer.service import MarketObserver
 
 SERVER_NAME = "dummy-market-observer"
-SERVER_VERSION = "0.1.0"
+SERVER_VERSION = "1.0.0"
 PROTOCOL_VERSION = "2025-06-18"
 
 _COMMON_PROPERTIES = {
