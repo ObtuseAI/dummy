@@ -1,32 +1,17 @@
-"""Wave-51/53/55: the operator dashboard (single-page, vanilla, offline).
+"""The loopback-only operator dashboard: "The Organism".
 
-A dark, data-dense board in the house tote-green "totalizator" identity, pushed
-to a premium, *living* finish (Wave-55):
+A full-bleed neural field renders persisted system evidence as a model cortex,
+active-source satellites, and crypto/sports scope clusters. Cluster size,
+brightness, staleness, pulses, and the field's health mood are bound to the same
+seven read-only payloads used by the DOM. Calm data produces a calm scene; only
+ambient dust is decorative. The operational-truth ribbon, all evidence panels,
+and all accessibility semantics remain ordinary DOM content.
 
-  * an ambient phosphor field on a <canvas> backdrop -- slow drifting embers and
-    a soft glow that parallaxes toward the pointer (one static frame under
-    prefers-reduced-motion, paused when the tab is hidden);
-  * an outcome-first hero band for the cached live Kalshi account and controls;
-  * split-flap flip counters that roll only when new data actually lands;
-  * cards that tilt in 3D and catch a specular highlight under the cursor;
-  * a Cmd/Ctrl-K command palette to jump to any scope from the keyboard;
-  * a saved full-application theme switcher (emerald / amber / cyan / violet);
-  * a faint shockwave that sweeps the board the moment a new snapshot lands;
-  * hand-drawn SVG charts that draw themselves in and answer a hover crosshair.
-
-Left nav = Overview plus a Crypto and a Sports section listing their coins /
-leagues; the stage shows the live account/control overview or a per-scope
-breakdown (graded accuracy, progression, model-vs-market, current picks) with
-legacy research surfaces folded into each scope's "Other data".
-
-No build step, no CDN: served as one string, system fonts (Bahnschrift/Cascadia
-for tabular numerics), hand-drawn SVG, CSS-only motion + a tiny canvas loop.
-Consumes /api/overview, /api/scopes, /api/status -- all from the persisted
-snapshot (never the ledger). prefers-reduced-motion freezes every animation;
-semantic up/down stays green/red whatever the accent tube; contrast holds AA.
-
-Design intelligence: ui-ux-pro-max Data-Dense Dashboard x a restrained slice of
-terminal/phosphor treatment; motion tiers + chart specs from its motion/chart DB.
+The scene uses raw WebGL2/WebGL1 with canvas-2D and static-gradient fallbacks.
+It pauses while hidden and becomes one composed frame under
+prefers-reduced-motion. The application stays vanilla and build-free, uses only
+loopback-served assets, and never reads the ledger or contacts a broker from a
+page request. Semantic green/red remains theme-invariant in all four themes.
 """
 from __future__ import annotations
 
@@ -91,8 +76,11 @@ body{background:
     var(--bg);
   color:var(--txt);font-family:var(--body);font-size:14.5px;line-height:1.5;
   -webkit-font-smoothing:antialiased;overflow:hidden}
-/* ambient phosphor field */
-#fx{position:fixed;inset:0;z-index:0;pointer-events:none;display:block;opacity:.48}
+/* neural organism + progressively simpler visual fallbacks */
+#scene{position:fixed;inset:0;z-index:0;pointer-events:none}
+#gl,#fx{position:absolute;inset:0;width:100%;height:100%;display:block}
+#fx{display:none;opacity:.64}
+body.no-gl #gl{display:none}
 /* faint CRT scanline — static (no motion), very low contrast */
 body::after{content:"";position:fixed;inset:0;pointer-events:none;z-index:9;
   background:repeating-linear-gradient(0deg,rgba(0,0,0,.16) 0 1px,transparent 1px 3px);
@@ -626,13 +614,45 @@ td.hc .td{font-size:11px;margin-left:3px}
 @keyframes shock{0%{opacity:.9;background:radial-gradient(circle at 50% 42%,rgba(var(--acc-rgb),.16),transparent 8%)}
   100%{opacity:0;background:radial-gradient(circle at 50% 42%,rgba(var(--acc-rgb),0),transparent 120%)}}
 
+/* ---------- organism layout ---------- */
+.stage{overflow-x:hidden}
+.opsbar{position:sticky;top:12px;z-index:30;border-radius:14px;
+  background:linear-gradient(90deg,rgba(255,194,77,.10),rgba(var(--surface-rgb),.72) 42%,rgba(var(--surface-rgb),.80));
+  backdrop-filter:blur(16px)}
+.opsbar.live-auth{background:linear-gradient(90deg,rgba(255,107,122,.12),rgba(var(--surface-rgb),.80) 46%)}
+.card{background:linear-gradient(180deg,rgba(var(--card-top-rgb),.68),rgba(var(--card-bottom-rgb),.76));
+  backdrop-filter:none;border:1px solid rgba(var(--line-rgb),.9);
+  box-shadow:0 18px 44px rgba(0,0,0,.34),inset 0 1px 0 rgba(255,255,255,.05)}
+.topbar{position:relative;z-index:2}
+.dockband{margin-top:var(--s4);padding:var(--s3);border:1px solid var(--line);border-radius:18px;
+  background:rgba(var(--surface-rgb),.52);backdrop-filter:blur(18px)}
+.chart{filter:drop-shadow(0 0 6px rgba(var(--acc-rgb),.25))}
+.dock{margin-left:0;max-width:1100px}
+.dock .card{background:linear-gradient(180deg,rgba(var(--card-top-rgb),.74),rgba(var(--card-bottom-rgb),.82))}
+.gate-box,.authority-lock{background:rgba(var(--surface-rgb),.66);border-color:rgba(var(--line-rgb),.9)}
+.arsenal-lead,.gloss{background:linear-gradient(180deg,rgba(var(--card-top-rgb),.70),rgba(var(--card-bottom-rgb),.78))}
+@media(min-width:1201px){.dock{margin-left:min(38vw,640px)}}
+@media(min-width:921px){
+  #app{grid-template-columns:auto 1fr}
+  .side{width:78px;overflow-x:hidden;transition:width .28s var(--ease)}
+  .side:hover,.side:focus-within{width:264px}
+  .nav{overflow-x:hidden}
+  .side .item,.side .foot{white-space:nowrap}
+  .side:not(:hover):not(:focus-within) .brand>div:last-child,
+  .side:not(:hover):not(:focus-within) .item>span,
+  .side:not(:hover):not(:focus-within) .grp>span,
+  .side:not(:hover):not(:focus-within) .foot>*:not(.dot){display:none}
+  .side:not(:hover):not(:focus-within) .item{justify-content:center}
+  .side:not(:hover):not(:focus-within) .item.child{margin-left:0;padding-left:11px}
+}
+
 @media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}
   .chart .draw{stroke-dashoffset:0}.fill{width:var(--w,60%)!important}
   .gauge .val-arc{stroke-dashoffset:var(--off)!important}}
 </style>
 </head><body>
 <a class="skip" href="#main">Skip to dashboard</a>
-<canvas id="fx"></canvas>
+<div id="scene" role="img" aria-label="Live map of Dummy scopes, signals, and engine health"><canvas id="gl" aria-hidden="true"></canvas><canvas id="fx" aria-hidden="true" style="display:none"></canvas></div>
 <div id="shock"></div>
 <div id="app">
   <aside class="side" aria-label="Primary navigation">
@@ -708,23 +728,6 @@ function verticalIcon(vert){return (VERTICAL_META[vert]||['market'])[0];}
 function svgIcon(k){return '<svg viewBox="0 0 24 24">'+(ICON[k]||ICON.overview)+'</svg>';}
 
 // ---------- charts ----------
-function areaChart(pts,{h=170,color='var(--acc)'}={}){
-  if(!pts||pts.length<2)return '<div class="empty">no history yet</div>';
-  const ys=pts.map(p=>p.v),mn=Math.min(...ys),mx=Math.max(...ys),rng=(mx-mn)||1;
-  const W=1000,H=h,pad=8,n=pts.length;
-  const X=i=>pad+i*(W-2*pad)/(n-1), Y=v=>pad+(1-(v-mn)/rng)*(H-2*pad);
-  let d='M'+X(0).toFixed(1)+' '+Y(ys[0]).toFixed(1);ys.forEach((v,i)=>{if(i)d+=' L'+X(i).toFixed(1)+' '+Y(v).toFixed(1);});
-  const area=d+' L'+X(n-1).toFixed(1)+' '+(H-pad)+' L'+X(0).toFixed(1)+' '+(H-pad)+' Z';
-  let grid='';for(let g=1;g<4;g++){const yy=pad+g*(H-2*pad)/4;grid+='<line class="grid-l" x1="'+pad+'" y1="'+yy.toFixed(1)+'" x2="'+(W-pad)+'" y2="'+yy.toFixed(1)+'"/>';}
-  const series=pts.map(p=>({l:p.t,v:p.disp!=null?p.disp:p.v}));
-  return '<div class="cwrap" data-series=\''+esc(JSON.stringify(series))+'\'>'
-    +'<svg class="chart" viewBox="0 0 '+W+' '+H+'" preserveAspectRatio="none" style="height:'+h+'px">'
-    +'<defs><linearGradient id="ag" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="'+color+'" stop-opacity=".26"/><stop offset="1" stop-color="'+color+'" stop-opacity="0"/></linearGradient></defs>'
-    +grid+'<path d="'+area+'" fill="url(#ag)"/>'
-    +'<path class="draw" pathLength="1" d="'+d+'" fill="none" stroke="'+color+'" stroke-width="2.4" vector-effect="non-scaling-stroke" stroke-linecap="round" stroke-linejoin="round"/>'
-    +'<circle class="dot" cx="'+X(n-1).toFixed(1)+'" cy="'+Y(ys[n-1]).toFixed(1)+'" r="3.6" fill="'+color+'"><animate attributeName="opacity" values="1;.35;1" dur="2.2s" repeatCount="indefinite"/></circle>'
-    +'</svg><div class="cross"></div><div class="ctip"></div></div>';
-}
 function spark(pts,{w=180,h=40,color='var(--acc)'}={}){
   if(!pts||pts.length<2)return '';
   const ys=pts.map(p=>+p),mn=Math.min(...ys),mx=Math.max(...ys),rng=(mx-mn)||1,n=ys.length,pad=3;
@@ -897,6 +900,7 @@ function render(){
   view.style.animation='none';void view.offsetWidth;view.style.animation='';
   const allowedScope=parts[1]==='CRYPTO'||parts[1]==='SPORTS';
   const page=parts[0]==='scope'&&allowedScope&&parts[2]?scopeView(parts[1],parts[2]):(parts[0]==='charts'?cryptoResearchView():(parts[0]==='arsenal'?modelArsenalView():(parts[0]==='glossary'?glossaryView():overviewView())));
+  syncCameraToRoute(false);
   view.innerHTML=statusRibbon()+page;
   [...view.querySelectorAll('.reveal')].forEach((el,i)=>el.style.animationDelay=(i*45)+'ms');
   requestAnimationFrame(()=>revealGuideTab(view.querySelector('.daily-guide .bt-tab.on')));
@@ -1506,12 +1510,12 @@ function overviewView(){
     +miniRow('GET-only account proof',proof.get_only===true?'VERIFIED':(accountAvailable?'UNVERIFIED':'PENDING'),proof.get_only===true?'pos':'amb')
     +miniRow('Account source',source.provider?esc(String(source.provider).toUpperCase()):'PENDING','')
     +'</div></div></section>';
-  h+='<div class="section-head"><h2>Forecast diagnostics</h2><p>Probability quality across graded markets — not trading profit</p></div>';
+  h+='<div class="dockband"><div class="section-head"><h2>Forecast diagnostics</h2><p>Probability quality across graded markets — not trading profit</p></div>';
   h+=accuracyPanel();
   h+='<div class="card reveal" style="margin-top:var(--s3)"><h3>Active model — fused sources <span class="r">weight</span></h3><div>'
     +((o.active_sources||[]).map(s=>'<span class="chip">'+esc(s.source)+' <b>'+num(s.weight,2)+'</b></span>').join('')||'<div class="empty">no weights</div>')+'</div></div>';
   h+=modelArsenalSummaryCard();
-  return h;
+  return h+'</div>';
 }
 function miniRow(k,v,cls){return '<div class="row"><span class="k">'+k+'</span><span class="vv '+(cls||'')+'">'+flip(v)+'</span></div>';}
 // ---------- accuracy & improvement telemetry ----------
@@ -1564,27 +1568,6 @@ function accuracyPanel(){
   }
   h+='<div class="sub" style="font-family:var(--mono);color:var(--faint);margin:2px 0 10px">edge by scope × bet type — green beats the line, arrow = trend</div>';
   h+=heatmap(tel.matrix||[]);
-  return h+'</div>';
-}
-function pickRows(picks){
-  return '<div style="max-height:340px;overflow:auto"><table><thead><tr><th>Matchup</th><th>Take</th><th>Model</th><th>Mkt</th><th>Edge¢</th></tr></thead><tbody>'
-    +picks.map(p=>{
-      const rec=p.recommendation||((p.market_phrase||'')+' '+(p.side||'').toUpperCase());
-      const isNo=(p.side||'').toUpperCase().includes('NO');
-      return '<tr><td title="'+esc(p.ticker)+'">'+esc(p.matchup||p.label||p.ticker)+dateTag(p.game_date)+'</td>'
-      +'<td><span class="pill '+(isNo?'no':'yes')+'" style="font-weight:700;white-space:normal">'+esc(rec)+'</span></td>'
-      +'<td>'+num(p.prob,2)+'</td><td>'+(p.market==null?'—':num(p.market,2))+'</td>'
-      +'<td class="'+(p.edge_cents>=0?'pos':'neg')+'">'+(p.edge_cents>0?'+':'')+num(p.edge_cents,1)+'</td></tr>';
-    }).join('')
-    +'</tbody></table></div>';
-}
-function pickBoardCard(scope){
-  const board=scope.pick_board||{};
-  const types=Object.keys(board).filter(t=>board[t]&&board[t].length);
-  if(!types.length)return '';
-  let h='<div class="card reveal" style="margin-top:var(--s3)"><h3>Bet-type rankings <span class="r">open edge · choose a bet</span></h3>';
-  h+='<div class="bt-tabs">'+types.map((t,i)=>'<button class="bt-tab'+(i===0?' on':'')+'" data-bt="'+esc(t)+'">'+esc(t)+'<span class="c">'+board[t].length+'</span></button>').join('')+'</div>';
-  h+='<div class="bt-panels">'+types.map((t,i)=>'<div class="bt-panel'+(i===0?' on':'')+'" data-bt="'+esc(t)+'">'+pickRows(board[t])+'</div>').join('')+'</div>';
   return h+'</div>';
 }
 function settledTodayCard(scope){
@@ -1815,7 +1798,7 @@ function betTypeCard(bt){
 }
 function skeleton(){
   return '<div class="grid hero" style="margin-bottom:var(--s3)">'+Array(3).fill('<div class="card reveal" style="height:150px"><div class="empty">warming up…</div></div>').join('')
-    +'</div><div class="card reveal" style="height:200px"><div class="empty">the snapshot refreshes every 20 min</div></div>';
+    +'</div><div class="card reveal" style="height:200px"><div class="empty">the snapshot refreshes every 20 seconds</div></div>';
 }
 function truthText(v,on='ON',off='OFF'){return v===true?on:(v===false?off:'UNKNOWN');}
 function proofPill(label,v,good=true){const known=v===true||v===false,tone=!known?'warn':(v===good?'ok':'bad');return '<span class="truth-pill '+tone+'">'+esc(label)+' · '+esc(truthText(v,'pass','fail'))+'</span>';}
@@ -1997,7 +1980,7 @@ const GLOSSARY=[
   ['Execution','Exposure','Capital currently at risk across open positions. Correlated contracts are grouped so one underlying event cannot silently dominate the bankroll.'],
   ['Risk','Drawdown','The decline from a previous bankroll peak. Drawdown gates automatically shrink or stop risk before losses compound unchecked.'],
   ['Risk','Profit factor','Gross winning P&L divided by gross losing P&L. Above 1 is profitable before considering the confidence interval and sample quality.'],
-  ['Risk','Confidence tier','Versioned executable-value labels: A requires at least 4% edge after the quoted ask and modeled taker fee with uncertainty at or below 12%; B requires 2% and 18%; C requires 1% and 25%. A letter also requires an independent governed predictive source, a valid two-sided selected-side quote, and positive executable depth witnessed by both selected-side Kalshi quote sizes or positive legacy liquidity. A is capped at one A-tier market per correlated event and five per scope per cycle. WATCH is a valid current-policy assessment that clears no letter-tier hurdle; UNATTRIBUTED means required evidence is missing or invalid. Tiers are display/research labels only and never grant execution authority.'],
+  ['Risk','Confidence tier','Versioned executable-value labels. A requires at least 4% edge after the quoted ask and modeled taker fee, with uncertainty at or below 12%; B requires 2% and 18%; C requires 1% and 25%. A letter also requires an independent governed predictive source, a valid two-sided selected-side quote, and positive executable depth witnessed by selected-side Kalshi quote sizes or positive legacy liquidity. A is capped at one A-tier market per correlated event and five per scope per cycle. WATCH clears no letter-tier hurdle; UNATTRIBUTED means required evidence is missing or invalid. These versioned display and research labels never grant execution authority.'],
   ['Evidence','Unattributed tier','A row without current verifiable attribution—for example, market-price-only evidence, a missing exact model timestamp, no executable depth, a failed series refresh, or an older tier-policy snapshot. UNATTRIBUTED is not WATCH, is never retroactively relabelled, and is excluded from tier-performance claims.'],
   ['Evidence','Tier forecast diagnostics','Forward-only forecast results for the policy version issued with each forecast or decision: settled value-side hit rate, event clusters, and Brier. Paper/shadow realized economics are retired from the primary operator view and have no live authority.'],
   ['Risk','Event cluster','Contracts sharing the same underlying outcome or expiry. Clustering prevents double-counting evidence and over-allocating correlated risk.'],
@@ -2046,7 +2029,8 @@ function cryptoHorizonCard(asset){
     +'<div class="sub" style="margin:-3px 0 12px;color:var(--muted)">Hourly, daily, and weekly forecast coverage is monitored for BTC, ETH, and SOL whenever a compatible market is listed. This retired paper observer supplies research coverage only; its results have no live authority and it never contacts the broker.</div>'
     +'<div class="horizon-grid">'+rows+'</div></div>';
 }
-function scopeView(vert,label){
+function scopeView(vert,label){return '<div class="dock">'+scopeViewInner(vert,label)+'</div>';}
+function scopeViewInner(vert,label){
   const block=STATE.scopes&&STATE.scopes.verticals&&STATE.scopes.verticals[vert];
   const sc=block&&block.scopes&&block.scopes[label];
   if(!sc){
@@ -2207,7 +2191,8 @@ if(!REDUCE){
 // ---------- complete application theme switcher ----------
 const THEMES=[['emerald','#2fe38f'],['amber','#ffc24d'],['cyan','#6fe0ff'],['violet','#b79cff']];
 function setTheme(a){document.documentElement.setAttribute('data-theme',a);document.documentElement.setAttribute('data-accent',a);try{localStorage.setItem('dummy-theme',a);}catch(_){}
-  [...document.querySelectorAll('.tube')].forEach(t=>t.setAttribute('aria-pressed',String(t.dataset.a===a)));}
+  [...document.querySelectorAll('.tube')].forEach(t=>t.setAttribute('aria-pressed',String(t.dataset.a===a)));
+  try{if(GT.gl&&GT.model)glBuild(sceneModel());else if(GT.model)GT.model=sceneModel();}catch(_){/* GL initializes after the saved theme is applied. */}}
 (function(){const box=document.getElementById('tubes');
   THEMES.forEach(([a,c])=>{const label=a[0].toUpperCase()+a.slice(1)+' full theme';const b=$('<button class="tube" data-a="'+a+'" title="'+label+'" aria-label="'+label+'" style="--c:'+c+'"></button>');
     b.addEventListener('click',()=>setTheme(a));box.appendChild(b);});
@@ -2230,13 +2215,14 @@ function cmdBuild(){
     const vb=v[vert]||{scopes:{}};
     scopeLabels(vert,vb).forEach(lab=>cmdRoutes.push({icon:verticalIcon(vert),label:lab===vert?'All '+((VERTICAL_META[vert]||['',titleCase(vert)])[1]):lab,hint:vert.toLowerCase(),href:'#/scope/'+vert+'/'+lab}));
   });
+  THEMES.forEach(([a])=>cmdRoutes.push({icon:'overview',label:'Theme: '+a,hint:'apply full theme',action:()=>setTheme(a)}));
 }
 function fuzzy(q,s){q=q.toLowerCase();s=s.toLowerCase();let i=0;for(const ch of s){if(ch===q[i])i++;if(i===q.length)return true;}return q.length===0;}
 function cmdRender(){
   const q=cmdq.value.trim();
   const rows=cmdRoutes.filter(r=>fuzzy(q,r.label+' '+r.hint));
   cmdSel=Math.max(0,Math.min(cmdSel,rows.length-1));
-  cmdlist.innerHTML=rows.map((r,i)=>'<div class="opt'+(i===cmdSel?' sel':'')+'" role="option" aria-selected="'+(i===cmdSel?'true':'false')+'" data-href="'+r.href+'">'+svgIcon(r.icon)
+  cmdlist.innerHTML=rows.map((r,i)=>'<div class="opt'+(i===cmdSel?' sel':'')+'" role="option" aria-selected="'+(i===cmdSel?'true':'false')+'" data-i="'+i+'">'+svgIcon(r.icon)
     +'<span>'+esc(r.label)+'</span><span class="oh">'+esc(r.hint)+'</span></div>').join('')||'<div class="empty">no match</div>';
   cmdlist._rows=rows;
   const sel=cmdlist.querySelector('.opt.sel');if(sel)sel.scrollIntoView({block:'nearest'});
@@ -2244,9 +2230,12 @@ function cmdRender(){
 function cmdOpen(){cmdBuild();cmdSel=0;cmdq.value='';cmdRender();lastFocus=document.activeElement;
   cmdk.classList.add('open');cmdk.setAttribute('aria-hidden','false');requestAnimationFrame(()=>cmdq.focus());}
 function cmdClose(){cmdk.classList.remove('open');cmdk.setAttribute('aria-hidden','true');if(lastFocus&&lastFocus.focus)lastFocus.focus();}
-function cmdGo(){const rows=cmdlist._rows||[];const r=rows[cmdSel];if(r){location.hash=r.href;cmdClose();}}
+function cmdGo(){const rows=cmdlist._rows||[];const r=rows[cmdSel];if(!r)return;
+  if(r.action){r.action();cmdClose();return;}location.hash=r.href;cmdClose();}
 cmdq.addEventListener('input',()=>{cmdSel=0;cmdRender();});
-cmdlist.addEventListener('click',e=>{const o=e.target.closest('.opt');if(o&&o.dataset.href){location.hash=o.dataset.href;cmdClose();}});
+cmdlist.addEventListener('click',e=>{const o=e.target.closest('.opt');if(!o)return;
+  const r=(cmdlist._rows||[])[+o.dataset.i];if(!r)return;
+  if(r.action){r.action();cmdClose();return;}location.hash=r.href;cmdClose();});
 document.addEventListener('keydown',e=>{
   const open=cmdk.classList.contains('open');
   if((e.key==='k'||e.key==='K')&&(e.metaKey||e.ctrlKey)){e.preventDefault();open?cmdClose():cmdOpen();return;}
@@ -2263,28 +2252,344 @@ document.addEventListener('keydown',e=>{
 });
 cmdk.addEventListener('click',e=>{if(e.target===cmdk)cmdClose();});
 
-// ---------- ambient phosphor field ----------
-(function(){
-  const c=document.getElementById('fx');if(!c)return;const x=c.getContext('2d');
-  let W=0,H=0,DPR=1,ps=[],raf=0,run=true,mx=.5,my=.4;
+// ---------- GL ----------
+// Raw-WebGL neural organism. The DOM remains the complete source of truth.
+const GL_TIER={STATIC:0,CANVAS2D:1,WEBGL:2,WEBGL_BLOOM:3};
+const GL_TIER_NAME=['static','canvas2d','webgl','webgl-bloom'];
+let GT={tier:GL_TIER.STATIC,gl:null,ver:0,w:0,h:0,dpr:1,run:false,raf:0,
+  progP:null,progL:null,locP:null,locL:null,bufPts:null,bufLines:null,bufDust:null,bufPulse:null,
+  nPts:0,nLines:0,nDust:0,pulses:[],dust:null,mood:0,moodTarget:0,model:null};
+const CAM={pos:[0,1.6,10.5],tgt:[0,0,0],anim:null};
+const CAM_PRESETS={overview:{pos:[0,1.6,10.5],tgt:[0,0,0]}};
+const PAR={x:.5,y:.5};
+
+const VS_P=`
+attribute vec3 aPos;attribute float aSize;attribute vec3 aCol;attribute float aBright;
+uniform mat4 uProj;uniform mat4 uView;uniform float uDpr;uniform float uTime;uniform float uHalo;
+varying vec3 vCol;varying float vB;
+void main(){vCol=aCol;vB=aBright;
+  vec4 mv=uView*vec4(aPos,1.0);
+  float tw=1.0+0.06*sin(uTime*0.0012+aPos.x*3.1+aPos.y*2.3);
+  gl_PointSize=aSize*tw*uDpr*(180.0/max(1.0,-mv.z))*(uHalo>0.5?2.2:1.0);
+  gl_Position=uProj*mv;}`;
+const FS_P=`
+precision mediump float;varying vec3 vCol;varying float vB;
+uniform float uMood;uniform float uHalo;
+void main(){vec2 d=gl_PointCoord-vec2(0.5);float r=length(d);if(r>0.5)discard;
+  float a=smoothstep(0.5,0.0,r);a*=a;
+  vec3 col=mix(vCol,vec3(1.0,0.42,0.48),uMood);
+  float b=vB*(uHalo>0.5?0.16:1.0);
+  gl_FragColor=vec4(col*b,a*min(1.0,vB)*(uHalo>0.5?0.34:1.0));}`;
+const VS_L=`
+attribute vec3 aPos;attribute vec3 aCol;attribute float aA;
+uniform mat4 uProj;uniform mat4 uView;
+varying vec3 vC;varying float vA;
+void main(){vC=aCol;vA=aA;gl_Position=uProj*uView*vec4(aPos,1.0);}`;
+const FS_L=`
+precision mediump float;varying vec3 vC;varying float vA;uniform float uMood;
+void main(){gl_FragColor=vec4(mix(vC,vec3(1.0,0.42,0.48),uMood),vA);}`;
+
+// WebGL2 requires GLSL ES 3.00. WebGL1 keeps the compact ES 1.00 source.
+function glslFor(src,ver,fragment){
+  if(ver!==2)return src;
+  let out=fragment
+    ?src.replace(/\bvarying\b/g,'in').replace(/\bgl_FragColor\b/g,'fragColor')
+    :src.replace(/\battribute\b/g,'in').replace(/\bvarying\b/g,'out');
+  if(fragment)out=out.replace('precision mediump float;','precision mediump float;out vec4 fragColor;');
+  return '#version 300 es\n'+out;
+}
+function m4Persp(fov,asp,n,f){const t=1/Math.tan(fov/2),d=1/(n-f);
+  return new Float32Array([t/asp,0,0,0,0,t,0,0,0,0,(f+n)*d,-1,0,0,2*f*n*d,0]);}
+function m4LookAt(e,c,up){let zx=e[0]-c[0],zy=e[1]-c[1],zz=e[2]-c[2];
+  let zl=Math.hypot(zx,zy,zz)||1;zx/=zl;zy/=zl;zz/=zl;
+  let xx=up[1]*zz-up[2]*zy,xy=up[2]*zx-up[0]*zz,xz=up[0]*zy-up[1]*zx;
+  let xl=Math.hypot(xx,xy,xz)||1;xx/=xl;xy/=xl;xz/=xl;
+  const yx=zy*xz-zz*xy,yy=zz*xx-zx*xz,yz=zx*xy-zy*xx;
+  return new Float32Array([xx,yx,zx,0,xy,yy,zy,0,xz,yz,zz,0,
+    -(xx*e[0]+xy*e[1]+xz*e[2]),-(yx*e[0]+yy*e[1]+yz*e[2]),-(zx*e[0]+zy*e[1]+zz*e[2]),1]);}
+function bootGL(canvas){
+  let gl=null;
+  try{gl=canvas.getContext('webgl2',{alpha:true,antialias:true,powerPreference:'high-performance'});}catch(_){gl=null;}
+  if(gl)return{gl,ver:2};
+  try{gl=canvas.getContext('webgl',{alpha:true,antialias:true});}catch(_){gl=null;}
+  return gl?{gl,ver:1}:null;
+}
+function probeTier(done){let frames=0;const started=performance.now();
+  (function sample(){frames++;if(frames<90){requestAnimationFrame(sample);return;}
+    done(frames/((performance.now()-started)/1000));})();}
+function mkProg(gl,vs,fs,ver){
+  const compile=(type,source,fragment)=>{const shader=gl.createShader(type);
+    gl.shaderSource(shader,glslFor(source,ver,fragment));gl.compileShader(shader);
+    if(!gl.getShaderParameter(shader,gl.COMPILE_STATUS))throw new Error(gl.getShaderInfoLog(shader)||'shader compile failed');
+    return shader;};
+  const program=gl.createProgram();
+  gl.attachShader(program,compile(gl.VERTEX_SHADER,vs,false));
+  gl.attachShader(program,compile(gl.FRAGMENT_SHADER,fs,true));
+  gl.linkProgram(program);
+  if(!gl.getProgramParameter(program,gl.LINK_STATUS))throw new Error(gl.getProgramInfoLog(program)||'shader link failed');
+  return program;
+}
+function locs(gl,program,names){const out={};names.forEach(name=>{
+  out[name]=name.charAt(0)==='u'?gl.getUniformLocation(program,name):gl.getAttribLocation(program,name);});
+  return out;}
+function glSetup(boot){
+  const gl=boot.gl;GT.gl=gl;GT.ver=boot.ver;
+  GT.progP=mkProg(gl,VS_P,FS_P,boot.ver);GT.progL=mkProg(gl,VS_L,FS_L,boot.ver);
+  GT.locP=locs(gl,GT.progP,['aPos','aSize','aCol','aBright','uProj','uView','uDpr','uTime','uMood','uHalo']);
+  GT.locL=locs(gl,GT.progL,['aPos','aCol','aA','uProj','uView','uMood']);
+  GT.bufPts=gl.createBuffer();GT.bufLines=gl.createBuffer();GT.bufDust=gl.createBuffer();GT.bufPulse=gl.createBuffer();
+  glResize();
+}
+function glResize(){
+  const canvas=document.getElementById('gl');if(!canvas)return;
+  GT.dpr=Math.min(GT.tier===GL_TIER.WEBGL_BLOOM?2:1.6,window.devicePixelRatio||1);
+  GT.w=canvas.width=Math.floor(innerWidth*GT.dpr);GT.h=canvas.height=Math.floor(innerHeight*GT.dpr);
+}
+function glAttrs(loc,stride,kind){
+  const gl=GT.gl,F=Float32Array.BYTES_PER_ELEMENT;
+  const on=(name,size,offset)=>{const slot=loc[name];if(slot==null||slot<0)return;
+    gl.enableVertexAttribArray(slot);gl.vertexAttribPointer(slot,size,gl.FLOAT,false,stride*F,offset*F);};
+  on('aPos',3,0);
+  if(kind==='P'){on('aSize',1,3);on('aCol',3,4);on('aBright',1,7);}
+  else{on('aCol',3,3);on('aA',1,6);}
+}
+function glDrawPoints(proj,view,t,halo){
+  const gl=GT.gl,u=GT.locP;gl.useProgram(GT.progP);
+  gl.uniformMatrix4fv(u.uProj,false,proj);gl.uniformMatrix4fv(u.uView,false,view);
+  gl.uniform1f(u.uDpr,GT.dpr);gl.uniform1f(u.uTime,t||0);gl.uniform1f(u.uMood,GT.mood);gl.uniform1f(u.uHalo,halo?1:0);
+  gl.bindBuffer(gl.ARRAY_BUFFER,GT.bufPts);glAttrs(u,8,'P');gl.drawArrays(gl.POINTS,0,GT.nPts);
+  if(GT.nDust){gl.bindBuffer(gl.ARRAY_BUFFER,GT.bufDust);glAttrs(u,8,'P');gl.drawArrays(gl.POINTS,0,GT.nDust);}
+  if(GT.pulses.length){gl.bindBuffer(gl.ARRAY_BUFFER,GT.bufPulse);glAttrs(u,8,'P');gl.drawArrays(gl.POINTS,0,GT.pulses.length);}
+}
+function glFrame(t){
+  const gl=GT.gl;if(!gl)return;
+  camTick(t);GT.mood+=(GT.moodTarget-GT.mood)*0.04;updatePulses(t);
+  gl.viewport(0,0,GT.w,GT.h);gl.clearColor(0,0,0,0);gl.clear(gl.COLOR_BUFFER_BIT);
+  gl.enable(gl.BLEND);gl.blendFunc(gl.SRC_ALPHA,gl.ONE);
+  const drift=REDUCE?0:(t||0)*0.00005;
+  const eye=[CAM.pos[0]+Math.sin(drift)*0.55+(REDUCE?0:(PAR.x-0.5)*1.3),
+    CAM.pos[1]+(REDUCE?0:(0.5-PAR.y)*0.7),
+    CAM.pos[2]+Math.cos(drift)*0.35-0.35];
+  const proj=m4Persp(0.9,GT.w/Math.max(1,GT.h),0.1,100),view=m4LookAt(eye,CAM.tgt,[0,1,0]);
+  if(GT.nLines){gl.useProgram(GT.progL);const u=GT.locL;
+    gl.uniformMatrix4fv(u.uProj,false,proj);gl.uniformMatrix4fv(u.uView,false,view);gl.uniform1f(u.uMood,GT.mood);
+    gl.bindBuffer(gl.ARRAY_BUFFER,GT.bufLines);glAttrs(u,7,'L');gl.drawArrays(gl.LINES,0,GT.nLines);}
+  glDrawPoints(proj,view,t,false);
+  if(GT.tier===GL_TIER.WEBGL_BLOOM)glDrawPoints(proj,view,t,true);
+}
+function glLoop(t){glFrame(t);if(GT.run)GT.raf=requestAnimationFrame(glLoop);}
+function drawOnce(){if(GT.gl)glFrame(0);}
+function glSetMood(value){GT.moodTarget=value?1:0;}
+function glStart(){if(GT.tier<GL_TIER.WEBGL||!GT.gl||document.hidden)return;
+  if(REDUCE){drawOnce();return;}if(!GT.run){GT.run=true;GT.raf=requestAnimationFrame(glLoop);}}
+function glStop(){GT.run=false;if(GT.raf)cancelAnimationFrame(GT.raf);GT.raf=0;}
+function markSceneTier(){document.body.dataset.sceneTier=GL_TIER_NAME[GT.tier]||'static';}
+
+// Canvas fallback is the previous phosphor field, started only when needed.
+function startFx2D(){
+  const canvas=document.getElementById('fx');if(!canvas)return;canvas.style.display='block';
+  const ctx=canvas.getContext('2d');if(!ctx)return;
+  let W=0,H=0,DPR=1,particles=[],raf=0,run=true,mx=.5,my=.4;
   const accRGB=()=>getComputedStyle(document.documentElement).getPropertyValue('--acc-rgb').trim()||'77,255,160';
-  function size(){DPR=Math.min(1.6,window.devicePixelRatio||1);W=c.width=Math.floor(innerWidth*DPR);H=c.height=Math.floor(innerHeight*DPR);
-    c.style.width=innerWidth+'px';c.style.height=innerHeight+'px';
-    const n=Math.max(24,Math.round(innerWidth*innerHeight/26000));ps=[];
-    for(let i=0;i<n;i++)ps.push({x:Math.random()*W,y:Math.random()*H,r:(Math.random()*1.5+.35)*DPR,s:(Math.random()*.26+.05)*DPR,a:Math.random()*.45+.13,d:Math.random()*6.28});}
-  addEventListener('pointermove',e=>{mx=e.clientX/innerWidth;my=e.clientY/innerHeight;},{passive:true});
-  function draw(t){const rgb=accRGB();x.clearRect(0,0,W,H);
-    const gx=mx*W,gy=my*H,g=x.createRadialGradient(gx,gy,0,gx,gy,340*DPR);
-    g.addColorStop(0,'rgba('+rgb+',.045)');g.addColorStop(1,'rgba('+rgb+',0)');x.fillStyle=g;x.fillRect(0,0,W,H);
-    for(const p of ps){p.y-=p.s;p.x+=Math.sin(t*0.0004+p.d)*0.14*DPR;if(p.y<-4){p.y=H+4;p.x=Math.random()*W;}
-      x.beginPath();x.arc(p.x,p.y,p.r,0,6.29);x.fillStyle='rgba('+rgb+','+p.a+')';x.fill();}
+  function size(){DPR=Math.min(1.6,window.devicePixelRatio||1);W=canvas.width=Math.floor(innerWidth*DPR);H=canvas.height=Math.floor(innerHeight*DPR);
+    const n=Math.max(24,Math.round(innerWidth*innerHeight/26000));particles=[];
+    for(let i=0;i<n;i++)particles.push({x:Math.random()*W,y:Math.random()*H,r:(Math.random()*1.5+.35)*DPR,s:(Math.random()*.26+.05)*DPR,a:Math.random()*.45+.13,d:Math.random()*6.28});}
+  addEventListener('pointermove',e=>{mx=e.clientX/Math.max(1,innerWidth);my=e.clientY/Math.max(1,innerHeight);},{passive:true});
+  function drawFxOrganism(){
+    const model=GT.model;if(!model)return;
+    const scale=Math.min(W,H)/13,ox=W*.54+(mx-.5)*24*DPR,oy=H*.48+(my-.5)*16*DPR;
+    const project=point=>[ox+(point[0]+point[2]*.18)*scale,oy-(point[1]-point[2]*.10)*scale];
+    model.edges.forEach(edge=>{const a=project(edge.a),b=project(edge.b),c=edge.col.map(x=>Math.round(x*255));
+      ctx.beginPath();ctx.moveTo(a[0],a[1]);ctx.lineTo(b[0],b[1]);ctx.strokeStyle='rgba('+c.join(',')+','+Math.min(.42,edge.alpha)+')';
+      ctx.lineWidth=DPR;ctx.stroke();});
+    const route=(ROUTE||'').replace('#/scope/',''),active=route.includes('/')?route:null;
+    model.nodes.forEach(node=>{const point=project(node.pos),c=node.col.map(x=>Math.round(x*255));
+      const selected=node.id===active,radius=Math.max(2.5,(node.size/4)*(selected?1.45:1))*DPR;
+      ctx.beginPath();ctx.arc(point[0],point[1],radius,0,6.29);
+      ctx.shadowBlur=(selected?24:12)*DPR;ctx.shadowColor='rgba('+c.join(',')+','+Math.max(.25,node.bright)+')';
+      ctx.fillStyle='rgba('+c.join(',')+','+Math.max(.18,node.bright*.78)+')';ctx.fill();});
+    ctx.shadowBlur=0;
   }
+  function draw(t){const rgb=accRGB();ctx.clearRect(0,0,W,H);
+    const gx=mx*W,gy=my*H,g=ctx.createRadialGradient(gx,gy,0,gx,gy,340*DPR);
+    g.addColorStop(0,'rgba('+rgb+',.045)');g.addColorStop(1,'rgba('+rgb+',0)');ctx.fillStyle=g;ctx.fillRect(0,0,W,H);
+    drawFxOrganism();
+    for(const p of particles){p.y-=p.s;p.x+=Math.sin(t*0.0004+p.d)*0.14*DPR;
+      if(p.y<-4){p.y=H+4;p.x=Math.random()*W;}ctx.beginPath();ctx.arc(p.x,p.y,p.r,0,6.29);
+      ctx.fillStyle='rgba('+rgb+','+p.a+')';ctx.fill();}}
   function loop(t){draw(t);if(run)raf=requestAnimationFrame(loop);}
   size();addEventListener('resize',size);
-  if(REDUCE){draw(0);}   // one static frame, no loop
-  else{raf=requestAnimationFrame(loop);
-    document.addEventListener('visibilitychange',()=>{run=!document.hidden;if(run){raf=requestAnimationFrame(loop);}else cancelAnimationFrame(raf);});}
-})();
+  if(REDUCE)draw(0);else{raf=requestAnimationFrame(loop);
+    document.addEventListener('visibilitychange',()=>{run=!document.hidden;
+      if(run)raf=requestAnimationFrame(loop);else cancelAnimationFrame(raf);});}
+}
+
+// Stable data geometry. Randomness is confined to makeDust below.
+function cssRGB(name,fallback){const value=getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+  const parts=(value||fallback).split(',').map(Number);return [parts[0]/255,parts[1]/255,parts[2]/255];}
+const clamp01=value=>Math.max(0,Math.min(1,value));
+const mix3=(a,b,t)=>[a[0]+(b[0]-a[0])*t,a[1]+(b[1]-a[1])*t,a[2]+(b[2]-a[2])*t];
+function edgeBright(edge){return edge==null?0.42:clamp01(0.25+((edge+0.02)/0.04)*0.75);}
+function nSize(n){return Math.min(34,10+22*(Math.log10(1+(n||0))/3));}
+function sceneModel(){
+  const model={nodes:[],edges:[],byScope:{}};
+  const acc=cssRGB('--acc-rgb','77,255,160'),secondary=cssRGB('--secondary-rgb','111,224,255');
+  const status=STATE.status||{},ages=status.data_ages||{},gray=[0.45,0.52,0.48];
+  const sportsStale=!!(ages.sports_model_seed&&ages.sports_model_seed.stale);
+  const arsenal=STATE.arsenal||{},models=Array.isArray(arsenal.models)?arsenal.models:[],smoke=arsenal.live_smoke||{};
+  const cortexGlow=smoke.all_models_live_proven===true?1:(smoke.all_models_live_proven===false?.3:.55);
+  model.nodes.push({id:'cortex',kind:'cortex',pos:[0,0,0],size:30,col:acc,bright:cortexGlow});
+  models.forEach((entry,i)=>{const angle=i*2.399963,radius=1.05;
+    const pos=[Math.cos(angle)*radius,.25*Math.sin(angle*2),Math.sin(angle)*radius];
+    model.nodes.push({id:'model:'+String(entry.model||i),kind:'cortex',pos,size:12,col:acc,bright:cortexGlow*.9});
+    model.edges.push({a:[0,0,0],b:pos,col:acc,alpha:.5});});
+  const sources=((STATE.overview&&STATE.overview.active_sources)||[]).slice().sort((a,b)=>
+    String(a.source||a.name||a.id||'').localeCompare(String(b.source||b.name||b.id||'')));
+  sources.forEach((source,i)=>{const angle=i*2.399963+.7,radius=2.1;
+    const pos=[Math.cos(angle)*radius,.5*Math.sin(angle*3),Math.sin(angle)*radius];
+    const weight=Number(source.weight),known=Number.isFinite(weight),bright=known?clamp01(.3+Math.abs(weight)*.7):.55;
+    model.nodes.push({id:'source:'+String(source.source||source.name||i),kind:'source',pos,size:6,col:secondary,bright});
+    model.edges.push({a:pos,b:[0,0,0],col:secondary,alpha:known?clamp01(.12+Math.abs(weight)*.35):.22});});
+  const verticals=(STATE.scopes&&STATE.scopes.verticals)||{};
+  ['CRYPTO','SPORTS'].forEach((vertical,verticalIndex)=>{
+    const scopes=(verticals[vertical]&&verticals[vertical].scopes)||{};
+    Object.keys(scopes).sort().forEach((label,labelIndex)=>{
+      const scope=scopes[label]||{},summary=scope.summary||{},index=verticalIndex*16+labelIndex;
+      const angle=index*2.399963,radius=3.4+.28*Math.sqrt(index);
+      const pos=[Math.cos(angle)*radius,(verticalIndex?-1:1)+.15*Math.sin(angle*2),Math.sin(angle)*radius];
+      const inSeason=scope.in_season!==false&&String(scope.season_status||'')!=='off';
+      const stale=vertical==='SPORTS'&&sportsStale;
+      let bright=edgeBright(summary.brier_edge);if(!inSeason)bright*=.5;if(stale)bright*=.35;
+      const base=vertical==='CRYPTO'?acc:secondary,col=stale?mix3(base,gray,.65):base;
+      model.nodes.push({id:vertical+'/'+label,kind:'scope',pos,
+        size:nSize(summary.contested_n!=null?summary.contested_n:summary.n),col,bright});
+      model.edges.push({a:[0,0,0],b:pos,col,alpha:.3});model.byScope[vertical+'/'+label]=pos;
+    });
+  });
+  return model;
+}
+
+// ambient dust -- the ONLY decorative element; represents nothing.
+function makeDust(count){
+  const nodes=[];
+  for(let i=0;i<count;i++)nodes.push({pos:[(Math.random()-.5)*22,(Math.random()-.5)*10,(Math.random()-.5)*22],
+    size:2.2+Math.random()*2.4,bright:.05+Math.random()*.1});
+  return nodes;
+}
+const flat8=node=>[node.pos[0],node.pos[1],node.pos[2],node.size,node.col[0],node.col[1],node.col[2],node.bright];
+function glBuild(model){
+  GT.model=model;const gl=GT.gl;if(!gl)return;
+  const points=new Float32Array(model.nodes.length*8);
+  model.nodes.forEach((node,i)=>points.set(flat8(node),i*8));GT.nPts=model.nodes.length;
+  gl.bindBuffer(gl.ARRAY_BUFFER,GT.bufPts);gl.bufferData(gl.ARRAY_BUFFER,points,gl.STATIC_DRAW);
+  const lines=new Float32Array(model.edges.length*14);
+  model.edges.forEach((edge,i)=>{lines.set([...edge.a,...edge.col,edge.alpha],i*14);
+    lines.set([...edge.b,...edge.col,edge.alpha],i*14+7);});
+  GT.nLines=model.edges.length*2;gl.bindBuffer(gl.ARRAY_BUFFER,GT.bufLines);gl.bufferData(gl.ARRAY_BUFFER,lines,gl.STATIC_DRAW);
+  const count=GT.tier===GL_TIER.WEBGL_BLOOM?600:(GT.tier===GL_TIER.WEBGL?320:0);
+  if(!GT.dust||GT.dust.length!==count)GT.dust=makeDust(count);
+  const dustColor=cssRGB('--acc-rgb','77,255,160'),dustPoints=new Float32Array(GT.dust.length*8);
+  GT.dust.forEach((node,i)=>dustPoints.set([node.pos[0],node.pos[1],node.pos[2],node.size,
+    dustColor[0],dustColor[1],dustColor[2],node.bright],i*8));
+  GT.nDust=GT.dust.length;gl.bindBuffer(gl.ARRAY_BUFFER,GT.bufDust);gl.bufferData(gl.ARRAY_BUFFER,dustPoints,gl.STATIC_DRAW);
+  if(REDUCE)drawOnce();
+}
+
+// ---------- camera ----------
+addEventListener('pointermove',e=>{PAR.x=e.clientX/Math.max(1,innerWidth);PAR.y=e.clientY/Math.max(1,innerHeight);},{passive:true});
+const easeIO=t=>t<.5?4*t*t*t:1-Math.pow(-2*t+2,3)/2;
+function flyTo(preset,ms){
+  if(REDUCE){CAM.pos=preset.pos.slice();CAM.tgt=preset.tgt.slice();CAM.anim=null;drawOnce();return;}
+  CAM.anim={p0:CAM.pos.slice(),t0:CAM.tgt.slice(),p1:preset.pos.slice(),t1:preset.tgt.slice(),
+    start:performance.now(),ms:ms||900};
+}
+function scopePreset(id){
+  const point=GT.model&&GT.model.byScope&&GT.model.byScope[id];if(!point)return CAM_PRESETS.overview;
+  const length=Math.hypot(point[0],point[2])||1;
+  return {pos:[point[0]+point[0]/length*2.4,point[1]+1.15,point[2]+point[2]/length*2.4],
+    tgt:[point[0],point[1],point[2]]};
+}
+function syncCameraToRoute(immediate){
+  if(!GT.gl)return;
+  const parts=(ROUTE||location.hash||'#/overview').replace('#/','').split('/');
+  const scope=parts[0]==='scope'&&(parts[1]==='CRYPTO'||parts[1]==='SPORTS')&&parts[2]
+    ?parts[1]+'/'+parts[2]:null;
+  flyTo(scope?scopePreset(scope):CAM_PRESETS.overview,immediate?1:900);
+}
+function camTick(t){
+  if(!CAM.anim)return;const animation=CAM.anim;
+  const k=Math.min(1,(performance.now()-animation.start)/animation.ms),e=easeIO(k);
+  CAM.pos=[0,1,2].map(i=>animation.p0[i]+(animation.p1[i]-animation.p0[i])*e);
+  CAM.tgt=[0,1,2].map(i=>animation.t0[i]+(animation.t1[i]-animation.t0[i])*e);
+  if(k>=1)CAM.anim=null;
+}
+
+function glInit(){
+  const canvas=document.getElementById('gl');if(!canvas)return;
+  const boot=bootGL(canvas);
+  probeTier(fps=>{
+    if(boot&&fps>=50)GT.tier=GL_TIER.WEBGL_BLOOM;
+    else if(boot&&fps>=28)GT.tier=GL_TIER.WEBGL;
+    else if(fps>=24)GT.tier=GL_TIER.CANVAS2D;
+    else GT.tier=GL_TIER.STATIC;
+    if(GT.tier>=GL_TIER.WEBGL){try{glSetup(boot);}catch(_){GT.gl=null;GT.tier=GL_TIER.CANVAS2D;}}
+    markSceneTier();
+    if(GT.tier===GL_TIER.CANVAS2D){GT.model=sceneModel();canvas.style.display='none';startFx2D();return;}
+    if(GT.tier===GL_TIER.STATIC){document.body.classList.add('no-gl');return;}
+    canvas.addEventListener('webglcontextlost',event=>{event.preventDefault();glStop();GT.gl=null;
+      GT.tier=GL_TIER.CANVAS2D;markSceneTier();canvas.style.display='none';startFx2D();});
+    addEventListener('resize',()=>{glResize();if(REDUCE)drawOnce();});
+    document.addEventListener('visibilitychange',()=>{if(document.hidden)glStop();else glStart();});
+    glBuild(sceneModel());syncCameraToRoute(true);glStart();
+  });
+}
+
+// ---------- EVENTS ----------
+// Semantic bridge: all scene activity derives from already-polled STATE.
+const EV={map:{}};
+EV.on=(name,handler)=>{(EV.map[name]=EV.map[name]||[]).push(handler);};
+EV.emit=(name,data)=>{(EV.map[name]||[]).forEach(handler=>{try{handler(data);}catch(_){}});};
+let prevWatch=null;
+function watchSnapshot(){
+  const summary=statusSummary(),ages=((STATE.status||{}).data_ages)||{};
+  const watch={bal:((STATE.overview||{}).live_account||{}).balance_cents,auth:summary.auth,
+    liveAuth:summary.liveAuth,healthy:summary.healthy,mode:summary.mode,freshness:{},scopes:{}};
+  Object.keys(ages).sort().forEach(key=>{watch.freshness[key]=ages[key]&&ages[key].stale;});
+  const verticals=(STATE.scopes&&STATE.scopes.verticals)||{};
+  ['CRYPTO','SPORTS'].forEach(vertical=>{const scopes=(verticals[vertical]&&verticals[vertical].scopes)||{};
+    Object.keys(scopes).forEach(label=>{const scope=scopes[label]||{},s=scope.summary||{};
+      watch.scopes[vertical+'/'+label]=[s.hit_rate,s.brier_edge,s.contested_n,(scope.picks||[]).length,
+        scope.in_season,scope.season_status];});});
+  return watch;
+}
+function watchDiff(next){
+  if(!prevWatch){prevWatch=next;glSetMood(next.liveAuth||next.healthy===false);return;}
+  if(next.bal!==prevWatch.bal)EV.emit('balance:changed',{from:prevWatch.bal,to:next.bal});
+  if(next.auth!==prevWatch.auth)EV.emit('authority:changed',{to:next.auth});
+  if(next.healthy!==prevWatch.healthy)EV.emit('health:changed',{to:next.healthy});
+  if(JSON.stringify(next.freshness)!==JSON.stringify(prevWatch.freshness))EV.emit('freshness:changed',{to:next.freshness});
+  Object.keys(next.scopes).forEach(key=>{const current=next.scopes[key],before=prevWatch.scopes[key];
+    if(!before||current.some((value,i)=>value!==before[i]))EV.emit('scope:changed',{id:key});});
+  prevWatch=next;glSetMood(next.liveAuth||next.healthy===false);
+}
+
+// pulses: one real data change travels from the cortex to its scope cluster.
+function glPulse(scopeId){
+  if(REDUCE||!GT.gl||!GT.model)return;const target=GT.model.byScope[scopeId];if(!target)return;
+  if(GT.pulses.length>=64)GT.pulses.shift();
+  GT.pulses.push({a:[0,0,0],b:target.slice(),t0:performance.now(),dur:1400});
+}
+function updatePulses(t){
+  if(!GT.gl)return;const now=performance.now();
+  GT.pulses=GT.pulses.filter(pulse=>now-pulse.t0<pulse.dur);if(!GT.pulses.length)return;
+  const acc=cssRGB('--acc-rgb','77,255,160'),data=new Float32Array(GT.pulses.length*8);
+  GT.pulses.forEach((pulse,i)=>{const k=(now-pulse.t0)/pulse.dur,e=k*k*(3-2*k);
+    data.set([pulse.a[0]+(pulse.b[0]-pulse.a[0])*e,pulse.a[1]+(pulse.b[1]-pulse.a[1])*e,
+      pulse.a[2]+(pulse.b[2]-pulse.a[2])*e,9,...acc,1],i*8);});
+  const gl=GT.gl;gl.bindBuffer(gl.ARRAY_BUFFER,GT.bufPulse);gl.bufferData(gl.ARRAY_BUFFER,data,gl.DYNAMIC_DRAW);
+}
+EV.on('scope:changed',event=>glPulse(event.id));
+EV.on('snapshot:arrived',()=>{const model=sceneModel();if(GT.gl)glBuild(model);else GT.model=model;});
 function shock(){if(REDUCE)return;const s=document.getElementById('shock');s.classList.remove('go');void s.offsetWidth;s.classList.add('go');}
 
 // ---------- data ----------
@@ -2316,12 +2621,12 @@ async function poll(){
     // re-render (and re-flip the flaps) only when the data actually changed --
     // like a real tote board, the numbers roll when new results land.
     const sig=JSON.stringify([STATE.overview,STATE.scopes,STATE.status&&STATE.status.system_health,STATE.status&&STATE.status.edge_quality,STATE.boardFetchOk,STATE.boardMeta&&STATE.boardMeta.generated_at,STATE.boardMeta&&STATE.boardMeta.artifact_status,STATE.boardMeta&&STATE.boardMeta.stale,STATE.arsenal,STATE.tierPerformance,STATE.tierPerformanceFetchOk,summary.mode,summary.title,summary.healthy,summary.accountFresh,summary.auth,summary.stale.map(([k])=>k),STATE.connection.error]);
-    if(sig!==lastSig){const had=lastSig!=='';lastSig=sig;render();if(had)shock();}
+    if(sig!==lastSig){const had=lastSig!=='';lastSig=sig;render();watchDiff(watchSnapshot());EV.emit('snapshot:arrived',{had});if(had)shock();}
   }catch(e){STATE.connection.error='Dashboard refresh failed; showing the last good snapshot.';render();}
   finally{POLLING=false;STATE.connection.pending=false;}
 }
 window.addEventListener('hashchange',()=>{ROUTE=location.hash||'#/overview';render();});
 window.addEventListener('resize',()=>moveGlide());
-render();poll();setInterval(poll,20000);
+glInit();render();poll();setInterval(poll,20000);
 </script>
 </body></html>"""

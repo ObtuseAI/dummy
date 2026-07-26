@@ -9,7 +9,7 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/python-3.11%20%7C%203.12%20%7C%203.14-4b8bbe" alt="Python 3.11, 3.12, 3.14">
-  <img src="https://img.shields.io/badge/tests-4938%20passing-2ea44f" alt="4938 maintained tests passing">
+  <img src="https://img.shields.io/badge/tests-5k%2B%20collected-2ea44f" alt="More than 5,000 maintained tests collected">
   <img src="https://img.shields.io/badge/autonomous%20loops-45-3b7dd8" alt="45 autonomous loops">
   <img src="https://img.shields.io/badge/mode-SHADOW%20·%20paper-1f9d55" alt="Shadow paper mode">
   <img src="https://img.shields.io/badge/promotion%20to%20capital-human--gated-e0a100" alt="Human-gated">
@@ -22,8 +22,11 @@
 
 <p align="center">
   <em>The <strong>Dummy operator board</strong> — a loopback-only, read-only view of persisted
-  account, authority, health, forecast, and grading artifacts. Split-flap counters update only
-  when evidence changes; a ⌘K palette jumps to any coin or league.</em>
+  account, authority, health, forecast, and grading artifacts. Its <strong>Organism</strong> is a
+  tiered WebGL neural field: the model arsenal forms a cortex, sources and scopes orbit it, and
+  pulses appear only when persisted evidence actually changes. The DOM truth ribbon and every
+  evidence panel remain usable with reduced motion, canvas fallback, or no GPU; a ⌘K palette
+  jumps to scopes and applies any of the four saved themes.</em>
 </p>
 
 <table align="center">
@@ -51,11 +54,13 @@ Sources that beat the market earn trust; sources that don't, starve. Nothing rea
 capital automatically — the whole system runs as an always-on **paper** twin, and a
 human is the only path from evidence to a real order.
 
-**Contents** — [What it prices](#what-it-prices) · [Command board](#the-command-board) ·
+**Contents** — [What it prices](#what-it-prices) ·
+[Intelligence loop](#the-intelligence-loop) · [Command board](#the-command-board) ·
 [Design](#design) · [The cycle](#the-cycle) · [Capital allocation](#capital-allocation) ·
 [The 45 loops](#the-45-loops) · [The organization](#the-organization-around-the-models) ·
 [Recursive improvement](#recursive-improvement) · [Safety](#safety--governance) ·
-[Numbers](#by-the-numbers) · [Quickstart](#operator-quickstart)
+[Numbers](#by-the-numbers) · [Quickstart](#operator-quickstart) ·
+[Showcase](docs/index.html)
 
 ## What it prices
 
@@ -95,6 +100,38 @@ forward-evidence dossier.
 
 Every model is a **challenger**: it accrues Brier and closing-line evidence but never reaches
 capital until an explicit human promotion.
+
+## The intelligence loop
+
+Dummy's intelligence is not a single model and it is not an LLM response. It is the
+closed, inspectable loop that turns timestamped observations into calibrated probabilities,
+forces competing explanations to disagree on the record, scores those claims after
+settlement, and lets only demonstrated signal earn more influence.
+
+| stage | what the system does | what it refuses to infer |
+|---|---|---|
+| **Observe** | snapshots public market, venue, macro, weather, roster, schedule, and game-state evidence with provenance and freshness | a missing or stale feed is not silently filled with a guess |
+| **Normalize** | maps incompatible feeds onto one market identity, clock, side, horizon, and point-in-time ledger | an unmatched ticker or ambiguous event is not “close enough” |
+| **Forecast** | runs market anchors, statistical models, per-vertical specialists, simulations, and quarantined LLM voices under explicit schemas | eloquence, model reputation, and backfilled hindsight do not count as probability evidence |
+| **Challenge** | compares every eligible opinion against the market and against the ensemble; disagreement is preserved instead of averaged away | agreement with the price is not credited as independent edge |
+| **Calibrate** | debiases probabilities and assigns trust at source × scope × market type × horizon from settled, contested forecasts | a small lucky sample cannot promote itself |
+| **Allocate** | ranks candidates by evidence-adjusted edge and settlement velocity, then divides one bounded pot across holdable opportunities | ranking first does not grant the whole bankroll or bypass correlation limits |
+| **Gate** | applies stage, drawdown, freshness, caps, session, market, order-type, and central-firewall checks; every later stage can only reduce | a research result, paper win, dashboard state, or model vote cannot create live authority |
+| **Learn** | reconciles outcomes, Brier-scores every forecast, runs walk-forward replay, ablation, self-scouting, and challenger selection | no model rewrites its own history, truth rules, promotion standard, or execution firewall |
+
+Six capabilities emerge from that loop:
+
+- **Perception** — timestamped, provenance-carrying market and world-state observations.
+- **Probabilistic reasoning** — many independently graded forecasts, not one opaque answer.
+- **Dissent** — challengers, specialist panels, and the market itself stay separately scored.
+- **Memory** — append-only forecasts, settlements, corrections, calibration, and promotion evidence.
+- **Metacognition** — self-scout, film-room reconstruction, ablation, drift checks, fragility tests,
+  and explicit uncertainty about thin samples.
+- **Constrained action** — candidate allocation and risk can shrink a proposal; only an
+  operator-held authority ceremony can expand what the system is allowed to do.
+
+The [visual showcase](docs/index.html) walks through this stack, the eight cycle phases,
+the 45 scheduled loops, the operator board, and the proof boundary in one page.
 
 ## The command board
 
@@ -385,7 +422,7 @@ this actually observe, and when?* — and each is now a test.
 | Sports challenger analytics | 11, walk-forward graded |
 | LLM panel | 4 exact models, 7-call atomic, double-locked, daily USD cap |
 | Improvement waves shipped | 88 |
-| Maintained tests | 4,938 passing · 86 skipped |
+| Maintained tests | 5,068 collected in the current repository snapshot |
 | Capital at risk | $0 — paper, human-gated |
 
 ## Operator quickstart
