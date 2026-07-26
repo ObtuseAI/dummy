@@ -91,7 +91,10 @@ def test_legacy_forecast_engine_path_cannot_be_imported():
 
     offenders: list[str] = []
     for path in _repository_python_files():
-        tree = ast.parse(path.read_text(encoding="utf-8"))
+        text = path.read_text(encoding="utf-8")
+        if "forecasting.engine" not in text:
+            continue
+        tree = ast.parse(text)
         for node in ast.walk(tree):
             if isinstance(node, ast.ImportFrom) and node.module == "forecasting.engine":
                 offenders.append(str(path.relative_to(ROOT)))
