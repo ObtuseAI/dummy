@@ -15,7 +15,7 @@ Run from an elevated-or-normal PowerShell:
 #>
 param(
     [string]$Repo   = "C:\src\engine\dummy",
-    [string]$Python = "C:\Users\chris\.dummy-desktop\venv\Scripts\pythonw.exe",
+    [string]$Python = (Join-Path $env:USERPROFILE ".dummy-desktop\venv\Scripts\pythonw.exe"),
     [switch]$WhatIf
 )
 

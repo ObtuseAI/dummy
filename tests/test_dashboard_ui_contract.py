@@ -188,6 +188,43 @@ def test_crypto_horizons_are_visible_and_evidence_gated():
     assert "it never contacts the broker" in body
 
 
+def test_overview_catalog_names_all_capabilities_and_crypto_loops():
+    body = DASHBOARD_HTML
+
+    assert "function capabilityCatalog()" in body
+    assert 'aria-label="Complete capability catalog"' in body
+    assert "All abilities" in body
+    assert "DummyCryptoPaperTwin (5-minute)" in body
+    assert "DummyCryptoHorizonEvidence (10-minute)" in body
+    assert "Multi-timeframe research charts" in body
+    assert "BTC, ETH, and SOL closed candles across 15m, 1h, 4h, 1d, and 1w" in body
+    for capability in (
+        "Market perception",
+        "Seven-league intelligence",
+        "Probability engines",
+        "Model Arsenal + dissent",
+        "Trust + uncertainty",
+        "Walk-forward + backtests",
+        "Portfolio construction",
+        "Risk + execution firewall",
+        "Settlement + audit memory",
+        "Autoresearch + evolution",
+        "Metacognition + self-scout",
+        "Fleet reliability",
+        "Operator experience",
+        "Observer MCP",
+    ):
+        assert capability in body
+    segment = body.split("function capabilityCatalog()", 1)[1].split(
+        "\nfunction overviewView()", 1
+    )[0]
+    assert "fetch(" not in segment
+    error_branch = body.split("function overviewView()", 1)[1].split(
+        "const account=o.live_account", 1
+    )[0]
+    assert "+capabilityCatalog()" in error_branch
+
+
 def test_color_controls_switch_the_complete_saved_theme():
     body = DASHBOARD_HTML
 

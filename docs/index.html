@@ -173,6 +173,39 @@
   .shot.wide .c{display:flex;justify-content:space-between;gap:24px;align-items:baseline}
   .shot.wide .c span{max-width:760px;text-align:right}
 
+  /* Public-release maps and complete ability catalog */
+  .map-grid{display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-top:26px}
+  .map-card{display:block;background:var(--deep);border:1px solid var(--brass-2);
+    border-radius:5px;padding:10px;box-shadow:0 24px 60px rgba(0,0,0,.3)}
+  .map-card:hover{border-color:var(--amber);text-decoration:none}
+  .map-card img{display:block;width:100%;height:auto;border-radius:3px}
+  .map-card .map-copy{padding:13px 8px 5px}
+  .map-card .map-copy b{display:block;color:var(--chalk);font-family:var(--display);
+    text-transform:uppercase;letter-spacing:.08em}
+  .map-card .map-copy span{display:block;color:var(--muted);font-size:13px;margin-top:4px}
+  .ability-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-top:26px}
+  .ability{background:var(--felt);border:1px solid var(--line);border-top:2px solid var(--brass-2);
+    padding:18px;border-radius:4px;min-height:172px}
+  .ability.crypto{border-color:#2a7377;border-top-color:#42bfc7;background:#172827}
+  .ability .surface{font:700 9.5px var(--mono);letter-spacing:.1em;text-transform:uppercase;color:var(--brass)}
+  .ability.crypto .surface{color:#67d7de}
+  .ability h3{font-size:14px;margin:8px 0;color:var(--amber)}
+  .ability p{font-size:12.5px;margin:0;color:#c4ccc2}
+  .ability .proofline{display:block;margin-top:10px;padding-top:9px;border-top:1px solid var(--line);
+    color:var(--turf);font:10.5px var(--mono)}
+  .crypto-stage{display:grid;grid-template-columns:minmax(0,1.55fr) minmax(300px,.75fr);
+    gap:18px;margin-top:26px}
+  .crypto-stage .shot{min-width:0}
+  .crypto-lane{display:grid;gap:10px}
+  .crypto-loop{background:#172827;border:1px solid #2a7377;border-left:3px solid #42bfc7;
+    padding:17px;border-radius:4px}
+  .crypto-loop b{display:flex;justify-content:space-between;gap:12px;color:#d9fbfb;
+    font-family:var(--display);letter-spacing:.04em}
+  .crypto-loop b span{color:#67d7de;font:700 10px var(--mono)}
+  .crypto-loop p{font-size:12.5px;margin:7px 0 0;color:#a9c4c2}
+  .crypto-boundary{margin-top:14px;padding:13px 15px;border:1px dashed #c96a5c;
+    color:#d2bbb4;background:rgba(201,106,92,.07);font-size:12.5px}
+
   /* Safety */
   .safety{background:var(--felt);border:1px solid var(--line);border-left:4px solid var(--clay);
     border-radius:4px;padding:26px 28px;margin-top:22px}
@@ -183,7 +216,8 @@
   .disc{max-width:760px;margin:14px auto 0;font-size:12.5px;color:var(--brass)}
 
   @media(max-width:760px){
-    .grid,.gal,.int-grid{grid-template-columns:1fr}
+    .grid,.gal,.int-grid,.map-grid,.crypto-stage{grid-template-columns:1fr}
+    .ability-grid{grid-template-columns:repeat(2,1fr)}
     .pipeline,.proof-grid{grid-template-columns:repeat(2,1fr)}
     .lamps{grid-template-columns:repeat(2,1fr)}
     .top nav{display:none}
@@ -192,7 +226,7 @@
     .diagram .key{display:inline-block;margin-top:12px}
     .shot.wide .c span{display:block;text-align:left;margin-top:5px}
   }
-  @media(max-width:520px){.pipeline,.proof-grid{grid-template-columns:1fr}}
+  @media(max-width:520px){.pipeline,.proof-grid,.ability-grid{grid-template-columns:1fr}}
   @media(prefers-reduced-motion:reduce){html{scroll-behavior:auto}}
 </style>
 </head>
@@ -203,12 +237,12 @@
   <div class="wrap">
     <div class="brand">DUMMY<small>EVIDENCE INTELLIGENCE</small></div>
     <nav aria-label="Showcase sections">
-      <a href="#intelligence">Intelligence</a>
+      <a href="#maps">Maps</a>
+      <a href="#capabilities">Abilities</a>
+      <a href="#crypto">Crypto</a>
       <a href="#loop">Cycle</a>
-      <a href="#alloc">Allocation</a>
       <a href="#loops">Fleet</a>
       <a href="#board">Board</a>
-      <a href="#proof">Proof</a>
       <a href="https://github.com/ObtuseAI/dummy">Repo</a>
     </nav>
     <span class="lamp">SHADOW · READ ONLY</span>
@@ -225,8 +259,8 @@
     and keep research intelligence structurally separate from authority over capital.
   </p>
   <div class="cta">
-    <a class="btn primary" href="#intelligence">Explore the intelligence</a>
-    <a class="btn" href="https://github.com/ObtuseAI/dummy#design">Read the architecture</a>
+    <a class="btn primary" href="#maps">Open the system maps</a>
+    <a class="btn" href="#capabilities">See every ability</a>
   </div>
   <div class="board-frame">
     <img src="assets/dummy-overview.png" alt="The Dummy loopback-only operator board">
@@ -244,12 +278,134 @@
       <div class="cell"><div class="n">11</div><div class="l">sports challengers</div></div>
       <div class="cell"><div class="n">7</div><div class="l">sports leagues</div></div>
       <div class="cell"><div class="n">3</div><div class="l">crypto scopes</div></div>
+      <div class="cell"><div class="n">2</div><div class="l">dedicated crypto loops</div></div>
       <div class="cell"><div class="n">4</div><div class="l">LLM roles</div></div>
       <div class="cell"><div class="n">0</div><div class="l">automatic authority</div></div>
     </div>
     <p class="snapshot">Capability counts describe registered repository components, not
       profitability, deployment readiness, or permission to trade. Current launch status remains
       <strong>NO-GO</strong> until every external evidence gate is satisfied.</p>
+  </div>
+</section>
+
+<section id="maps">
+  <div class="wrap">
+    <div class="eyebrow">Visible by design</div>
+    <h2>Two system maps, loaded as standalone assets</h2>
+    <p>These diagrams sit near the top of the release and open at full resolution. They are
+      ordinary SVG image assets—not script-rendered diagrams—so GitHub Pages, reduced-motion
+      browsers, screen readers, and static mirrors all receive the same architecture.</p>
+    <div class="map-grid">
+      <a class="map-card" href="assets/dummy-capability-map.svg" aria-label="Open the full Dummy capability map">
+        <img src="assets/dummy-capability-map.svg" alt="Dummy capability map from observation through reasoning and learning to constrained action">
+        <div class="map-copy"><b>Capability map</b><span>Twelve ability families, including
+          crypto charts, model dissent, autoresearch, the firewall, Board, and Observer MCP.</span></div>
+      </a>
+      <a class="map-card" href="assets/dummy-loop-fleet.svg" aria-label="Open the full Dummy 45-loop fleet map">
+        <img src="assets/dummy-loop-fleet.svg" alt="Dummy 45-loop fleet map with explicit crypto paper twin and horizon evidence loops">
+        <div class="map-copy"><b>45-loop fleet</b><span>Every responsibility band plus the
+          explicit CryptoPaperTwin and CryptoHorizonEvidence cadence lane.</span></div>
+      </a>
+    </div>
+  </div>
+</section>
+
+<section id="capabilities">
+  <div class="wrap">
+    <div class="eyebrow">Complete public capability catalog</div>
+    <h2>Every major ability—and the surface that proves it exists</h2>
+    <p>This catalog is intentionally broader than a feature list. Each ability names its
+      owning system and its proof boundary, so research tooling, operational visibility,
+      and execution authority cannot blur together.</p>
+    <div class="ability-grid">
+      <article class="ability">
+        <div class="surface">Observe</div><h3>Market discovery &amp; normalization</h3>
+        <p>Kalshi and public context feeds become timestamped, deduplicated market identities with provenance and freshness.</p>
+        <span class="proofline">proof: observation ledger + source health</span>
+      </article>
+      <article class="ability crypto">
+        <div class="surface">Crypto · Observe</div><h3>Multi-timeframe chart visualization</h3>
+        <p>BTC, ETH, and SOL candlesticks across 15m, 1h, 4h, 1d, and 1w with deterministic indicators and pattern markers.</p>
+        <span class="proofline">proof: immutable Market Observer chart bundles</span>
+      </article>
+      <article class="ability crypto">
+        <div class="surface">Crypto · Loop</div><h3>Crypto paper twin &amp; horizon evidence</h3>
+        <p>Dedicated 5-minute paper-twin and 10-minute horizon-evidence tasks grade asset × timeframe × strategy lanes.</p>
+        <span class="proofline">proof: forward paper and horizon artifacts</span>
+      </article>
+      <article class="ability">
+        <div class="surface">Sports · Observe</div><h3>History &amp; play-by-play lakes</h3>
+        <p>Seven league surfaces combine point-in-time games, box scores, EPA, period state, comeback matrices, and player context.</p>
+        <span class="proofline">proof: source manifests + event-purged lakes</span>
+      </article>
+      <article class="ability">
+        <div class="surface">Reason</div><h3>Forecasting &amp; simulation</h3>
+        <p>Market anchors, statistical kernels, power ratings, scoring distributions, live models, and scenario simulators emit attributed probabilities.</p>
+        <span class="proofline">proof: preregistered source forecasts</span>
+      </article>
+      <article class="ability">
+        <div class="surface">Reason</div><h3>Specialist council &amp; Model Arsenal</h3>
+        <p>Vertical specialists and four schema-bound LLM roles preserve dissent under exact routing and paid-call gates.</p>
+        <span class="proofline">proof: redacted stored witnesses, zero auto authority</span>
+      </article>
+      <article class="ability">
+        <div class="surface">Calibrate</div><h3>Trust, uncertainty &amp; fusion</h3>
+        <p>Brier, log loss, ECE/MCE, debiasing, contested-market scoring, and scope-specific uncertainty determine earned weight.</p>
+        <span class="proofline">proof: settled contested forecasts</span>
+      </article>
+      <article class="ability">
+        <div class="surface">Evaluate</div><h3>Walk-forward &amp; backtest evidence</h3>
+        <p>Temporal folds, event-cluster bootstrap, fees, liquidity, CLV, partial fills, and negative controls challenge every claim.</p>
+        <span class="proofline">proof: predict-before-update reports</span>
+      </article>
+      <article class="ability">
+        <div class="surface">Allocate</div><h3>Candidate portfolio allocation</h3>
+        <p>Evidence-adjusted edge and settlement velocity divide one bounded pot across holdable, correlation-aware candidates.</p>
+        <span class="proofline">proof: Σ grants ≤ pot and grant ≤ ask</span>
+      </article>
+      <article class="ability">
+        <div class="surface">Constrain</div><h3>Risk governor &amp; execution firewall</h3>
+        <p>Stage, drawdown, clusters, liquidity, TTL, sealed caps, session, credential, and LIMIT-only checks can only shrink intent.</p>
+        <span class="proofline">proof: typed blocks + transport witnesses</span>
+      </article>
+      <article class="ability">
+        <div class="surface">Truth</div><h3>Reconciliation, settlement &amp; audit</h3>
+        <p>Orders, fills, cancellations, outcomes, corrections, and account snapshots remain separate evidence layers.</p>
+        <span class="proofline">proof: append-only identities + corrections</span>
+      </article>
+      <article class="ability">
+        <div class="surface">Learn</div><h3>Autoresearch, tuning &amp; evolution</h3>
+        <p>Strategy mining, parameter tuning, quality-diversity search, true crossover, ablation, chaos, and fragility create challengers.</p>
+        <span class="proofline">proof: observational until promoted by evidence</span>
+      </article>
+      <article class="ability">
+        <div class="surface">Question</div><h3>Self-scout &amp; film room</h3>
+        <p>Bias tendencies, worst-call reconstruction, recruiting, matchup lens, top threat, and development tracking expose blind spots.</p>
+        <span class="proofline">proof: report failures surface as failures</span>
+      </article>
+      <article class="ability">
+        <div class="surface">Operate</div><h3>Watchdog, healing &amp; durability</h3>
+        <p>Independent task health, self-heal, snapshots, ledger retention, pruning, vacuum, and allowlisted rotation contain failures.</p>
+        <span class="proofline">proof: cadence-bound artifacts + bounded storage</span>
+      </article>
+      <article class="ability">
+        <div class="surface">Explain</div><h3>Operator Board &amp; desktop notifier</h3>
+        <p>Overview, scopes, charts, Arsenal, glossary, readiness, health, and freshness render persisted truth without mutation controls.</p>
+        <span class="proofline">proof: loopback-only GET surface</span>
+      </article>
+      <article class="ability">
+        <div class="surface">Expose</div><h3>Market Observer MCP</h3>
+        <p>Allowlisted public candles, indicators, patterns, chart bundles, network status, and source health through read-only tools.</p>
+        <span class="proofline">proof: false execution / order / allocation authority</span>
+      </article>
+    </div>
+    <div class="shot wide" style="margin-top:24px">
+      <img src="assets/dummy-capabilities-board.png" alt="Dummy operator Board showing all sixteen public-release capability families">
+      <div class="c"><b>All abilities on the Board</b> — the same sixteen capability
+        families are now visible inside the read-only operator UI, including market
+        perception, both named crypto loops, chart visualization, settlement memory,
+        metacognition, the firewall, fleet reliability, and Observer MCP.</div>
+    </div>
   </div>
 </section>
 
@@ -454,6 +610,53 @@
   </div>
 </section>
 
+<section id="crypto">
+  <div class="wrap">
+    <div class="eyebrow">Crypto is a first-class intelligence lane</div>
+    <h2>Observe, chart, price, grade, and learn across five horizons</h2>
+    <p>Dummy does not hide crypto inside a generic market loop. BTC, ETH, and SOL have
+      dedicated observation, charting, paper-twin, and horizon-evidence paths, while shared
+      forecast, calibration, risk, and research loops retain the asset and timeframe identity.</p>
+    <div class="crypto-stage">
+      <div class="shot">
+        <img src="assets/dummy-crypto-charts.png" alt="Dummy Crypto Research Charts showing BTC candlesticks, deterministic indicators, pattern markers, provenance, and no production authority">
+        <div class="c"><b>Crypto Research Charts</b> — the actual artifact-only chart UI,
+          shown with a clearly labeled synthetic release fixture. The production observer
+          accepts rights-reviewed closed public candles; both paths compute deterministic
+          RSI / EMA / ATR / MACD / Bollinger / stochastic / OBV facts, final-bar markers,
+          age, provenance, and explicit false execution authority.</div>
+      </div>
+      <div class="crypto-lane">
+        <div class="crypto-loop">
+          <b>Market Observer <span>READ-ONLY SIDECAR</span></b>
+          <p>Coinbase Exchange public candles → immutable content-addressed chart bundles.
+            The dashboard never contacts the provider itself.</p>
+        </div>
+        <div class="crypto-loop">
+          <b>DummyCryptoPaperTwin <span>EVERY 5 MIN</span></b>
+          <p>Runs BTC / ETH / SOL paper lanes for 15m, 1h, 1d, and 1w cohorts with isolated
+            asset × timeframe × strategy evidence and no capital authority.</p>
+        </div>
+        <div class="crypto-loop">
+          <b>DummyCryptoHorizonEvidence <span>EVERY 10 MIN</span></b>
+          <p>Builds forward horizon matrices and evaluates whether each crypto cohort has
+            enough time-consistent evidence to remain a challenger.</p>
+        </div>
+        <div class="crypto-loop">
+          <b>Shared crypto intelligence <span>ATTRIBUTED</span></b>
+          <p>ShadowPredator, MispricingMonitor's crypto-fast lane, recalibration, backtests,
+            autoresearch, allocation, and risk preserve the crypto scope instead of merging
+            it into sports evidence.</p>
+        </div>
+      </div>
+    </div>
+    <div class="crypto-boundary"><strong>Research boundary:</strong> charts display facts,
+      not price targets; paper twins record hypothetical decisions, not fills; horizon evidence
+      can challenge a model, not authorize an order. The chart page is GET-only and all
+      execution, order, cancel, amend, allocation, and promotion authority fields remain false.</div>
+  </div>
+</section>
+
 <section id="loop">
   <div class="wrap">
     <div class="eyebrow">The cognition cycle</div>
@@ -579,13 +782,13 @@
       <div class="card">
         <h3>Cadence — the heartbeat</h3>
         <span class="tag">8 loops</span>
-        <ul><li>The brain cycle, live poller, sports board refresh, mispricing monitor, crypto paper twin, the vNext shadow organism, the USE sidecar, and account snapshots</li></ul>
+        <ul><li>The brain cycle, live poller, sports board refresh, mispricing monitor, <strong>DummyCryptoPaperTwin</strong> every 5 minutes, the vNext shadow organism, the USE sidecar, and account snapshots</li></ul>
         <p class="taskline">Predator · LivePoller · SportsBoard · Mispricing · CryptoTwin · vNext · USE · AccountSnapshot</p>
       </div>
       <div class="card">
         <h3>Learning &amp; self-improvement</h3>
         <span class="tag">10 loops</span>
-        <ul><li>Weight recalibration split into a fast weight-only core and heavy diagnostics, so a slow report can never stall a cycle — plus the tuner, strategy miner, autoresearch lab, simulation trainers, and crypto horizon evidence</li></ul>
+        <ul><li>Weight recalibration split into a fast weight-only core and heavy diagnostics, so a slow report can never stall a cycle — plus the tuner, strategy miner, autoresearch lab, simulation trainers, and <strong>DummyCryptoHorizonEvidence</strong> every 10 minutes</li></ul>
         <p class="taskline">Weights · Backtest · Tune · SelfImprove · StrategyMiner · Autoresearch · Simulation</p>
       </div>
       <div class="card">
@@ -617,6 +820,12 @@
         </ul>
       </div>
     </div>
+    <div class="crypto-boundary"><strong>Where the crypto loops live:</strong>
+      DummyCryptoPaperTwin is one of the 8 heartbeat tasks; DummyCryptoHorizonEvidence is one
+      of the 10 learning tasks. ShadowPredator, MispricingMonitor's crypto-fast pass,
+      recalibration, backtests, and autoresearch also process crypto under preserved
+      asset × timeframe identities. The two dedicated tasks are included in the total of 45,
+      not added on top of it.</div>
     <figure class="diagram" id="loop-fleet-diagram">
       <figcaption>
         <div>

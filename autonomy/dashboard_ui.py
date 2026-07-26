@@ -545,6 +545,19 @@ td.hc .td{font-size:11px;margin-left:3px}
 @media(max-width:980px){.arsenal-hero{grid-template-columns:1fr}.arsenal-grid{grid-template-columns:1fr}}
 @media(max-width:680px){.gate-strip,.authority-row{grid-template-columns:1fr}.arsenal-facts{grid-template-columns:1fr}}
 
+/* complete public capability catalog — static descriptions routed to read-only surfaces */
+.ability-catalog{margin:var(--s4) 0}.ability-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:9px}
+.ability-tile{display:block;min-width:0;padding:14px;border:1px solid var(--line);border-radius:9px;background:var(--panel);color:var(--txt);transition:border-color .16s ease,transform .16s ease}
+a.ability-tile:hover{border-color:var(--line-3);transform:translateY(-1px);text-decoration:none}
+.ability-tile.crypto{border-color:rgba(65,199,208,.28);background:linear-gradient(145deg,rgba(35,68,70,.38),var(--panel))}
+.ability-tile .ak{font:700 8.5px var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--faint)}
+.ability-tile.crypto .ak{color:#67d7de}.ability-tile .an{margin-top:7px;font:700 13px var(--disp);letter-spacing:.01em}
+.ability-tile .ad{margin-top:5px;color:var(--muted);font-size:10.5px;line-height:1.5}
+.ability-tile .ap{display:block;margin-top:9px;padding-top:7px;border-top:1px solid var(--line);color:var(--green);font:700 9px var(--mono)}
+@media(max-width:1180px){.ability-grid{grid-template-columns:repeat(3,minmax(0,1fr))}}
+@media(max-width:780px){.ability-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:480px){.ability-grid{grid-template-columns:1fr}}
+
 /* charts */
 .cwrap{position:relative}
 .chart{width:100%;display:block}
@@ -1467,9 +1480,37 @@ function renderEdgeQuality(){
   return h+'</div></section>';
 }
 function edgeQualityCard(){return renderEdgeQuality();}
+function abilityTile(group,name,description,proof,href,crypto=false){
+  const body='<div class="ak">'+esc(group)+'</div><div class="an">'+esc(name)+'</div><div class="ad">'+esc(description)+'</div><span class="ap">'+esc(proof)+'</span>';
+  return href?'<a class="ability-tile'+(crypto?' crypto':'')+'" href="'+href+'">'+body+'</a>'
+    :'<div class="ability-tile'+(crypto?' crypto':'')+'">'+body+'</div>';
+}
+function capabilityCatalog(){
+  const abilities=[
+    ['Observe','Market perception','Allowlisted discovery, public context, identity normalization, provenance, freshness, deduplication, and explicit abstention.','observation ledger · source health','#/glossary',false],
+    ['Crypto · loops','Paper twin + horizon evidence','DummyCryptoPaperTwin (5-minute) and DummyCryptoHorizonEvidence (10-minute) preserve asset × timeframe × strategy evidence.','2 named loops · zero capital authority','#/charts',true],
+    ['Crypto · visualize','Multi-timeframe research charts','BTC, ETH, and SOL closed candles across 15m, 1h, 4h, 1d, and 1w with deterministic indicators and pattern markers.','immutable Market Observer bundles','#/charts',true],
+    ['Sports · model','Seven-league intelligence','History, play-by-play, power ratings, scoring distributions, live state, props, and league-specific specialists.','point-in-time and walk-forward','#/scope/sports/mlb',false],
+    ['Forecast','Probability engines','Market anchors, statistical kernels, simulations, and attributed specialist forecasts remain separately scored.','schema-bound forecasts','#/scope/crypto/btc',false],
+    ['Council','Model Arsenal + dissent','Four exact model roles and vertical specialists preserve disagreement behind stored redacted proof and paid-call gates.','zero automatic influence','#/arsenal',false],
+    ['Calibrate','Trust + uncertainty','Brier, log loss, ECE/MCE, debiasing, contested scoring, scope trust, and uncertainty intervals drive fusion.','settled evidence only','#/scope/crypto/btc',false],
+    ['Evaluate','Walk-forward + backtests','Temporal folds, clustered bootstrap, fees, liquidity, CLV, partial fills, and negative controls test claims.','predict before update','#/scope/sports/nba',false],
+    ['Allocate','Portfolio construction','Evidence-adjusted edge, settlement velocity, candidate splitting, correlation limits, quarter-Kelly, and stage ladders divide one bounded pot.','grant ≤ ask · Σ grants ≤ pot','#/glossary',false],
+    ['Constrain','Risk + execution firewall','Drawdown, cluster, price, liquidity, TTL, session, credential, sealed-cap, proof-lock, and LIMIT-only gates can only shrink intent.','code cannot self-authorize','#/glossary',false],
+    ['Memory','Settlement + audit memory','Orders, fills, cancels, outcomes, corrections, account snapshots, and promotion dossiers remain separately attributable.','append-only truth + corrections','#/glossary',false],
+    ['Learn','Autoresearch + evolution','Strategy mining, tuning, quality-diversity search, crossover, ablation, chaos, and fragility produce challengers.','observational until promoted','#/glossary',false],
+    ['Reflect','Metacognition + self-scout','Film room, recruiting, matchup lens, top-threat analysis, no-edge maps, and development tracking challenge the organism itself.','diagnosis cannot promote itself','#/glossary',false],
+    ['Operate','Fleet reliability','Watchdog, healer, readiness, snapshots, retention, prune, vacuum, and allowlisted rotation isolate failures.','45 independent retry boundaries','#/glossary',false],
+    ['Expose','Operator experience','Overview, scoped diagnostics, charts, Arsenal, glossary, command palette, themes, and desktop outcome notifications are read-only.','loopback GET · no mutation','#/charts',false],
+    ['Integrate','Observer MCP','Candles, snapshots, indicators, patterns, charts, network status, and source health stay provider-neutral and authority-free.','read-only tools · false authority','#/charts',false],
+  ];
+  return '<section class="ability-catalog" aria-label="Complete capability catalog"><div class="section-head"><h2>All abilities</h2><p>Public-release catalog · research, operations, and authority stay separate</p></div><div class="ability-grid">'
+    +abilities.map(a=>abilityTile(...a)).join('')+'</div></section>';
+}
 function overviewView(){
   const o=STATE.overview;
   if(!o||o.error)return topbar('Overview','live Kalshi account & execution control')
+    +capabilityCatalog()
     +'<div class="ops-intel-grid">'+systemHealthCard()+edgeQualityCard()+'</div>'+skeleton();
   const account=o.live_account||{},controls=o.live_controls||(STATE.status&&STATE.status.live_controls)||{};
   const accountAvailable=Number.isInteger(account.balance_cents)&&!account.invalid;
@@ -1501,6 +1542,7 @@ function overviewView(){
       :'<b>'+esc(controls.blocker||'DEFAULT_DISABLED')+'</b>. Paper/shadow results cannot unlock or block LIVE; only the explicit live-control contracts can change this state.')+'</span></div>';
   h+='<div class="card reveal" style="margin-bottom:var(--s3)"><h3>Paper history retired <span class="r">RETIRED_NON_AUTHORITATIVE</span></h3>'
     +'<div class="sub" style="color:var(--muted)">Paper bankroll, paper P&amp;L, and paper-result promotion gates were removed from this operator view and from live authority. Raw ledger/history remains preserved for audit; it is not rewritten or deleted.</div></div>';
+  h+=capabilityCatalog();
   h+='<div class="ops-intel-grid">'+systemHealthCard()+edgeQualityCard()+'</div>';
   h+=tierPerformanceCard();
   h+='<section id="readiness"><div class="section-head"><h2>Live control contract</h2><p>Local checks only · no broker contact</p></div>';
@@ -1855,6 +1897,9 @@ function cryptoResearchView(){
   }
   const indicators=chartIndicators(bundle),patterns=Array.isArray(bundle.patterns)?bundle.patterns:[];
   const latestRefresh=d.latest_refresh;
+  const syntheticDemo=String((d.source&&d.source.provider)||'').startsWith('dummy-synthetic-release-demo');
+  if(syntheticDemo)h+='<div class="observer-banner reveal" style="margin-bottom:var(--s3);border-color:var(--amber)"><div><b>Synthetic release demo — not market data or market evidence.</b> '
+    +'These deterministic candles exercise the real artifact-only renderer. They carry no forecast, execution, allocation, promotion, or trading authority.</div></div>';
   h+='<section class="card reveal" style="margin-bottom:var(--s3)"><h3>'+esc(c.asset)+' / USD · '+esc(c.timeframe)
     +' <span class="r">'+observerStatusBadge(d)+(d.serving_last_complete?' last complete':' latest observation')+'</span></h3>';
   if(latestRefresh)h+='<div class="observer-banner" style="margin-bottom:10px"><div><b>Latest refresh '+esc(latestRefresh.status)+'.</b> '

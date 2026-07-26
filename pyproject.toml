@@ -1,6 +1,10 @@
+[build-system]
+requires = ["setuptools>=75,<81"]
+build-backend = "setuptools.build_meta"
+
 [project]
 name = "dummy"
-version = "0.1.0"
+version = "1.0.0"
 requires-python = ">=3.11"
 # Floor AND ceiling on every runtime dependency: floors state what the code
 # uses, ceilings stop an unattended `pip install -U` from pulling a major

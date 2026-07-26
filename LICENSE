@@ -1,20 +1,26 @@
+Dummy Public Source License 1.0
+
 Copyright (c) 2026 ObtuseAI. All rights reserved.
 
-This software and all associated specifications, documentation, models, data,
-and artifacts (the "Software") are the proprietary and confidential property of
-ObtuseAI. The Software is made available inside the private ObtuseAI GitHub
-organization for internal, owner-authorized use only.
+Dummy's source code, documentation, and static showcase are published for
+public inspection, security review, and evaluation of the system's design.
+This public-source release is not an open-source distribution.
 
-No license or right to use, copy, modify, merge, publish, distribute,
-sublicense, or sell any part of the Software is granted, whether express or
-implied, without the prior written permission of ObtuseAI. Access to this
-repository does not constitute or imply any such permission.
+No license or right to use, copy, modify, merge, distribute, sublicense, sell,
+host, operate, or create derivative works from the Software is granted, whether
+express or implied, except for the limited rights required to view this
+repository and use GitHub's repository features under the GitHub Terms of
+Service. Any additional use requires prior written permission from ObtuseAI.
 
-This repository supports real-money trading research and must remain strictly
-proprietary and private. It may not be published, forked publicly, mirrored,
-released as source, packaged, or described as open source. No file in this
-repository is open source unless a later written decision by ObtuseAI expressly
-applies a specific license to that file.
+Public visibility does not grant trading, execution, broker, credential,
+capital, data-provider, or model-provider authority. The Software includes
+research and real-money trading control paths; operators remain solely
+responsible for law, regulation, provider terms, credentials, risk, and every
+external authorization.
+
+Third-party components remain governed by their own licenses and notices.
+Nothing in this license limits rights granted directly by those third-party
+licenses.
 
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
 IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
