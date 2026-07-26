@@ -2,7 +2,7 @@
 
 <p align="center">
   <strong>Evidence-gated prediction-market intelligence for crypto &amp; sports.</strong><br>
-  An autonomous organism that gathers point-in-time public evidence, calibrates
+  A governed research system that gathers point-in-time public evidence, calibrates
   competing forecasts, earns every source its trust from settled outcomes, and
   explains and records each paper decision in an auditable ledger.
 </p>
@@ -11,7 +11,7 @@
   <img src="https://img.shields.io/badge/python-3.11%20%7C%203.12%20%7C%203.14-4b8bbe" alt="Python 3.11, 3.12, 3.14">
   <img src="https://img.shields.io/badge/tests-5k%2B%20collected-2ea44f" alt="More than 5,000 maintained tests collected">
   <img src="https://img.shields.io/badge/release-v1.0.0-d4a72c" alt="Public release v1.0.0">
-  <img src="https://img.shields.io/badge/autonomous%20loops-45-3b7dd8" alt="45 autonomous loops">
+  <img src="https://img.shields.io/badge/research%20loops-45-3b7dd8" alt="45 governed research loops">
   <img src="https://img.shields.io/badge/mode-SHADOW%20·%20paper-1f9d55" alt="Shadow paper mode">
   <img src="https://img.shields.io/badge/promotion%20to%20capital-human--gated-e0a100" alt="Human-gated">
   <img src="https://img.shields.io/badge/execution-fail--closed-c0392b" alt="Fail-closed">
@@ -49,6 +49,24 @@
 </p>
 
 ---
+
+## Product truth
+
+| Contract | Current public state |
+| --- | --- |
+| **Portfolio role** | **Prediction-Market Intelligence** — calibrated forecasting, paper twins, settlement learning, and human-gated authority across crypto and sports. |
+| **Maturity** | **Public-source research release** |
+| **Engineering evidence baseline** | [`caffe3db`](https://github.com/ObtuseAI/dummy/commit/caffe3db1767847b70ee5f2cc3a5b7089fe693a8) · configured [tests](https://github.com/ObtuseAI/dummy/actions/workflows/tests.yml), supply-chain workflow, and [live product presentation](https://obtuseai.github.io/dummy/) |
+| **Proved now** | The public release implements point-in-time evidence intake, competing forecasts, calibration, settlement grading, paper allocation, risk gates, replay, and an artifact-backed operator board. |
+| **Authority ceiling** | Paper-only and human-gated. No forecast, model vote, dashboard state, or research loop has capital, credential, broker, deployment, or execution authority. |
+| **Clean demonstration** | Use the [operator quickstart](#operator-quickstart) or inspect the hosted presentation and committed artifact views. |
+| **Known limit** | Current launch status is `NO-GO`: elapsed retention, backup, canary, grading, execution-policy, and kill-drill evidence remain incomplete. Public statistics must remain bound to their named data and commit. |
+
+**Designed for:** prediction-market, sports, and crypto research teams that need forecast competition, calibration, settlement learning, and risk firewalls to remain inspectable.
+
+[Explore the ObtuseAI portfolio](https://github.com/ObtuseAI) ·
+[Open the live presentation](https://obtuseai.github.io/dummy/) ·
+[Start a technical conversation](https://github.com/ObtuseAI/dummy/issues)
 
 > **Current launch status: NO-GO.** The hardened code path is implemented, but
 > live operations still fail the retention/WAL/deadline gates and lack the
