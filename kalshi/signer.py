@@ -5,12 +5,16 @@ from pathlib import Path
 from cryptography.hazmat.primitives import serialization, hashes
 from cryptography.hazmat.primitives.asymmetric import padding
 
+_KALSHI_PRODUCTION_ORIGIN = "https://external-api.kalshi.com"
+_KALSHI_PRODUCTION_VERSION = "trade-api/v2"
+
+
 def _kalshi_base() -> str:
-    return os.environ.get("KALSHI_API_BASE", "https://api.elections.kalshi.com").rstrip("/")
+    return _KALSHI_PRODUCTION_ORIGIN
 
 
 def _kalshi_version() -> str:
-    return os.environ.get("KALSHI_API_VERSION", "trade-api/v2").strip("/")
+    return _KALSHI_PRODUCTION_VERSION
 
 
 # Backward-compatible module-level aliases for code that reads them at import time.

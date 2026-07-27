@@ -11,10 +11,13 @@ from core.ontology import OrderBook, OrderBookLevel
 from kalshi.signer import sign_request
 from kalshi.error_classifier import classify
 from kalshi.rate_limiter import KalshiRateLimiter
+from kalshi.strict_json import load_strict_json_response
 from core.logger import logger
 
 _REQUEST_TIMEOUT_SECONDS = 10
 _REQUEST_OUTER_TIMEOUT_SECONDS = 10
+_KALSHI_PRODUCTION_ORIGIN = "https://external-api.kalshi.com"
+_KALSHI_PRODUCTION_VERSION = "trade-api/v2"
 
 # Raw write methods are transport primitives, not public execution surfaces.
 # The identity token is deliberately private and is presented only by the
@@ -22,6 +25,16 @@ _REQUEST_OUTER_TIMEOUT_SECONDS = 10
 _CENTRAL_FIREWALL_SUBMIT_CAPABILITY = object()
 
 _READ_ONLY_HTTP_METHODS = frozenset({"GET", "HEAD", "OPTIONS"})
+
+
+class _OneShotMutationPermit:
+    """Opaque, client-owned permit consumed by exactly one mutation attempt."""
+
+    __slots__ = ("method", "path")
+
+    def __init__(self, method: str, path: str) -> None:
+        self.method = method
+        self.path = path
 
 
 def _canonical_path_segments(path: str) -> tuple[str, ...]:
@@ -55,18 +68,37 @@ def _is_order_mutation(method: str, path: str) -> bool:
     segments = _canonical_path_segments(path)
     return any(
         segments[index : index + 2] == ("portfolio", "orders")
+        or segments[index : index + 3]
+        == ("portfolio", "events", "orders")
         for index in range(max(0, len(segments) - 1))
     )
 
 
-# Defaults must stay aligned with kalshi.signer so the signed path prefix and
-# the request URL agree. The legacy v1 host (trading-api.kalshi.com) is dead.
+# The production transport is deliberately not configurable through ambient
+# environment variables. A service environment inherited from another process
+# must never be able to redirect an authenticated request to a different host
+# or change the path prefix after deployment review.
 def _kalshi_base() -> str:
-    return os.environ.get("KALSHI_API_BASE", "https://api.elections.kalshi.com").rstrip("/")
+    return _KALSHI_PRODUCTION_ORIGIN
 
 
 def _kalshi_version() -> str:
-    return os.environ.get("KALSHI_API_VERSION", "trade-api/v2").strip("/")
+    return _KALSHI_PRODUCTION_VERSION
+
+
+def _reject_ambient_endpoint_redirect() -> None:
+    configured_base = os.environ.get("KALSHI_API_BASE")
+    if (
+        configured_base is not None
+        and configured_base.rstrip("/") != _KALSHI_PRODUCTION_ORIGIN
+    ):
+        raise RuntimeError("KALSHI_ENDPOINT_OVERRIDE_REJECTED")
+    configured_version = os.environ.get("KALSHI_API_VERSION")
+    if (
+        configured_version is not None
+        and configured_version.strip("/") != _KALSHI_PRODUCTION_VERSION
+    ):
+        raise RuntimeError("KALSHI_ENDPOINT_OVERRIDE_REJECTED")
 
 
 # Backward-compatible module-level aliases for code that reads them at import time.
@@ -75,10 +107,84 @@ VERSION = _kalshi_version()
 
 
 class KalshiClient:
-    def __init__(self):
-        self.client = httpx.AsyncClient(base_url=f"{_kalshi_base()}/{_kalshi_version()}", timeout=_REQUEST_TIMEOUT_SECONDS)
+    def __init__(self) -> None:
+        _reject_ambient_endpoint_redirect()
+        self.client = httpx.AsyncClient(
+            base_url=f"{_kalshi_base()}/{_kalshi_version()}",
+            timeout=_REQUEST_TIMEOUT_SECONDS,
+            trust_env=False,
+        )
         self.limiter = KalshiRateLimiter()
         self.request_audit_log: deque[dict[str, Any]] = deque(maxlen=1000)
+        self._mutation_lock = asyncio.Lock()
+        self._active_mutation_permit: _OneShotMutationPermit | None = None
+
+    async def prepare_order_mutation(
+        self,
+        method: str,
+        path: str,
+        *,
+        _capability: object | None = None,
+    ) -> object:
+        """Wait for the mutation lane before the caller's final authority check.
+
+        The permit is deliberately opaque and single-use. It serializes writes
+        without placing a limiter wait between the final Core resolution and
+        the socket send.
+        """
+        if (
+            _capability is not _CENTRAL_FIREWALL_SUBMIT_CAPABILITY
+            or not _is_order_mutation(method, path)
+        ):
+            raise PermissionError(
+                "DIRECT_ORDER_SUBMIT_RETIRED_USE_CENTRAL_LIVE_FIREWALL"
+            )
+        await self._mutation_lock.acquire()
+        permit = _OneShotMutationPermit(
+            str(method).strip().upper(),
+            "/" + "/".join(_canonical_path_segments(path)),
+        )
+        self._active_mutation_permit = permit
+        return permit
+
+    def cancel_prepared_order_mutation(
+        self,
+        permit: object,
+        *,
+        _capability: object | None = None,
+    ) -> None:
+        """Release an unused permit when final authority fails closed."""
+        if (
+            _capability is not _CENTRAL_FIREWALL_SUBMIT_CAPABILITY
+            or permit is not self._active_mutation_permit
+        ):
+            raise PermissionError("INVALID_ORDER_MUTATION_PERMIT")
+        self._active_mutation_permit = None
+        self._mutation_lock.release()
+
+    def _consume_mutation_permit(
+        self,
+        permit: object,
+        *,
+        method: str,
+        path: str,
+    ) -> None:
+        normalized_method = str(method).strip().upper()
+        normalized_path = "/" + "/".join(_canonical_path_segments(path))
+        if (
+            permit is not self._active_mutation_permit
+            or not isinstance(permit, _OneShotMutationPermit)
+            or permit.method != normalized_method
+            or permit.path != normalized_path
+        ):
+            raise PermissionError("INVALID_ORDER_MUTATION_PERMIT")
+        # Invalidate before transport so the same object can never authorize a
+        # retry, including after a timeout or an HTTP 429.
+        self._active_mutation_permit = None
+
+    def _finish_mutation_attempt(self) -> None:
+        if self._mutation_lock.locked():
+            self._mutation_lock.release()
 
     def _family_path(self, path: str) -> str:
         """Collapse ticker-specific segments so `/markets/FOO/orderbook` becomes `/markets/{ticker}/orderbook`."""
@@ -88,32 +194,56 @@ class KalshiClient:
         if len(parts) >= 3 and parts[0] == "portfolio" and parts[1] == "orders":
             if not parts[2].startswith("{"):
                 parts[2] = "{order_id}"
+        if (
+            len(parts) >= 4
+            and parts[0] == "portfolio"
+            and parts[1] == "events"
+            and parts[2] == "orders"
+            and not parts[3].startswith("{")
+            and parts[3] != "batched"
+        ):
+            parts[3] = "{order_id}"
         return "/" + "/".join(parts)
 
     def _redacted_summary(self, response: httpx.Response) -> dict[str, Any]:
         summary: dict[str, Any] = {"status_code": response.status_code}
         if response.status_code < 400:
             try:
-                data = response.json()
+                data = load_strict_json_response(response)
                 if isinstance(data, list):
                     summary["count"] = len(data)
                 elif isinstance(data, dict):
                     summary["keys"] = sorted(data.keys())[:10]
-                    summary["count"] = len(data) if isinstance(list(data.values())[0], list) else None
+                    values = list(data.values())
+                    summary["count"] = (
+                        len(data)
+                        if values and isinstance(values[0], list)
+                        else None
+                    )
             except Exception:
                 summary["body_preview"] = response.text[:120]
         else:
             summary["error_preview"] = response.text[:120]
         return summary
 
-    async def _request(self, method: str, path: str, **kwargs):
+    async def _request(
+        self,
+        method: str,
+        path: str,
+        **kwargs: Any,
+    ) -> Any:
         capability = kwargs.pop("_capability", None)
-        if (
-            _is_order_mutation(method, path)
-            and capability is not _CENTRAL_FIREWALL_SUBMIT_CAPABILITY
-        ):
-            raise PermissionError(
-                "DIRECT_ORDER_SUBMIT_RETIRED_USE_CENTRAL_LIVE_FIREWALL"
+        mutation = _is_order_mutation(method, path)
+        mutation_permit = kwargs.pop("_mutation_permit", None)
+        if mutation:
+            if capability is not _CENTRAL_FIREWALL_SUBMIT_CAPABILITY:
+                raise PermissionError(
+                    "DIRECT_ORDER_SUBMIT_RETIRED_USE_CENTRAL_LIVE_FIREWALL"
+                )
+            self._consume_mutation_permit(
+                mutation_permit,
+                method=method,
+                path=path,
             )
         json_body = kwargs.pop("json", "")
         if isinstance(json_body, dict):
@@ -125,35 +255,49 @@ class KalshiClient:
         else:
             body_str = ""
             body_bytes = b""
-        headers = sign_request(method, path, body_str)
-        headers["Content-Type"] = "application/json"
-        async def call():
-            response = await self.client.request(method, path, headers=headers, content=body_bytes, **kwargs)
-            self.request_audit_log.append({
-                "method": method.upper(),
-                "path": path,
-                "path_family": self._family_path(path),
-                "status_code": response.status_code,
-                "status_class": f"{response.status_code // 100}xx",
-                "redacted_summary": self._redacted_summary(response),
-            })
-            if response.status_code >= 400:
-                cat = classify(response.status_code, response.text)
-                logger.error("Kalshi API error", extra={"component": "kalshi_client", "status": response.status_code, "category": cat.value})
-            response.raise_for_status()
-            return response.json()
-        # Hard outer bound so no Kalshi request can block the caller indefinitely.
-        loop = asyncio.get_running_loop()
-        deadline = loop.time() + _REQUEST_OUTER_TIMEOUT_SECONDS - 0.05
-        return await asyncio.wait_for(
-            self.limiter.execute(call, deadline=deadline),
-            timeout=_REQUEST_OUTER_TIMEOUT_SECONDS,
-        )
+        try:
+            headers = sign_request(method, path, body_str)
+            headers["Content-Type"] = "application/json"
 
-    async def get_events(self):
+            async def call() -> Any:
+                response = await self.client.request(method, path, headers=headers, content=body_bytes, **kwargs)
+                self.request_audit_log.append({
+                    "method": method.upper(),
+                    "path": path,
+                    "path_family": self._family_path(path),
+                    "status_code": response.status_code,
+                    "status_class": f"{response.status_code // 100}xx",
+                    "redacted_summary": self._redacted_summary(response),
+                })
+                if response.status_code >= 400:
+                    cat = classify(response.status_code, response.text)
+                    logger.error("Kalshi API error", extra={"component": "kalshi_client", "status": response.status_code, "category": cat.value})
+                response.raise_for_status()
+                return load_strict_json_response(response)
+
+            # A mutation is exactly one socket attempt. Any timeout,
+            # RequestError, or HTTP error is an ambiguous broker outcome and
+            # must be reconciled by deterministic client_order_id, never sent
+            # again. Read-only requests retain bounded retry behavior.
+            if mutation:
+                return await asyncio.wait_for(
+                    call(),
+                    timeout=_REQUEST_OUTER_TIMEOUT_SECONDS,
+                )
+            loop = asyncio.get_running_loop()
+            deadline = loop.time() + _REQUEST_OUTER_TIMEOUT_SECONDS - 0.05
+            return await asyncio.wait_for(
+                self.limiter.execute(call, deadline=deadline),
+                timeout=_REQUEST_OUTER_TIMEOUT_SECONDS,
+            )
+        finally:
+            if mutation:
+                self._finish_mutation_attempt()
+
+    async def get_events(self) -> Any:
         return await self._request("GET", "/events")
 
-    async def get_markets(self, max_pages: int = 10):
+    async def get_markets(self, max_pages: int = 10) -> Any:
         combined: list[Any] = []
         cursor: str | None = None
         first_page: dict[str, Any] | None = None
@@ -183,13 +327,13 @@ class KalshiClient:
         result["pagination_truncated"] = cursor is not None
         return result
 
-    async def get_event(self, ticker: str):
+    async def get_event(self, ticker: str) -> Any:
         return await self._request("GET", f"/events/{ticker}")
 
-    async def get_series(self, ticker: str):
+    async def get_series(self, ticker: str) -> Any:
         return await self._request("GET", f"/series/{ticker}")
 
-    async def get_market(self, ticker: str):
+    async def get_market(self, ticker: str) -> Any:
         return await self._request("GET", f"/markets/{ticker}")
 
     async def get_orderbook(self, ticker: str, depth: int = 10) -> OrderBook:
@@ -258,28 +402,35 @@ class KalshiClient:
             },
         )
 
-    async def get_account(self):
+    async def get_account(self) -> Any:
         return await self._request("GET", "/portfolio/balance")
 
-    async def get_positions(self):
+    async def get_positions(self) -> Any:
         return await self._request("GET", "/portfolio/positions")
 
-    async def get_fills(self):
+    async def get_fills(self) -> Any:
         return await self._request("GET", "/portfolio/fills")
 
-    async def get_orders(self):
+    async def get_orders(self) -> Any:
         return await self._request("GET", "/portfolio/orders")
 
-    async def create_order(self, order: dict, *, _capability: object | None = None):
+    async def create_order(
+        self,
+        order: dict[str, Any],
+        *,
+        _capability: object | None = None,
+        _mutation_permit: object | None = None,
+    ) -> Any:
         if _capability is not _CENTRAL_FIREWALL_SUBMIT_CAPABILITY:
             raise PermissionError(
                 "DIRECT_ORDER_SUBMIT_RETIRED_USE_CENTRAL_LIVE_FIREWALL"
             )
         return await self._request(
             "POST",
-            "/portfolio/orders",
+            "/portfolio/events/orders",
             json=order,
             _capability=_capability,
+            _mutation_permit=_mutation_permit,
         )
 
     async def cancel_order(
@@ -287,12 +438,14 @@ class KalshiClient:
         order_id: str,
         *,
         _capability: object | None = None,
-    ):
+        _mutation_permit: object | None = None,
+    ) -> Any:
         return await self._request(
             "DELETE",
-            f"/portfolio/orders/{order_id}",
+            f"/portfolio/events/orders/{order_id}",
             _capability=_capability,
+            _mutation_permit=_mutation_permit,
         )
 
-    async def close(self):
+    async def close(self) -> None:
         await self.client.aclose()

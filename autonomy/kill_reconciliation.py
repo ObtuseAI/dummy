@@ -63,28 +63,62 @@ def queue_kill_reconciliation(
     *,
     kill_asserted_at: str,
     receipt_path: Path | None = DEFAULT_KILL_RECONCILIATION_PATH,
+    capital_envelope_adapter: Any | None = None,
 ) -> dict[str, Any]:
-    """Record that cancel/reconcile remains required; perform no broker I/O."""
-    receipt = _stamp(
-        {
-            "kill_reconciliation_version": KILL_RECONCILIATION_VERSION,
-            "generated_at": datetime.now(timezone.utc).isoformat(),
-            "kill_asserted_at": kill_asserted_at,
-            "status": "PENDING_CANCEL_AND_RECONCILE",
-            "submission_authority": False,
-            "cancel_authority": False,
-            "broker_contacted": False,
-            "canceled_order_ids": [],
-            "open_orders_after": None,
-            "residual_positions": None,
-            "flat_book_observed": False,
-            "liquidation_attempted": False,
-            "operator_action": (
-                "run the separately authorized central cancellation and "
-                "reconciliation procedure"
-            ),
-        }
-    )
+    """Record that cancel/reconcile remains required; perform no broker I/O.
+
+    A DumbMoney adapter may be supplied to mirror the state into the compact
+    operational journal. This queue path always records ``cancel_authority``
+    false; a capital grant never supplies cancellation authority.
+    """
+    payload: dict[str, Any] = {
+        "kill_reconciliation_version": KILL_RECONCILIATION_VERSION,
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "kill_asserted_at": kill_asserted_at,
+        "status": "PENDING_CANCEL_AND_RECONCILE",
+        "submission_authority": False,
+        "cancel_authority": False,
+        "broker_contacted": False,
+        "canceled_order_ids": [],
+        "open_orders_after": None,
+        "residual_positions": None,
+        "flat_book_observed": False,
+        "liquidation_attempted": False,
+        "operator_action": (
+            "run the separately authorized central cancellation and "
+            "reconciliation procedure"
+        ),
+    }
+    if capital_envelope_adapter is not None:
+        try:
+            parsed_kill_at = datetime.fromisoformat(
+                str(kill_asserted_at).replace("Z", "+00:00")
+            )
+            if parsed_kill_at.tzinfo is None:
+                raise ValueError("kill_asserted_at must be timezone-aware")
+            canonical_kill_at = (
+                parsed_kill_at.astimezone(timezone.utc)
+                .isoformat()
+                .replace("+00:00", "Z")
+            )
+            operational = capital_envelope_adapter.enter_cancel_only(
+                reason="Dummy kill reconciliation queued",
+                kill_asserted_at=canonical_kill_at,
+                cancel_authorized=False,
+            )
+            payload["dumbmoney_operational_event_sha256"] = operational[
+                "event_sha256"
+            ]
+            payload["dumbmoney_operational_status"] = (
+                "CANCEL_AUTHORITY_REQUIRED"
+            )
+        except Exception as exc:
+            # The KILL queue still persists locally; journal failure can only
+            # reduce authority and is exposed for operator reconciliation.
+            payload["dumbmoney_operational_status"] = (
+                f"JOURNAL_FAILED:{type(exc).__name__}"
+            )
+    receipt = _stamp(payload)
     _write_atomic(receipt_path, receipt)
     return receipt
 

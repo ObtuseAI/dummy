@@ -648,6 +648,10 @@ def test_executor_live_accept_and_reject_witness(tmp_path, monkeypatch):
         async def submit(self, request, orderbook, forecast):
             return self._result
 
+    class FakeCapital:
+        def binding_for(self, **_kwargs):
+            return {}
+
     from core.ontology import LiveOrderResult
 
     accepted = LiveOrderResult(
@@ -659,6 +663,7 @@ def test_executor_live_accept_and_reject_witness(tmp_path, monkeypatch):
         kill_path=tmp_path / "KILL",
         risk_state_path=brain.state_path,
         exchange_status_fn=lambda: {"exchange_active": True, "trading_active": True},
+        capital_envelope_adapter=FakeCapital(),
     )
     monkeypatch.setattr(executor, "_make_firewall", lambda: FakeFirewall(accepted))
     outcome = asyncio.run(executor.execute(decision, market=market))
@@ -672,6 +677,7 @@ def test_executor_live_accept_and_reject_witness(tmp_path, monkeypatch):
         SessionMode.LIVE, session_path=session, kill_path=tmp_path / "KILL",
         risk_state_path=brain.state_path,
         exchange_status_fn=lambda: {"exchange_active": True, "trading_active": True},
+        capital_envelope_adapter=FakeCapital(),
     )
     monkeypatch.setattr(executor2, "_make_firewall", lambda: FakeFirewall(rejected))
     outcome2 = asyncio.run(executor2.execute(decision, market=market))
@@ -685,6 +691,7 @@ def test_executor_live_accept_and_reject_witness(tmp_path, monkeypatch):
         SessionMode.LIVE, session_path=session, kill_path=tmp_path / "KILL",
         risk_state_path=brain.state_path,
         exchange_status_fn=lambda: {"exchange_active": True, "trading_active": True},
+        capital_envelope_adapter=FakeCapital(),
     )
     monkeypatch.setattr(executor3, "_make_firewall", lambda: FakeFirewall(local))
     outcome3 = asyncio.run(executor3.execute(decision, market=market))

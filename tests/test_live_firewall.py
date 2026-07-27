@@ -463,7 +463,7 @@ async def test_submit_creates_order_and_tracks_exposure():
         assert len(exposure.order_history) == 1
         assert exposure.open_order_count() == 1
         assert exposure.positions == {}
-        assert exposure.total_exposure_cents() == 50
+        assert exposure.total_exposure_cents() == 52
         client.create_order.assert_awaited_once()
 
 

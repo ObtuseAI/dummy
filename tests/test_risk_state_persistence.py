@@ -2,6 +2,12 @@
 
 from __future__ import annotations
 
+import json
+import threading
+from concurrent.futures import ThreadPoolExecutor
+
+import pytest
+
 from core.kalshi_market_validator import validate_ticker_shape
 from core.ontology import CapConfig, Position
 from core.state import DummyState
@@ -34,6 +40,71 @@ def test_daily_realized_loss_persists_and_is_idempotent(tmp_path):
     assert DummyState(persist=True, state_path=path).daily_loss_cents == 150
 
 
+def test_concurrent_stale_states_merge_daily_losses(tmp_path):
+    path = tmp_path / "risk_state.json"
+    first = DummyState(persist=True, state_path=path)
+    second = DummyState(persist=True, state_path=path)
+    barrier = threading.Barrier(2)
+
+    def record(state: DummyState, loss: int, settlement_id: str) -> bool:
+        barrier.wait(timeout=5)
+        return state.record_realized_pnl(
+            -loss,
+            settlement_id=settlement_id,
+        )
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        results = [
+            future.result()
+            for future in (
+                executor.submit(record, first, 100, "settlement-a"),
+                executor.submit(record, second, 200, "settlement-b"),
+            )
+        ]
+
+    assert results == [True, True]
+    reloaded = DummyState(persist=True, state_path=path)
+    assert reloaded.daily_loss_cents == 300
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    assert payload["processed_settlement_ids"] == [
+        "settlement-a",
+        "settlement-b",
+    ]
+
+
+def test_stale_risk_verifier_cannot_erase_kill_or_newer_loss(tmp_path):
+    path = tmp_path / "risk_state.json"
+    stale = DummyState(persist=True, state_path=path)
+    writer = DummyState(persist=True, state_path=path)
+
+    assert writer.record_realized_pnl(
+        -125,
+        settlement_id="settlement-a",
+    )
+    assert writer.enable_kill_switch("operator stop")
+    assert stale.verify_persistence() is True
+
+    reloaded = DummyState(persist=True, state_path=path)
+    assert reloaded.kill_switch.active is True
+    assert reloaded.kill_switch.reason == "operator stop"
+    assert reloaded.daily_loss_cents == 125
+
+
+def test_stale_kill_clear_cannot_clear_newer_reassertion(tmp_path):
+    path = tmp_path / "risk_state.json"
+    initial = DummyState(persist=True, state_path=path)
+    assert initial.enable_kill_switch("first stop")
+    stale = DummyState(persist=True, state_path=path)
+    writer = DummyState(persist=True, state_path=path)
+    assert writer.enable_kill_switch("newer stop")
+
+    assert stale.disable_kill_switch() is False
+
+    reloaded = DummyState(persist=True, state_path=path)
+    assert reloaded.kill_switch.active is True
+    assert reloaded.kill_switch.reason == "newer stop"
+
+
 def test_corrupt_daily_loss_state_is_not_treated_as_zero(tmp_path):
     path = tmp_path / "risk_state.json"
     path.write_text("{", encoding="utf-8")
@@ -60,8 +131,8 @@ def test_exposure_persists_both_sides_without_overwrite(tmp_path):
         ("KXBTC-EVENT", "no"),
     }
     # Filled positions reserve 40c + 60c and the still-open YES order reserves
-    # another 40c. Counting both prevents capital from being double-spent.
-    assert reloaded.total_exposure_cents() == 140
+    # another 40c plus the conservative 2c fee reserve.
+    assert reloaded.total_exposure_cents() == 142
     assert reloaded.open_order_count() == 1
 
     reloaded.remove_open_order("order-1")
@@ -71,6 +142,100 @@ def test_exposure_persists_both_sides_without_overwrite(tmp_path):
     assert set(final.positions) == {("KXBTC-EVENT", "no")}
 
 
+def test_stale_exposure_verifier_cannot_erase_reservation(tmp_path):
+    path = tmp_path / "exposure.json"
+    writer = ExposureTracker(persist=True, state_path=path)
+    stale = ExposureTracker(persist=True, state_path=path)
+
+    assert writer.reserve_order_submission(
+        "order-a",
+        "KXBTC-EVENT",
+        1,
+        40,
+        contract_ticker="KXBTC-EVENT",
+        side="yes",
+    )
+    assert stale.verify_persistence() is True
+
+    reloaded = ExposureTracker(persist=True, state_path=path)
+    assert [
+        order["client_order_id"] for order in reloaded.open_orders
+    ] == ["order-a"]
+
+
+def test_concurrent_exposure_reservations_merge_and_dedupe(tmp_path):
+    path = tmp_path / "exposure.json"
+    first = ExposureTracker(persist=True, state_path=path)
+    second = ExposureTracker(persist=True, state_path=path)
+    barrier = threading.Barrier(2)
+
+    def reserve(
+        tracker: ExposureTracker,
+        client_order_id: str,
+    ) -> bool:
+        barrier.wait(timeout=5)
+        return tracker.reserve_order_submission(
+            client_order_id,
+            "KXBTC-EVENT",
+            1,
+            40,
+            contract_ticker="KXBTC-EVENT",
+            side="yes",
+        )
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        distinct_results = [
+            future.result()
+            for future in (
+                executor.submit(reserve, first, "order-a"),
+                executor.submit(reserve, second, "order-b"),
+            )
+        ]
+    assert distinct_results == [True, True]
+    reloaded = ExposureTracker(persist=True, state_path=path)
+    assert {
+        order["client_order_id"] for order in reloaded.open_orders
+    } == {"order-a", "order-b"}
+    assert reloaded.total_exposure_cents() == 84
+
+    duplicate_first = ExposureTracker(
+        persist=True,
+        state_path=tmp_path / "dedupe.json",
+    )
+    duplicate_second = ExposureTracker(
+        persist=True,
+        state_path=tmp_path / "dedupe.json",
+    )
+    duplicate_barrier = threading.Barrier(2)
+
+    def reserve_duplicate(tracker: ExposureTracker) -> bool:
+        duplicate_barrier.wait(timeout=5)
+        return tracker.reserve_order_submission(
+            "same-order",
+            "KXBTC-EVENT",
+            1,
+            40,
+            contract_ticker="KXBTC-EVENT",
+            side="yes",
+        )
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        duplicate_results = [
+            future.result()
+            for future in (
+                executor.submit(reserve_duplicate, duplicate_first),
+                executor.submit(reserve_duplicate, duplicate_second),
+            )
+        ]
+    assert sorted(duplicate_results) == [False, True]
+    deduped = ExposureTracker(
+        persist=True,
+        state_path=tmp_path / "dedupe.json",
+    )
+    assert len(deduped.open_orders) == 1
+    assert deduped.open_orders[0]["client_order_id"] == "same-order"
+
+
 def test_corrupt_exposure_state_fails_closed(tmp_path):
     path = tmp_path / "exposure.json"
     path.write_text("not-json", encoding="utf-8")
@@ -78,6 +243,52 @@ def test_corrupt_exposure_state_fails_closed(tmp_path):
     tracker = ExposureTracker(persist=True, state_path=path)
 
     assert tracker.state_healthy is False
+
+
+def test_negative_persisted_position_cannot_offset_live_reservations(tmp_path):
+    path = tmp_path / "negative-exposure.json"
+    path.write_text(
+        json.dumps(
+            {
+                "positions": [
+                    {
+                        "market_ticker": "KXBTC-EVENT",
+                        "contract_ticker": "KXBTC-EVENT",
+                        "side": "yes",
+                        "quantity": -10,
+                        "avg_price_cents": 50,
+                        "unrealized_pnl_cents": 0,
+                        "source_ts": None,
+                        "freshness_score": None,
+                    }
+                ],
+                "open_orders": [],
+                "order_history": [],
+                "updated_at": "2026-07-26T22:00:00+00:00",
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    tracker = ExposureTracker(persist=True, state_path=path)
+
+    assert tracker.state_healthy is False
+    assert tracker.total_exposure_cents() == 2**63 - 1
+
+
+def test_position_mutation_rejects_negative_risk() -> None:
+    tracker = ExposureTracker()
+    negative = Position(
+        market_ticker="KXBTC-EVENT",
+        contract_ticker="KXBTC-EVENT",
+        side="yes",
+        quantity=-1,
+        avg_price_cents=50,
+        unrealized_pnl_cents=0,
+    )
+
+    with pytest.raises(ValueError, match="invalid exposure position"):
+        tracker.update_position(negative)
 
 
 def test_blocked_category_matching_is_case_insensitive():

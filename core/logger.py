@@ -38,7 +38,8 @@ class JsonlHandler(logging.Handler):
                 value = repr(value)
             payload[key] = value
         if record.exc_info:
-            payload["exception"] = self.formatException(record.exc_info)
+            formatter = self.formatter or logging.Formatter()
+            payload["exception"] = formatter.formatException(record.exc_info)
         safe = redact(payload)
         with LOG_FILE.open("a") as f:
             f.write(json.dumps(safe, default=str) + "\n")
