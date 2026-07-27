@@ -81,19 +81,16 @@ class KalshiLiveBrokerFirewallAdapter(LiveBrokerFirewallAdapter):
         self.max_order_notional_cents = int(max_order_notional_cents)
         self._attempted = False
 
-        # Use the same defaults as kalshi.signer so the request URL and the
-        # signature prefix stay aligned.
-        self._base = _env("KALSHI_API_BASE") or kalshi.signer.BASE
-        self._version = _env("KALSHI_API_VERSION") or kalshi.signer.VERSION
+        # This retired adapter retains authenticated status reads only. Keep
+        # those reads on the same reviewed production origin and signature
+        # prefix as KalshiClient; ambient service variables are not endpoint
+        # authority.
+        self._base = kalshi.signer.BASE
+        self._version = kalshi.signer.VERSION
 
         self._kalshi = KalshiClient()
         if httpx_client is not None:
             self._kalshi.client = httpx_client
-        else:
-            self._kalshi.client = httpx.AsyncClient(
-                base_url=f"{self._base}/{self._version}".rstrip("/"),
-                timeout=10,
-            )
 
     # ------------------------------------------------------------------
     # Environment / credentials

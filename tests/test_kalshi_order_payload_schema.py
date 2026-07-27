@@ -50,7 +50,7 @@ def test_required_fields_present():
     assert payload["count"] == 1
 
 
-def test_firewall_build_order_uses_side_specific_price():
+def test_firewall_build_order_uses_event_order_v2_fixed_point_wire():
     from core.ontology import LiveOrderRequest
     from live_firewall.firewall import LiveBrokerFirewall
     from live_firewall.exposure_tracker import ExposureTracker
@@ -66,9 +66,14 @@ def test_firewall_build_order_uses_side_specific_price():
         strategy_proof_reference="s",
         forecast_proof_reference="f",
         adapter_name="a",
+        expiration_ts=1_900_000_000,
     )
     order = firewall._build_order(req)
-    assert order["yes_price"] == 12
-    assert "price" not in order
+    assert order["side"] == "bid"
+    assert order["price"] == "0.1200"
+    assert order["count"] == "1.00"
     assert order["client_order_id"] == "prop-1"
-    assert order["type"] == "limit"
+    assert order["time_in_force"] == "good_till_canceled"
+    assert order["post_only"] is True
+    assert order["expiration_time"] == 1_900_000_000
+    assert order["subaccount"] == 0

@@ -19,6 +19,10 @@ ALLOW = FirewallVerdict(allow=True, reason="test gate passed")
 
 def _pass_non_metadata_gates(monkeypatch, firewall: LiveBrokerFirewall) -> None:
     monkeypatch.setattr(
+        "live_firewall.firewall.load_caps",
+        lambda: CapConfig(allowed_markets=["MARKET"]),
+    )
+    monkeypatch.setattr(
         firewall,
         "evaluate",
         AsyncMock(return_value=ALLOW),
@@ -27,6 +31,16 @@ def _pass_non_metadata_gates(monkeypatch, firewall: LiveBrokerFirewall) -> None:
         firewall,
         "_autonomy_risk_verdict",
         lambda request, required=False: ALLOW,
+    )
+    monkeypatch.setattr(
+        firewall,
+        "_net_ev_verdict",
+        lambda request, forecast, caps: ALLOW,
+    )
+    monkeypatch.setattr(
+        firewall,
+        "_model_influence_verdict",
+        lambda request, forecast: ALLOW,
     )
     monkeypatch.setattr(
         firewall,
@@ -69,7 +83,7 @@ async def test_accepted_order_is_reserved_but_not_a_position(monkeypatch) -> Non
     assert exposure.open_order_count() == 1
     assert exposure.open_orders[0]["state"] == "open"
     assert exposure.open_orders[0]["remaining_size"] == 1
-    assert exposure.total_exposure_cents() == 50
+    assert exposure.total_exposure_cents() == 52
     assert len(exposure.order_history) == 1
     client.create_order.assert_awaited_once()
 
@@ -91,11 +105,11 @@ async def test_unknown_transport_keeps_full_conservative_reservation(monkeypatch
 
     assert result.success is False
     assert result.broker_contacted is True
-    assert result.error == "broker_submit_failed:TimeoutError"
+    assert result.error == "AMBIGUOUS_BROKER_OUTCOME:TimeoutError"
     assert exposure.positions == {}
     assert exposure.open_order_count() == 1
     assert exposure.open_orders[0]["state"] == "submit_outcome_unknown"
-    assert exposure.total_exposure_cents() == 50
+    assert exposure.total_exposure_cents() == 52
 
 
 def test_partial_fills_are_cumulative_and_reserve_the_remainder() -> None:
@@ -109,26 +123,26 @@ def test_partial_fills_are_cumulative_and_reserve_the_remainder() -> None:
         side="yes",
     )
     assert exposure.positions == {}
-    assert exposure.total_exposure_cents() == 240
+    assert exposure.total_exposure_cents() == 247
 
     assert exposure.record_cumulative_fill("broker-1", 1, 50) is True
     position = exposure.positions[("MARKET", "yes")]
     assert position.quantity == 1
     assert position.avg_price_cents == 50
     assert exposure.open_orders[0]["remaining_size"] == 3
-    assert exposure.total_exposure_cents() == 50 + 3 * 60
+    assert exposure.total_exposure_cents() == 50 + 3 * 60 + 7
 
     assert exposure.record_cumulative_fill("broker-1", 3, 54) is True
     position = exposure.positions[("MARKET", "yes")]
     assert position.quantity == 3
     assert position.avg_price_cents == 54
     assert exposure.open_orders[0]["remaining_size"] == 1
-    assert exposure.total_exposure_cents() == 3 * 54 + 60
+    assert exposure.total_exposure_cents() == 3 * 54 + 60 + 7
 
     # Replaying the same cumulative witness cannot double count the fill.
     assert exposure.record_cumulative_fill("broker-1", 3, 54) is True
     assert exposure.positions[("MARKET", "yes")].quantity == 3
-    assert exposure.total_exposure_cents() == 3 * 54 + 60
+    assert exposure.total_exposure_cents() == 3 * 54 + 60 + 7
 
     # A witnessed cancel releases only the unfilled remainder.
     assert exposure.record_cumulative_fill(
@@ -141,14 +155,102 @@ def test_partial_fills_are_cumulative_and_reserve_the_remainder() -> None:
 def test_stale_reservation_survives_persistence_reload(tmp_path) -> None:
     state_path = tmp_path / "exposure.json"
     first = ExposureTracker(persist=True, state_path=state_path)
-    assert first.reserve_order_submission("client-1", "MARKET", 2, 49) is True
+    empty_head = first.anchor_head()
+    assert empty_head[0] == 0
+    assert first.reserve_order_submission(
+        "client-1",
+        "MARKET",
+        2,
+        49,
+        contract_ticker="MARKET",
+        side="yes",
+    ) is True
+    reserved_head = first.anchor_head()
+    assert reserved_head[0] == 1
+    assert reserved_head[1] != empty_head[1]
 
     reloaded = ExposureTracker(persist=True, state_path=state_path)
 
     assert reloaded.state_healthy is True
+    assert reloaded.anchor_head() == reserved_head
     assert reloaded.open_order_count() == 1
     assert reloaded.open_orders[0]["state"] == "submitting"
-    assert reloaded.total_exposure_cents() == 98
+    assert reloaded.total_exposure_cents() == 102
+
+
+def test_exposure_anchor_exposes_byte_rollback_as_revision_regression(
+    tmp_path,
+) -> None:
+    state_path = tmp_path / "exposure.json"
+    tracker = ExposureTracker(persist=True, state_path=state_path)
+    assert tracker.reserve_order_submission(
+        "client-1",
+        "MARKET",
+        1,
+        49,
+        contract_ticker="MARKET",
+        side="yes",
+    )
+    earlier_bytes = state_path.read_bytes()
+    earlier_head = tracker.anchor_head()
+    assert tracker.confirm_open_order("client-1", "broker-1")
+    later_head = tracker.anchor_head()
+    assert later_head[0] > earlier_head[0]
+    assert later_head[1] != earlier_head[1]
+
+    state_path.write_bytes(earlier_bytes)
+    rolled_back = ExposureTracker(persist=True, state_path=state_path)
+    assert rolled_back.state_healthy is True
+    assert rolled_back.anchor_head() == earlier_head
+
+
+def test_terminal_reconciliation_is_idempotent_after_restart(tmp_path) -> None:
+    state_path = tmp_path / "exposure.json"
+    first = ExposureTracker(persist=True, state_path=state_path)
+    assert first.reserve_order_submission(
+        "proposal-1",
+        "MARKET",
+        1,
+        50,
+        contract_ticker="MARKET",
+        side="yes",
+    ) is True
+    assert first.confirm_open_order("proposal-1", "broker-1") is True
+    reconciliation_id = "a" * 64
+    assert first.record_cumulative_fill(
+        "proposal-1",
+        1,
+        50,
+        terminal_state="filled",
+        reconciliation_id=reconciliation_id,
+    ) is True
+
+    reloaded = ExposureTracker(persist=True, state_path=state_path)
+    assert reloaded.record_cumulative_fill(
+        "proposal-1",
+        1,
+        50,
+        terminal_state="filled",
+        reconciliation_id=reconciliation_id,
+    ) is True
+    assert reloaded.state_healthy is True
+    assert reloaded.open_order_count() == 0
+    assert reloaded.positions[("MARKET", "yes")].quantity == 1
+
+    settlement_id = "b" * 64
+    assert reloaded.record_position_close(
+        "MARKET",
+        "yes",
+        reconciliation_id=settlement_id,
+    ) is True
+    settled = ExposureTracker(persist=True, state_path=state_path)
+    assert settled.record_position_close(
+        "MARKET",
+        "yes",
+        reconciliation_id=settlement_id,
+    ) is True
+    assert settled.state_healthy is True
+    assert settled.positions == {}
 
 
 @pytest.mark.asyncio

@@ -95,6 +95,8 @@ class Executor:
         exchange_status_fn: Callable[[], dict[str, Any]] | None = None,
         now_fn: Callable[[], float] | None = None,
         execution_policy: ExecutionPolicy | None = None,
+        capital_envelope_adapter: Any | None = None,
+        core_submission_authority: Callable[[], bool] | None = None,
     ) -> None:
         self.mode = mode
         # Typed execution policy (Wave-2 A2/F2; Wave-5 taker path). The default
@@ -131,6 +133,11 @@ class Executor:
         # failed, or malformed status blocks the submit
         # (exchange_status_unavailable_at_submit), as does maintenance/halt.
         self.exchange_status_fn = exchange_status_fn
+        # Optional DumbMoney deny-only capital ceiling. This adapter cannot
+        # replace the session acknowledgement, local risk state, kill switch,
+        # central firewall, or live-submit authority.
+        self.capital_envelope_adapter = capital_envelope_adapter
+        self.core_submission_authority = core_submission_authority
         self._now_fn = now_fn or (lambda: datetime.now(timezone.utc).timestamp())
         # Counter so a refusal is never a silent skip: surfaced on the executor
         # for the daemon/dashboard, and each refusal is also recorded as a
@@ -331,11 +338,17 @@ class Executor:
         from live_firewall.exposure_tracker import get_persistent_exposure_tracker
         from live_firewall.firewall import LiveBrokerFirewall
 
+        if self.capital_envelope_adapter is None:
+            raise RuntimeError(
+                "DumbMoney capital adapter is mandatory for LIVE execution"
+            )
         return LiveBrokerFirewall(
             KalshiClient(),
             get_persistent_exposure_tracker(),
             autonomy_risk_state_path=self.risk_state_path,
             require_autonomy_risk_state=True,
+            capital_envelope_adapter=self.capital_envelope_adapter,
+            core_submission_authority=self.core_submission_authority,
         )
 
     def _risk_state_digest(self) -> str | None:
@@ -545,6 +558,11 @@ class Executor:
     ) -> TradeOutcome:
         if market is None or market.ticker != decision.market_ticker:
             return self._blocked(decision, "live_market_context_missing_or_mismatched")
+        if self.capital_envelope_adapter is None:
+            return self._blocked(
+                decision,
+                "dumbmoney_capital_adapter_required_for_live_execution",
+            )
         try:
             firewall = self._make_firewall()
         except Exception as exc:
@@ -560,6 +578,27 @@ class Executor:
             risk_digest = self._risk_state_digest()
             if risk_digest is None:
                 return self._blocked(decision, "persisted_autonomy_risk_state_unavailable")
+            capital_binding: dict[str, Any] = {}
+            if self.capital_envelope_adapter is not None:
+                from live_firewall.dumbmoney_capital import strategy_binding_hash
+
+                try:
+                    capital_binding = self.capital_envelope_adapter.binding_for(
+                        strategy_hash=strategy_binding_hash(
+                            f"autonomy_strategy_v2:{decision.decision_id}"
+                        ),
+                        passport_hash=strategy_binding_hash(
+                            f"autonomy_forecast:{decision.decision_id}"
+                        ),
+                        authorized_instrument=(
+                            f"event_contract:{decision.market_ticker}"
+                        ),
+                    )
+                except Exception as exc:
+                    return self._blocked(
+                        decision,
+                        f"signed_capital_envelope_unavailable:{type(exc).__name__}",
+                    )
             client = getattr(firewall, "client", None)
             get_orderbook = getattr(client, "get_orderbook", None)
             if not callable(get_orderbook):
@@ -597,6 +636,7 @@ class Executor:
                 "risk_state_sha256": risk_digest,
                 "risk_snapshot": dict(decision.risk_snapshot),
                 "expiration_ts": expiration_ts,
+                **capital_binding,
             }
             request = LiveOrderRequest(
                 **request_fields,
