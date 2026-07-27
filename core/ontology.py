@@ -60,8 +60,8 @@ class TradeProposalDraft(BaseModel):
 
 class HybridReviewResult(BaseModel):
     task: str
-    primary: dict[str, Any]
-    secondary: dict[str, Any]
+    primary: dict
+    secondary: dict
     agreement_score: Decimal
     confidence_adjustment: Decimal
     verdict: str
@@ -280,15 +280,6 @@ class LiveOrderRequest(BaseModel):
     # LiveBrokerFirewall rejects omission, while every production constructor
     # emits an explicit QUANT_ONLY or MODEL_WEIGHTED attestation.
     model_influence_attestation: Optional[ModelInfluenceAttestation] = None
-    # Optional only for compatibility with the pre-DumbMoney standalone
-    # runtime. When a CapitalEnvelopeAdapter is installed at the central
-    # firewall, all five fields become mandatory and are revalidated at the
-    # trusted sink immediately before a durable capital reservation.
-    capital_envelope_id: Optional[str] = None
-    capital_strategy_hash: Optional[str] = None
-    capital_passport_hash: Optional[str] = None
-    capital_promotion_hash: Optional[str] = None
-    capital_fencing_generation: Optional[int] = None
 
 class LiveOrderResult(BaseModel):
     success: bool

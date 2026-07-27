@@ -429,7 +429,6 @@ class PredatorBrain:
             OutcomeKind.FILLED: "filled",
             OutcomeKind.CANCELED: "canceled",
             OutcomeKind.EXPIRED: "expired",
-            OutcomeKind.REJECTED: "rejected",
         }
         for outcome in outcomes:
             order_id = str(outcome.order_id or "").strip()
@@ -437,8 +436,7 @@ class PredatorBrain:
                 continue
             terminal_state = terminal_states.get(outcome.kind)
             if outcome.kind is OutcomeKind.PARTIALLY_FILLED or terminal_state:
-                proposal_id = tracker.client_order_id_for(order_id)
-                persisted = tracker.record_cumulative_fill(
+                tracker.record_cumulative_fill(
                     order_id,
                     int(outcome.fill_count),
                     (
@@ -447,58 +445,6 @@ class PredatorBrain:
                     ),
                     terminal_state=terminal_state,
                 )
-                capital_adapter = getattr(
-                    self.executor, "capital_envelope_adapter", None
-                )
-                witnessed_state = str(
-                    outcome.detail.get("state") or ""
-                ).strip().lower()
-                terminal_witnesses = {
-                    "filled": {"filled", "executed"},
-                    "canceled": {"canceled", "cancelled"},
-                    "expired": {"expired"},
-                    "rejected": {"rejected"},
-                }
-                if (
-                    persisted
-                    and terminal_state is not None
-                    and witnessed_state
-                    in terminal_witnesses.get(terminal_state, set())
-                    and proposal_id
-                    and capital_adapter is not None
-                    and outcome.broker_contacted is True
-                ):
-                    receipt = {
-                        "schema": "dummy.terminal-order-reconciliation.v1",
-                        "terminal_status": terminal_state,
-                        "proposal_id": proposal_id,
-                        "decision_id": outcome.decision_id,
-                        "market_ticker": outcome.market_ticker,
-                        "order_id": order_id,
-                        "fill_count": int(outcome.fill_count),
-                        "fill_price_cents": outcome.fill_price_cents,
-                        "broker_contacted": True,
-                        "outcome_created_at": outcome.created_at,
-                        "detail": dict(outcome.detail),
-                        "local_exposure_projection_persisted": True,
-                    }
-                    try:
-                        capital_adapter.release_from_terminal_reconciliation(
-                            proposal_id=proposal_id,
-                            terminal_status=terminal_state,
-                            reconciliation_receipt=receipt,
-                        )
-                    except Exception:
-                        # Retaining the capital reservation is the fail-closed
-                        # response to a missing/malformed terminal receipt.
-                        logger.exception(
-                            "DumbMoney terminal reservation release failed",
-                            extra={
-                                "component": "reconciliation",
-                                "proposal_id": proposal_id,
-                                "order_id": order_id,
-                            },
-                        )
 
     def _close_position(self, state: RiskState, open_decision: dict[str, Any],
                         result_yes: bool) -> None:
