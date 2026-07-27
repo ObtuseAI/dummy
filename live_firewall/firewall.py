@@ -1,14 +1,12 @@
 import hashlib
-import inspect
 import json
 import os
-import secrets
 from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import datetime, timezone, timedelta
 from decimal import Decimal
 from pathlib import Path
-from typing import Any, Callable, Optional
+from typing import Any, Optional
 from core.state import STATE
 from core.caps_authority import evaluate_caps_authority
 from core.config_loader import load_caps
@@ -32,7 +30,6 @@ from forecasting.model_influence_attestation import (
     verify_model_influence_attestation,
 )
 from forecasting.model_probability_authority import ModelProbabilityAuthorityRegistry
-from live_firewall.dumbmoney_capital import CapitalEnvelopeAdapter
 
 REJECTED_ADAPTERS: set[str] = set()
 
@@ -244,8 +241,6 @@ class LiveBrokerFirewall:
         require_autonomy_risk_state: bool = False,
         require_canary_readiness: bool = False,
         model_authority_registry: ModelProbabilityAuthorityRegistry | None = None,
-        capital_envelope_adapter: CapitalEnvelopeAdapter | None = None,
-        core_submission_authority: Callable[[], bool] | None = None,
     ):
         self.client = kalshi_client
         self.exposure = exposure_tracker
@@ -256,16 +251,6 @@ class LiveBrokerFirewall:
         self.model_authority_registry = (
             model_authority_registry or ModelProbabilityAuthorityRegistry()
         )
-        # Additional deny-only DumbMoney bound. Absence preserves the
-        # standalone Dummy authority model; presence makes a valid signed grant
-        # mandatory without replacing any existing local gate.
-        self.capital_envelope_adapter = capital_envelope_adapter
-        if (
-            core_submission_authority is not None
-            and not callable(core_submission_authority)
-        ):
-            raise TypeError("core_submission_authority must be callable")
-        self.core_submission_authority = core_submission_authority
         self.autonomy_risk_state_path = autonomy_risk_state_path or Path(
             os.environ.get(
                 "DUMMY_AUTONOMY_LIVE_RISK_STATE_PATH",
@@ -458,373 +443,12 @@ class LiveBrokerFirewall:
     def _mandatory_submit_authority(
         self,
         req: LiveOrderRequest,
-        *,
-        reservation_held: bool = False,
-        trusted_orderbook: OrderBook | None = None,
-        forecast: Forecast | None = None,
     ) -> FirewallVerdict:
         """Recheck every non-optional real-submit authority gate."""
-        now = datetime.now(timezone.utc)
-        if (
-            req.expiration_ts is not None
-            and req.expiration_ts <= int(now.timestamp())
-        ):
-            return FirewallVerdict(
-                allow=False,
-                reason="Limit order expiry is not in the future",
-                rejected_by="order_expiry",
-            )
-        if (
-            self.capital_envelope_adapter is not None
-            and req.liquidity_role == "maker"
-            and req.expiration_ts is None
-        ):
-            return FirewallVerdict(
-                allow=False,
-                reason="Maker order lacks exchange-enforced expiration",
-                rejected_by="order_expiry",
-            )
-        if self.capital_envelope_adapter is not None:
-            if self.core_submission_authority is None:
-                return FirewallVerdict(
-                    allow=False,
-                    reason="Current DumbMoney Core control authority is required",
-                    rejected_by="core_command_authority",
-                )
-            try:
-                core_allows = self.core_submission_authority()
-            except Exception:
-                core_allows = False
-            if core_allows is not True:
-                return FirewallVerdict(
-                    allow=False,
-                    reason="DumbMoney Core control authority is not current",
-                    rejected_by="core_command_authority",
-                )
-            if not STATE.refresh_persisted_state():
-                return FirewallVerdict(
-                    allow=False,
-                    reason="Persisted risk/safety state unavailable",
-                    rejected_by="risk_state",
-                )
-            if STATE.kill_switch.active:
-                return FirewallVerdict(
-                    allow=False,
-                    reason="Kill switch active",
-                    rejected_by="kill_switch",
-                )
-            if STATE.emergency_stop.active:
-                return FirewallVerdict(
-                    allow=False,
-                    reason="Emergency stop active",
-                    rejected_by="emergency_stop",
-                )
-            if STATE.persistence_error or not STATE.verify_persistence():
-                return FirewallVerdict(
-                    allow=False,
-                    reason="Persisted daily-loss state unavailable",
-                    rejected_by="daily_loss_state",
-                )
-            if (
-                not self.exposure.state_healthy
-                or not self.exposure.verify_persistence()
-            ):
-                return FirewallVerdict(
-                    allow=False,
-                    reason="Persisted exposure state unavailable",
-                    rejected_by="exposure_state",
-                )
-            caps = load_caps()
-            if STATE.daily_loss_cents >= caps.max_daily_loss_cents:
-                return FirewallVerdict(
-                    allow=False,
-                    reason="Daily loss cap exceeded",
-                    rejected_by="daily_loss_cap",
-                )
-            if reservation_held:
-                order_value = req.price_cents * req.size
-                if order_value > caps.max_single_order_cents:
-                    return FirewallVerdict(
-                        allow=False,
-                        reason="Single order cap exceeded after reservation",
-                        rejected_by="single_order_cap",
-                    )
-                if (
-                    self.exposure.market_exposure_cents(
-                        req.market_ticker
-                    )
-                    > caps.max_market_exposure_cents
-                ):
-                    return FirewallVerdict(
-                        allow=False,
-                        reason="Market exposure cap exceeded after reservation",
-                        rejected_by="market_exposure_cap",
-                    )
-                if (
-                    self.exposure.total_exposure_cents()
-                    > caps.max_total_live_exposure_cents
-                ):
-                    return FirewallVerdict(
-                        allow=False,
-                        reason="Total exposure cap exceeded after reservation",
-                        rejected_by="total_exposure_cap",
-                    )
-                if (
-                    self.exposure.correlated_exposure_cents(
-                        req.market_ticker
-                    )
-                    > caps.max_correlated_exposure_cents
-                ):
-                    return FirewallVerdict(
-                        allow=False,
-                        reason=(
-                            "Correlated exposure cap exceeded after reservation"
-                        ),
-                        rejected_by="correlated_exposure_cap",
-                    )
-                if self.exposure.open_markets() > caps.max_open_markets:
-                    return FirewallVerdict(
-                        allow=False,
-                        reason="Max open markets exceeded after reservation",
-                        rejected_by="open_markets",
-                    )
-                if (
-                    self.exposure.orders_last_hour()
-                    > caps.max_orders_per_hour
-                ):
-                    return FirewallVerdict(
-                        allow=False,
-                        reason="Order frequency cap exceeded after reservation",
-                        rejected_by="frequency_cap",
-                    )
-                if (
-                    self.exposure.open_order_count()
-                    > caps.max_orders_per_hour
-                ):
-                    return FirewallVerdict(
-                        allow=False,
-                        reason=(
-                            "Open order count exceeded after reservation"
-                        ),
-                        rejected_by="open_order_cap",
-                    )
-        if trusted_orderbook is not None:
-            freshness_clocks = [trusted_orderbook.timestamp]
-            if trusted_orderbook.received_at is not None:
-                freshness_clocks.append(trusted_orderbook.received_at)
-            if trusted_orderbook.source_ts is not None:
-                freshness_clocks.append(trusted_orderbook.source_ts)
-            if any(
-                stamp.tzinfo is None
-                or stamp < now - timedelta(seconds=30)
-                or stamp > now + timedelta(seconds=5)
-                for stamp in freshness_clocks
-            ):
-                return FirewallVerdict(
-                    allow=False,
-                    reason="Trusted broker depth expired before submission",
-                    rejected_by="stale_data",
-                )
-            caps = load_caps()
-            if not market_is_allowlisted(req.market_ticker, caps):
-                return FirewallVerdict(
-                    allow=False,
-                    reason="Market not allowlisted at final submit",
-                    rejected_by="market_allowlist",
-                )
-            if (
-                req.side not in {"yes", "no"}
-                or req.size < 1
-                or not 1 <= req.price_cents <= 99
-            ):
-                return FirewallVerdict(
-                    allow=False,
-                    reason="Invalid final limit-order schema",
-                    rejected_by="order_schema",
-                )
-            if (
-                trusted_orderbook.market_ticker != req.market_ticker
-                or trusted_orderbook.contract_ticker != req.contract_ticker
-                or not trusted_orderbook.bids
-                or not trusted_orderbook.asks
-                or any(
-                    level.size <= 0 or not 1 <= level.price <= 99
-                    for level in (
-                        trusted_orderbook.bids + trusted_orderbook.asks
-                    )
-                )
-            ):
-                return FirewallVerdict(
-                    allow=False,
-                    reason="Trusted broker depth failed final schema binding",
-                    rejected_by="context_integrity",
-                )
-            side_bids, side_asks = self._side_book_ladders(
-                req,
-                trusted_orderbook,
-            )
-            if not side_bids or not side_asks:
-                return FirewallVerdict(
-                    allow=False,
-                    reason="Trusted side-specific depth is unavailable",
-                    rejected_by="liquidity",
-                )
-            best_bid = side_bids[0][0]
-            best_ask = side_asks[0][0]
-            spread = best_ask - best_bid
-            total_liquidity = sum(
-                level.size
-                for level in (
-                    trusted_orderbook.bids + trusted_orderbook.asks
-                )
-            )
-            if spread <= 0 or spread > caps.max_spread_cents:
-                return FirewallVerdict(
-                    allow=False,
-                    reason="Trusted spread violates current policy",
-                    rejected_by="spread",
-                )
-            if total_liquidity < caps.min_liquidity:
-                return FirewallVerdict(
-                    allow=False,
-                    reason="Trusted liquidity violates current policy",
-                    rejected_by="liquidity",
-                )
-            if req.liquidity_role == "maker":
-                if not best_bid <= req.price_cents < best_ask:
-                    return FirewallVerdict(
-                        allow=False,
-                        reason="Maker order is not passive at final submit",
-                        rejected_by="execution_role",
-                    )
-            else:
-                executable_size = sum(
-                    size
-                    for price, size in side_asks
-                    if price <= req.price_cents
-                )
-                if (
-                    req.price_cents < best_ask
-                    or executable_size < req.size
-                ):
-                    return FirewallVerdict(
-                        allow=False,
-                        reason="Final taker depth cannot execute the request",
-                        rejected_by="executable_depth",
-                    )
-            if forecast is not None:
-                if (
-                    forecast.market_ticker != req.market_ticker
-                    or forecast.contract_ticker != req.contract_ticker
-                    or forecast.proof_reference
-                    != req.forecast_proof_reference
-                ):
-                    return FirewallVerdict(
-                        allow=False,
-                        reason="Forecast identity changed before final submit",
-                        rejected_by="context_integrity",
-                    )
-                net_ev = self._net_ev_verdict(req, forecast, caps)
-                if not net_ev.allow:
-                    return net_ev
-                if forecast.settlement_risk_score > Decimal("0.8"):
-                    return FirewallVerdict(
-                        allow=False,
-                        reason="Settlement risk too high at final submit",
-                        rejected_by="settlement_risk",
-                    )
-                model_influence = self._model_influence_verdict(
-                    req,
-                    forecast,
-                )
-                if not model_influence.allow:
-                    return model_influence
         risk_verdict = self._autonomy_risk_verdict(req, required=True)
         if not risk_verdict.allow:
             return risk_verdict
-        capital_verdict = self._capital_envelope_verdict(
-            req,
-            reservation_held=reservation_held,
-        )
-        if not capital_verdict.allow:
-            return capital_verdict
         return self.live_authority_verdict()
-
-    def _capital_envelope_verdict(
-        self,
-        req: LiveOrderRequest,
-        *,
-        reservation_held: bool = False,
-    ) -> FirewallVerdict:
-        """Revalidate the optional signed external ceiling.
-
-        The adapter can only reject or further reduce locally permitted risk.
-        It is deliberately evaluated after Dummy's own caps in ``evaluate``;
-        the central sink also calls it from mandatory authority checks so a
-        replaced preflight cannot bypass it.
-        """
-        fields_present = any(
-            value is not None
-            for value in (
-                req.capital_envelope_id,
-                req.capital_strategy_hash,
-                req.capital_passport_hash,
-                req.capital_promotion_hash,
-                req.capital_fencing_generation,
-            )
-        )
-        if self.capital_envelope_adapter is None:
-            if fields_present:
-                return FirewallVerdict(
-                    allow=False,
-                    reason="DumbMoney capital adapter unavailable",
-                    rejected_by="capital_adapter",
-                )
-            return FirewallVerdict(
-                allow=True,
-                reason="Standalone Dummy authority; no external capital adapter",
-            )
-        if not all(
-            value is not None
-            for value in (
-                req.capital_envelope_id,
-                req.capital_strategy_hash,
-                req.capital_passport_hash,
-                req.capital_promotion_hash,
-                req.capital_fencing_generation,
-            )
-        ):
-            return FirewallVerdict(
-                allow=False,
-                reason="Signed DumbMoney capital binding is incomplete",
-                rejected_by="capital_envelope",
-            )
-        try:
-            verdict = self.capital_envelope_adapter.evaluate_request(
-                req,
-                current_daily_loss_cents=max(0, int(STATE.daily_loss_cents)),
-                current_local_total_exposure_cents=(
-                    self.exposure.total_exposure_cents()
-                ),
-                current_local_correlated_exposure_cents=(
-                    self.exposure.correlated_exposure_cents(
-                        req.market_ticker
-                    )
-                ),
-                current_local_open_orders=self.exposure.open_order_count(),
-                current_request_locally_reserved=reservation_held,
-            )
-        except Exception as exc:
-            return FirewallVerdict(
-                allow=False,
-                reason=f"DumbMoney capital state unavailable:{type(exc).__name__}",
-                rejected_by="capital_envelope",
-            )
-        return FirewallVerdict(
-            allow=verdict.allow,
-            reason=verdict.reason,
-            rejected_by=verdict.rejected_by,
-        )
 
     def _model_influence_verdict(
         self,
@@ -989,15 +613,6 @@ class LiveBrokerFirewall:
             return fail("order_schema", "Invalid limit order side, price, or size")
         if req.expiration_ts is not None and req.expiration_ts <= int(datetime.now(timezone.utc).timestamp()):
             return fail("order_expiry", "Limit order expiry is not in the future")
-        if (
-            self.capital_envelope_adapter is not None
-            and req.liquidity_role == "maker"
-            and req.expiration_ts is None
-        ):
-            return fail(
-                "order_expiry",
-                "Maker order lacks exchange-enforced expiration",
-            )
         if not os.environ.get("KALSHI_API_KEY_ID"):
             return fail("secrets", "API key missing")
         allowed = get_allowed_adapter_names()
@@ -1092,15 +707,6 @@ class LiveBrokerFirewall:
             return fail("frequency_cap", "Order frequency cap exceeded")
         if self.exposure.open_order_count() >= caps.max_orders_per_hour:
             return fail("open_order_cap", "Open order count exceeded")
-        # External capital grants are additional ceilings only. Dummy's local
-        # cap, exposure, loss, frequency, and order-count checks above always
-        # run first and can never be widened by the grant.
-        capital_verdict = self._capital_envelope_verdict(req)
-        if not capital_verdict.allow:
-            return fail(
-                capital_verdict.rejected_by or "capital_envelope",
-                capital_verdict.reason,
-            )
         if forecast.settlement_risk_score > Decimal("0.8"):
             return fail("settlement_risk", "Settlement risk too high")
         model_influence_verdict = self._model_influence_verdict(req, forecast)
@@ -1120,94 +726,23 @@ class LiveBrokerFirewall:
         return is_live_submit_armed()
 
     def _build_order(self, req: LiveOrderRequest) -> dict[str, Any]:
-        # Create Order V2 uses one YES-denominated book. Buying NO is an ask
-        # at the complementary YES price. Fixed-point strings are constructed
-        # without binary floating-point conversion.
-        yes_price_cents = (
-            req.price_cents if req.side == "yes" else 100 - req.price_cents
-        )
-        maker = req.liquidity_role == "maker"
+        # trade-api/v2 CreateOrder body: the limit price is side-specific
+        # (yes_price/no_price) and client_order_id is required.
         order: dict[str, Any] = {
             "ticker": req.contract_ticker,
+            "side": req.side,
+            "action": "buy",
+            "type": "limit",
+            "count": req.size,
             "client_order_id": req.proposal_id,
-            "side": "bid" if req.side == "yes" else "ask",
-            "count": f"{req.size}.00",
-            "price": f"0.{yes_price_cents:02d}00",
-            "time_in_force": (
-                "good_till_canceled" if maker else "fill_or_kill"
-            ),
-            "self_trade_prevention_type": "taker_at_cross",
-            "post_only": maker,
-            "cancel_order_on_pause": True,
-            "reduce_only": False,
-            "subaccount": 0,
-            "exchange_index": 0,
         }
-        if maker and req.expiration_ts is not None:
-            order["expiration_time"] = req.expiration_ts
+        if req.side == "no":
+            order["no_price"] = req.price_cents
+        else:
+            order["yes_price"] = req.price_cents
+        if req.expiration_ts is not None:
+            order["expiration_ts"] = req.expiration_ts
         return order
-
-    @staticmethod
-    def _validate_v2_create_response(
-        response: Any,
-        *,
-        request: LiveOrderRequest,
-    ) -> str:
-        """Validate the current Create Order V2 acknowledgement shape."""
-        if not isinstance(response, Mapping):
-            raise ValueError("Create Order V2 response is not an object")
-        required = {"order_id", "fill_count", "remaining_count", "ts_ms"}
-        allowed = required | {
-            "client_order_id",
-            "average_fill_price",
-            "average_fee_paid",
-        }
-        if not required <= set(response) <= allowed:
-            raise ValueError("Create Order V2 response fields mismatch")
-        order_id = response["order_id"]
-        if not isinstance(order_id, str) or not order_id.strip():
-            raise ValueError("Create Order V2 order_id is invalid")
-        client_order_id = response.get("client_order_id")
-        if (
-            client_order_id is not None
-            and client_order_id != request.proposal_id
-        ):
-            raise ValueError(
-                "Create Order V2 client_order_id differs from proposal"
-            )
-        try:
-            fill_count = Decimal(response["fill_count"])
-            remaining_count = Decimal(response["remaining_count"])
-        except Exception as exc:
-            raise ValueError(
-                "Create Order V2 counts are not fixed-point values"
-            ) from exc
-        if (
-            not isinstance(response["fill_count"], str)
-            or not isinstance(response["remaining_count"], str)
-            or not fill_count.is_finite()
-            or not remaining_count.is_finite()
-            or fill_count < 0
-            or remaining_count < 0
-            or fill_count != fill_count.to_integral_value()
-            or remaining_count != remaining_count.to_integral_value()
-            or fill_count + remaining_count > Decimal(request.size)
-        ):
-            raise ValueError("Create Order V2 counts are invalid")
-        ts_ms = response["ts_ms"]
-        if (
-            isinstance(ts_ms, bool)
-            or not isinstance(ts_ms, int)
-            or ts_ms < 1
-        ):
-            raise ValueError("Create Order V2 ts_ms is invalid")
-        # Any immediate fill or canceled remainder needs broker reconciliation
-        # before local open-order state can be finalized.
-        if fill_count != 0 or remaining_count != Decimal(request.size):
-            raise ValueError(
-                "Create Order V2 acknowledgement requires fill reconciliation"
-            )
-        return order_id.strip()
 
     async def _verified_live_compliance_verdict(
         self,
@@ -1425,10 +960,7 @@ class LiveBrokerFirewall:
         # Real submission never inherits relaxed evaluate/rehearsal defaults.
         # Check before authenticated reads, then check again after them so an
         # expiring authority/risk state cannot win a time-of-check race.
-        authority = self._mandatory_submit_authority(
-            req,
-            forecast=forecast,
-        )
+        authority = self._mandatory_submit_authority(req)
         if not authority.allow:
             logger.info(
                 "Live submit blocked by authority",
@@ -1468,10 +1000,7 @@ class LiveBrokerFirewall:
                 proof_reference=req.strategy_proof_reference,
                 broker_contacted=False,
             )
-        authority = self._mandatory_submit_authority(
-            req,
-            forecast=forecast,
-        )
+        authority = self._mandatory_submit_authority(req)
         if not authority.allow:
             return LiveOrderResult(
                 success=False,
@@ -1480,57 +1009,6 @@ class LiveBrokerFirewall:
                 broker_contacted=False,
             )
         order = self._build_order(req)
-        capital_reservation_id: str | None = None
-        existing_submission = self.exposure.submission_record(
-            req.proposal_id
-        )
-        if existing_submission is not None:
-            return LiveOrderResult(
-                success=False,
-                error=(
-                    "EXISTING_SUBMISSION_REQUIRES_BROKER_RECONCILIATION"
-                ),
-                proof_reference=req.strategy_proof_reference,
-                broker_contacted=False,
-            )
-        # Reserve the external envelope budget before the local exposure
-        # reservation. Both are durable and both must succeed. A crash between
-        # them leaves a conservative external reservation that an identical
-        # proposal can resume idempotently; it never creates broker authority.
-        if self.capital_envelope_adapter is not None:
-            try:
-                capital = self.capital_envelope_adapter.reserve_request(
-                    req,
-                    current_daily_loss_cents=max(
-                        0, int(STATE.daily_loss_cents)
-                    ),
-                    current_local_total_exposure_cents=(
-                        self.exposure.total_exposure_cents()
-                    ),
-                    current_local_correlated_exposure_cents=(
-                        self.exposure.correlated_exposure_cents(
-                            req.market_ticker
-                        )
-                    ),
-                    current_local_open_orders=(
-                        self.exposure.open_order_count()
-                    ),
-                )
-            except Exception as exc:
-                return LiveOrderResult(
-                    success=False,
-                    error=f"DUMBMONEY_CAPITAL_RESERVATION_FAILED:{type(exc).__name__}",
-                    proof_reference=req.strategy_proof_reference,
-                    broker_contacted=False,
-                )
-            if not capital.allow:
-                return LiveOrderResult(
-                    success=False,
-                    error=capital.reason,
-                    proof_reference=req.strategy_proof_reference,
-                    broker_contacted=False,
-                )
-            capital_reservation_id = capital.reservation_id
         # Reserve the full LIMIT notional durably before transport. A timeout
         # is an unknown broker outcome, not evidence that no order exists.
         if not self.exposure.reserve_order_submission(
@@ -1541,204 +1019,25 @@ class LiveBrokerFirewall:
             contract_ticker=req.contract_ticker,
             side=req.side,
         ):
-            # The failure may be a concurrent/existing or ambiguously durable
-            # local reservation. Retain the external reservation until broker
-            # reconciliation; absence cannot be proven from a false return.
-            if capital_reservation_id is not None:
-                logger.warning(
-                    "DumbMoney reservation retained after local failure",
-                    extra={
-                        "component": "firewall",
-                        "proposal_id": req.proposal_id,
-                    },
-                )
             return LiveOrderResult(
                 success=False,
                 error="EXPOSURE_RESERVATION_FAILED",
                 proof_reference=req.strategy_proof_reference,
                 broker_contacted=False,
             )
-        from kalshi.client import _CENTRAL_FIREWALL_SUBMIT_CAPABILITY
-
-        mutation_permit: object | None = None
-        prepare_mutation = (
-            getattr(self.client, "prepare_order_mutation")
-            if inspect.getattr_static(
-                self.client,
-                "prepare_order_mutation",
-                None,
-            )
-            is not None
-            else None
-        )
-        cancel_mutation = (
-            getattr(self.client, "cancel_prepared_order_mutation")
-            if inspect.getattr_static(
-                self.client,
-                "cancel_prepared_order_mutation",
-                None,
-            )
-            is not None
-            else None
-        )
-        if callable(prepare_mutation):
-            try:
-                # Any queue/limiter wait happens before the last Core
-                # resolution. The resulting permit authorizes exactly one
-                # socket attempt and cannot be reused after ambiguity.
-                mutation_permit = await prepare_mutation(
-                    "POST",
-                    "/portfolio/events/orders",
-                    _capability=_CENTRAL_FIREWALL_SUBMIT_CAPABILITY,
-                )
-            except Exception as exc:
-                return LiveOrderResult(
-                    success=False,
-                    error=(
-                        "BROKER_MUTATION_PREPARATION_FAILED:"
-                        f"{type(exc).__name__}"
-                    ),
-                    proof_reference=req.strategy_proof_reference,
-                    broker_contacted=False,
-                )
-
-        def release_unused_mutation_permit() -> None:
-            nonlocal mutation_permit
-            if mutation_permit is None or not callable(cancel_mutation):
-                return
-            try:
-                cancel_mutation(
-                    mutation_permit,
-                    _capability=_CENTRAL_FIREWALL_SUBMIT_CAPABILITY,
-                )
-            except Exception:
-                logger.exception(
-                    "Unused broker mutation permit release failed",
-                    extra={
-                        "component": "firewall",
-                        "proposal_id": req.proposal_id,
-                    },
-                )
-            finally:
-                mutation_permit = None
-
-        # Reservation work can cross a short lease or operator-authority
-        # boundary. Recheck at the last synchronous point before broker I/O.
-        # If authority disappeared, retain both durable reservations: no
-        # broker call occurred, but automatically releasing ambiguous
-        # cross-process state could grant capacity to a concurrent proposal.
-        authority = self._mandatory_submit_authority(
-            req,
-            reservation_held=True,
-            trusted_orderbook=trusted_orderbook,
-            forecast=forecast,
-        )
-        if not authority.allow:
-            release_unused_mutation_permit()
-            logger.info(
-                "Live submit blocked after durable reservation",
-                extra={
-                    "component": "firewall",
-                    "proposal_id": req.proposal_id,
-                    "rejected_by": authority.rejected_by,
-                    "reason": authority.reason,
-                },
-            )
-            return LiveOrderResult(
-                success=False,
-                error=authority.reason,
-                proof_reference=req.strategy_proof_reference,
-                broker_contacted=False,
-            )
-        if self.capital_envelope_adapter is not None:
-            if capital_reservation_id is None:
-                release_unused_mutation_permit()
-                return LiveOrderResult(
-                    success=False,
-                    error="DUMBMONEY_CAPITAL_RESERVATION_MISSING",
-                    proof_reference=req.strategy_proof_reference,
-                    broker_contacted=False,
-                )
-            try:
-                claimant_nonce = secrets.token_hex(32)
-                if len(claimant_nonce) != 64:
-                    raise ValueError("dispatch nonce length mismatch")
-                self.capital_envelope_adapter.claim_broker_dispatch(
-                    req,
-                    reservation_id=capital_reservation_id,
-                    order=order,
-                    claimant_nonce=claimant_nonce,
-                )
-            except Exception as exc:
-                release_unused_mutation_permit()
-                logger.error(
-                    "DumbMoney broker dispatch claim failed",
-                    extra={
-                        "component": "firewall",
-                        "proposal_id": req.proposal_id,
-                        "error_type": type(exc).__name__,
-                    },
-                )
-                return LiveOrderResult(
-                    success=False,
-                    error=(
-                        "DUMBMONEY_DISPATCH_CLAIM_FAILED:"
-                        f"{type(exc).__name__}"
-                    ),
-                    proof_reference=req.strategy_proof_reference,
-                    broker_contacted=False,
-                )
-            # The command feed and local safety journals are separate durable
-            # authorities. Recheck after consuming the one-shot dispatch claim
-            # and immediately before transport. A denial leaves the claim and
-            # both reservations intact for broker reconciliation; it never
-            # creates permission to retry the same proposal.
-            authority = self._mandatory_submit_authority(
-                req,
-                reservation_held=True,
-                trusted_orderbook=trusted_orderbook,
-                forecast=forecast,
-            )
-            if not authority.allow:
-                release_unused_mutation_permit()
-                logger.info(
-                    "Live submit blocked after dispatch claim",
-                    extra={
-                        "component": "firewall",
-                        "proposal_id": req.proposal_id,
-                        "rejected_by": authority.rejected_by,
-                        "reason": authority.reason,
-                    },
-                )
-                return LiveOrderResult(
-                    success=False,
-                    error=authority.reason,
-                    proof_reference=req.strategy_proof_reference,
-                    broker_contacted=False,
-                )
         try:
-            create_kwargs: dict[str, Any] = {
-                "_capability": _CENTRAL_FIREWALL_SUBMIT_CAPABILITY,
-            }
-            if mutation_permit is not None:
-                create_kwargs["_mutation_permit"] = mutation_permit
-            resp = await self.client.create_order(order, **create_kwargs)
-            mutation_permit = None
-            if self.capital_envelope_adapter is not None:
-                order_id = self._validate_v2_create_response(
-                    resp,
-                    request=req,
-                )
-            else:
-                order_id = (
-                    resp.get("order", {}).get("order_id")
-                    or resp.get("order_id")
-                )
+            from kalshi.client import _CENTRAL_FIREWALL_SUBMIT_CAPABILITY
+
+            resp = await self.client.create_order(
+                order,
+                _capability=_CENTRAL_FIREWALL_SUBMIT_CAPABILITY,
+            )
+            order_id = resp.get("order", {}).get("order_id") or resp.get("order_id")
             if not order_id:
                 self.exposure.mark_order_outcome_unknown(req.proposal_id)
                 return LiveOrderResult(
                     success=False,
-                    error="AMBIGUOUS_BROKER_OUTCOME:ORDER_ID_MISSING",
+                    error="broker_order_id_missing",
                     proof_reference=req.strategy_proof_reference,
                     broker_contacted=True,
                 )
@@ -1753,9 +1052,6 @@ class LiveBrokerFirewall:
                 broker_contacted=True,
             )
         except Exception as exc:
-            # The permit is consumed before the socket call. A transport
-            # exception, timeout, or HTTP 429 cannot prove non-acceptance.
-            mutation_permit = None
             error_type = type(exc).__name__
             self.exposure.mark_order_outcome_unknown(req.proposal_id)
             logger.error(
@@ -1764,7 +1060,7 @@ class LiveBrokerFirewall:
             )
             return LiveOrderResult(
                 success=False,
-                error=f"AMBIGUOUS_BROKER_OUTCOME:{error_type}",
+                error=f"broker_submit_failed:{error_type}",
                 proof_reference=req.strategy_proof_reference,
                 broker_contacted=True,
             )

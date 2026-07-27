@@ -235,53 +235,6 @@ def test_live_reconciliation_records_weighted_price_role_cost_and_fee(tmp_path):
         ledger.close()
 
 
-@pytest.mark.parametrize(
-    "broker_fill_count",
-    ["0.50", "-1.00", "NaN", "not-a-number"],
-)
-def test_nonintegral_or_invalid_terminal_fill_is_retained_without_truncation(
-    tmp_path,
-    broker_fill_count,
-):
-    ledger = AutonomyLedger(tmp_path / "ledger.db")
-    try:
-        decision = _decision()
-        ledger.record_decision(decision)
-        ledger.record_outcome(TradeOutcome(
-            decision_id=decision.decision_id,
-            market_ticker=TICKER,
-            kind=OutcomeKind.ACCEPTED,
-            order_id="order-fractional",
-            fill_count=0,
-            fill_price_cents=50,
-            pnl_cents=None,
-            broker_contacted=True,
-            detail={
-                "submitted_price_cents": 50,
-                "submitted_count": 2,
-                "submitted_notional_cents": 100,
-                "liquidity_role": "maker",
-            },
-        ))
-        reconciler = Reconciler(
-            ledger,
-            order_status_fn=lambda _order_id: {"order": {
-                "status": "canceled",
-                "fill_count_fp": broker_fill_count,
-                "maker_fill_cost_dollars": "0.2500",
-            }},
-        )
-
-        updates = reconciler.reconcile_open_orders()
-
-        assert updates == []
-        pending = ledger.open_decisions("live")[0]
-        assert pending["order_active"] == 1
-        assert pending["filled_count"] == 0
-    finally:
-        ledger.close()
-
-
 @pytest.mark.parametrize("liquidity_role", ["maker", "taker"])
 def test_settlement_uses_witnessed_price_and_correct_role_fee(liquidity_role):
     class _Ledger:

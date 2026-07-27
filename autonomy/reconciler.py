@@ -9,12 +9,12 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
+import os
 from typing import Any, Callable
 
 from autonomy.fees import kalshi_maker_fee_cents, kalshi_taker_fee_cents
 from autonomy.ledger import AutonomyLedger
 from autonomy.ontology import MarketView, OutcomeKind, TradeOutcome
-from kalshi.strict_json import load_strict_json_response
 
 STALE_ORDER_MINUTES = 45
 
@@ -22,7 +22,6 @@ STALE_ORDER_MINUTES = 45
 # "phantom grading coverage % is not emitted anywhere"). Bump only on a
 # breaking shape change; dashboards read this block off the cycle report.
 PHANTOM_COVERAGE_VERSION = "phantom-coverage-v1"
-_KALSHI_PUBLIC_BASE = "https://external-api.kalshi.com/trade-api/v2"
 
 
 def _series_of(ticker: str) -> str:
@@ -65,25 +64,9 @@ def _whole_cents(amount_dollars: Decimal | None) -> int | None:
 
 
 def _public_base() -> str:
-    """Return the reviewed production endpoint, never an ambient override."""
-    return _KALSHI_PUBLIC_BASE
-
-
-def _public_get(
-    path: str,
-    *,
-    params: dict[str, Any] | None = None,
-    timeout_seconds: float,
-) -> Any:
-    """GET broker truth without inheriting proxy or netrc configuration."""
-    import httpx
-
-    with httpx.Client(
-        base_url=_KALSHI_PUBLIC_BASE,
-        timeout=max(0.1, float(timeout_seconds)),
-        trust_env=False,
-    ) as client:
-        return client.get(path, params=params)
+    base = os.environ.get("KALSHI_API_BASE", "https://api.elections.kalshi.com").rstrip("/")
+    version = os.environ.get("KALSHI_API_VERSION", "trade-api/v2").strip("/")
+    return f"{base}/{version}"
 
 
 def default_fetch_market_result(
@@ -91,36 +74,38 @@ def default_fetch_market_result(
     *,
     timeout_seconds: float = 15.0,
 ) -> dict[str, Any]:
-    response = _public_get(
-        f"/markets/{ticker}",
-        timeout_seconds=timeout_seconds,
+    import httpx
+
+    response = httpx.get(
+        f"{_public_base()}/markets/{ticker}",
+        timeout=max(0.1, float(timeout_seconds)),
     )
     response.raise_for_status()
-    market = load_strict_json_response(response).get("market", {})
+    market = response.json().get("market", {})
     return market if isinstance(market, dict) else {}
 
 
 def default_fetch_settled_page(series_ticker: str, min_close_ts: int,
                                cursor: str | None = None) -> dict[str, Any]:
     """One page of recently settled markets for a series (public GET)."""
+    import httpx
+
     params: dict[str, Any] = {
         "series_ticker": series_ticker, "status": "settled",
         "min_close_ts": min_close_ts, "limit": 200,
     }
     if cursor:
         params["cursor"] = cursor
-    response = _public_get(
-        "/markets",
-        params=params,
-        timeout_seconds=20,
-    )
+    response = httpx.get(f"{_public_base()}/markets", params=params, timeout=20)
     response.raise_for_status()
-    data = load_strict_json_response(response)
+    data = response.json()
     return data if isinstance(data, dict) else {}
 
 
 def default_fetch_trades(ticker: str, min_ts: int, max_ts: int) -> list[dict[str, Any]]:
     """Fetch standard-book public prints for an exact market/time window."""
+    import httpx
+
     collected: list[dict[str, Any]] = []
     cursor: str | None = None
     for _page in range(5):
@@ -130,13 +115,9 @@ def default_fetch_trades(ticker: str, min_ts: int, max_ts: int) -> list[dict[str
         }
         if cursor:
             params["cursor"] = cursor
-        response = _public_get(
-            "/markets/trades",
-            params=params,
-            timeout_seconds=20,
-        )
+        response = httpx.get(f"{_public_base()}/markets/trades", params=params, timeout=20)
         response.raise_for_status()
-        payload = load_strict_json_response(response)
+        payload = response.json()
         rows = payload.get("trades") or []
         if isinstance(rows, list):
             collected.extend(row for row in rows if isinstance(row, dict))
@@ -413,25 +394,11 @@ class Reconciler:
             wrapped = status_payload.get("order")
             status = wrapped if isinstance(wrapped, dict) else status_payload
             state = str(status.get("status", "")).lower()
-            raw_filled = status.get("fill_count_fp")
-            if raw_filled is None or raw_filled == "":
-                raw_filled = status.get("fill_count")
-            if raw_filled is None or raw_filled == "":
-                raw_filled = status.get("filled_count", 0)
-            filled_decimal = _decimal_or_none(raw_filled)
-            # Dummy's position, ledger, and capital units are currently whole
-            # contracts. Never truncate a broker fixed-point fill: 0.50 is
-            # real exposure, not zero. Until every downstream unit supports
-            # fixed point, retain the open order/capital reservation and emit
-            # no terminal fact for any fractional, negative, or malformed
-            # count.
-            if (
-                filled_decimal is None
-                or filled_decimal < 0
-                or filled_decimal != filled_decimal.to_integral_value()
-            ):
-                continue
-            filled = int(filled_decimal)
+            try:
+                filled = int(float(status.get("fill_count_fp") or status.get("fill_count")
+                                   or status.get("filled_count") or 0))
+            except (TypeError, ValueError):
+                filled = 0
             prior_filled = int(open_decision.get("filled_count") or 0)
             created = str(status.get("created_time", ""))
             fill_price, fill_detail = self._broker_fill_evidence(
@@ -447,16 +414,6 @@ class Reconciler:
                     open_decision, OutcomeKind.CANCELED, order_id, filled,
                     {"state": state, **fill_detail}, fill_price,
                 ))
-            elif state == "expired":
-                outcomes.append(self._outcome(
-                    open_decision, OutcomeKind.EXPIRED, order_id, filled,
-                    {"state": state, **fill_detail}, fill_price,
-                ))
-            elif state == "rejected":
-                outcomes.append(self._outcome(
-                    open_decision, OutcomeKind.REJECTED, order_id, filled,
-                    {"state": state, **fill_detail}, fill_price,
-                ))
             elif filled > prior_filled:
                 outcomes.append(self._outcome(
                     open_decision, OutcomeKind.PARTIALLY_FILLED, order_id, filled,
@@ -469,27 +426,7 @@ class Reconciler:
                 ))
             elif state == "resting" and self._is_stale(created) and self.cancel_fn is not None:
                 try:
-                    cancel_payload = self.cancel_fn(order_id)
-                    wrapped_cancel = (
-                        cancel_payload.get("order")
-                        if isinstance(cancel_payload, dict)
-                        else None
-                    )
-                    cancel_status = (
-                        wrapped_cancel
-                        if isinstance(wrapped_cancel, dict)
-                        else cancel_payload
-                    )
-                    confirmed_state = (
-                        str(cancel_status.get("status") or "").lower()
-                        if isinstance(cancel_status, dict)
-                        else ""
-                    )
-                    # A cancel request/204 is not a terminal order witness.
-                    # Retain the order until this response or a later status
-                    # read explicitly reports canceled/cancelled.
-                    if confirmed_state not in {"canceled", "cancelled"}:
-                        continue
+                    self.cancel_fn(order_id)
                     role = str(open_decision.get("liquidity_role") or "maker")
                     reason = (
                         "stale_taker_remainder_auto_cancel"
@@ -497,12 +434,7 @@ class Reconciler:
                     )
                     outcomes.append(self._outcome(
                         open_decision, OutcomeKind.CANCELED, order_id, filled,
-                        {
-                            "state": confirmed_state,
-                            "reason": reason,
-                            **fill_detail,
-                        },
-                        fill_price,
+                        {"reason": reason, **fill_detail}, fill_price,
                     ))
                 except Exception:
                     pass

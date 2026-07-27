@@ -2,9 +2,8 @@ import json
 import os
 from datetime import datetime, timezone
 from pathlib import Path
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
-import httpx
 import pytest
 
 from core import secret_guard
@@ -29,11 +28,9 @@ def mock_sign():
 
 def _mock_response(data):
     m = AsyncMock()
-    m.return_value = httpx.Response(
-        200,
-        json=data,
-        request=httpx.Request("GET", "https://kalshi.invalid/test"),
-    )
+    m.return_value.status_code = 200
+    m.return_value.json = MagicMock(return_value=data)
+    m.return_value.raise_for_status = MagicMock()
     return m
 
 

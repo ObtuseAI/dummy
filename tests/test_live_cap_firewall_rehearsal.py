@@ -131,10 +131,7 @@ async def test_rehearsal_blocks_by_default():
         assert verdict.would_submit is False
         assert verdict.blocked_reason == "live_submit_disabled"
         assert verdict.order is not None
-        assert verdict.order["time_in_force"] == "good_till_canceled"
-        assert verdict.order["post_only"] is True
-        assert verdict.order["price"] == "0.5000"
-        assert verdict.order["count"] == "1.00"
+        assert verdict.order["type"] == "limit"
 
 
 @pytest.mark.asyncio

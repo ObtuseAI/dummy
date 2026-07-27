@@ -45,6 +45,8 @@ def kalshi_env(monkeypatch, rsa_private_key_pem: str) -> dict[str, str]:
     env: dict[str, str] = {
         "KALSHI_API_KEY_ID": "test-key-id",
         "KALSHI_API_PRIVATE_KEY_PEM": rsa_private_key_pem,
+        "KALSHI_API_BASE": "http://kalshi.test",
+        "KALSHI_API_VERSION": "trade-api/v2",
     }
     for name, value in env.items():
         monkeypatch.setenv(name, value)
