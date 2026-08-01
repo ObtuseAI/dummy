@@ -66,6 +66,34 @@ def test_real_client_games_or_raise_raises_while_games_swallows():
     assert raised, "games_or_raise must propagate feed failures"
 
 
+def test_a_failed_games_call_does_not_poison_games_or_raise():
+    """A swallowed failure must not silence a later raising call.
+
+    ``games`` cached its empty result on failure, so the very next
+    ``games_or_raise`` for the same (league, dates) key returned that []
+    without raising -- re-hiding the outage the raising variant exists to
+    expose. The lake ingest now depends on that variant, and forecasting
+    signals call ``games`` on overlapping keys, so the caveat is
+    load-bearing rather than theoretical.
+    """
+    calls = {"n": 0}
+
+    def _dead_fetch(_league, _dates):
+        calls["n"] += 1
+        raise ValueError("network down")
+
+    client = EspnClient(fetch_scoreboard=_dead_fetch)
+    assert client.games("mlb", None) == []
+
+    raised = False
+    try:
+        client.games_or_raise("mlb", None)
+    except ValueError:
+        raised = True
+    assert raised, "a failed fetch must not be cached as an empty slate"
+    assert calls["n"] == 2, "the failure must be re-attempted, not served from cache"
+
+
 def test_active_reflects_scoreboard_window_and_persists(tmp_path):
     espn = _FakeEspn({"mlb"})
     monitor = _monitor(espn, tmp_path)

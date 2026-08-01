@@ -15,6 +15,59 @@ class FakeEspn:
         self.calls.append((league, dates))
         return self.by_league.get(league, [])
 
+    def games_or_raise(self, league, dates=None):
+        self.calls.append((league, dates))
+        return self.by_league.get(league, [])
+
+
+class DeadFeedEspn:
+    """A client whose upstream fetch is broken.
+
+    ``games`` honours its documented swallow-to-empty contract; only
+    ``games_or_raise`` surfaces the failure. A lake ingest that calls the
+    former cannot tell a dead feed from an empty slate.
+    """
+
+    def __init__(self):
+        self.games_calls = 0
+        self.raising_calls = 0
+
+    def games(self, league, dates=None):
+        self.games_calls += 1
+        return []
+
+    def games_or_raise(self, league, dates=None):
+        self.raising_calls += 1
+        raise RuntimeError("upstream 503")
+
+
+def test_a_dead_feed_is_recorded_as_an_error_not_an_empty_slate(tmp_path):
+    """A broken feed must not be logged as a successful zero-row ingest.
+
+    Regression for a silent seven-day outage: the lake took no rows from
+    2026-07-24 onward while every scheduled ingest recorded status "ok"
+    with rows 0, because the swallowing ``games`` turned every transport
+    failure into an empty slate. An in-season league with a dead feed and
+    an in-season league with no fixtures produced byte-identical log rows,
+    so no monitor could tell them apart.
+    """
+    store = SportsHistoryStore(tmp_path / "h.db")
+    client = DeadFeedEspn()
+
+    result = ingest_espn_league(store, client, "mlb")
+
+    assert result["ok"] is False
+    assert result["rows"] == 0
+    assert client.raising_calls == 1, "the ingest must use the raising variant"
+    assert client.games_calls == 0, "the swallowing variant hides transport failure"
+
+    logged = store.conn.execute(
+        "SELECT status, rows FROM ingest_log ORDER BY id DESC LIMIT 1"
+    ).fetchone()
+    assert logged[0] == "error:RuntimeError"
+    assert logged[1] == 0
+    store.close()
+
 
 def _g(gid, league, home, away, status, hs=None, as_=None, date="2025-11-01T00:00Z", won=None,
        home_ml=None, away_ml=None, home_ml_open=None, away_ml_open=None):

@@ -305,7 +305,12 @@ class EspnClient:
         try:
             payload = self.fetch_scoreboard(league, dates)
         except Exception:
-            self._cache[key] = []
+            # Deliberately NOT cached. Caching the empty result made the
+            # failure sticky: the next games_or_raise for the same key
+            # returned it without raising, re-hiding the outage that
+            # variant exists to expose, and an in-cycle retry could never
+            # recover. The swallow-to-empty contract for this call is
+            # unchanged -- only its persistence is.
             return []
         games = parse_scoreboard(league, payload)
         self._cache[key] = games
