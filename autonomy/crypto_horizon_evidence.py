@@ -24,7 +24,7 @@ import time
 import uuid
 from bisect import bisect_right
 from collections import Counter, defaultdict
-from dataclasses import asdict, is_dataclass
+from dataclasses import asdict, is_dataclass, replace as dataclass_replace
 from datetime import datetime, timezone
 from enum import Enum
 from functools import partial
@@ -79,6 +79,42 @@ class PointInTimeViolation(ValueError):
 
 class MalformedCryptoContract(ValueError):
     """Raised when a crypto target has no valid positive settlement boundary."""
+
+
+def _bind_defaulted_signal_birth(
+    signal: Signal,
+    *,
+    generation_started_at: datetime,
+    generation_ended_at: datetime,
+    cutoff: datetime,
+) -> Signal:
+    """Bind a merely-defaulted signal birth to the instant being replayed.
+
+    ``Signal.created_at`` defaults to real wall-clock now, so a source that
+    does not set it stamps every signal with the moment the process happened
+    to run. Replaying a past ``as_of`` then rejects the cycle's own output,
+    which makes historical replay impossible and turns any test with a fixed
+    replay date into a time bomb.
+
+    A birth that lands inside the window spanning ``source.generate`` is that
+    default: it records when the object was constructed, not what information
+    it consumed, and the data a source may read is already bounded separately
+    by the state point-in-time checks. Only such a birth is rebound.
+
+    Anything the source stated deliberately -- before the window, or after it
+    -- is left exactly as declared so the cutoff guard still judges it. That
+    is what stops this from becoming a way to delete the check.
+
+    In live operation ``cutoff`` is the cycle's own now, so rebinding a
+    defaulted birth to it is a no-op in all but sub-second terms.
+    """
+    try:
+        born = _utc(signal.created_at)
+    except Exception:
+        return signal
+    if born < generation_started_at or born > generation_ended_at:
+        return signal
+    return dataclass_replace(signal, created_at=cutoff.isoformat())
 
 
 def _utc(value: datetime | str) -> datetime:
@@ -1896,10 +1932,18 @@ class CryptoHorizonEvidenceMatrix:
                     if not bool(source.applicable(market)):
                         generated[key] = ("NOT_APPLICABLE", None, None)
                         continue
+                    generation_started_at = datetime.now(timezone.utc)
                     signal = source.generate(market)
+                    generation_ended_at = datetime.now(timezone.utc)
                     if signal is None:
                         generated[key] = ("ABSTAINED", None, None)
                         continue
+                    signal = _bind_defaulted_signal_birth(
+                        signal,
+                        generation_started_at=generation_started_at,
+                        generation_ended_at=generation_ended_at,
+                        cutoff=preflight_cutoff,
+                    )
                     self._valid_signal(signal, market)
                     generated[key] = ("EMITTED", signal, None)
                 except Exception as exc:
