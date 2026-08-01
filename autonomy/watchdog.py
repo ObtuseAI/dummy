@@ -693,6 +693,7 @@ def evaluate_watchdog(
     error_streak_threshold: int = DEFAULT_ERROR_STREAK_THRESHOLD,
     kill_path: Path | None = None,
     inventory: list[dict[str, Any]] | None = None,
+    sports_freshness: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Assemble the full watchdog status (pure; writes nothing, fires nothing)."""
     rd = runtime_dir or RUNTIME_DIR
@@ -751,9 +752,18 @@ def evaluate_watchdog(
         if row["failing"] and row["task_name"] != "DummyWatchdog"
     ]
 
+    # Sports DATA freshness, distinct from every task check above. Those read
+    # artifacts; this reads rows. The 2026-07-24 outage wrote a fresh
+    # ingest_log artifact every cycle containing nothing, so artifact-age
+    # checks stayed green for eight days. Injected rather than queried here so
+    # evaluate_watchdog stays pure and unit runs never touch the lake; None
+    # means the caller did not supply it and it contributes nothing.
+    sports_stale = list((sports_freshness or {}).get("stale_leagues") or [])
+
     healthy = not (
         stale_tasks or ledger_over or disk_low or error_streak_alarm
         or kill_present or uncovered_failing or research_stalls
+        or sports_stale
     )
     return {
         "generated_at": datetime.fromtimestamp(now, tz=timezone.utc).isoformat(),
@@ -780,6 +790,8 @@ def evaluate_watchdog(
         "disk_floor_gb": disk_floor_gb,
         "disk_below_floor": disk_low,
         "kill_file_present": kill_present,
+        "sports_ingest_freshness": sports_freshness,
+        "sports_stale_leagues": sports_stale,
     }
 
 

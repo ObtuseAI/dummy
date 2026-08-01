@@ -207,3 +207,51 @@ def test_it_would_have_caught_the_real_outage():
         "the 2020 COVID bubble is one anomalous season, not a season pattern"
     )
     assert result.by_league["ncaamb"]["in_season"] is False
+
+
+def test_a_stale_league_makes_the_watchdog_unhealthy(tmp_path):
+    """Wiring proof: the guard must actually change the fleet verdict.
+
+    A health signal computed and then ignored is the same costume as a test
+    that cannot fail. This asserts the verdict flips, not merely that the
+    field is published.
+    """
+    from autonomy.watchdog import evaluate_watchdog
+
+    freshness = evaluate_sports_ingest_freshness(
+        rows=[
+            {"league": "mlb", "last_received_at": _iso(192),
+             "near_future_fixtures": 0,
+             "historical_games_this_week": 559, "historical_seasons_this_week": 3},
+        ],
+        now=NOW,
+        max_age_hours=24.0,
+    )
+
+    healthy_status = evaluate_watchdog(
+        runtime_dir=tmp_path, tasks=[], inventory=[]
+    )
+    assert healthy_status["healthy"] is True, "baseline must be healthy or this proves nothing"
+
+    degraded = evaluate_watchdog(
+        runtime_dir=tmp_path,
+        tasks=[],
+        inventory=[],
+        sports_freshness=freshness.as_dict(),
+    )
+    assert degraded["healthy"] is False
+    assert degraded["sports_stale_leagues"] == ["mlb"]
+
+
+def test_omitting_freshness_leaves_the_verdict_untouched(tmp_path):
+    """Absent input must not silently degrade health.
+
+    The watchdog runs in contexts with no lake access; a missing signal is
+    not evidence of a problem.
+    """
+    from autonomy.watchdog import evaluate_watchdog
+
+    status = evaluate_watchdog(runtime_dir=tmp_path, tasks=[], inventory=[])
+    assert status["healthy"] is True
+    assert status["sports_stale_leagues"] == []
+    assert status["sports_ingest_freshness"] is None
