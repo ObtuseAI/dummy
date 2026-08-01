@@ -60,6 +60,17 @@ def ingest_boxscores(
         games_done += 1
         if min_interval and i < len(game_ids) - 1:
             sleep(min_interval)
-    store.record_ingest("espn_box", league, None, status="ok", rows=rows,
+    # A run that attempted work and completed none of it is a failure, even
+    # though each individual error was swallowed above so one odd summary
+    # cannot stop the batch. Recording "ok" here hid an eight-day outage:
+    # every fetch raised ModuleNotFoundError under a venv without httpx and
+    # this logged {"games": 0, "errors": 102901, "queued": 102901} as a
+    # success. The error count was already in the payload; nothing read it.
+    # An empty queue stays "ok" -- an already-complete league legitimately
+    # ingests nothing, so the guard keys on attempted-and-all-failed.
+    status = "ok"
+    if game_ids and games_done == 0 and errors:
+        status = f"error:all_{errors}_fetches_failed"
+    store.record_ingest("espn_box", league, None, status=status, rows=rows,
                         http={"games": games_done, "errors": errors, "queued": len(game_ids)})
     return {"games": games_done, "rows": rows, "errors": errors, "queued": len(game_ids)}
