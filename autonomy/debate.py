@@ -1,6 +1,6 @@
 """Exact four-model LLM adjudicator for shortlisted high-EV markets.
 
-Cheap quantitative sources price the whole board. Gemini 3.6 Flash and GPT-5.6
+Cheap quantitative sources price the whole board. GPT-5.6 Terra and GPT-5.6
 Luna handle fast structured first-pass work, Claude Sonnet 5 supplies deep
 strategy synthesis, and GLM 5.2 independently attacks calibration and
 hypotheses. The panel is deliberately deterministic: every directed model must
@@ -32,7 +32,7 @@ DEBATE_RESPONSE_SCHEMA_VERSION = "forecast_opinion_v1"
 DEBATE_AGGREGATION_VERSION = "sealed_r1_peer_r2_bounded_mean_v3"
 
 _HYBRID_ROLES = {
-    "gemini_3_6_flash": "high-volume supplied-data extraction and rapid probability forecaster",
+    "gpt_5_6_terra": "high-volume supplied-data extraction and rapid probability forecaster",
     "gpt_5_6_luna": "low-latency structured forecast and research-only trade-draft screener",
     "claude_sonnet_5": "deep strategy and synthesis reviewer",
     "glm_5_2": "independent adversarial risk, calibration, no-trade, and hypothesis critic",

@@ -34,7 +34,7 @@ OPENROUTER_API_BASE = "https://openrouter.ai/api"
 OPENROUTER_CHAT_ENDPOINT = f"{OPENROUTER_API_BASE}/v1/chat/completions"
 OPENROUTER_KEY_ENV = "OPENROUTER_API_KEY"
 EXACT_PANEL: tuple[tuple[str, str], ...] = (
-    ("gemini_3_6_flash", "google/gemini-3.6-flash"),
+    ("gpt_5_6_terra", "openai/gpt-5.6-terra"),
     ("gpt_5_6_luna", "openai/gpt-5.6-luna"),
     ("claude_sonnet_5", "anthropic/claude-sonnet-5"),
     ("glm_5_2", "z-ai/glm-5.2"),
@@ -47,7 +47,7 @@ DEFAULT_ARTIFACT_PATH = (
 )
 
 _SMOKE_CASES: dict[str, tuple[str, str]] = {
-    "gemini_3_6_flash": (
+    "gpt_5_6_terra": (
         "forecast_opinion",
         "This is a harmless integration smoke test, not a real market decision. "
         "Return only a JSON object with dummy_probability set to 0.50, "
@@ -165,7 +165,7 @@ def _parse_smoke_content(alias: str, content: Any) -> bool:
     reasoning_ok = isinstance(decoded.get("reasoning"), str) and bool(
         decoded["reasoning"].strip()
     )
-    if alias == "gemini_3_6_flash":
+    if alias == "gpt_5_6_terra":
         return (
             probability(decoded.get("dummy_probability"))
             and probability(decoded.get("confidence_score"))

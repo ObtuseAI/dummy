@@ -10,7 +10,7 @@ from autonomy.debate import DebateResult, run_debate
 from autonomy.ontology import MarketView, Vertical
 
 PANEL = (
-    "gemini_3_6_flash",
+    "gpt_5_6_terra",
     "gpt_5_6_luna",
     "claude_sonnet_5",
     "glm_5_2",
@@ -97,7 +97,7 @@ def test_debate_requires_exact_four_directed_models():
         PANEL[:-1],
         (PANEL[0], PANEL[0], PANEL[2], PANEL[3]),
         PANEL + ("unexpected_model",),
-        ("gemini_3_5_flash", "gpt_5_6_terra"),
+        ("terra_3_5_flash", "gpt_5_6_terra"),
     )
     for roster in invalid_rosters:
         router = FakeRouter(dict.fromkeys(roster, 0.7), reals=roster)
@@ -155,7 +155,7 @@ def test_debate_prompts_each_model_with_its_directed_role():
     router = FakeRouter(dict.fromkeys(PANEL, 0.7))
     assert asyncio.run(run_debate(router, _market(), revise=False)) is not None
     prompts = dict(router.prompts)
-    assert "supplied-data extraction and rapid probability" in prompts["gemini_3_6_flash"]
+    assert "supplied-data extraction and rapid probability" in prompts["gpt_5_6_terra"]
     assert "structured forecast and research-only trade-draft" in prompts["gpt_5_6_luna"]
     assert "deep strategy and synthesis reviewer" in prompts["claude_sonnet_5"]
     assert "adversarial risk, calibration, no-trade" in prompts["glm_5_2"]
@@ -185,13 +185,13 @@ def test_debate_mean_is_not_steered_by_self_reported_confidence():
             }), provider=provider_override)
 
     high_low = asyncio.run(run_debate(ConfidenceRouter({
-        "gemini_3_6_flash": (0.70, 1.0),
+        "gpt_5_6_terra": (0.70, 1.0),
         "gpt_5_6_luna": (0.50, 0.01),
         "claude_sonnet_5": (0.60, 0.25),
         "glm_5_2": (0.40, 0.75),
     }), _market(), revise=False))
     low_high = asyncio.run(run_debate(ConfidenceRouter({
-        "gemini_3_6_flash": (0.70, 0.01),
+        "gpt_5_6_terra": (0.70, 0.01),
         "gpt_5_6_luna": (0.50, 1.0),
         "claude_sonnet_5": (0.60, 0.75),
         "glm_5_2": (0.40, 0.25),
@@ -208,7 +208,7 @@ def test_peer_revision_does_not_overwrite_or_hide_round_one_disagreement():
                 probability = 0.60
             else:
                 probability = {
-                    "gemini_3_6_flash": 0.20,
+                    "gpt_5_6_terra": 0.20,
                     "gpt_5_6_luna": 0.90,
                     "claude_sonnet_5": 0.30,
                     "glm_5_2": 0.80,

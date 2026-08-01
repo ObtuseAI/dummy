@@ -230,7 +230,7 @@ def test_self_attested_dossier_without_canonical_artifact_is_rejected(tmp_path):
 def test_superseded_two_model_lineage_cannot_transfer_authority(tmp_path):
     registry, registry_path, artifact_path = _bundle(tmp_path)
     legacy_models = [
-        "google/gemini-3.5-flash",
+        "google/terra-3.5-flash",
         "openai/gpt-5.6-terra",
     ]
     artifact = json.loads(artifact_path.read_text(encoding="utf-8"))

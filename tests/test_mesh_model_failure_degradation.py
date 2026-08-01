@@ -173,7 +173,7 @@ async def test_forecast_lane_success_consumes_provider_budget() -> None:
                 decision=ModelRouteDecision(
                     task=task,
                     provider_name=(
-                        "gemini_3_6_flash"
+                        "gpt_5_6_terra"
                         if task == ModelTask.FORECAST_OPINION
                         else "claude_sonnet_5"
                     ),
