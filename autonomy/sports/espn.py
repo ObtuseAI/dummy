@@ -294,18 +294,37 @@ class EspnClient:
     def __init__(self, fetch_scoreboard: Callable[[str, str | None], dict[str, Any]] | None = None):
         self.fetch_scoreboard = fetch_scoreboard or default_fetch_scoreboard
         self._cache: dict[tuple[str, str | None], list[Game]] = {}
+        self._failures: dict[tuple[str, str | None], Exception] = {}
 
     def clear_cache(self) -> None:
         self._cache.clear()
+        self._failures.clear()
 
     def games(self, league: str, dates: str | None = None) -> list[Game]:
         key = (league, dates)
         if key in self._cache:
             return self._cache[key]
+        if key in self._failures:
+            return []
         try:
             payload = self.fetch_scoreboard(league, dates)
-        except Exception:
-            self._cache[key] = []
+        except Exception as exc:
+            # The failure is remembered, but as a FAILURE -- never as an
+            # empty slate in ``_cache``. Both properties matter and they
+            # used to be in conflict:
+            #
+            #   caching [] gave a circuit breaker (one dead fetch, not one
+            #   per call in a loop over leagues x dates, each paying the
+            #   20s HTTP timeout) but made the failure indistinguishable
+            #   from an offseason, silently including for games_or_raise;
+            #
+            #   caching nothing surfaced the failure but re-hammered a
+            #   down feed on every call.
+            #
+            # Recording it here keeps the breaker for this call's
+            # swallow-to-empty contract while letting games_or_raise below
+            # re-raise the original exception instead of inheriting a lie.
+            self._failures[key] = exc
             return []
         games = parse_scoreboard(league, payload)
         self._cache[key] = games
@@ -316,18 +335,27 @@ class EspnClient:
 
         Callers that must distinguish "no games" from "feed down" (the
         season gate: an empty scoreboard means offseason, a dead feed means
-        keep the last verdict) need the exception. ``games``'s swallow-to-
-        empty contract stays untouched for every forecasting path.
+        keep the last verdict; the history-lake ingest: a zero-row ingest
+        must be logged as an error, not as a successful empty slate) need
+        the exception. ``games``'s swallow-to-empty contract stays
+        untouched for every forecasting path.
 
-        Cache caveat: the two methods share the cache, so a [] cached by a
-        FAILED ``games`` call would be returned here without raising. Today
-        no caller shares a (league, dates) key across both paths (the gate
-        uses its own -7/+21 window), and cycle starts clear the cache.
+        A failure recorded by a prior ``games`` call for the same key is
+        re-raised here rather than served as an empty result, so the two
+        methods can share a key without the swallowing one silencing this
+        one. That sharing is now real: the lake ingest uses this method
+        while forecasting signals call ``games`` on overlapping windows.
         """
         key = (league, dates)
         if key in self._cache:
             return self._cache[key]
-        payload = self.fetch_scoreboard(league, dates)
+        if key in self._failures:
+            raise self._failures[key]
+        try:
+            payload = self.fetch_scoreboard(league, dates)
+        except Exception as exc:
+            self._failures[key] = exc
+            raise
         games = parse_scoreboard(league, payload)
         self._cache[key] = games
         return games

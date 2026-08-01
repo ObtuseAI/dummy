@@ -416,6 +416,103 @@ def test_spot_replay_is_invariant_to_wall_clock_and_binds_event_clock(
     assert results[0][2]["hours_to_close"] == pytest.approx(0.25)
 
 
+class _FixedBirthSource:
+    """A source that stamps ``created_at`` itself instead of defaulting."""
+
+    name = "fixed_birth"
+
+    def __init__(self, created_at: str) -> None:
+        self.created_at = created_at
+
+    def applicable(self, market) -> bool:  # noqa: ANN001
+        return True
+
+    def generate(self, market):  # noqa: ANN001
+        return Signal(
+            source=self.name,
+            market_ticker=market.ticker,
+            probability_yes=0.5,
+            uncertainty=0.1,
+            rationale="fixture",
+            features={},
+            created_at=self.created_at,
+        )
+
+
+class _DefaultBirthSource:
+    """A source that leaves ``created_at`` at the ontology default."""
+
+    name = "default_birth"
+
+    def applicable(self, market) -> bool:  # noqa: ANN001
+        return True
+
+    def generate(self, market):  # noqa: ANN001
+        return Signal(
+            source=self.name,
+            market_ticker=market.ticker,
+            probability_yes=0.5,
+            uncertainty=0.1,
+            rationale="fixture",
+            features={},
+        )
+
+
+def test_a_source_that_declares_a_future_birth_is_still_pit_rejected(tmp_path) -> None:
+    """The guard must survive the replay fix.
+
+    Restamping every generated signal at the cutoff would fix replay by
+    deleting the check. A source that explicitly declares a birth AFTER
+    the as_of cutoff is claiming to have been built from information the
+    cutoff excludes, and must still be refused.
+    """
+    store = CryptoHorizonEvidenceStore(tmp_path / "future.db")
+    source = _FixedBirthSource((AS_OF + timedelta(hours=1)).isoformat())
+    matrix = CryptoHorizonEvidenceMatrix(
+        store=store,
+        hub=_NoFetchHub(),
+        sources=[source],
+        now_fn=lambda: AS_OF,
+    )
+    try:
+        report = matrix.run_cycle([_market()], states={"BTC": _state()}, as_of=AS_OF)
+        attempt = store.attempts(cycle_id=report["cycle_id"])[0]
+    finally:
+        matrix.close()
+
+    assert attempt["status"] == "PIT_REJECTED"
+    assert attempt["error_type"] == "PointInTimeViolation"
+    assert attempt["probability_yes"] is None
+
+
+def test_a_defaulted_signal_birth_is_bound_to_the_replayed_instant(tmp_path) -> None:
+    """A default birth carries no information and must not sink a replay.
+
+    ``Signal.created_at`` defaults to real wall-clock now, so a source
+    that does not set it stamps every signal with the moment the process
+    happened to run. Replaying a past ``as_of`` then rejects its own
+    output -- which is what turned main red once real time passed the
+    hard-coded replay date, and would reject any historical backfill
+    wholesale.
+    """
+    store = CryptoHorizonEvidenceStore(tmp_path / "default.db")
+    matrix = CryptoHorizonEvidenceMatrix(
+        store=store,
+        hub=_NoFetchHub(),
+        sources=[_DefaultBirthSource()],
+        now_fn=lambda: AS_OF + timedelta(days=400),
+    )
+    try:
+        report = matrix.run_cycle([_market()], states={"BTC": _state()}, as_of=AS_OF)
+        attempt = store.attempts(cycle_id=report["cycle_id"])[0]
+    finally:
+        matrix.close()
+
+    assert attempt["status"] != "PIT_REJECTED", attempt["error_type"]
+    assert attempt["probability_yes"] is not None
+    assert datetime.fromisoformat(str(attempt["source_created_at"])) == AS_OF
+
+
 def test_source_and_provenance_share_one_cycle_owned_snapshot(tmp_path) -> None:
     hub = _NoFetchHub()
     forbidden_calls: list[str] = []

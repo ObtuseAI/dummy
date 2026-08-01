@@ -123,10 +123,20 @@ def ingest_espn_league(
     store: SportsHistoryStore, client: Any, league: str, *, dates: str | None = None,
     received_at: str | None = None,
 ) -> dict[str, Any]:
-    """Fetch one league's scoreboard and upsert its games + odds lines."""
+    """Fetch one league's scoreboard and upsert its games + odds lines.
+
+    Uses ``games_or_raise`` deliberately. ``games`` swallows every fetch
+    failure into an empty list, which this function would then record as a
+    successful zero-row ingest -- indistinguishable in ``ingest_log`` from a
+    genuinely empty slate. That is not hypothetical: the lake took no rows
+    from 2026-07-24 onward while every scheduled ingest kept logging status
+    "ok" with rows 0, and the discarded exception was the only evidence of
+    why. The except below already records the failure honestly; it just
+    never had anything to catch.
+    """
     try:
-        games = list(client.games(league, dates))
-    except Exception as exc:  # noqa: BLE001 -- a down feed must not raise
+        games = list(client.games_or_raise(league, dates))
+    except Exception as exc:  # noqa: BLE001 -- a down feed is logged, never raised
         store.record_ingest("espn", league, dates or "recent",
                             status=f"error:{type(exc).__name__}", rows=0, http={})
         return {"rows": 0, "ok": False, "error": str(exc)[:120]}
