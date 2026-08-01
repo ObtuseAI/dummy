@@ -75,6 +75,10 @@ def test_a_failed_games_call_does_not_poison_games_or_raise():
     expose. The lake ingest now depends on that variant, and forecasting
     signals call ``games`` on overlapping keys, so the caveat is
     load-bearing rather than theoretical.
+
+    The breaker must survive too: a down feed is hit once, not once per
+    call, because forecasting signals loop over leagues x date windows and
+    each real fetch pays a 20s HTTP timeout.
     """
     calls = {"n": 0}
 
@@ -90,8 +94,14 @@ def test_a_failed_games_call_does_not_poison_games_or_raise():
         client.games_or_raise("mlb", None)
     except ValueError:
         raised = True
-    assert raised, "a failed fetch must not be cached as an empty slate"
-    assert calls["n"] == 2, "the failure must be re-attempted, not served from cache"
+    assert raised, "a failed fetch must not be served to games_or_raise as an empty slate"
+
+    assert client.games("mlb", None) == []
+    assert calls["n"] == 1, "a down feed must be hit once, not once per call"
+
+    client.clear_cache()
+    assert client.games("mlb", None) == []
+    assert calls["n"] == 2, "clearing the cache must also clear remembered failures"
 
 
 def test_active_reflects_scoreboard_window_and_persists(tmp_path):
