@@ -65,3 +65,56 @@ def test_bad_summary_is_skipped(tmp_path):
                            min_interval=0, sleep=lambda s: None)
     assert res["errors"] == 3 and res["rows"] == 0
     st.close()
+
+
+def test_an_ingest_that_fails_every_fetch_is_not_recorded_as_ok(tmp_path):
+    """A run where nothing succeeded must not be logged as a success.
+
+    Regression for an eight-day silent outage: 19 scheduled tasks ran on a
+    venv with no httpx, so every fetch raised ModuleNotFoundError. The
+    per-item except swallowed each one, and this function still recorded
+    status "ok" -- producing
+        {"games": 0, "errors": 102901, "queued": 102901}
+    with status "ok" on 102,901 consecutive failures. The error count was
+    right there in the payload and nothing acted on it.
+    """
+    st = SportsHistoryStore(tmp_path / "h.db")
+    _seed_games(st)
+
+    def dead_fetch(league, gid):
+        raise RuntimeError("upstream down")
+
+    result = ingest_boxscores(st, league="wnba", fetch_summary=dead_fetch)
+
+    assert result["queued"] == 3
+    assert result["games"] == 0
+    assert result["errors"] == 3
+
+    logged = st.conn.execute(
+        "SELECT status FROM ingest_log ORDER BY id DESC LIMIT 1"
+    ).fetchone()
+    assert logged[0] != "ok", "an all-failed run must not report ok"
+    assert "error" in logged[0]
+    st.close()
+
+
+def test_a_run_with_nothing_queued_still_reports_ok(tmp_path):
+    """An empty work queue is success, not failure.
+
+    The guard above must key on "attempted and all failed", not merely on
+    zero rows -- an already-complete league legitimately ingests nothing.
+    """
+    st = SportsHistoryStore(tmp_path / "h.db")
+
+    def unused_fetch(league, gid):  # pragma: no cover - must never be called
+        raise AssertionError("nothing should be fetched")
+
+    result = ingest_boxscores(st, league="wnba", fetch_summary=unused_fetch)
+
+    assert result["queued"] == 0
+    assert result["errors"] == 0
+    logged = st.conn.execute(
+        "SELECT status FROM ingest_log ORDER BY id DESC LIMIT 1"
+    ).fetchone()
+    assert logged[0] == "ok"
+    st.close()

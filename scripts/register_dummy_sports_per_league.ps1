@@ -19,8 +19,44 @@ param(
     [switch]$WhatIf
 )
 
-# Fallback to a plain python if the desktop venv isn't present.
-if (-not (Test-Path $Python)) { $Python = (Get-Command python).Source }
+# Presence is NOT capability, and assuming it was cost eight days of data.
+#
+# The previous check was `Test-Path $Python`. The default above points at the
+# native desktop app's isolated GUI venv, which exists but holds only PySide6
+# and numpy -- no httpx. So the fallback never fired, all 19 sports tasks were
+# registered against an interpreter that cannot fetch, every ESPN call raised
+# ModuleNotFoundError inside default_fetch_scoreboard, EspnClient.games()
+# swallowed it to an empty list, ingest_espn_league logged "ok" with rows 0,
+# and pythonw.exe exited 0. The lake took zero rows from 2026-07-24 to
+# 2026-08-01 while every layer reported success.
+#
+# Probe what the interpreter can actually DO. pythonw.exe is windowless, so
+# probe its console sibling and keep the original for registration.
+function Test-PythonCanFetch([string]$exe) {
+    if (-not $exe -or -not (Test-Path $exe)) { return $false }
+    $probe = $exe -replace 'pythonw\.exe$', 'python.exe'
+    if (-not (Test-Path $probe)) { $probe = $exe }
+    & $probe -c "import httpx" 2>$null | Out-Null
+    return ($LASTEXITCODE -eq 0)
+}
+
+if (-not (Test-PythonCanFetch $Python)) {
+    $fallback = (Get-Command python -ErrorAction SilentlyContinue).Source
+    # These run unattended on a schedule, so prefer the windowless sibling
+    # when it exists -- otherwise every task flashes a console window.
+    if ($fallback) {
+        $windowless = $fallback -replace 'python\.exe$', 'pythonw.exe'
+        if (Test-Path $windowless) { $fallback = $windowless }
+    }
+    if (-not (Test-PythonCanFetch $fallback)) {
+        throw ("No usable interpreter: '$Python' cannot import httpx and neither " +
+               "can '$fallback'. Registering against either would recreate the " +
+               "silent eight-day outage of 2026-07-24. Pass -Python explicitly.")
+    }
+    Write-Warning "'$Python' cannot import httpx; falling back to '$fallback'."
+    $Python = $fallback
+}
+Write-Host "registering against interpreter: $Python"
 
 $Leagues = @("mlb","wnba","nba","nfl","nhl","ncaaf","ncaamb")
 $Basketball = @("wnba","nba","ncaamb")   # get a boxscore task too (for Four Factors)
