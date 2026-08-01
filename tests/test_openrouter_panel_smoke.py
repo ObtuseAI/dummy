@@ -65,7 +65,7 @@ async def test_live_smoke_calls_each_exact_model_once_and_records_identity(
     requested_models: list[str] = []
 
     response_content = {
-        "google/gemini-3.6-flash": {
+        "openai/gpt-5.6-terra": {
             "dummy_probability": 0.5,
             "confidence_score": 0.1,
             "reasoning": "smoke",
@@ -132,8 +132,14 @@ async def test_live_smoke_fails_closed_on_response_model_mismatch(
 
     def handler(request: httpx.Request) -> httpx.Response:
         body = json.loads(request.content)
+        # Mismatch the FIRST panel entry explicitly. This used to key off
+        # "not openai/", which worked only because the first seat happened
+        # to be a non-OpenAI model; once that seat became an OpenAI one the
+        # trigger silently stopped firing and the test passed for the wrong
+        # reason. Tie it to the panel, not to a vendor prefix.
+        first_panel_model = EXACT_PANEL[0][1]
         response_model = (
-            "unexpected/model" if not body["model"].startswith("openai/") else body["model"]
+            "unexpected/model" if body["model"] == first_panel_model else body["model"]
         )
         return httpx.Response(
             200,

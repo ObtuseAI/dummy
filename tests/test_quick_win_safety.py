@@ -68,7 +68,7 @@ def test_debate_records_observations_without_dead_refusion(monkeypatch, tmp_path
     monkeypatch.setenv("DUMMY_DEBATE_MAX_LOGICAL_CALLS_PER_CYCLE", "8")
 
     providers = (
-        "gemini_3_6_flash",
+        "gpt_5_6_terra",
         "gpt_5_6_luna",
         "claude_sonnet_5",
         "glm_5_2",

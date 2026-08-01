@@ -290,7 +290,7 @@ def test_every_role_routes_to_directed_models():
 
     config = json.loads(Path("configs/model_routing.json").read_text())
     panel = [
-        "gemini_3_6_flash",
+        "gpt_5_6_terra",
         "gpt_5_6_luna",
         "claude_sonnet_5",
         "glm_5_2",
@@ -302,13 +302,13 @@ def test_every_role_routes_to_directed_models():
     assert {
         name: config["provider_configs"][name]["model_name"] for name in panel
     } == {
-        "gemini_3_6_flash": "google/gemini-3.6-flash",
+        "gpt_5_6_terra": "openai/gpt-5.6-terra",
         "gpt_5_6_luna": "openai/gpt-5.6-luna",
         "claude_sonnet_5": "anthropic/claude-sonnet-5",
         "glm_5_2": "z-ai/glm-5.2",
     }
     assert config["default_provider"] == {
-        "forecast_opinion": "gemini_3_6_flash",
+        "forecast_opinion": "gpt_5_6_terra",
         "rapid_forecast": "gpt_5_6_luna",
         "strategy_critique": "claude_sonnet_5",
         "risk_critique": "glm_5_2",

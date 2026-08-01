@@ -258,7 +258,7 @@ def test_model_arsenal_is_primary_read_only_and_authority_separated():
     assert "function modelArsenalSummaryCard()" in body
     assert "Model Arsenal" in body
     assert "/api/model-arsenal" in body
-    assert "google/gemini-3.6-flash" not in body  # roster comes from the local API
+    assert "openai/gpt-5.6-terra" not in body  # roster comes from the local API
     assert "Opening or refreshing it never sends a prompt" in body
     assert "A valid key and 4/4 smoke prove bounded reachability only" in body
     assert "Evidence authority" in body

@@ -50,8 +50,8 @@ PREGAME_MARKET_STATUSES = frozenset(
 REVIEW_ROUTE_CONTRACTS: dict[str, tuple[ModelTask, str, str]] = {
     "primary_forecast": (
         ModelTask.FORECAST_OPINION,
-        "gemini_3_6_flash",
-        "google/gemini-3.6-flash",
+        "gpt_5_6_terra",
+        "openai/gpt-5.6-terra",
     ),
     "rapid_forecast": (
         ModelTask.RAPID_FORECAST,
@@ -96,7 +96,7 @@ REVIEW_ROLE_LABELS: dict[str, str] = {
 }
 
 EXPECTED_HYBRID_PROVIDER_MODELS: dict[str, str] = {
-    "gemini_3_6_flash": "google/gemini-3.6-flash",
+    "gpt_5_6_terra": "openai/gpt-5.6-terra",
     "gpt_5_6_luna": "openai/gpt-5.6-luna",
     "claude_sonnet_5": "anthropic/claude-sonnet-5",
     "glm_5_2": "z-ai/glm-5.2",
@@ -899,7 +899,7 @@ class RealMarketForecastLoopV2:
         if live_hybrid:
             reasoning = " | ".join(
                 [
-                    f"Gemini 3.6 evidence/probability: {primary.get('reasoning', 'n/a')}",
+                    f"GPT-5.6 Terra evidence/probability: {primary.get('reasoning', 'n/a')}",
                     f"GPT-5.6 Luna rapid forecast: {rapid.get('reasoning', 'n/a')}",
                     f"Claude strategy critique ({verdict or 'none'}): {critique.get('reasoning', 'n/a')}",
                     f"GLM risk ({risk_level or 'none'}): {risk.get('reasoning', 'n/a')}",

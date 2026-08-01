@@ -105,7 +105,7 @@ def test_model_arsenal_builder_is_exact_redacted_and_fail_closed(tmp_path, monke
         "order": False,
     }
     assert [row["model"] for row in data["models"]] == [
-        "google/gemini-3.6-flash",
+        "openai/gpt-5.6-terra",
         "openai/gpt-5.6-luna",
         "anthropic/claude-sonnet-5",
         "z-ai/glm-5.2",

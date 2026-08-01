@@ -18,9 +18,9 @@ from model_router.credential_source import ProviderCredentialSourceResolver
 
 MODEL_ARSENAL_SPECS: tuple[dict[str, str], ...] = (
     {
-        "provider_alias": "gemini_3_6_flash",
-        "display_name": "Gemini 3.6 Flash",
-        "model": "google/gemini-3.6-flash",
+        "provider_alias": "gpt_5_6_terra",
+        "display_name": "GPT-5.6 Terra",
+        "model": "openai/gpt-5.6-terra",
         "task": "forecast_opinion",
         "role": "Rapid evidence extraction and independent probability forecast",
     },

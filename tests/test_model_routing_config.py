@@ -23,10 +23,22 @@ def test_load_default_config():
     assert cfg.max_prompt_length == 16000
     assert "glm_5_2" in cfg.provider_configs
     assert "minimax_m3" in cfg.provider_configs
-    # deepseek remains configured as a fallback alias target only.
-    assert "deepseek_v4_flash" in cfg.provider_configs
+    # DeepSeek was removed from the arsenal entirely on 2026-08-01, so the
+    # provider must be absent rather than lingering as a fallback alias
+    # target. Asserting the absence is what stops it drifting back in.
+    assert "deepseek_v4_flash" not in cfg.provider_configs
+    assert not any(
+        "deepseek" in spec.model_name.lower()
+        for spec in cfg.provider_configs.values()
+    )
+    # Retired from the roster in the same change.
+    assert "gemini_3_6_flash" not in cfg.provider_configs
+    assert not any(
+        "gemini" in spec.model_name.lower()
+        for spec in cfg.provider_configs.values()
+    )
     assert cfg.hybrid_providers == [
-        "gemini_3_6_flash",
+        "gpt_5_6_terra",
         "gpt_5_6_luna",
         "claude_sonnet_5",
         "glm_5_2",
@@ -52,18 +64,26 @@ def test_provider_configs_are_parsed():
     assert mx.api_key_env == "OPENROUTER_API_KEY"
     assert mx.model_name == "minimax/minimax-m3"
 
-    gemini = cfg.provider_configs["gemini_3_6_flash"]
-    assert gemini.model_name == "google/gemini-3.6-flash"
-    assert gemini.reasoning_effort == "low"
-    assert gemini.prompt_cost_per_million == 1.5
-    assert gemini.completion_cost_per_million == 7.5
-    assert gemini.max_retries == 0
+    terra = cfg.provider_configs["gpt_5_6_terra"]
+    assert terra.model_name == "openai/gpt-5.6-terra"
+    assert terra.reasoning_effort == "low"
+    # Terra's own prices. The seat previously held gemini-3.6-flash at
+    # 1.5/7.5, which is why those literals were here -- they belong to the
+    # retired model, not to this one.
+    assert terra.prompt_cost_per_million == 1.0
+    assert terra.completion_cost_per_million == 6.0
+    assert terra.max_retries == 0
 
     luna = cfg.provider_configs["gpt_5_6_luna"]
     assert luna.model_name == "openai/gpt-5.6-luna"
     assert luna.reasoning_effort == "medium"
-    assert luna.prompt_cost_per_million == 1.0
-    assert luna.completion_cost_per_million == 6.0
+    # Luna was configured at 1.0/6.0 -- terra's prices, not its own, a 10x
+    # overstatement that would push any cost-aware routing away from the
+    # cheapest model in the arsenal. 0.10/0.60 is corroborated by the
+    # OpenRouter models API, DumbMoney's model catalog, and DumbMoney's
+    # roster test.
+    assert luna.prompt_cost_per_million == 0.10
+    assert luna.completion_cost_per_million == 0.60
     assert luna.max_retries == 0
 
     claude = cfg.provider_configs["claude_sonnet_5"]
@@ -76,7 +96,7 @@ def test_provider_configs_are_parsed():
 
 def test_default_provider_mapping():
     cfg = load_model_routing_config()
-    assert cfg.default_provider["forecast_opinion"] == "gemini_3_6_flash"
+    assert cfg.default_provider["forecast_opinion"] == "gpt_5_6_terra"
     assert cfg.default_provider["rapid_forecast"] == "gpt_5_6_luna"
     assert cfg.default_provider["trade_draft"] == "gpt_5_6_luna"
     assert cfg.default_provider["strategy_critique"] == "claude_sonnet_5"

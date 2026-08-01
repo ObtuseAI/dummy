@@ -35,16 +35,16 @@ def _routing_config(*, live_enabled: bool = True) -> ModelRoutingConfig:
             "hybrid_review": "hybrid",
         },
         hybrid_providers=[
-            "gemini_3_6_flash",
+            "gpt_5_6_terra",
             "gpt_5_6_luna",
             "claude_sonnet_5",
             "glm_5_2",
         ],
         provider_configs={
-            "gemini_3_6_flash": ProviderConfig(
+            "gpt_5_6_terra": ProviderConfig(
                 api_base="https://openrouter.ai/api",
                 api_key_env="OPENROUTER_API_KEY",
-                model_name="google/gemini-3.6-flash",
+                model_name="openai/gpt-5.6-terra",
                 route_mode="openrouter",
             ),
             "gpt_5_6_luna": ProviderConfig(
@@ -128,7 +128,7 @@ class _FakeHybridEngine:
         self.router = SimpleNamespace(
             config=config,
             providers={
-                "gemini_3_6_flash": SimpleNamespace(available=True),
+                "gpt_5_6_terra": SimpleNamespace(available=True),
                 "gpt_5_6_luna": SimpleNamespace(available=True),
                 "claude_sonnet_5": SimpleNamespace(available=True),
                 "glm_5_2": SimpleNamespace(available=True),

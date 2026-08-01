@@ -1,6 +1,6 @@
 """LLM routing: exact four-voice OpenRouter panel.
 
-Fast structured work routes to Gemini/Luna, deep synthesis to Claude, and
+Fast structured work routes to Terra/Luna, deep synthesis to Claude, and
 adversarial calibration to GLM. Legacy providers remain fallback-only.
 """
 import pytest
@@ -10,13 +10,13 @@ from model_router.tasks import ModelTask
 
 
 @pytest.mark.asyncio
-async def test_gemini_routes_primary_forecast_when_key_present(monkeypatch):
+async def test_terra_routes_primary_forecast_when_key_present(monkeypatch):
     monkeypatch.setenv("DUMMY_LLM_OPENROUTER_ENABLED", "1")
     monkeypatch.setenv("OPENROUTER_API_KEY", "sk-openrouter-routing-test")
     router = ModelRouter()
     decision = router.route(ModelTask.FORECAST_OPINION)
-    assert decision.provider_name == "gemini_3_6_flash"
-    assert decision.model_name == "google/gemini-3.6-flash"
+    assert decision.provider_name == "gpt_5_6_terra"
+    assert decision.model_name == "openai/gpt-5.6-terra"
 
 
 @pytest.mark.asyncio
