@@ -137,24 +137,17 @@ async def test_resolver_is_zero_network_without_strict_authorization(
     alias_probe.assert_not_awaited()
 
 
-@pytest.mark.skip(
-    reason="Exercises the DIRECT-API provider path (per-provider *_BASE_URL "
-    "override and alias probing), which DeepSeek was the only provider using. "
-    "DeepSeek was removed from the arsenal 2026-08-01 and every remaining "
-    "provider routes through OpenRouter with api_base fixed in config, so this "
-    "has no live provider to exercise. The security properties it covered -- "
-    "unapproved endpoint override rejected before any secret read or probe, and "
-    "alias probes capped -- are REAL and now UNCOVERED. Either delete the "
-    "direct-API resolver path with these tests, or restore equivalent coverage. "
-    "Do not simply delete this marker."
-)
 @pytest.mark.asyncio
 async def test_resolver_rejects_unapproved_override_before_secret_or_probe(
     monkeypatch,
     model_network_capability,
 ) -> None:
+    # A SYNTHETIC provider, not a roster member. This property is about the
+    # resolver refusing an unapproved endpoint, and tying it to whichever
+    # vendor happens to be configured is what silently dropped it when
+    # DeepSeek was removed on 2026-08-01. resolve() accepts default_base
+    # directly, so the guarantee no longer depends on the roster at all.
     monkeypatch.setenv("OPENROUTER_API_KEY", "test-only-key")
-    monkeypatch.setenv("DEEPSEEK_BASE_URL", "https://attacker.invalid/api")
     resolver = ModelProviderResolver()
     model_list = AsyncMock(side_effect=AssertionError("network probe attempted"))
     alias_probe = AsyncMock(side_effect=AssertionError("network probe attempted"))
@@ -162,7 +155,8 @@ async def test_resolver_rejects_unapproved_override_before_secret_or_probe(
     monkeypatch.setattr(resolver, "_probe_alias", alias_probe)
 
     result = await resolver.resolve(
-        "gpt_5_6_terra",
+        "synthetic_exfil_probe",
+        default_base="https://attacker.invalid/api",
         allow_live=True,
         network_capability=model_network_capability,
     )
@@ -173,27 +167,17 @@ async def test_resolver_rejects_unapproved_override_before_secret_or_probe(
     alias_probe.assert_not_awaited()
 
 
-@pytest.mark.skip(
-    reason="Exercises the DIRECT-API provider path (per-provider *_BASE_URL "
-    "override and alias probing), which DeepSeek was the only provider using. "
-    "DeepSeek was removed from the arsenal 2026-08-01 and every remaining "
-    "provider routes through OpenRouter with api_base fixed in config, so this "
-    "has no live provider to exercise. The security properties it covered -- "
-    "unapproved endpoint override rejected before any secret read or probe, and "
-    "alias probes capped -- are REAL and now UNCOVERED. Either delete the "
-    "direct-API resolver path with these tests, or restore equivalent coverage. "
-    "Do not simply delete this marker."
-)
 @pytest.mark.asyncio
 async def test_resolver_caps_paid_alias_probes(
     monkeypatch,
     model_network_capability,
 ) -> None:
+    # SYNTHETIC provider with far more aliases than the cap. Supplying them
+    # through default_aliases rather than a real provider's config means the
+    # cap is measured against a deliberately oversized list every run --
+    # repointing this at a live model with only two aliases would leave the
+    # assertion passing while measuring nothing.
     monkeypatch.setenv("OPENROUTER_API_KEY", "test-only-key")
-    monkeypatch.setenv(
-        "DEEPSEEK_MODEL_ALIASES",
-        ",".join(f"alias-{index}" for index in range(MAX_ALIAS_PROBES + 20)),
-    )
     resolver = ModelProviderResolver()
     model_list = AsyncMock(return_value=(False, []))
     alias_probe = AsyncMock(return_value=(False, "MODEL_NOT_FOUND"))
@@ -201,7 +185,9 @@ async def test_resolver_caps_paid_alias_probes(
     monkeypatch.setattr(resolver, "_probe_alias", alias_probe)
 
     result = await resolver.resolve(
-        "gpt_5_6_terra",
+        "synthetic_alias_cap_probe",
+        default_base="https://openrouter.ai/api",
+        default_aliases=[f"alias-{index}" for index in range(MAX_ALIAS_PROBES + 20)],
         allow_live=True,
         network_capability=model_network_capability,
     )
