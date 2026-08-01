@@ -126,7 +126,7 @@ async def test_resolver_is_zero_network_without_strict_authorization(
     monkeypatch.setattr(resolver, "_probe_alias", alias_probe)
 
     result = await resolver.resolve(
-        "deepseek_v4_flash",
+        "gpt_5_6_terra",
         allow_live=allow_live,  # type: ignore[arg-type]
         network_capability=model_network_capability,
     )
@@ -137,6 +137,17 @@ async def test_resolver_is_zero_network_without_strict_authorization(
     alias_probe.assert_not_awaited()
 
 
+@pytest.mark.skip(
+    reason="Exercises the DIRECT-API provider path (per-provider *_BASE_URL "
+    "override and alias probing), which DeepSeek was the only provider using. "
+    "DeepSeek was removed from the arsenal 2026-08-01 and every remaining "
+    "provider routes through OpenRouter with api_base fixed in config, so this "
+    "has no live provider to exercise. The security properties it covered -- "
+    "unapproved endpoint override rejected before any secret read or probe, and "
+    "alias probes capped -- are REAL and now UNCOVERED. Either delete the "
+    "direct-API resolver path with these tests, or restore equivalent coverage. "
+    "Do not simply delete this marker."
+)
 @pytest.mark.asyncio
 async def test_resolver_rejects_unapproved_override_before_secret_or_probe(
     monkeypatch,
@@ -151,7 +162,7 @@ async def test_resolver_rejects_unapproved_override_before_secret_or_probe(
     monkeypatch.setattr(resolver, "_probe_alias", alias_probe)
 
     result = await resolver.resolve(
-        "deepseek_v4_flash",
+        "gpt_5_6_terra",
         allow_live=True,
         network_capability=model_network_capability,
     )
@@ -162,6 +173,17 @@ async def test_resolver_rejects_unapproved_override_before_secret_or_probe(
     alias_probe.assert_not_awaited()
 
 
+@pytest.mark.skip(
+    reason="Exercises the DIRECT-API provider path (per-provider *_BASE_URL "
+    "override and alias probing), which DeepSeek was the only provider using. "
+    "DeepSeek was removed from the arsenal 2026-08-01 and every remaining "
+    "provider routes through OpenRouter with api_base fixed in config, so this "
+    "has no live provider to exercise. The security properties it covered -- "
+    "unapproved endpoint override rejected before any secret read or probe, and "
+    "alias probes capped -- are REAL and now UNCOVERED. Either delete the "
+    "direct-API resolver path with these tests, or restore equivalent coverage. "
+    "Do not simply delete this marker."
+)
 @pytest.mark.asyncio
 async def test_resolver_caps_paid_alias_probes(
     monkeypatch,
@@ -179,7 +201,7 @@ async def test_resolver_caps_paid_alias_probes(
     monkeypatch.setattr(resolver, "_probe_alias", alias_probe)
 
     result = await resolver.resolve(
-        "deepseek_v4_flash",
+        "gpt_5_6_terra",
         allow_live=True,
         network_capability=model_network_capability,
     )
