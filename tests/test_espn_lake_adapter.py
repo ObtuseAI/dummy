@@ -146,3 +146,71 @@ def test_down_feed_is_fail_soft(tmp_path):
     assert res["ok"] is False and store.games() == []
     assert store.last_ingest("espn", "nhl")["status"].startswith("error")
     store.close()
+
+
+def test_probable_pitchers_land_in_extra_only_before_first_pitch(tmp_path):
+    """The client has parsed probables for months; the lake dropped them.
+
+    A pre-game observation is a probable. The same field on an in-progress or
+    final game describes who DID start - settlement fact wearing a forecast's
+    name - so it must not be written as if it had been knowable in advance.
+    """
+
+    scheduled = Game(
+        game_id="401",
+        league="mlb",
+        home="NYY",
+        away="BOS",
+        status="pre",
+        home_won=None,
+        date="2026-08-12T23:05:00Z",
+        home_pitcher="Gerrit Cole",
+        away_pitcher="Brayan Bello",
+        home_pitcher_era=2.87,
+        away_pitcher_era=4.12,
+    )
+    started = Game(
+        game_id="402",
+        league="mlb",
+        home="LAD",
+        away="CHC",
+        status="in",
+        home_won=None,
+        date="2026-08-12T20:05:00Z",
+        home_pitcher="Tyler Glasnow",
+        away_pitcher="Shota Imanaga",
+        home_pitcher_era=3.05,
+        away_pitcher_era=2.61,
+    )
+    rows = espn_games_to_rows(
+        [scheduled, started], source="espn", received_at="2026-08-12T18:00:00Z"
+    )
+    by_id = {row["game_id"]: row for row in rows}
+
+    pre = by_id["401"]["extra"]
+    assert pre["home_probable_pitcher"] == "Gerrit Cole"
+    assert pre["away_probable_pitcher"] == "Brayan Bello"
+    assert pre["home_probable_pitcher_era"] == 2.87
+    assert pre["away_probable_pitcher_era"] == 4.12
+
+    live = by_id["402"]["extra"]
+    assert "home_probable_pitcher" not in live
+    assert "away_probable_pitcher" not in live
+    assert "home_probable_pitcher_era" not in live
+
+
+def test_probable_pitcher_fields_are_omitted_not_null_when_absent(tmp_path):
+    """Leagues without probables must not grow four null keys per game."""
+
+    game = Game(
+        game_id="403",
+        league="wnba",
+        home="LVA",
+        away="NYL",
+        status="pre",
+        home_won=None,
+        date="2026-08-12T23:00:00Z",
+    )
+    (row,) = espn_games_to_rows([game], source="espn", received_at="2026-08-12T18:00:00Z")
+    assert "home_probable_pitcher" not in row["extra"]
+    assert "away_probable_pitcher" not in row["extra"]

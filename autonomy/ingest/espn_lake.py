@@ -79,6 +79,21 @@ def espn_games_to_rows(
             "away_ml_open": getattr(g, "away_ml_open", None),
             "odds_provider": getattr(g, "odds_provider", None),
         }
+        # Probable starters: EspnClient has parsed these since the ERA work,
+        # but the lake never wrote them, so the point-in-time pitcher record
+        # was dropped on the floor each night. Only a pre-game observation is
+        # a *probable* -- once the game starts ESPN's field describes who DID
+        # start, which is settlement fact wearing a forecast's name -- so the
+        # write is gated on status. History cannot be backfilled; this wire
+        # only pays going forward, which is exactly why it must not stay cut.
+        if status == "scheduled":
+            for side in ("home", "away"):
+                pitcher = getattr(g, f"{side}_pitcher", None)
+                if pitcher:
+                    extra[f"{side}_probable_pitcher"] = pitcher
+                era = getattr(g, f"{side}_pitcher_era", None)
+                if era is not None:
+                    extra[f"{side}_probable_pitcher_era"] = era
         if basis:
             extra["availability_basis"] = basis
         rows.append({
