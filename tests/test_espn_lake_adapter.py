@@ -214,3 +214,41 @@ def test_probable_pitcher_fields_are_omitted_not_null_when_absent(tmp_path):
     (row,) = espn_games_to_rows([game], source="espn", received_at="2026-08-12T18:00:00Z")
     assert "home_probable_pitcher" not in row["extra"]
     assert "away_probable_pitcher" not in row["extra"]
+
+
+def test_probable_starter_is_the_athlete_not_the_slot_label():
+    """ESPN's probables entry carries a label AND an athlete; take the athlete.
+
+    The entry's own ``displayName`` is the literal string "Probable Starting
+    Pitcher". Reading it first meant the athlete fallback never ran and every
+    game in the lake recorded the same constant as its starter -- ERAs varied
+    correctly, so the rows looked populated while pitcher identity, the whole
+    point of the field, was uniform garbage. The assertion is on precedence,
+    because the label is always present.
+    """
+
+    from autonomy.sports.espn import _probable_era
+
+    era, name = _probable_era(
+        {
+            "probables": [
+                {
+                    "name": "probableStartingPitcher",
+                    "displayName": "Probable Starting Pitcher",
+                    "athlete": {"displayName": "Jameson Taillon", "fullName": "Jameson Taillon"},
+                    "statistics": [{"name": "ERA", "displayValue": "2.87"}],
+                }
+            ]
+        }
+    )
+    assert name == "Jameson Taillon"
+    assert era == 2.87
+
+
+def test_probable_starter_falls_back_to_the_label_only_when_no_athlete():
+    from autonomy.sports.espn import _probable_era
+
+    _, name = _probable_era(
+        {"probables": [{"displayName": "Probable Starting Pitcher", "statistics": []}]}
+    )
+    assert name == "Probable Starting Pitcher"

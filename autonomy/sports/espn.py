@@ -121,7 +121,12 @@ def _probable_era(competitor: dict[str, Any]) -> tuple[float | None, str | None]
     if not probs:
         return None, None
     p = probs[0]
-    name = p.get("displayName") or (p.get("athlete") or {}).get("displayName")
+    # The probables entry carries BOTH a slot label and the athlete. Its own
+    # ``displayName`` is the label -- literally "Probable Starting Pitcher" --
+    # so reading it first meant the athlete fallback never ran and every game
+    # recorded the same constant string as its starter. Ask the athlete first.
+    athlete = p.get("athlete") or {}
+    name = athlete.get("displayName") or athlete.get("fullName") or p.get("displayName")
     for stat in p.get("statistics") or []:
         if str(stat.get("name", "")).lower() in ("era", "earnedrunaverage"):
             try:
