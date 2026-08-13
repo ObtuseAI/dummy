@@ -19,7 +19,7 @@ dependencies = [
     "pydantic>=2.6,<3",
     "aiosqlite>=0.20,<1",
     "python-dotenv>=1.0,<2",
-    "cryptography>=42.0,<50",
+    "cryptography>=50.0.0,<51",
 ]
 
 [project.optional-dependencies]
